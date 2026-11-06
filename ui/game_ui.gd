@@ -114,5 +114,12 @@ func show_prompt(text: String) -> void:
 	%Prompt.text = ("交互 · " if _touch_enabled else "E · ") + text if not text.is_empty() else ""
 
 
+var _location := "移植测试场景"
+
+
+func show_location(text: String) -> void:
+	_location = text
+
+
 func show_runtime(seconds: float) -> void:
-	%Runtime.text = "移植测试场景 · 运行 %ds" % int(seconds)
+	%Runtime.text = "%s · 运行 %ds" % [_location, int(seconds)]

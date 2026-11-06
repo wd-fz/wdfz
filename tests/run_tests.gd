@@ -44,6 +44,7 @@ func same_json(a: Variant, b: Variant) -> bool:
 func _session() -> GameSession:
 	var result := GameSession.new()
 	check(result.modules.register(DemoModule.new()).is_empty(), "register demo module")
+	check(result.modules.register(CampusData.make_module()).is_empty(), "register campus module")
 	result.start("migration_lab")
 	return result
 
@@ -57,6 +58,8 @@ func _run() -> void:
 	_test_modules_and_schema()
 	_test_storage()
 	await _test_app()
+	_test_campus_rules()
+	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
 			DirAccess.remove_absolute(_test_path + suffix)
@@ -191,6 +194,7 @@ func _tap(control: Control) -> void:
 
 func _test_app() -> void:
 	var app: GameApp = APP.instantiate()
+	app.initial_world = "migration_lab" # Framework regression keeps the sandbox room.
 	app.saves = SaveStore.new(_test_path)
 	root.size = Vector2i(1280, 720)
 	root.add_child(app)
@@ -268,6 +272,138 @@ func _test_app() -> void:
 		await _frames()
 		check(app.session.capture(_pose())["modules"]["demo.notice_board"]["data"]["read_count"] == 0, "repeated new runs start with fresh module state")
 		app.return_to_menu()
+	app.queue_free()
+	await _frames()
+
+
+func _campus_pose(room: Variant, w: Vector2, ang: float) -> Dictionary:
+	var p := CampusGeometry.to_scene(room, w)
+	return {"position": [p.x, 0.05, p.y], "yaw": CampusGeometry.yaw_from_ang(ang), "pitch": 0.0}
+
+
+func _test_campus_rules() -> void:
+	var rooms := CampusData.rooms()
+	check(rooms.size() == 42 and not CampusData.layout("out").is_empty(), "all 42 Web interiors and the outside are exported")
+	var campus := CampusData.make_module()
+	campus.reset()
+	check(campus.start_world() == "teach1", "run starts in teach1 like the Web version")
+	var t1: Dictionary = rooms["teach1"]
+	check(t1["grid"].size() == 22 and String(t1["grid"][0]).length() == 63, "teach1 keeps the 63 x 22 tile grid")
+	# Door 10:15 is the front door of the first classroom; stand in the corridor facing north.
+	var door := CampusGeometry.tile_center(t1, 10, 15)
+	var pose := _campus_pose(t1, door + Vector2(0, 14), -PI * 0.5)
+	check(campus.hint("teach1", pose) == "开门", "closed classroom door offers to open")
+	var opened := campus.interact_at("teach1", pose)
+	check(opened.get("door", {}).get("open") == true and campus.is_open("teach1:10:15"), "E opens the facing door")
+	check(campus.capture()["open_doors"] == ["teach1:10:15"], "open doors are saved by key")
+	var blocked := campus.interact_at("teach1", _campus_pose(t1, door + Vector2(0, 5), -PI * 0.5))
+	check(blocked["notice"] == "我：先让开门口。" and campus.is_open("teach1:10:15"), "cannot close a door while standing in it")
+	campus.interact_at("teach1", pose)
+	check(not campus.is_open("teach1:10:15"), "E closes it again from the corridor")
+	check(not campus.validate({"open_doors": ["teach1:99:99"]}).is_empty(), "unknown door keys rejected")
+	check(not campus.validate({"open_doors": "x"}).is_empty(), "malformed door state rejected")
+	var l3: Dictionary = rooms["lab3"]
+	var locked := campus.interact_at("lab3", _campus_pose(l3, CampusGeometry.tile_center(l3, 41, 15) + Vector2(0, 14), -PI * 0.5))
+	check(String(locked.get("toast", "")).contains("机房钥匙") and not campus.is_open("lab3:41:15"), "locked door keeps the Web lock and key name")
+	# Seamless teach1 south door (campus-link: column 31, 3 cells wide).
+	var cfg: Dictionary = CampusData.campus()["campus_doors"]
+	var spec: Dictionary = cfg["doors"][0]
+	var port := CampusGeometry.door_port(t1, spec)
+	var inside := campus.crossing("teach1", _campus_pose(t1, port["p"] - Vector2(0, 2), PI * 0.5))
+	check(inside.is_empty(), "no switch before the threshold line")
+	var out := campus.crossing("teach1", _campus_pose(t1, port["p"] + Vector2(0, 0.5), PI * 0.5))
+	check(out.get("world") == "out", "crossing the threshold leaves to the campus")
+	var back := campus.crossing("out", out["pose"])
+	check(back.is_empty(), "standing outside the gap does not bounce back")
+	var shift := CampusGeometry.shift_of(t1)
+	var entering := campus.crossing("out", _campus_pose(null, port["p"] + shift - Vector2(0, 1), -PI * 0.5))
+	check(entering.get("world") == "teach1", "walking into the doorway enters teach1")
+	var p_in: Array = entering["pose"]["position"]
+	var expect := CampusGeometry.to_scene(t1, port["p"] - Vector2(0, 1))
+	check(absf(p_in[0] - expect.x) < 0.001 and absf(p_in[2] - expect.y) < 0.001, "threshold keeps position through the room/campus translation")
+	var garage := campus.interact_at("out", _campus_pose(null, Vector2(956, 326), PI * 0.5))
+	check(garage.get("travel", {}).get("world") == "garage1", "E at the garage entrance enters garage1")
+	var at_teach := campus.interact_at("out", _campus_pose(null, Vector2(1077.5, 1975), -PI * 0.5))
+	check(at_teach["notice"] == "我：门开着，直接走进去就行。", "seamless buildings answer like the Web version")
+	var exit_room: Dictionary = rooms["trash1"]
+	check(exit_room["exit_world"] != null, "rooms know where their host door is outside")
+
+
+func _test_campus_app() -> void:
+	var app: GameApp = APP.instantiate()
+	app.saves = SaveStore.new(_test_path)
+	root.size = Vector2i(1280, 720)
+	root.add_child(app)
+	await _frames()
+	app.start_new_game()
+	await _frames(5)
+	check(app.session != null and app.router.current.world_id == &"teach1", "new game opens the formal teach1 scene")
+	var world := app.router.get_child(0) as CampusWorld
+	check(world != null and world.get_node_or_null("Model") != null, "teach1 model loaded from the exported glb")
+	check(world.find_children("*", "MultiMeshInstance3D", true, false).size() > 50, "instanced furniture rebuilt as MultiMesh")
+	check(world.door_keys().size() == 8, "teach1 has its eight classroom doors as bodies")
+	var start: Array = app.player.capture_pose()["position"]
+	check(absf(start[0] - 17.3) < 0.01 and absf(start[2] - 1.4456) < 0.01, "start pose is the old leaveSeat spot by the own seat")
+	# Real physics: walking into the classroom's north window wall must stop.
+	var t1 := CampusData.layout("teach1")
+	app.player.restore_pose(_campus_pose(t1, CampusGeometry.tile_center(t1, 54, 9), -PI * 0.5))
+	await _frames()
+	Input.action_press("move_forward")
+	await _frames(90)
+	Input.action_release("move_forward")
+	var stop: Array = app.player.capture_pose()["position"]
+	var wall_z := CampusGeometry.to_scene(t1, Vector2(0, float(t1["oy"]) + 7 * float(t1["th"])))
+	check(stop[2] > wall_z.y + 0.30 and stop[2] < wall_z.y + 0.40, "north wall stops the body at its radius (z=%.3f)" % stop[2])
+	# Closed door blocks, open door lets the body through.
+	var corridor := CampusGeometry.tile_center(t1, 10, 17)
+	app.player.restore_pose(_campus_pose(t1, corridor, -PI * 0.5))
+	await _frames()
+	Input.action_press("move_forward")
+	await _frames(60)
+	Input.action_release("move_forward")
+	var at_door: Array = app.player.capture_pose()["position"]
+	var door_edge := CampusGeometry.to_scene(t1, Vector2(0, float(t1["oy"]) + 16 * float(t1["th"])))
+	check(at_door[2] > door_edge.y + 0.3, "closed door blocks the corridor side")
+	app.player.request_interaction()
+	await _frames(3)
+	check(app.campus().is_open("teach1:10:15"), "E with no raycast target reaches the campus rules")
+	Input.action_press("move_forward")
+	await _frames(90)
+	Input.action_release("move_forward")
+	var through: Array = app.player.capture_pose()["position"]
+	check(through[2] < door_edge.y - 1.0, "open door lets the body into the classroom")
+	# Walk out of the seamless south door and back in.
+	var spec: Dictionary = CampusData.campus()["campus_doors"]["doors"][0]
+	var port := CampusGeometry.door_port(t1, spec)
+	app.player.restore_pose(_campus_pose(t1, port["p"] - Vector2(0, 6), PI * 0.5))
+	await _frames()
+	Input.action_press("move_forward")
+	await _frames(60)
+	Input.action_release("move_forward")
+	await _frames(3)
+	check(app.router.current.world_id == &"out" and app.session.world_id == "out", "walking through the south door switches to the campus")
+	check(app.router.get_child(0) is CampusWorld, "campus outside scene built")
+	app.player.place(_campus_pose(null, port["p"] + CampusGeometry.shift_of(t1) + Vector2(0, 8), -PI * 0.5))
+	await _frames()
+	Input.action_press("move_forward")
+	await _frames(60)
+	Input.action_release("move_forward")
+	await _frames(3)
+	check(app.session.world_id == "teach1", "walking back through the doorway re-enters teach1")
+	app.pause_game()
+	app.save_game()
+	var saved: Dictionary = app.saves.read()["data"]
+	check(saved["world_id"] == "teach1" and saved["modules"]["campus.world"]["data"]["open_doors"] == ["teach1:10:15"], "save keeps scene and opened doors")
+	app.return_to_menu()
+	app.load_game()
+	await _frames(3)
+	var reloaded := app.router.get_child(0) as CampusWorld
+	check(app.campus().is_open("teach1:10:15") and reloaded != null, "load restores the campus door state")
+	app.return_to_menu()
+	for id: String in CampusData.room_ids():
+		var err := app.router.switch_to(id)
+		check(err.is_empty(), "world %s registered and instantiable" % id)
+	app.router.clear()
 	app.queue_free()
 	await _frames()
 

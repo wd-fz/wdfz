@@ -2,10 +2,13 @@ class_name PlayerController
 extends CharacterBody3D
 
 signal interaction_requested(id: StringName)
+## E pressed with no physical interactable in front: tile-based rules (campus) decide.
+signal free_interaction_requested
 signal focus_changed(prompt: String)
 
-@export var walk_speed := 4.0
-@export var sprint_speed := 6.5
+## Web version input.js SPD_WALK = 21 and SPD_RUN = 36.4 world units/s; 1 unit = 1/9 m.
+@export var walk_speed := 21.0 / 9.0
+@export var sprint_speed := 36.4 / 9.0
 @export var mouse_sensitivity := 0.0025
 @export var touch_sensitivity := 0.004
 
@@ -68,6 +71,8 @@ func request_interaction() -> void:
 	_update_focus() # Never use a target cached before a teleport/pause.
 	if is_instance_valid(_focus) and not _focus.interaction_id.is_empty():
 		interaction_requested.emit(_focus.interaction_id)
+	else:
+		free_interaction_requested.emit()
 
 
 func set_touch_move(value: Vector2) -> void:
@@ -103,6 +108,19 @@ func capture_pose() -> Dictionary:
 		"yaw": wrapf(rotation.y, -PI, PI),
 		"pitch": camera.rotation.x,
 	}
+
+
+## Seamless move (campus door thresholds): keep held input and velocity direction.
+func place(data: Dictionary) -> void:
+	var coordinates: Array = data["position"]
+	position = Vector3(coordinates[0], coordinates[1], coordinates[2])
+	rotation = Vector3(0.0, float(data["yaw"]), 0.0)
+	camera.rotation = Vector3(float(data["pitch"]), 0.0, 0.0)
+	reset_physics_interpolation()
+
+
+func has_focus() -> bool:
+	return is_instance_valid(_focus)
 
 
 func restore_pose(data: Dictionary) -> void:

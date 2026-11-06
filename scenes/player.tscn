@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://actors/player_controller.gd" id="1"]
 [sub_resource type="CapsuleShape3D" id="Capsule"]
-radius = 0.3
+radius = 0.3333
 height = 1.75
 
 [node name="Player" type="CharacterBody3D"]
@@ -17,7 +17,7 @@ shape = SubResource("Capsule")
 
 [node name="Camera" type="Camera3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(0, 1.6, 0)
+position = Vector3(0, 1.65, 0)
 current = true
 fov = 75.0
 

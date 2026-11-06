@@ -2,13 +2,15 @@ class_name GameApp
 extends Node
 ## Composition root: creates rules and connects input, worlds, UI and storage.
 
-@export var initial_world := "migration_lab"
+## Web version start: teach1, the player's own seat (ClassroomLayout.ownSeat).
+@export var initial_world := "teach1"
 @onready var router: WorldRouter = %WorldRouter
 @onready var player: PlayerController = %Player
 @onready var ui: GameUI = %UI
 
 var session: GameSession
 var saves := SaveStore.new()
+var _hint_cooldown := 0.0
 
 
 func _ready() -> void:
@@ -24,16 +26,22 @@ func _ready() -> void:
 	ui.interact_requested.connect(player.request_interaction)
 	player.focus_changed.connect(ui.show_prompt)
 	player.interaction_requested.connect(_interact)
+	player.free_interaction_requested.connect(_campus_interact)
 	return_to_menu()
 
 
 func _make_session() -> GameSession:
 	var candidate := GameSession.new()
-	var error := candidate.modules.register(DemoModule.new())
-	if not error.is_empty():
-		push_error(error)
-		return null
+	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module()]:
+		var error := candidate.modules.register(feature)
+		if not error.is_empty():
+			push_error(error)
+			return null
 	return candidate
+
+
+func campus() -> CampusModule:
+	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
 
 
 func start_new_game() -> void:
@@ -45,8 +53,13 @@ func start_new_game() -> void:
 		ui.show_notice(error)
 		return
 	candidate.start(initial_world)
-	_install_session(candidate, router.current.spawn_pose())
-	ui.show_notice("走到前方告示牌，按 E 或触屏交互。这里用于验证移植接口。")
+	var rules := candidate.modules.get_module(&"campus.world") as CampusModule
+	var pose := rules.start_pose() if rules != null and initial_world == rules.start_world() else router.current.spawn_pose()
+	_install_session(candidate, pose)
+	if rules != null and rules.knows(initial_world):
+		ui.show_notice(String(rules.room(initial_world)["name"]) if rules.room(initial_world) != null else "武大附中 · 校园")
+	else:
+		ui.show_notice("走到前方告示牌，按 E 或触屏交互。这里用于验证移植接口。")
 
 
 func _install_session(candidate: GameSession, pose: Dictionary) -> void:
@@ -54,6 +67,10 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 		session.stop()
 	session = candidate
 	session.notice_requested.connect(ui.show_notice)
+	var rules := campus()
+	if rules != null:
+		rules.door_changed.connect(_door_changed)
+	_sync_world()
 	player.restore_pose(pose)
 	player.show()
 	ui.set_save_available(saves.exists())
@@ -131,7 +148,78 @@ func return_to_menu() -> void:
 func _physics_process(delta: float) -> void:
 	if session != null and session.running and not get_tree().paused:
 		session.advance(delta, router.current.advances_calendar)
+		ui.show_location(_location_name())
 		ui.show_runtime(session.clock.active_seconds)
+		_campus_step(delta)
+
+
+# ---- formal campus (features/campus) ----
+
+func _campus_world() -> CampusWorld:
+	return router.get_child(0) as CampusWorld if router.get_child_count() > 0 else null
+
+
+func _sync_world() -> void:
+	var world := _campus_world()
+	var rules := campus()
+	if world != null and rules != null:
+		world.apply_doors(rules.open_doors())
+
+
+func _door_changed(key: String, open: bool) -> void:
+	var world := _campus_world()
+	if world != null:
+		world.set_door_open(key, open)
+
+
+func _campus_step(delta: float) -> void:
+	var rules := campus()
+	if rules == null or not rules.knows(session.world_id) or not player.enabled:
+		return
+	var crossing := rules.crossing(session.world_id, player.capture_pose())
+	if not crossing.is_empty():
+		travel(crossing["world"], crossing["pose"], true)
+	_hint_cooldown -= delta
+	if _hint_cooldown <= 0.0 and not player.has_focus():
+		_hint_cooldown = 0.1
+		ui.show_prompt(rules.hint(session.world_id, player.capture_pose()))
+
+
+func _campus_interact() -> void:
+	var rules := campus()
+	if session == null or get_tree().paused or rules == null or not rules.knows(session.world_id):
+		return
+	var result := rules.interact_at(session.world_id, player.capture_pose())
+	var text := String(result.get("notice", ""))
+	if result.has("toast"):
+		text = text + "\n" + String(result["toast"])
+	if result.has("travel"):
+		travel(result["travel"]["world"], result["travel"]["pose"], false)
+	if not text.is_empty():
+		ui.show_notice(text)
+
+
+## Switch scene inside the running session (old doEnterRoom / doExitRoom). Seamless moves keep input.
+func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
+	var error := router.switch_to(world_id)
+	if not error.is_empty():
+		ui.show_notice(error)
+		return error
+	session.world_id = world_id
+	if seamless:
+		player.place(pose)
+	else:
+		player.restore_pose(pose)
+	_sync_world()
+	_hint_cooldown = 0.0
+	return ""
+
+
+func _location_name() -> String:
+	var rules := campus()
+	if rules == null or session == null or not rules.knows(session.world_id):
+		return "移植测试场景"
+	return "武大附中 · 校园" if session.world_id == "out" else String(rules.room(session.world_id)["name"])
 
 
 func _interact(id: StringName) -> void:

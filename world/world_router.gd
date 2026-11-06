@@ -26,6 +26,8 @@ func switch_to(id: String) -> String:
 		if candidate != null:
 			candidate.free()
 		return "世界场景根节点必须是 Node3D"
+	for key: Variant in matches[0].properties:
+		candidate.set(String(key), matches[0].properties[key])
 	clear()
 	current = matches[0]
 	_instance = candidate

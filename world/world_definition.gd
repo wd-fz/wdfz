@@ -7,6 +7,8 @@ extends Resource
 @export var spawn_position := Vector3(0.0, 0.1, 3.0)
 @export_range(-180, 180) var spawn_yaw_degrees := 0.0
 @export var advances_calendar := true
+## Trusted per-world settings copied onto the instantiated scene root (e.g. CampusWorld.scene_id).
+@export var properties: Dictionary = {}
 
 
 func spawn_pose() -> Dictionary:

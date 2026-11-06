@@ -22,6 +22,10 @@ func register(feature: FeatureModule) -> String:
 	return ""
 
 
+func get_module(id: StringName) -> FeatureModule:
+	return _modules.get(id)
+
+
 func reset() -> void:
 	_unloaded_state.clear()
 	for feature: FeatureModule in _modules.values():

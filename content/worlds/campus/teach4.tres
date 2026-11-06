@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="WorldDefinition" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://world/world_definition.gd" id="1"]
+[ext_resource type="PackedScene" path="res://world/campus/campus_world.tscn" id="2"]
+
+[resource]
+script = ExtResource("1")
+world_id = &"teach4"
+scene = ExtResource("2")
+spawn_position = Vector3(-25.0000, 0.05, 9.5000)
+spawn_yaw_degrees = 0.0000
+advances_calendar = true
+properties = {"scene_id": "teach4"}
