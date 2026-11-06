@@ -1,6 +1,6 @@
 # 功能模块
 
-每个功能使用独立目录。当前只有 `demo/` 告示牌示例，提供实际可运行的交互、状态校验、保存与恢复流程。
+每个功能使用独立目录。`demo/` 是告示牌示例，提供实际可运行的交互、状态校验、保存与恢复流程；`campus/` 是正式校园规则（房门、出入口、连续校园门槛），场景适配器在 `world/campus/`。
 
 规则继承 [FeatureModule](../core/modules/feature_module.gd)，在 [GameApp._make_session](../app/game_app.gd) 注册。模块 ID 和交互 ID 使用稳定命名空间，不从场景路径或中文显示名推导。
 

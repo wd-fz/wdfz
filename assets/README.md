@@ -1,6 +1,8 @@
 # 资源导入约定
 
-本轮只使用 Godot 基础几何体与系统字体，没有复制旧版模型包或第三方音效。正式资源按需建立 `models/`、`textures/`、`audio/`、`fonts/` 子目录。
+框架示例房间只用 Godot 基础几何体与系统字体。正式校园建筑在 [`campus/`](campus/README.md)，由 `tools/export_scenes/` 从旧版导出，不手工修改；旧版音效尚未搬入。其余正式资源按需建立 `models/`、`textures/`、`audio/`、`fonts/` 子目录。
+
+`assets/campus/layout/*.json` 是运行时读取的非资源文件，将来配置导出预设时要在「要导出的非资源文件」里加上 `assets/campus/layout/*.json`。
 
 - 统一 **1 Godot 单位 = 1 米，+Y 向上，-Z 为默认前方**。Blender 导出前应用缩放；不要在运行时叠加未记录的单位修正。
 - 优先使用 glTF 2.0（`.glb`／`.gltf`）。保留可编辑源文件或生成脚本，不将 Three.js 专用 JSON 包当作通用模型格式。
