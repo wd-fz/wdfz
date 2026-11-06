@@ -1,0 +1,8 @@
+.godot/
+build/
+*.tmp
+*.log
+.DS_Store
+.idea/
+.vscode/
+export_credentials.cfg
