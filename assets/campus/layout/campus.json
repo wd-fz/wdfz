@@ -1,0 +1,97 @@
+{
+ "campus_doors": {
+  "width": 3,
+  "annex": 1.5,
+  "doors": [
+   {
+    "room": "teach1",
+    "host": "teach",
+    "edge": "s",
+    "at": 31
+   },
+   {
+    "room": "admin1",
+    "host": "admin",
+    "edge": "s",
+    "at": 26
+   },
+   {
+    "room": "lab1",
+    "host": "lab",
+    "edge": "s",
+    "at": 25
+   },
+   {
+    "room": "guard1",
+    "host": "guard",
+    "edge": "s",
+    "at": 5.5,
+    "width": 2
+   },
+   {
+    "room": "gear1",
+    "host": "gear",
+    "edge": "s",
+    "at": 9
+   },
+   {
+    "room": "trash1",
+    "host": "trash",
+    "edge": "s",
+    "at": 5.5,
+    "width": 2
+   },
+   {
+    "room": "bell1",
+    "host": "bell",
+    "edge": "s",
+    "at": 5
+   },
+   {
+    "room": "dorm1",
+    "host": "dormN",
+    "edge": "e",
+    "at": 7.5,
+    "width": 2
+   },
+   {
+    "room": "dorm4",
+    "host": "dormS",
+    "edge": "e",
+    "at": 7.5,
+    "width": 2
+   },
+   {
+    "room": "canteen1",
+    "host": "canteen",
+    "edge": "s",
+    "at": 30.5,
+    "width": 2
+   }
+  ]
+ },
+ "door_locks": {
+  "lab3:41:15": {
+   "item": "roomkey",
+   "name": "机房钥匙"
+  },
+  "admin2:5:16": {
+   "item": "broadcastkey",
+   "name": "广播站钥匙"
+  },
+  "admin2:7:16": {
+   "item": "broadcastkey",
+   "name": "广播站钥匙"
+  }
+ },
+ "PRAD": 3,
+ "TTILE": 9,
+ "U2M": 0.1111111111111111,
+ "SC": 2,
+ "EYE": 1.65,
+ "WALLH": 3,
+ "SPD_WALK": 21,
+ "SPD_RUN": 36.4,
+ "start_room": "teach1",
+ "reference": "wd-fz/wd-fz.github.io@0bf508a47eac154c2a7047cdb45d314f61c48fdc"
+}
