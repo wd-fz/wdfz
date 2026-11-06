@@ -1,0 +1,496 @@
+[gd_scene load_steps=63 format=3]
+
+[ext_resource type="Script" path="res://actors/interactable.gd" id="Interactable"]
+
+[sub_resource type="StandardMaterial3D" id="floor"]
+albedo_color = Color(0.2, 0.25, 0.28, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="wall"]
+albedo_color = Color(0.34, 0.4, 0.41, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="trim"]
+albedo_color = Color(0.09, 0.17, 0.2, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="wood"]
+albedo_color = Color(0.39, 0.29, 0.17, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="board"]
+albedo_color = Color(0.05, 0.22, 0.22, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="accent"]
+albedo_color = Color(0.8, 0.66, 0.36, 1)
+roughness = 0.9
+
+[sub_resource type="BoxMesh" id="FloorMesh"]
+material = SubResource("floor")
+size = Vector3(16, 0.5, 12)
+
+[sub_resource type="BoxShape3D" id="FloorShape"]
+size = Vector3(16, 0.5, 12)
+
+[sub_resource type="BoxMesh" id="BackWallMesh"]
+material = SubResource("wall")
+size = Vector3(16, 3.6, 0.25)
+
+[sub_resource type="BoxShape3D" id="BackWallShape"]
+size = Vector3(16, 3.6, 0.25)
+
+[sub_resource type="BoxMesh" id="LeftWallMesh"]
+material = SubResource("wall")
+size = Vector3(0.25, 3.6, 12)
+
+[sub_resource type="BoxShape3D" id="LeftWallShape"]
+size = Vector3(0.25, 3.6, 12)
+
+[sub_resource type="BoxMesh" id="RightWallMesh"]
+material = SubResource("wall")
+size = Vector3(0.25, 3.6, 12)
+
+[sub_resource type="BoxShape3D" id="RightWallShape"]
+size = Vector3(0.25, 3.6, 12)
+
+[sub_resource type="BoxMesh" id="FrontWallMesh"]
+material = SubResource("wall")
+size = Vector3(16, 3.6, 0.25)
+
+[sub_resource type="BoxShape3D" id="FrontWallShape"]
+size = Vector3(16, 3.6, 0.25)
+
+[sub_resource type="BoxMesh" id="BoardMesh"]
+material = SubResource("board")
+size = Vector3(3.8, 1.4, 0.16)
+
+[sub_resource type="BoxShape3D" id="BoardShape"]
+size = Vector3(3.8, 1.4, 0.16)
+
+[sub_resource type="BoxMesh" id="BoardTrimMesh"]
+material = SubResource("accent")
+size = Vector3(4, 0.12, 0.4)
+
+[sub_resource type="BoxShape3D" id="BoardTrimShape"]
+size = Vector3(4, 0.12, 0.4)
+
+[sub_resource type="BoxMesh" id="DeskLM2Mesh"]
+material = SubResource("wood")
+size = Vector3(2, 0.14, 0.85)
+
+[sub_resource type="BoxShape3D" id="DeskLM2Shape"]
+size = Vector3(2, 0.14, 0.85)
+
+[sub_resource type="BoxMesh" id="DeskLM2LegLMesh"]
+material = SubResource("trim")
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxShape3D" id="DeskLM2LegLShape"]
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxMesh" id="DeskLM2LegRMesh"]
+material = SubResource("trim")
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxShape3D" id="DeskLM2LegRShape"]
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxMesh" id="DeskL1Mesh"]
+material = SubResource("wood")
+size = Vector3(2, 0.14, 0.85)
+
+[sub_resource type="BoxShape3D" id="DeskL1Shape"]
+size = Vector3(2, 0.14, 0.85)
+
+[sub_resource type="BoxMesh" id="DeskL1LegLMesh"]
+material = SubResource("trim")
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxShape3D" id="DeskL1LegLShape"]
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxMesh" id="DeskL1LegRMesh"]
+material = SubResource("trim")
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxShape3D" id="DeskL1LegRShape"]
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxMesh" id="DeskL3_7Mesh"]
+material = SubResource("wood")
+size = Vector3(2, 0.14, 0.85)
+
+[sub_resource type="BoxShape3D" id="DeskL3_7Shape"]
+size = Vector3(2, 0.14, 0.85)
+
+[sub_resource type="BoxMesh" id="DeskL3_7LegLMesh"]
+material = SubResource("trim")
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxShape3D" id="DeskL3_7LegLShape"]
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxMesh" id="DeskL3_7LegRMesh"]
+material = SubResource("trim")
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxShape3D" id="DeskL3_7LegRShape"]
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxMesh" id="DeskRM2Mesh"]
+material = SubResource("wood")
+size = Vector3(2, 0.14, 0.85)
+
+[sub_resource type="BoxShape3D" id="DeskRM2Shape"]
+size = Vector3(2, 0.14, 0.85)
+
+[sub_resource type="BoxMesh" id="DeskRM2LegLMesh"]
+material = SubResource("trim")
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxShape3D" id="DeskRM2LegLShape"]
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxMesh" id="DeskRM2LegRMesh"]
+material = SubResource("trim")
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxShape3D" id="DeskRM2LegRShape"]
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxMesh" id="DeskR1Mesh"]
+material = SubResource("wood")
+size = Vector3(2, 0.14, 0.85)
+
+[sub_resource type="BoxShape3D" id="DeskR1Shape"]
+size = Vector3(2, 0.14, 0.85)
+
+[sub_resource type="BoxMesh" id="DeskR1LegLMesh"]
+material = SubResource("trim")
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxShape3D" id="DeskR1LegLShape"]
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxMesh" id="DeskR1LegRMesh"]
+material = SubResource("trim")
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxShape3D" id="DeskR1LegRShape"]
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxMesh" id="DeskR3_7Mesh"]
+material = SubResource("wood")
+size = Vector3(2, 0.14, 0.85)
+
+[sub_resource type="BoxShape3D" id="DeskR3_7Shape"]
+size = Vector3(2, 0.14, 0.85)
+
+[sub_resource type="BoxMesh" id="DeskR3_7LegLMesh"]
+material = SubResource("trim")
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxShape3D" id="DeskR3_7LegLShape"]
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxMesh" id="DeskR3_7LegRMesh"]
+material = SubResource("trim")
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxShape3D" id="DeskR3_7LegRShape"]
+size = Vector3(0.12, 0.7, 0.6)
+
+[sub_resource type="BoxMesh" id="StripeLMesh"]
+material = SubResource("accent")
+size = Vector3(0.1, 0.12, 11.6)
+
+[sub_resource type="BoxShape3D" id="StripeLShape"]
+size = Vector3(0.1, 0.12, 11.6)
+
+[sub_resource type="BoxMesh" id="StripeRMesh"]
+material = SubResource("accent")
+size = Vector3(0.1, 0.12, 11.6)
+
+[sub_resource type="BoxShape3D" id="StripeRShape"]
+size = Vector3(0.1, 0.12, 11.6)
+
+[sub_resource type="Environment" id="Environment"]
+background_mode = 1
+background_color = Color(0.06, 0.09, 0.12, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.72, 0.82, 0.86, 1)
+ambient_light_energy = 0.7
+
+[node name="MigrationLab" type="Node3D"]
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-58, -28, 0)
+light_color = Color(1, 0.92, 0.78, 1)
+light_energy = 1.3
+shadow_enabled = true
+
+[node name="Floor" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.25, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("FloorMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("FloorShape")
+
+[node name="BackWall" type="StaticBody3D" parent="."]
+position = Vector3(0, 1.8, -6)
+
+[node name="Mesh" type="MeshInstance3D" parent="BackWall"]
+mesh = SubResource("BackWallMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="BackWall"]
+shape = SubResource("BackWallShape")
+
+[node name="LeftWall" type="StaticBody3D" parent="."]
+position = Vector3(-8, 1.8, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="LeftWall"]
+mesh = SubResource("LeftWallMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="LeftWall"]
+shape = SubResource("LeftWallShape")
+
+[node name="RightWall" type="StaticBody3D" parent="."]
+position = Vector3(8, 1.8, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="RightWall"]
+mesh = SubResource("RightWallMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="RightWall"]
+shape = SubResource("RightWallShape")
+
+[node name="FrontWall" type="StaticBody3D" parent="."]
+position = Vector3(0, 1.8, 6)
+
+[node name="Mesh" type="MeshInstance3D" parent="FrontWall"]
+mesh = SubResource("FrontWallMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="FrontWall"]
+shape = SubResource("FrontWallShape")
+
+[node name="Board" type="StaticBody3D" parent="."]
+position = Vector3(0, 1.65, -5.77)
+collision_layer = 2
+script = ExtResource("Interactable")
+interaction_id = &"demo.read_board"
+prompt = "查看移植接入说明"
+
+[node name="Mesh" type="MeshInstance3D" parent="Board"]
+mesh = SubResource("BoardMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="Board"]
+shape = SubResource("BoardShape")
+
+[node name="BoardTrim" type="StaticBody3D" parent="."]
+position = Vector3(0, 0.9, -5.6)
+
+[node name="Mesh" type="MeshInstance3D" parent="BoardTrim"]
+mesh = SubResource("BoardTrimMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="BoardTrim"]
+shape = SubResource("BoardTrimShape")
+
+[node name="DeskLM2" type="StaticBody3D" parent="."]
+position = Vector3(-3, 0.75, -2)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskLM2"]
+mesh = SubResource("DeskLM2Mesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskLM2"]
+shape = SubResource("DeskLM2Shape")
+
+[node name="DeskLM2LegL" type="StaticBody3D" parent="."]
+position = Vector3(-3.8, 0.35, -2)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskLM2LegL"]
+mesh = SubResource("DeskLM2LegLMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskLM2LegL"]
+shape = SubResource("DeskLM2LegLShape")
+
+[node name="DeskLM2LegR" type="StaticBody3D" parent="."]
+position = Vector3(-2.2, 0.35, -2)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskLM2LegR"]
+mesh = SubResource("DeskLM2LegRMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskLM2LegR"]
+shape = SubResource("DeskLM2LegRShape")
+
+[node name="DeskL1" type="StaticBody3D" parent="."]
+position = Vector3(-3, 0.75, 1)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskL1"]
+mesh = SubResource("DeskL1Mesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskL1"]
+shape = SubResource("DeskL1Shape")
+
+[node name="DeskL1LegL" type="StaticBody3D" parent="."]
+position = Vector3(-3.8, 0.35, 1)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskL1LegL"]
+mesh = SubResource("DeskL1LegLMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskL1LegL"]
+shape = SubResource("DeskL1LegLShape")
+
+[node name="DeskL1LegR" type="StaticBody3D" parent="."]
+position = Vector3(-2.2, 0.35, 1)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskL1LegR"]
+mesh = SubResource("DeskL1LegRMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskL1LegR"]
+shape = SubResource("DeskL1LegRShape")
+
+[node name="DeskL3_7" type="StaticBody3D" parent="."]
+position = Vector3(-3, 0.75, 3.7)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskL3_7"]
+mesh = SubResource("DeskL3_7Mesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskL3_7"]
+shape = SubResource("DeskL3_7Shape")
+
+[node name="DeskL3_7LegL" type="StaticBody3D" parent="."]
+position = Vector3(-3.8, 0.35, 3.7)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskL3_7LegL"]
+mesh = SubResource("DeskL3_7LegLMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskL3_7LegL"]
+shape = SubResource("DeskL3_7LegLShape")
+
+[node name="DeskL3_7LegR" type="StaticBody3D" parent="."]
+position = Vector3(-2.2, 0.35, 3.7)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskL3_7LegR"]
+mesh = SubResource("DeskL3_7LegRMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskL3_7LegR"]
+shape = SubResource("DeskL3_7LegRShape")
+
+[node name="DeskRM2" type="StaticBody3D" parent="."]
+position = Vector3(3, 0.75, -2)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskRM2"]
+mesh = SubResource("DeskRM2Mesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskRM2"]
+shape = SubResource("DeskRM2Shape")
+
+[node name="DeskRM2LegL" type="StaticBody3D" parent="."]
+position = Vector3(2.2, 0.35, -2)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskRM2LegL"]
+mesh = SubResource("DeskRM2LegLMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskRM2LegL"]
+shape = SubResource("DeskRM2LegLShape")
+
+[node name="DeskRM2LegR" type="StaticBody3D" parent="."]
+position = Vector3(3.8, 0.35, -2)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskRM2LegR"]
+mesh = SubResource("DeskRM2LegRMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskRM2LegR"]
+shape = SubResource("DeskRM2LegRShape")
+
+[node name="DeskR1" type="StaticBody3D" parent="."]
+position = Vector3(3, 0.75, 1)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskR1"]
+mesh = SubResource("DeskR1Mesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskR1"]
+shape = SubResource("DeskR1Shape")
+
+[node name="DeskR1LegL" type="StaticBody3D" parent="."]
+position = Vector3(2.2, 0.35, 1)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskR1LegL"]
+mesh = SubResource("DeskR1LegLMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskR1LegL"]
+shape = SubResource("DeskR1LegLShape")
+
+[node name="DeskR1LegR" type="StaticBody3D" parent="."]
+position = Vector3(3.8, 0.35, 1)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskR1LegR"]
+mesh = SubResource("DeskR1LegRMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskR1LegR"]
+shape = SubResource("DeskR1LegRShape")
+
+[node name="DeskR3_7" type="StaticBody3D" parent="."]
+position = Vector3(3, 0.75, 3.7)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskR3_7"]
+mesh = SubResource("DeskR3_7Mesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskR3_7"]
+shape = SubResource("DeskR3_7Shape")
+
+[node name="DeskR3_7LegL" type="StaticBody3D" parent="."]
+position = Vector3(2.2, 0.35, 3.7)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskR3_7LegL"]
+mesh = SubResource("DeskR3_7LegLMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskR3_7LegL"]
+shape = SubResource("DeskR3_7LegLShape")
+
+[node name="DeskR3_7LegR" type="StaticBody3D" parent="."]
+position = Vector3(3.8, 0.35, 3.7)
+
+[node name="Mesh" type="MeshInstance3D" parent="DeskR3_7LegR"]
+mesh = SubResource("DeskR3_7LegRMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="DeskR3_7LegR"]
+shape = SubResource("DeskR3_7LegRShape")
+
+[node name="StripeL" type="StaticBody3D" parent="."]
+position = Vector3(-7.7, 0.65, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="StripeL"]
+mesh = SubResource("StripeLMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="StripeL"]
+shape = SubResource("StripeLShape")
+
+[node name="StripeR" type="StaticBody3D" parent="."]
+position = Vector3(7.7, 0.65, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="StripeR"]
+mesh = SubResource("StripeRMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="StripeR"]
+shape = SubResource("StripeRShape")
+
+[node name="BoardText" type="Label3D" parent="."]
+position = Vector3(0, 1.65, -5.66)
+pixel_size = 0.008
+font_size = 40
+outline_size = 6
+text = "移植接入示例\n靠近告示牌 · E / 触屏交互"
+modulate = Color(0.92, 0.89, 0.73, 1)
+
+[node name="RoomLabel" type="Label3D" parent="."]
+position = Vector3(0, 2.9, -5.8)
+pixel_size = 0.008
+font_size = 36
+text = "MIGRATION LAB  /  01"
+modulate = Color(0.09, 0.17, 0.20, 1)
