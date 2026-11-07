@@ -101,6 +101,7 @@ func _run() -> void:
 	_test_last_life_box()
 	_test_umbrella_rules()
 	_test_vault_hold()
+	await _test_fake_people()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -2888,6 +2889,32 @@ func _test_vault_hold() -> void:
 	for _i in 6:
 		far.tick(0.15)
 	check(far.hold == 0.0 and far.fall == null, "away from the railing holding space does nothing")
+
+
+func _test_fake_people() -> void:
+	var app: GameApp = APP.instantiate()
+	app.saves = SaveStore.new(_test_path)
+	app.settings = GameSettings.new(_test_path.get_base_dir() + "/settings.json")
+	root.add_child(app)
+	await _frames()
+	app.start_new_game()
+	await _frames(3)
+	app.patrol().pat["safety"] = 999.0
+	var fnm := app.fake_normal()
+	fnm.fn["on"] = true
+	fnm.fn["v"] = 10.0
+	app.school().day = 2
+	await _frames(4)
+	check(is_instance_valid(app._fake_people) and app._fake_people.get_child_count() >= 1 and app._fake_people.get_child_count() <= 4, "on the fake-normal day a few dull people stand in the room (%d)" % (app._fake_people.get_child_count() if is_instance_valid(app._fake_people) else -1))
+	fnm.fn["v"] = 80.0
+	await _frames(3)
+	check(app._fake_people == null, "past 72 laughs they are gone")
+	fnm.fn["v"] = 10.0
+	fnm.fn["on"] = false
+	await _frames(3)
+	check(app._fake_people == null, "and when the fake-normal day ends")
+	app.queue_free()
+	await _frames(2)
 
 
 func _test_facility_rules() -> void:

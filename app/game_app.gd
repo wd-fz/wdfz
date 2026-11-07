@@ -599,6 +599,7 @@ func resume_game() -> void:
 
 
 func return_to_menu() -> void:
+	_fake_people_clear()
 	_stop_snake(true)
 	_close_phone()
 	_audio_period = ""
@@ -3315,6 +3316,68 @@ func _fake_normal_step(delta: float) -> void:
 	fnm.tick(delta, {"tag": FakeNormalModule.where_tag(session.world_id, String(room.get("host", "")) if room != null else ""),
 		"busy": ui.choice_open() or day_rules.inspection_pending(), "dead": story().dead})
 	_apply_fake_normal_events()
+	_fake_people_step(fnm, room)
+
+
+# ---- the "normal people" of the fake-normal day (engine/presentation.js fnPeopleBuild) ----
+
+var _fake_people: Node3D
+var _fake_people_room := ""
+var _fake_people_random := RandomNumberGenerator.new()
+
+
+func _fake_people_clear() -> void:
+	if is_instance_valid(_fake_people):
+		_fake_people.queue_free()
+	_fake_people = null
+	_fake_people_room = ""
+
+
+## While the fake-normal day is on (laughs below 72) four dull figures stand in a room facing you, 2.2–7.5 m
+## away on open tiles; they are rebuilt when you change room and gone when it ends.
+func _fake_people_step(fnm: FakeNormalModule, room: Variant) -> void:
+	var on := fnm.active() and float(fnm.fn["v"]) < 72.0 and room != null and not story().dead
+	if not on:
+		if _fake_people != null:
+			_fake_people_clear()
+		return
+	var world := _campus_world()
+	if world == null or (is_instance_valid(_fake_people) and _fake_people_room == session.world_id and _fake_people.get_parent() == world):
+		return
+	_fake_people_clear()
+	_fake_people_room = session.world_id
+	_fake_people = Node3D.new()
+	_fake_people.name = "FakeNormalPeople"
+	world.add_child(_fake_people)
+	var cap := CapsuleMesh.new()
+	cap.radius = 0.2
+	cap.height = 1.7
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color("#41505c")
+	cap.material = mat
+	var p: Array = player.capture_pose()["position"]
+	var me := Vector2(float(p[0]), float(p[2]))
+	var grid: Array = room["grid"]
+	var made := 0
+	var tries := 0
+	while made < 4 and tries < 160:
+		tries += 1
+		var c := 1 + _fake_people_random.randi() % maxi(1, int(room["cols"]) - 2)
+		var r := 1 + _fake_people_random.randi() % maxi(1, int(room["rows"]) - 2)
+		var ch := String(grid[r]).substr(c, 1)
+		if ch in ["#", "=", "O", "S", "L"]:
+			continue
+		var s := CampusGeometry.to_scene(room, Vector2(float(room["ox"]) + (c + 0.5) * float(room["tw"]), float(room["oy"]) + (r + 0.5) * float(room["th"])))
+		var d := s.distance_to(me)
+		if d < 2.2 or d > 7.5:
+			continue
+		var fig := MeshInstance3D.new()
+		fig.mesh = cap
+		fig.position = Vector3(s.x, 0.85, s.y)
+		fig.rotation.y = atan2(me.x - s.x, me.y - s.y)
+		_fake_people.add_child(fig)
+		made += 1
 
 
 func _apply_fake_normal_events() -> void:
