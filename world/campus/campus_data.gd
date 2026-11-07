@@ -58,5 +58,16 @@ static func rules() -> CampusModule:
 	return _rules
 
 
+static var _lift_geometry: ElevatorModule
+
+
+## Read-only elevator geometry (frames, door rectangles, cabin gaps) for scene adapters.
+static func lift_geometry() -> ElevatorModule:
+	if _lift_geometry == null:
+		_lift_geometry = ElevatorModule.new(rooms())
+		_lift_geometry.reset()
+	return _lift_geometry
+
+
 static func make_module() -> CampusModule:
 	return CampusModule.new(rooms(), layout("out"), campus())

@@ -13,6 +13,9 @@ const BOUNDARY := 1.0
 var layout: Dictionary = {}
 var _door_bodies: Dictionary = {}   # key -> CollisionShape3D
 var _door_leaves: Dictionary = {}   # key -> {"closed": Node3D, "open": Node3D}
+var _lift_leaves: Array[Node3D] = []
+var _lift_bodies: Array[CollisionShape3D] = []
+var _lift_amount := -1.0
 
 
 func _ready() -> void:
@@ -41,6 +44,9 @@ func _build_model() -> void:
 			_to_multimesh(mesh)
 	for holder: Node in model.get_children():
 		var extras: Variant = holder.get_meta("extras") if holder.has_meta("extras") else null
+		if extras is Dictionary and extras.get("liftLeaf", false):
+			holder.set_meta("closed_position", (holder as Node3D).position)
+			_lift_leaves.append(holder)
 		if extras is Dictionary and extras.has("door_key"):
 			var key := String(extras["door_key"])
 			if not _door_leaves.has(key):
@@ -102,6 +108,25 @@ func apply_doors(open_doors: Dictionary) -> void:
 			set_door_open(key, open_doors.has(key))
 
 
+## Elevator doors (model/lift.js LiftDoors + Elevator.doorDepth): leaves slide by smoothstep of the
+## opening; both door panels block the doorway until the opening reaches 0.9.
+func set_lift_doors(amount: float) -> void:
+	if is_equal_approx(amount, _lift_amount):
+		return
+	_lift_amount = amount
+	var e := amount * amount * (3.0 - 2.0 * amount)
+	for leaf: Node3D in _lift_leaves:
+		var extras: Dictionary = leaf.get_meta("extras")
+		var base: Vector3 = leaf.get_meta("closed_position")
+		leaf.position = base + Vector3(float(extras.get("ox", 0.0)) * e, 0.0, float(extras.get("oz", 0.0)) * e)
+	for shape: CollisionShape3D in _lift_bodies:
+		shape.set_deferred("disabled", amount >= 0.9)
+
+
+func lift_leaf_count() -> int:
+	return _lift_leaves.size()
+
+
 func door_keys() -> PackedStringArray:
 	return PackedStringArray(_door_bodies.keys())
 
@@ -137,6 +162,8 @@ func _build_collision() -> void:
 		add_child(doors)
 		for d: Dictionary in layout["doors"]:
 			_door_bodies[String(d["key"])] = _add_rect(doors, d)
+		for r: Rect2 in CampusData.lift_geometry().door_rects(scene_id):
+			_lift_bodies.append(_add_box(doors, r, WALL_BOTTOM, WALL_TOP, "lift_door"))
 	else:
 		for b: Dictionary in layout["boxes"]:
 			_add_rect(body, b)
@@ -321,6 +348,11 @@ func _room_boundary(body: StaticBody3D, extent: Rect2) -> void:
 		var depth := float(cfg.get("annex", 1.5)) * CampusGeometry.TTILE * CampusGeometry.U2M + CampusGeometry.PRAD * CampusGeometry.U2M
 		gaps.append({"edge": d["edge"], "center": p, "half": half})
 		_annex(body, p, n, half, depth)
+	# The cabin behind a floor's elevator doors lies outside the grid (Elevator.annexAt); its walls are
+	# exported props, so only the boundary opens there.
+	var cabin := CampusData.lift_geometry().cabin_gap(scene_id)
+	if not cabin.is_empty():
+		gaps.append(cabin)
 	# Corridor bridges (campus-link/link.js) open the same kind of gap.
 	for g: Dictionary in CampusData.rules().link_doorways(scene_id):
 		gaps.append(g)

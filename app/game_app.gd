@@ -11,6 +11,7 @@ extends Node
 var session: GameSession
 var saves := SaveStore.new()
 var _hint_cooldown := 0.0
+var _choice_handler: Callable
 
 
 func _ready() -> void:
@@ -27,12 +28,14 @@ func _ready() -> void:
 	player.focus_changed.connect(ui.show_prompt)
 	player.interaction_requested.connect(_interact)
 	player.free_interaction_requested.connect(_campus_interact)
+	ui.choice_selected.connect(_choice_made)
+	ui.lift_close_requested.connect(_lift_close)
 	return_to_menu()
 
 
 func _make_session() -> GameSession:
 	var candidate := GameSession.new()
-	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module()]:
+	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -42,6 +45,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func elevator() -> ElevatorModule:
+	return session.modules.get_module(&"campus.elevator") as ElevatorModule if session != null else null
 
 
 func start_new_game() -> void:
@@ -131,6 +138,8 @@ func resume_game() -> void:
 
 
 func return_to_menu() -> void:
+	ui.hide_choice()
+	_choice_handler = Callable()
 	if session != null:
 		session.stop()
 	session = null
@@ -164,6 +173,9 @@ func _sync_world() -> void:
 	var rules := campus()
 	if world != null and rules != null:
 		world.apply_doors(rules.open_doors())
+	var lift := elevator()
+	if world != null and lift != null:
+		world.set_lift_doors(lift.door_amount_in(session.world_id))
 
 
 func _door_changed(key: String, open: bool) -> void:
@@ -174,7 +186,21 @@ func _door_changed(key: String, open: bool) -> void:
 
 func _campus_step(delta: float) -> void:
 	var rules := campus()
-	if rules == null or not rules.knows(session.world_id) or not player.enabled:
+	if rules == null or not rules.knows(session.world_id):
+		return
+	var lift := elevator()
+	if lift != null:
+		var stepped := lift.step(delta, session.world_id, player.capture_pose())
+		_apply_result(stepped)
+		for text: String in lift.take_notices():
+			ui.show_notice(text)
+		var world := _campus_world()
+		if world != null:
+			world.set_lift_doors(lift.door_amount_in(session.world_id))
+		ui.set_lift_close(lift.show_close_button(session.world_id, player.capture_pose()) and not ui.choice_open())
+		if player.enabled and Input.is_action_just_pressed("lift_close"):
+			_lift_close()
+	if not player.enabled:
 		return
 	var crossing := rules.crossing(session.world_id, player.capture_pose())
 	if not crossing.is_empty():
@@ -189,14 +215,65 @@ func _campus_interact() -> void:
 	var rules := campus()
 	if session == null or get_tree().paused or rules == null or not rules.knows(session.world_id):
 		return
-	var result := rules.interact_at(session.world_id, player.capture_pose())
+	var pose := player.capture_pose()
+	var lift := elevator()
+	var result: Dictionary
+	var room: Variant = rules.room(session.world_id)
+	var here := CampusGeometry.to_world(room, float(pose["position"][0]), float(pose["position"][2])) if room != null else Vector2.ZERO
+	# elevator.js 'interact' hook first: inside a cabin (or a ride room) the panel answers.
+	if lift != null and room != null and (session.world_id in ElevatorModule.RIDE_ROOMS or lift.in_cabin(session.world_id, here)):
+		result = lift.use_at(session.world_id, here)
+	else:
+		result = rules.interact_at(session.world_id, pose)
+		if result.get("elevator", false) and lift != null:
+			result = lift.use_at(session.world_id, here)
+	_apply_result(result)
+
+
+func _apply_result(result: Dictionary) -> void:
+	if result.is_empty():
+		return
+	if result.has("choice"):
+		_open_choice(result["choice"])
 	var text := String(result.get("notice", ""))
 	if result.has("toast"):
 		text = text + "\n" + String(result["toast"])
 	if result.has("travel"):
-		travel(result["travel"]["world"], result["travel"]["pose"], false)
+		travel(result["travel"]["world"], result["travel"]["pose"], bool(result["travel"].get("seamless", false)))
 	if not text.is_empty():
 		ui.show_notice(text)
+
+
+func _open_choice(choice: Dictionary) -> void:
+	var values: Array = choice["values"]
+	_choice_handler = func(index: int) -> void:
+		var lift := elevator()
+		if index >= 0 and index < values.size() and lift != null:
+			_apply_result(lift.press(values[index], session.world_id, player.capture_pose()))
+	player.enabled = false
+	player.clear_input()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	ui.show_choice(String(choice["text"]), choice["labels"])
+
+
+func _choice_made(index: int) -> void:
+	ui.hide_choice()
+	var handler := _choice_handler
+	_choice_handler = Callable()
+	if session != null and session.running and not get_tree().paused:
+		player.enabled = true
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
+	if handler.is_valid():
+		handler.call(index)
+
+
+func _lift_close() -> void:
+	var lift := elevator()
+	var room: Variant = campus().room(session.world_id) if campus() != null and session != null else null
+	if lift == null or room == null:
+		return
+	var p: Array = player.capture_pose()["position"]
+	lift.close_door(session.world_id, CampusGeometry.to_world(room, float(p[0]), float(p[2])))
 
 
 ## Switch scene inside the running session (old doEnterRoom / doExitRoom). Seamless moves keep input.

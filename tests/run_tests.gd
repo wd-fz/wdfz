@@ -59,6 +59,7 @@ func _run() -> void:
 	_test_storage()
 	await _test_app()
 	_test_campus_rules()
+	_test_elevator_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -352,6 +353,88 @@ func _test_campus_rules() -> void:
 	check(canteen_stair.get("travel", {}).get("world") == "out", "canteen stair without a shaft leads outside like stairGo")
 
 
+func _run_lift(lift: ElevatorModule, seconds: float, room: String, pose: Dictionary) -> Dictionary:
+	var last := {}
+	var t := 0.0
+	while t < seconds:
+		var r := lift.step(1.0 / 60.0, room, pose)
+		if not r.is_empty():
+			last = r
+			if r.has("travel"):
+				return r
+		t += 1.0 / 60.0
+	return last
+
+
+func _test_elevator_rules() -> void:
+	var rooms := CampusData.rooms()
+	var lift := ElevatorModule.new(rooms)
+	lift.reset()
+	lift.set_seed(7)
+	var t1: Dictionary = rooms["teach1"]
+	var f := lift.frame("teach1")
+	check(not f.is_empty() and (f["out"] as Vector2) == Vector2(0, -1), "teach1 elevator J cell faces the corridor")
+	var hall := (f["j"] as Vector2) + Vector2(0, -12)
+	var pose_hall := _campus_pose(t1, hall, -PI * 0.5)
+	# The car starts at floor 1: the call button opens the doors directly.
+	var called := lift.use_at("teach1", hall)
+	check(called["notice"] == "我：按下呼梯键。门开了。", "hall call at the car's floor opens the doors")
+	_run_lift(lift, 1.0, "teach1", pose_hall)
+	check(is_equal_approx(lift.door_amount("teach", 1), 1.0), "doors open fully in 0.9 s")
+	_run_lift(lift, 4.2, "teach1", pose_hall)
+	check(lift.door_amount("teach", 1) < 1.0, "doors start closing after the 4 s hold")
+	# Step into the cabin (behind the landing door) and choose floor 3.
+	lift.use_at("teach1", hall)
+	_run_lift(lift, 1.0, "teach1", pose_hall)
+	var inside := lift.world("teach1", -1.2, 0.0)
+	var pose_in := _campus_pose(t1, inside, PI * 0.5)
+	_run_lift(lift, 0.1, "teach1", pose_in)
+	check(lift.ride.get("phase") == "cabin" and lift.ride.get("origin") == 1, "stepping over the landing door boards the cabin")
+	var panel := lift.use_at("teach1", inside)
+	check(panel.has("choice") and (panel["choice"]["values"] as Array).size() in [2, 5], "cabin panel offers floors")
+	if lift.ride.get("rare", false):
+		lift.ride["rare"] = false # This seed's roll is irrelevant here; the rare path is tested below.
+	lift.press(3, "teach1", pose_in)
+	var departed := _run_lift(lift, 2.0, "teach1", pose_in)
+	check(departed.get("travel", {}).get("world") == "lift_teach", "doors close, then the ride moves to the cabin scene")
+	var car_pose: Dictionary = departed["travel"]["pose"]
+	check(lift.door_amount("teach", 1) == 0.0 and lift.lifts["teach"]["phase"] == "occupied", "car is occupied while travelling")
+	var arrived := _run_lift(lift, 5.0, "lift_teach", car_pose)
+	check(arrived.get("travel", {}).get("world") == "teach3", "after 2 + 2 × 0.7 s the ride arrives at teach3")
+	var p3: Array = arrived["travel"]["pose"]["position"]
+	var exp3 := CampusGeometry.to_scene(rooms["teach3"], lift.world("teach3", -1.2, 0.0))
+	check(absf(p3[0] - exp3.x) < 0.01 and absf(p3[2] - exp3.y) < 0.01, "arrival keeps the spot inside the cabin")
+	_run_lift(lift, 1.0, "teach3", arrived["travel"]["pose"])
+	check(is_equal_approx(lift.door_amount("teach", 3), 1.0), "doors open at the arrival floor")
+	var saved := lift.capture()
+	var copy := ElevatorModule.new(rooms)
+	copy.reset()
+	check(copy.validate(JSON.parse_string(JSON.stringify(saved))).is_empty(), "elevator state survives JSON")
+	copy.restore(JSON.parse_string(JSON.stringify(saved)))
+	check(copy.capture()["lifts"]["teach"]["floor"] == 3 and copy.ride.get("phase") == "cabin", "restored elevator is at floor 3 with the ride")
+	# Calling from another floor makes the car travel there.
+	var lab := ElevatorModule.new(rooms)
+	lab.reset()
+	var l4: Dictionary = rooms["lab4"]
+	var lab_hall := lab.world("lab4", 1.2, 0.0)
+	var waiting := lab.use_at("lab4", lab_hall)
+	check(waiting["notice"] == "我：按下呼梯键。楼层指示灯缓慢亮了起来。" and lab.lifts["lab"]["phase"] == "waiting", "calling from lab4 summons the car")
+	_run_lift(lab, 3.0 + 3 * 0.7 + 1.2, "lab4", _campus_pose(l4, lab_hall, 0.0))
+	check(lab.lifts["lab"]["floor"] == 4 and lab.door_amount("lab", 4) > 0.9, "car arrives at lab4 and opens")
+	# Rare ride: the 67/89 buttons and the old built-in white room.
+	lab.ride = {"host": "lab", "origin": 4, "target": 4, "phase": "cabin", "rare": true, "remaining": 0.0, "pending": null}
+	var rare_panel := lab.controls("lab4", lab.world("lab4", -1.2, 0.0))
+	check(rare_panel["choice"]["values"] == ["67", "89"], "the rare cabin only offers 67 and 89")
+	var fresh := ElevatorModule.new(rooms)
+	fresh.reset()
+	var rare_rolls := 0
+	for _i in 200:
+		fresh.ride = {}
+		fresh._enter_cabin("teach", 1)
+		rare_rolls += 1 if fresh.ride["rare"] else 0
+	check(rare_rolls == 0, "no wrong-elevator roll before the void maze is ported")
+
+
 func _test_campus_app() -> void:
 	var app: GameApp = APP.instantiate()
 	app.saves = SaveStore.new(_test_path)
@@ -463,7 +546,27 @@ func _test_stair_walk(app: GameApp) -> void:
 	check(app.session.world_id == "teach2", "climbing one flight pair and walking out reaches teach2 (now %s, y=%.2f)" % [app.session.world_id, app.player.position.y])
 	check(absf(app.player.position.y) < 0.2, "teach2 floor is at the scene's own ground level")
 	await _test_spiral_walk(app)
+	await _test_elevator_walk(app)
 	app.return_to_menu()
+
+
+func _test_elevator_walk(app: GameApp) -> void:
+	var lift := app.elevator()
+	var t1 := CampusData.layout("teach1")
+	var hall := lift.world("teach1", 1.5, 0.0)
+	app.travel("teach1", _campus_pose(t1, hall, PI * 0.5), false)
+	await _frames(3)
+	var world := app.router.get_child(0) as CampusWorld
+	check(world.lift_leaf_count() == 4, "teach1 has two landing and two car leaves")
+	# Closed doors block the doorway.
+	await _walk(app, [CampusGeometry.to_scene(t1, lift.world("teach1", -1.2, 0.0))], 60)
+	var l: Vector2 = lift.local("teach1", CampusGeometry.to_world(t1, app.player.position.x, app.player.position.z))
+	check(l.x > 0.4, "closed elevator doors stop the body in the corridor (a=%.2f)" % l.x)
+	app._campus_interact()
+	await _frames(70)
+	await _walk(app, [CampusGeometry.to_scene(t1, lift.world("teach1", -1.2, 0.0))], 90)
+	l = lift.local("teach1", CampusGeometry.to_world(t1, app.player.position.x, app.player.position.z))
+	check(l.x < -0.6 and lift.ride.get("phase") == "cabin", "with the doors open the body walks into the cabin and boards")
 
 
 ## Bell tower: walk the spiral two turns up to the 6.4 m top ring (spiral.js), and the ground
