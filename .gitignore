@@ -7,3 +7,5 @@ build/
 .vscode/
 export_credentials.cfg
 dist/
+__pycache__/
+*.pyc

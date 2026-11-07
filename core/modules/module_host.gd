@@ -66,7 +66,16 @@ func validate(data: Dictionary) -> String:
 		var error := feature.validate(entry["data"])
 		if not error.is_empty():
 			return "%s：%s" % [id, error]
+	# Local payloads are already valid before checking cross-module invariants.
+	for feature: FeatureModule in _modules.values():
+		var error := feature.validate_snapshot(data)
+		if not error.is_empty():
+			return "%s：%s" % [feature.module_id(), error]
 	return ""
+
+
+func feature(id: StringName) -> FeatureModule:
+	return _modules.get(id)
 
 
 func restore(data: Dictionary) -> void:

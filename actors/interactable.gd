@@ -4,3 +4,7 @@ extends StaticBody3D
 
 @export var interaction_id: StringName
 @export var prompt := "查看"
+
+
+func blocked_reason(_player: CharacterBody3D) -> String:
+	return ""
