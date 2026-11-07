@@ -478,6 +478,8 @@ const DANGER_LINE := {
 	"tunnel": "我：不想靠近。脚下的黑色黏液像是在呼吸。",
 	"night": "我：熄灯了。外面的路灯还亮着，可是它们照不到地面。这种时候还在外面走，是要被记下来的。"}
 var danger_seen: Dictionary = {}
+## Talent.modifier('danger.garage' / 'danger.night') (the talent module).
+var danger_mul: Callable
 ## Exam mode (systems.js examStart / examTick): the bell rung on the bell tower turns the rest of the day into exams.
 var exam := false
 var exam_cur: Variant = null
@@ -581,7 +583,9 @@ func _danger_tick(dt: float, world_id: String) -> void:
 	var dg := danger_at(world_id)
 	if dg == "":
 		return
-	change_san(-float(DANGER_RATE[dg]) * float(pressure()["danger"]) * dt, 0.0)
+	var talent_mul: Callable = danger_mul
+	var k := float(talent_mul.call(dg)) if talent_mul.is_valid() else 1.0
+	change_san(-float(DANGER_RATE[dg]) * k * float(pressure()["danger"]) * dt, 0.0)
 	if not danger_seen.has(dg):
 		danger_seen[dg] = true
 		_say(String(DANGER_LINE[dg]))

@@ -32,5 +32,10 @@ func _run() -> void:
 	app.return_to_menu()
 	app._show_achievements()
 	await _shot("2-achievements")
+	app.ui.ach_panel.visible = false
+	app._pick_talent("easy")
+	await _shot("3-talent-pick")
+	root.size = Vector2i(720, 1280)
+	await _shot("4-talent-pick-portrait")
 	DirAccess.remove_absolute(app._profile_path())
 	quit()

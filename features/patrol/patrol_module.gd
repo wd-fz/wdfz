@@ -196,8 +196,12 @@ func distance() -> float:
 	return Vector2(float(_c.get("x", 0.0)) - float(pat["x"]), float(_c.get("y", 0.0)) - float(pat["y"])).length() if same() else INF
 
 
+## Talent.modifier('hear.range') (the ear talent), set by the app.
+var hear_mul := 1.0
+
+
 func _hear_range() -> float:
-	return 1.0 # Talent.modifier('hear.range') is not ported.
+	return hear_mul
 
 
 func hear_distance() -> float:

@@ -71,6 +71,7 @@ func _run() -> void:
 	_test_facility_rules()
 	_test_broadcast_rules()
 	_test_phone_rules()
+	_test_talent_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -218,7 +219,10 @@ func _test_app() -> void:
 	check(app.ui.menu.visible and app.session == null, "app boots to menu")
 	await _tap(app.ui.get_node("%NewGame"))
 	await _frames()
-	check(app.session != null and app.player.enabled, "real touch tap on menu starts new game")
+	check(app.session == null and app.ui.choice_open(), "real touch tap on menu opens the talent pick")
+	await _tap(app.ui._choice_box.get_child(0))
+	await _frames()
+	check(app.session != null and app.player.enabled and app.talent().id == "tech" and app.items().has("phone"), "tapping the first talent starts the run with it (科技党 starts with a phone)")
 	if app.session == null:
 		app.queue_free()
 		return
@@ -281,7 +285,13 @@ func _test_app() -> void:
 		var content: Control = app.ui.menu.get_node("Margin/Center/Content")
 		check(root.get_visible_rect().encloses(content.get_global_rect()), "menu fits viewport %s" % viewport_size)
 		await _tap(app.ui.get_node("%NewGame"))
-		check(app.session != null, "touch button hit-testing after resize %s" % viewport_size)
+		check(app.ui.choice_open(), "the talent pick opens after resize %s" % viewport_size)
+		check(root.get_visible_rect().encloses(app.ui.choice_panel.get_global_rect()), "the talent pick fits viewport %s" % viewport_size)
+		var random_card: Control = app.ui._choice_box.get_child(TalentModule.KEYS.size())
+		app.ui._choice_scroll.ensure_control_visible(random_card)
+		await _frames(2)
+		await _tap(random_card)
+		check(app.session != null and TalentModule.KEYS.has(app.talent().id), "touch button hit-testing after resize %s (random talent)" % viewport_size)
 		app.return_to_menu()
 	for _i in 3:
 		app.start_new_game()
@@ -1268,6 +1278,80 @@ func _test_phone_rules() -> void:
 	var first: Dictionary = CampusTerminal.make(dream.run_seed, 1)["answer"]
 	dream.dream()
 	check(dream.attempt_id == 2 and CampusTerminal.make(dream.run_seed, dream.attempt_id)["answer"] != first and dream.termination["status"] == "idle", "a dream wake is a new attempt with a new puzzle")
+
+
+func _test_talent_rules() -> void:
+	var t := TalentModule.new()
+	t.reset()
+	check(TalentModule.KEYS.size() == 7 and t.name_of() == "没有天赋", "seven pickable talents; none by default")
+	check(not t.car(false)["ok"] and t.car(true)["via"] == "key", "without the driving talent only the key opens a car")
+	t.pick("drive")
+	check(t.car(false)["via"] == "hotwire" and t.car(false)["sec"] == 4.8 and t.car(true)["sec"] == 1.6, "the driving talent hot-wires in 4.8 s, the key still wins")
+	t.pick("night")
+	check(t.danger_mul("garage") == 0.55 and t.danger_mul("night") == 0.55 and t.danger_mul("trash") == 1.0, "dark adaptation softens the garage and the night only")
+	t.pick("ear")
+	check(t.hear_range() == 1.5, "the ear talent hears 1.5 times as far")
+	t.pick("immune")
+	check(t.prevent_death() and not t.prevent_death() and t.pause_text().contains("已经用掉了"), "natural immunity works once")
+	t.pick("code")
+	check(t.face_remedy() and not t.face_remedy(), "the first wrong gate answer is forgiven once")
+	t.pick("watch")
+	t.tick_watch(1, 733.0, 30.0)
+	check(t.take_events()[0]["text"] == "我：（看了一眼表）午饭开饭了。", "the watch glances before lunch")
+	t.tick_watch(1, 734.0, 30.0)
+	check(t.take_events().is_empty(), "once")
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(t.capture()))
+	var back := TalentModule.new()
+	back.reset()
+	check(back.validate(saved).is_empty(), "talent state survives JSON")
+	back.restore(saved)
+	check(back.id == "watch" and back.notified.has("1:735"), "and restores")
+	check(not back.validate({"id": "secret"}).is_empty(), "unknown talents are refused")
+	# Hooks in the other modules.
+	var g := CampusData.layout("garage1")
+	var cars := GarageModule.new(g)
+	cars.reset()
+	cars.set_seed(5)
+	var all: Array = cars._cars()
+	var wrong: String = all.filter(func(x: String) -> bool: return x != cars.car_right_cell())[0]
+	var east := Vector2(float(g["ox"]) + 55.5 * 9.0, float(g["oy"]) + 13.5 * 9.0)
+	cars.set_context(_gctx(east.x, east.y, {"has_key": false, "hotwire": true}))
+	cars.use_car(int(wrong.split(":")[0]), int(wrong.split(":")[1]))
+	check(cars.job != null and float(cars.job["dur"]) == 4.8 and _notices(cars.take_events()).has("我：我弯下腰去摸方向盘底下的线……这要一会儿。"), "hot-wiring takes 4.8 s")
+	var rt := RoutesModule.new(CampusData.campus())
+	rt.reset()
+	var forgiven := [true]
+	rt.face_remedy = func() -> bool:
+		var first: bool = forgiven[0]
+		forgiven[0] = false
+		return first
+	rt.hacked = true
+	rt.data_synced = true
+	rt.use_gate("w", 1)
+	rt.take_events()
+	var q: Dictionary = RoutesModule.QUESTIONS[rt.face_quiz["order"][0]]
+	rt.choose((int(q["answer"]) + 1) % 3, "easy")
+	check(float(rt.take_events()[0]["amount"]) == 0.0, "the remedy takes no SAN for the first wrong answer")
+	rt.choose(0, "easy")
+	rt.take_events()
+	var q2: Dictionary = RoutesModule.QUESTIONS[rt.face_quiz["order"][0]]
+	rt.choose((int(q2["answer"]) + 1) % 3, "easy")
+	check(float(rt.take_events()[0]["amount"]) < 0.0, "the second wrong answer costs SAN again")
+	var fate := StoryModule.new()
+	fate.reset()
+	var saved_by := fate.kill("x", "grip", "patrol", {"day": 2, "immune": true})
+	check(saved_by.get("protected") == "immune" and not fate.dead, "immunity turns a death aside")
+	var day := SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
+	day.reset()
+	day.danger_mul = func(_k: String) -> float: return 0.55
+	var before := day.san
+	day.step(1.0, {"world_id": "garage1", "w": Vector2.ZERO, "calendar": false})
+	check(absf((before - day.san) - 0.55 * 0.55 * float(day.pressure()["danger"])) < 0.02, "the garage drains 0.55 × 0.55 with dark adaptation")
+	var ach := AchievementsModule.new(25)
+	ach.reset()
+	for k: String in TalentModule.KEYS:
+		ach.fact({"kind": "ending", "id": "face", "day": 3, "diff": "easy", "talent": k})
+	check(ach.unlocked.has("p.talents") and ach.progress("p.talents")["n"] == 7, "seven talents each through a true ending: 七种活法")
 
 
 func _test_facility_rules() -> void:

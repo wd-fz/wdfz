@@ -112,6 +112,8 @@ func kill(msg: String, fx: String, source: String, ctx: Dictionary) -> Dictionar
 	if bool(ctx.get("has_elixir", false)):
 		return {"protected": "elixir", "notice": "我：……那粒药丸自己在舌根底下化开了。苦得发麻。我还站着——刚才那一下，像是有人替我挨了。",
 			"toast": "不知名药丸 · 救了你一次"}
+	if bool(ctx.get("immune", false)):
+		return {"protected": "immune", "notice": "我：刚才那一下本该要了我的命。可它擦身而过，像是没有认出我。", "toast": "天生免疫 · 挡下了一次致命事件"}
 	dead = true
 	death_fx = fx if not fx.is_empty() else "vignette"
 	death_msg = msg

@@ -27,6 +27,7 @@ const LIST := {
 	"n.wake": ["n", "梦里记得", "我猛地抬起头，后背全是汗。"],
 	"n.saved": ["n", "被替了一次", "刚才那一下，像是有人替我挨了。"],
 	"e.end_cyber": ["e", "《网安仙人》", "机柜一架架熄灭。天亮了。"],
+	"p.talents": ["p", "七种活法", "换了好几种活法，每一种都走出了校门。"],
 	"p.routes": ["p", "四条路", "我从这所学校出去过很多次，每一次走的路都不一样。"],
 	"p.five_routes": ["p", "五条路", "最后一次，学校以为我只是放学回家。"],
 	"n.broadcast": ["n", "核对", "记录本里没有刚才那一条。喇叭里还在啸叫。"],
@@ -56,7 +57,7 @@ const SCORELESS := ["n.wake", "n.saved"]
 const LETHAL_GOAL := 4
 
 var unlocked: Dictionary = {}     # profile: id -> true
-var sets: Dictionary = {"lethal": {}, "anomalies": {}, "rest": {}}   # profile: collected ids
+var sets: Dictionary = {"lethal": {}, "anomalies": {}, "rest": {}, "talents": {}}   # profile: collected ids
 var rooms: Dictionary = {}        # run
 var insp: Dictionary = {}         # run: "day" -> {slot: 0/1}
 var face_wrong := 0               # run
@@ -121,7 +122,7 @@ func load_profile(data: Dictionary) -> void:
 	for id: String in (data.get("unlocked", {}) as Dictionary):
 		if LIST.has(id):
 			unlocked[id] = true
-	sets = {"lethal": {}, "anomalies": {}, "rest": {}}
+	sets = {"lethal": {}, "anomalies": {}, "rest": {}, "talents": {}}
 	for name: String in sets:
 		for k: String in ((data.get("sets", {}) as Dictionary).get(name, {}) as Dictionary):
 			sets[name][k] = true
@@ -153,6 +154,8 @@ func progress(id: String) -> Dictionary:
 			return {"n": mini(sets["lethal"].size(), LETHAL_GOAL), "of": LETHAL_GOAL}
 		"p.anomalies":
 			return {"n": mini(sets["anomalies"].size(), _anomaly_total), "of": _anomaly_total}
+		"p.talents":
+			return {"n": mini(sets["talents"].size(), TalentModule.KEYS.size()), "of": TalentModule.KEYS.size()}
 		"e.rest8":
 			return {"n": mini(sets["rest"].size(), FacilitiesModule.SAN_ACTS.size()), "of": FacilitiesModule.SAN_ACTS.size()}
 	return {}
@@ -183,6 +186,9 @@ func fact(f: Dictionary) -> Array[String]:
 			saved = true
 		"rest":
 			sets["rest"][String(f["key"])] = true
+		"ending":
+			if _public_end_id(String(f.get("id", ""))) and TalentModule.KEYS.has(String(f.get("talent", ""))):
+				sets["talents"][String(f["talent"])] = true
 		"exam":
 			if f["phase"] == "paper":
 				var x: Dictionary = exams.get(str(int(f.get("day", 1))), {"pass": 0, "fail": 0})
@@ -206,6 +212,10 @@ func fact(f: Dictionary) -> Array[String]:
 				events.append({"kind": "unlock", "id": id, "name": LIST[id][1]})
 				again = true
 	return got
+
+
+func _public_end_id(id: String) -> bool:
+	return PUBLIC_ENDS.has(id)
 
 
 func _public_end(f: Dictionary) -> bool:
@@ -243,6 +253,8 @@ func _test(id: String, f: Dictionary) -> bool:
 			return kind == "ending" and f["id"] == "cyber"
 		"p.routes":
 			return ["car", "face", "portal", "cyber"].all(func(e: String) -> bool: return unlocked.has("e.end_" + e))
+		"p.talents":
+			return sets["talents"].size() >= TalentModule.KEYS.size()
 		"p.five_routes":
 			return PUBLIC_ENDS.all(func(e: String) -> bool: return unlocked.has("e.end_" + e))
 		"e.rest8":

@@ -19,3 +19,4 @@
 | [设施与传送门](设施与传送门/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_portal.gd` 注入位置与门已打开的状态：物理实验室隧道；实验台前撑开的光圈（占位） |
 | [广播与放学](广播与放学/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_broadcast.gd` 注入位置与长铃状态：广播站菜单；离校人群走向北门（占位胶囊体） |
 | [手机与网安仙人](手机与网安仙人/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_terminal.gd` 注入手机已联网的状态，通过界面信号输入三条命令：机房电脑的模拟 Linux 终端 |
+| [天赋](天赋/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720 与 720×1280，`tools/capture_menu.gd`：新游戏的天赋选择（横屏、竖屏可滚动） |

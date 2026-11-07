@@ -190,7 +190,8 @@ func guards_car() -> bool:
 
 ## story.js useCar.
 func use_car(c: int, r: int) -> void:
-	if not bool(_c.get("has_key", false)):
+	var via := "key" if bool(_c.get("has_key", false)) else ("hotwire" if bool(_c.get("hotwire", false)) else "")
+	if via == "":
 		_say("我：车门锁着。")
 		return
 	if car_used:
@@ -206,8 +207,9 @@ func use_car(c: int, r: int) -> void:
 	if job != null:
 		return
 	var me := _here()
-	job = {"cell": cell, "x": me.x, "y": me.y, "t": 0.0, "dur": KEY_SEC}
-	_say("我：我把钥匙插进锁孔，慢慢地拧……")
+	var wire := via == "hotwire"
+	job = {"cell": cell, "x": me.x, "y": me.y, "t": 0.0, "dur": TalentModule.HOTWIRE_SEC if wire else KEY_SEC, "wire": wire}
+	_say("我：我弯下腰去摸方向盘底下的线……这要一会儿。" if wire else "我：我把钥匙插进锁孔，慢慢地拧……")
 
 
 func job_progress() -> float:
@@ -226,13 +228,14 @@ func _job_tick(dt: float) -> void:
 	if float(j["t"]) < float(j["dur"]):
 		return
 	job = null
+	var wired := bool(j.get("wire", false))
 	if guards_car():
-		_emit("kill", {"msg": "钥匙还插在锁孔里，车窗上就贴上来一张脸。", "fx": "grip", "source": "car_entry"})
+		_emit("kill", {"msg": "我还蹲在方向盘底下捏着两根线，车窗上就贴上来一张脸。" if wired else "钥匙还插在锁孔里，车窗上就贴上来一张脸。", "fx": "grip", "source": "car_entry"})
 		return
 	var cell := String(j["cell"])
 	if cell != car_right_cell():
 		car_tried[cell] = true
-		var lines := ["我：钥匙插进去，拧不动。不是这辆。", "我：锁孔是对的，钥匙齿不对。下一辆。", "我：车门开了一条缝，又自己合上了。不是它。"]
+		var lines := ["我：线碰上了，仪表盘一点反应都没有。不是这辆。", "我：电瓶是死的。下一辆。", "我：火花跳了一下就没了。不是它。"] if wired else ["我：钥匙插进去，拧不动。不是这辆。", "我：锁孔是对的，钥匙齿不对。下一辆。", "我：车门开了一条缝，又自己合上了。不是它。"]
 		_say("%s（试过 %d 辆）" % [lines[_rng.randi() % lines.size()], car_tried.size()])
 		_emit("save")
 		return

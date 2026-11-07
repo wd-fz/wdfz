@@ -49,6 +49,8 @@ func wrong_answers() -> int:
 	return maxi(0, int(face_quiz.get("used", []).size()) - 3) if not face_quiz.is_empty() else 0
 
 
+## The programming-club talent: the first wrong answer costs nothing (Talent.faceRemedy).
+var face_remedy: Callable
 var hacked := false
 var data_synced := false
 var data_source := ""
@@ -317,7 +319,7 @@ func choose(index: int, diff: String) -> void:
 				q["done"] = int(q["done"]) + 1
 				face_open()
 				return
-			var loss := FACE_WRONG_SAN * (1.15 if diff == "hard" else 0.82)
+			var loss := 0.0 if face_remedy.is_valid() and bool(face_remedy.call()) else FACE_WRONG_SAN * (1.15 if diff == "hard" else 0.82)
 			_emit("san", {"amount": -loss, "min": 0.0})
 			var feedback: String = EXPLANATIONS[qid]
 			_swap(q)

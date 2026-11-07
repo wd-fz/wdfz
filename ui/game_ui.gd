@@ -35,6 +35,7 @@ var _mode := "menu"
 var choice_panel: PanelContainer
 var lift_close_button: Button
 var _choice_box: VBoxContainer
+var _choice_scroll: ScrollContainer
 var _choice_text: Label
 var _touch_enabled := false
 var _toast_seconds := 0.0
@@ -121,6 +122,8 @@ func _resize() -> void:
 	if window.content_scale_size != reference:
 		window.content_scale_size = reference
 	clear_touch()
+	if choice_panel != null and choice_panel.visible:
+		_fit_choice.call_deferred()
 
 
 ## Old UI.choice: a short prompt with buttons; keys 1–9 pick, Esc / 算了 closes.
@@ -139,7 +142,11 @@ func _build_choice() -> void:
 	_choice_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_choice_text)
 	_choice_box = VBoxContainer.new()
-	box.add_child(_choice_box)
+	_choice_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_choice_scroll = ScrollContainer.new()
+	_choice_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_choice_scroll.add_child(_choice_box)
+	box.add_child(_choice_scroll)
 	choice_panel.add_child(box)
 	$Root.add_child(choice_panel)
 	lift_close_button = Button.new()
@@ -653,6 +660,7 @@ func show_choice(text: String, labels: Array, cancellable: bool = true) -> void:
 	for i in labels.size():
 		var b := Button.new()
 		b.text = "%d. %s" % [i + 1, labels[i]]
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		b.pressed.connect(choice_selected.emit.bind(i))
 		_choice_box.add_child(b)
 	if cancellable:
@@ -661,6 +669,41 @@ func show_choice(text: String, labels: Array, cancellable: bool = true) -> void:
 		cancel.pressed.connect(choice_selected.emit.bind(-1))
 		_choice_box.add_child(cancel)
 	choice_panel.visible = true
+	_choice_refit = false
+	_fit_choice()
+
+
+## Long lists (the talent pick) scroll inside the panel instead of running off a phone screen.
+func _fit_choice() -> void:
+	var view := get_viewport().get_visible_rect().size
+	choice_panel.custom_minimum_size.x = minf(560.0, view.x - 32.0)
+	_choice_text.custom_minimum_size.x = choice_panel.custom_minimum_size.x - 24.0
+	var want := 0.0
+	for child in _choice_box.get_children():
+		if not child.is_queued_for_deletion():
+			want += (child as Control).get_combined_minimum_size().y + 4.0
+	var room := maxf(120.0, view.y * 0.86 - _choice_text.get_combined_minimum_size().y - 40.0)
+	_choice_scroll.custom_minimum_size.y = minf(want, room)
+	var size := choice_panel.get_combined_minimum_size()
+	choice_panel.offset_left = -size.x / 2.0
+	choice_panel.offset_right = size.x / 2.0
+	choice_panel.offset_top = -size.y / 2.0
+	choice_panel.offset_bottom = size.y / 2.0
+	if not _choice_refit:
+		_choice_refit = true
+		_refit_choice_later.call_deferred()
+
+
+var _choice_refit := false
+
+
+## Wrapped labels know their height only after a layout pass: fit once more then.
+func _refit_choice_later() -> void:
+	await get_tree().process_frame
+	_choice_refit = true
+	if choice_panel.visible:
+		_fit_choice()
+	_choice_refit = false
 
 
 func hide_choice() -> void:

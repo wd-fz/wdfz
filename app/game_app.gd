@@ -35,8 +35,8 @@ func _ready() -> void:
 	audio = AudioFx.new()
 	audio.name = "AudioFx"
 	add_child(audio)
-	ui.new_requested.connect(start_new_game)
-	ui.new_hard_requested.connect(start_new_game.bind("hard"))
+	ui.new_requested.connect(_pick_talent.bind("easy"))
+	ui.new_hard_requested.connect(_pick_talent.bind("hard"))
 	ui.achievements_requested.connect(_show_achievements)
 	ui.archive_requested.connect(_show_archive)
 	ui.terminal_command.connect(_terminal_command)
@@ -66,7 +66,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new()]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new()]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -76,6 +76,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func talent() -> TalentModule:
+	return session.modules.get_module(&"story.talent") as TalentModule if session != null else null
 
 
 func phone() -> PhoneModule:
@@ -178,7 +182,24 @@ func elevator() -> ElevatorModule:
 	return session.modules.get_module(&"campus.elevator") as ElevatorModule if session != null else null
 
 
-func start_new_game(difficulty: String = "easy") -> void:
+## TalentPick: the new-game talent screen (seven cards and a random pick).
+func _pick_talent(difficulty: String) -> void:
+	var labels: Array = []
+	for k: String in TalentModule.KEYS:
+		var d: Dictionary = TalentModule.DEF[k]
+		labels.append("%s — %s" % [d["n"], d["does"]])
+	labels.append("随机一个天赋")
+	_choice_count += 1
+	var mine := _choice_count
+	_choice_handler = func(index: int) -> void:
+		if mine != _choice_count or index < 0:
+			return
+		var pick := String(TalentModule.KEYS[index]) if index < TalentModule.KEYS.size() else String(TalentModule.KEYS[randi() % TalentModule.KEYS.size()])
+		start_new_game(difficulty, pick)
+	ui.show_choice("%s · 选择天赋（每局一个；限制写在卡片上）" % ("梦魇" if difficulty == "hard" else "预知梦"), labels)
+
+
+func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> void:
 	var candidate := _make_session()
 	if candidate == null:
 		return
@@ -193,6 +214,13 @@ func start_new_game(difficulty: String = "easy") -> void:
 	var weirdness := candidate.modules.get_module(&"anomaly.world") as AnomalyModule
 	if weirdness != null:
 		weirdness.begin_run(fate.diff if fate != null else "easy")
+	var gift := candidate.modules.get_module(&"story.talent") as TalentModule
+	if gift != null:
+		gift.pick(talent_id)
+		var bag0 := candidate.modules.get_module(&"items.bag") as InventoryModule
+		if gift.has("tech") and bag0 != null:
+			bag0.add("phone")
+			bag0.take_notices()
 	var cars := candidate.modules.get_module(&"garage.world") as GarageModule
 	if cars != null:
 		cars.set_seed(int(Time.get_ticks_usec() % 2147483647))
@@ -238,6 +266,12 @@ func _unwire(old: GameSession) -> void:
 	var rules := old.modules.get_module(&"campus.world") as CampusModule
 	if rules != null:
 		rules.car_hint = Callable()
+		var day_old := old.modules.get_module(&"school.day") as SchoolModule
+		if day_old != null:
+			day_old.danger_mul = Callable()
+		var route_old := old.modules.get_module(&"story.routes") as RoutesModule
+		if route_old != null:
+			route_old.face_remedy = Callable()
 		rules.facility_hint = Callable()
 		rules.rest_out = Callable()
 		rules.has_item = func(_id: String) -> bool: return false
@@ -256,6 +290,14 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 		campus().car_hint = garage().car_hint
 	if campus() != null and facilities() != null:
 		campus().facility_hint = facilities().hint
+	var gift_now := talent()
+	if gift_now != null:
+		if school() != null:
+			school().danger_mul = gift_now.danger_mul
+		if routes() != null:
+			routes().face_remedy = gift_now.face_remedy
+		if patrol() != null:
+			patrol().hear_mul = gift_now.hear_range()
 		campus().rest_out = facilities().rest_out
 	_seen_day = school().day if school() != null else 1
 	_seen_hide = false
@@ -341,6 +383,8 @@ func pause_game() -> void:
 	get_tree().paused = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	ui.set_mode("pause")
+	if talent() != null and session != null:
+		ui.show_notice(talent().pause_text())
 
 
 func resume_game() -> void:
@@ -523,7 +567,7 @@ func _apply_result(result: Dictionary) -> void:
 		if scene == "admin3":
 			routes().use_data(scene)
 		else:
-			routes().use_terminal(scene, bag_t != null and bag_t.has("usb"), school().day)
+			routes().use_terminal(scene, (bag_t != null and bag_t.has("usb")) or (talent() != null and talent().has("code")), school().day)
 		_apply_route_events(routes())
 		return
 	if result.has("gate") and routes() != null:
@@ -641,6 +685,10 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 		ui.show_search(bag.search_progress())
 		player.speed_multiplier = 1.5 if snack else 1.0
 		player.camera.get_node("Torch").visible = bag.torch_on
+		if talent() != null:
+			talent().tick_watch(day_rules.day if day_rules != null else 1, school().tsec, SchoolClock.rate_at(school().tsec))
+			for te: Dictionary in talent().take_events():
+				ui.show_notice(String(te["text"]))
 		ui.show_hot("1 · %s    2 · %s" % [bag.item_name(String(bag.hot[0])) if bag.hot[0] != null else "空", bag.item_name(String(bag.hot[1])) if bag.hot[1] != null else "空"])
 	var pose := player.capture_pose()
 	var room: Variant = rules.room(session.world_id)
@@ -683,7 +731,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	var period := day_rules.period_text(frozen)
 	if watcher != null and bool(watcher.pat["permanent"]) and not frozen:
 		period += " · 持续追踪"
-	ui.show_status(day_rules.place_name(session.world_id, float(p[1])), period, day_rules.period_class(frozen), day_rules.clock_text(bag != null and bag.has_clock()))
+	ui.show_status(day_rules.place_name(session.world_id, float(p[1])), period, day_rules.period_class(frozen), day_rules.clock_text((bag != null and bag.has_clock()) or (talent() != null and talent().has("watch"))))
 	if hiding_now:
 		ui.show_prompt("出来")
 	elif weird_now != null and weird_now.near_roster():
@@ -858,9 +906,12 @@ func kill(msg: String, fx: String, source: String) -> void:
 	if fate == null or fate.dead:
 		return
 	var bag := items()
-	var result := fate.kill(msg, fx, source, {"day": school().day if school() != null else 1, "has_elixir": bag != null and bag.has("elixir")})
+	var elixir := bag != null and bag.has("elixir")
+	var immune := not elixir and not fate.dead and talent() != null and talent().prevent_death()
+	var result := fate.kill(msg, fx, source, {"day": school().day if school() != null else 1, "has_elixir": elixir, "immune": immune})
 	if result.has("protected"):
-		bag.remove("elixir")
+		if result["protected"] == "elixir":
+			bag.remove("elixir")
 		fact({"kind": "protect"})
 		if garage() != null:
 			garage().rescued()
@@ -1228,7 +1279,7 @@ func _phone_context() -> Dictionary:
 	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
 	var own: Dictionary = CampusData.campus().get("own_seat", {})
 	var classroom := session.world_id == String(own.get("room", "")) and school().in_classroom_here(session.world_id, w)
-	return {"held": items() != null and items().has("phone"), "classroom": classroom, "scene": session.world_id, "x": w.x, "y": w.y, "dead": story().dead}
+	return {"held": items() != null and items().has("phone"), "tech": talent() != null and talent().has("tech"), "classroom": classroom, "scene": session.world_id, "x": w.x, "y": w.y, "dead": story().dead}
 
 
 func _phone_step(delta: float) -> void:
@@ -1511,7 +1562,7 @@ func _garage_context() -> Dictionary:
 	var weird := anomaly()
 	var bag := items()
 	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "run": player.sprinting,
-		"torch": bag != null and bag.torch_on, "has_key": bag != null and bag.has("key"), "dead": story().dead, "enter_cool": _enter_cool,
+		"torch": bag != null and bag.torch_on, "has_key": bag != null and bag.has("key"), "hotwire": talent() != null and talent().has("drive"), "dead": story().dead, "enter_cool": _enter_cool,
 		"busy": (weird != null and weird.is_active()) or (school() != null and school().inspection_pending()),
 		"can_stand": _can_stand.bind(room, float(p[1]))}
 
@@ -1711,9 +1762,9 @@ func _reach_ending(id: String) -> void:
 		file.close()
 	if achievements() != null and routes() != null:
 		achievements().face_wrong = maxi(0, routes().wrong_answers())
-	fact({"kind": "ending", "id": id, "day": school().day, "diff": story().diff})
+	fact({"kind": "ending", "id": id, "day": school().day, "diff": story().diff, "talent": talent().id if talent() != null else "none"})
 	var meta := "第 %d 天" % school().day
-	if items() != null and items().has_clock():
+	if (items() != null and items().has_clock()) or (talent() != null and talent().has("watch")):
 		meta += " · " + SchoolClock.fmt_clock(school().tsec)
 	ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta)
 

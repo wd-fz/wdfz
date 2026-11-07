@@ -190,7 +190,7 @@ func tick(dt: float) -> void:
 	acquire()
 	var held := bool(_c.get("held", false))
 	var computer := held and connected_computer()
-	for e: String in PhoneEnergy.advance(device, dt, {"held": held, "tech": false, "classroom": held and bool(_c.get("classroom", false)), "computer": computer}):
+	for e: String in PhoneEnergy.advance(device, dt, {"held": held, "tech": bool(_c.get("tech", false)), "classroom": held and bool(_c.get("classroom", false)), "computer": computer}):
 		match e:
 			"wirelessSignal":
 				_emit("reveal")
