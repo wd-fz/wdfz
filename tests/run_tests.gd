@@ -79,6 +79,7 @@ func _run() -> void:
 	_test_tales_rules()
 	_test_speedrun_rules()
 	_test_gaze_rules()
+	_test_paper_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -1796,6 +1797,134 @@ func _test_gaze_rules() -> void:
 	d.set_context(ctx)
 	d.tick(0.1)
 	check(d.take_events().any(func(e: Dictionary) -> bool: return e["kind"] == "kill" and e["source"] == "window_gaze"), "drained to zero it is the window gaze death")
+
+
+## Find a room, window and spot where a paper plane can be delivered; {} when none.
+func _paper_spot(kind: String) -> Dictionary:
+	var rooms := CampusData.rooms()
+	for id: String in rooms:
+		var probe := PaperPlaneModule.new(rooms)
+		for w: Dictionary in probe._windows.windows(id):
+			for dist: float in [40.0, 60.0, 80.0]:
+				var st: Vector2 = w["p"] + Vector2(0, float(w["nz"]) * dist)
+				var la := atan2(w["p"].y - st.y, w["p"].x - st.x)
+				var room: Dictionary = rooms[id]
+				var c := {"scene": id, "x": st.x, "y": st.y, "ang": la + PI, "now": 200.0, "busy": false,
+					"can_stand": func(p: Vector2) -> bool: return CampusGeometry.tile_at(room, p) == "."}
+				probe.reset()
+				probe.roll(1)
+				probe.set_context(c)
+				if probe.start(kind) and int(probe.s["ev"]["c"]) == int(w["c"]):
+					return {"room": id, "w": w, "stand": st, "look": la, "ctx": c}
+	return {}
+
+
+func _test_paper_rules() -> void:
+	var rooms := CampusData.rooms()
+	var hits := 0
+	var danger := 0
+	for i in 400:
+		var r := PaperPlaneModule.new(rooms)
+		r.reset()
+		r.roll(i)
+		if bool(r.s["roll"]["hit"]):
+			hits += 1
+			if r.s["roll"]["kind"] == "danger":
+				danger += 1
+	check(hits > 20 and hits < 70 and danger > 0 and danger < hits, "about one run in ten gets a paper plane, half of them dangerous")
+	var spot := _paper_spot("peace")
+	check(not spot.is_empty(), "a room with a visible window 3–14 m away can receive a plane")
+	if spot.is_empty():
+		return
+	var p := PaperPlaneModule.new(rooms)
+	p.reset()
+	p.s["roll"] = {"hit": true, "kind": "peace"}
+	var ctx: Dictionary = spot["ctx"].duplicate()
+	ctx["now"] = 100.0
+	p.set_context(ctx)
+	p.tick(0.1)
+	check(p.s["ev"] == null, "not before 150 s")
+	ctx["now"] = 200.0
+	p.set_context(ctx)
+	p.tick(0.1)
+	check(p.s["ev"] != null and p.phase() == "fly", "then it flies out of a window")
+	for _i in 25:
+		p.tick(0.1)
+	check(p.phase() == "ground", "and lands")
+	var e: Dictionary = p.s["ev"]
+	ctx["x"] = float(e["lx"])
+	ctx["y"] = float(e["ly"])
+	p.set_context(ctx)
+	check(p.hint() == "地上的纸飞机" and p.use_here(), "it can be picked up")
+	var give := p.take_events().filter(func(x: Dictionary) -> bool: return x["kind"] == "give")
+	check(give.size() == 1 and String(give[0]["text"]) in PaperPlaneModule.TIPS, "a peaceful plane carries a true tip")
+	p.gave(true)
+	check(p.s["ev"] == null and p.take_events().any(func(x: Dictionary) -> bool: return x["kind"] == "fact" and x["what"] == "received"), "the note is kept: 窗口来信")
+	# The dangerous plane.
+	var dspot := _paper_spot("danger")
+	var d := PaperPlaneModule.new(rooms)
+	d.reset()
+	var dctx: Dictionary = dspot["ctx"].duplicate()
+	d.set_context(dctx)
+	d.start("danger")
+	for _i in 25:
+		d.tick(0.1)
+	check(d.phase() == "wait", "a dangerous plane waits to be picked up")
+	for _i in 81:
+		d.tick(0.1)
+	check(d.phase() == "hunt" and _notices(d.take_events())[1].begins_with("我：我没有去捡那架纸飞机。"), "not picking it up within 8 s brings footsteps")
+	for _i in 41:
+		d.tick(0.1)
+	check(d.take_events().any(func(x: Dictionary) -> bool: return x["kind"] == "kill" and x["source"] == "paper_sender"), "4 s later the paper sender comes")
+	var ok := PaperPlaneModule.new(rooms)
+	ok.reset()
+	ok.set_context(dctx)
+	ok.start("danger")
+	for _i in 25:
+		ok.tick(0.1)
+	var de: Dictionary = ok.s["ev"]
+	dctx["x"] = float(de["lx"])
+	dctx["y"] = float(de["ly"])
+	ok.set_context(dctx)
+	ok.use_here()
+	check(ok.phase() == "read", "picked up, it has to be read")
+	ok.fold()
+	check(ok.phase() == "aim", "folded, it has to be aimed")
+	var w: Dictionary = dspot["w"]
+	var to: Vector2 = w["p"] - Vector2(float(dctx["x"]), float(dctx["y"]))
+	dctx["ang"] = atan2(to.y, to.x)
+	ok.set_context(dctx)
+	ok.use_here()
+	check(ok.phase() == "flight", "thrown at the window it flies")
+	var result := ""
+	for _i in 400:
+		var f: Dictionary = ok.s["ev"]["f"] if ok.s["ev"] != null and ok.s["ev"].has("f") else {}
+		var steer := {"l": 0.0, "r": 0.0, "u": 0.0, "d": 0.0}
+		if not f.is_empty():
+			var want := atan2(w["p"].y - float(f["y"]), w["p"].x - float(f["x"]))
+			var turn := wrapf(want - float(f["yaw"]), -PI, PI)
+			steer["r"] = 1.0 if turn > 0.02 else 0.0
+			steer["l"] = 1.0 if turn < -0.02 else 0.0
+			steer["u"] = 1.0 if float(f["h"]) < 1.5 else 0.0
+		dctx["steer"] = steer
+		ok.set_context(dctx)
+		ok.tick(0.05)
+		var ev := ok.take_events()
+		if ev.any(func(x: Dictionary) -> bool: return x["kind"] == "fact" and x["what"] == "returned"):
+			result = "in"
+			break
+		if ok.phase() == "hunt":
+			result = "fail"
+			break
+	check(result == "in", "steered back through the window: 原路寄回")
+	var crash := PaperPlaneModule.new(rooms)
+	crash.reset()
+	crash.s["ev"] = {"kind": "danger", "room": dspot["room"], "c": w["c"], "r": w["r"], "phase": "flight", "t": 0.0, "lx": 0.0, "ly": 0.0, "text": "", "limit": 0.5,
+		"f": {"x": float(dctx["x"]), "y": float(dctx["y"]), "h": 1.4, "yaw": dctx["ang"] + PI, "pitch": 0.0, "clean": true}}
+	crash.set_context(dctx)
+	for _i in 20:
+		crash.tick(0.05)
+	check(crash.phase() == "hunt", "flying the wrong way fails")
 
 
 func _test_facility_rules() -> void:

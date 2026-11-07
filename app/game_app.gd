@@ -69,7 +69,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms()), WindowGazeModule.new(CampusData.rooms())]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms()), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -79,6 +79,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func paper() -> PaperPlaneModule:
+	return session.modules.get_module(&"story.paper_plane") as PaperPlaneModule if session != null else null
 
 
 func gaze() -> WindowGazeModule:
@@ -333,6 +337,9 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 	var radio := candidate.modules.get_module(&"story.broadcast") as BroadcastModule
 	if radio != null:
 		radio.set_seed(int((Time.get_ticks_usec() * 13) % 2147483647))
+	var pp := candidate.modules.get_module(&"story.paper_plane") as PaperPlaneModule
+	if pp != null:
+		pp.roll(int((Time.get_ticks_usec() * 37) % 2147483647))
 	var wg := candidate.modules.get_module(&"story.window_gaze") as WindowGazeModule
 	if wg != null:
 		wg.set_seed(int((Time.get_ticks_usec() * 31) % 2147483647))
@@ -518,6 +525,10 @@ func resume_game() -> void:
 
 
 func return_to_menu() -> void:
+	if is_instance_valid(_plane_nodes):
+		_plane_nodes.queue_free()
+	_plane_nodes = null
+	_plane_pose = null
 	if is_instance_valid(_gaze_nodes):
 		_gaze_nodes.queue_free()
 	_gaze_nodes = null
@@ -640,6 +651,9 @@ func _campus_step(delta: float) -> void:
 		if radio_hint == "" and body() != null:
 			body().set_context(_body_context())
 			radio_hint = body().hint()
+		if radio_hint == "" and paper() != null:
+			paper().set_context(_paper_context())
+			radio_hint = paper().hint()
 		if radio_hint == "" and tales() != null:
 			tales().set_context(_tales_context())
 			radio_hint = tales().hint()
@@ -678,6 +692,12 @@ func _campus_interact() -> void:
 		limbs.set_context(_body_context())
 		if limbs.ask_vault() or limbs.use_clinic():
 			_apply_body_events()
+			return
+	var plane := paper()
+	if plane != null:
+		plane.set_context(_paper_context())
+		if plane.use_here():
+			_apply_paper_events()
 			return
 	var tale := tales()
 	if tale != null:
@@ -904,6 +924,9 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	if story().dead or story().over():
 		return
 	_gaze_step(delta)
+	if story().dead or story().over():
+		return
+	_paper_step(delta)
 	_anomaly_step(delta, day_rules, room, pose)
 	_audio_step(delta, watcher, day_rules, room, p)
 	_progress_step(watcher, day_rules, weird_now)
@@ -1469,6 +1492,141 @@ func _facility_travel(e: Dictionary) -> void:
 	travel(world, pose, false)
 
 
+# ---- paper planes (features/story/paper_plane_module.gd) ----
+
+var _plane_nodes: Node3D
+var _plane_pose: Variant = null
+
+
+func _paper_context() -> Dictionary:
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var weird := anomaly()
+	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "now": session.clock.active_seconds,
+		"dead": story().dead, "can_stand": _can_stand.bind(room, float(p[1])),
+		"busy": (weird != null and weird.is_active()) or player.hiding or school().seated or school().inspection_pending() or school().inspection_upcoming()
+			or (patrol() != null and patrol().local_chase()) or (gaze() != null and not gaze().current().is_empty()),
+		"steer": {"l": Input.get_action_strength("move_left"), "r": Input.get_action_strength("move_right"), "u": Input.get_action_strength("move_forward"), "d": Input.get_action_strength("move_back")}}
+
+
+func _paper_step(delta: float) -> void:
+	var plane := paper()
+	if plane == null:
+		return
+	plane.set_context(_paper_context())
+	plane.tick(delta)
+	_show_plane(plane)
+	_apply_paper_events()
+
+
+func _show_plane(plane: PaperPlaneModule) -> void:
+	var e: Variant = plane.s["ev"]
+	var here: bool = e != null and session.world_id == String(e["room"]) and e["phase"] != "hunt"
+	if not here:
+		if is_instance_valid(_plane_nodes):
+			_plane_nodes.queue_free()
+		_plane_nodes = null
+		if _plane_pose != null:
+			player.restore_pose(_plane_pose)
+			_plane_pose = null
+			player.enabled = true
+		return
+	var world := _campus_world()
+	if world == null:
+		return
+	if not is_instance_valid(_plane_nodes):
+		_plane_nodes = Node3D.new()
+		_plane_nodes.name = "PaperPlane"
+		var body := MeshInstance3D.new()
+		body.name = "Plane"
+		var prism := PrismMesh.new()
+		prism.size = Vector3(0.22, 0.04, 0.34)
+		body.mesh = prism
+		var white := StandardMaterial3D.new()
+		white.albedo_color = Color(0.95, 0.93, 0.88)
+		white.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		body.material_override = white
+		_plane_nodes.add_child(body)
+		var hand := MeshInstance3D.new()
+		hand.name = "Hand"
+		var palm := BoxMesh.new()
+		palm.size = Vector3(0.09, 0.16, 0.03)
+		hand.mesh = palm
+		var skin := StandardMaterial3D.new()
+		skin.albedo_color = Color(0.8, 0.74, 0.65)
+		skin.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		hand.material_override = skin
+		_plane_nodes.add_child(hand)
+		world.add_child(_plane_nodes)
+	var room: Variant = campus().room(session.world_id)
+	var w := plane.window_of(e)
+	var body_n := _plane_nodes.get_node("Plane") as Node3D
+	var hand_n := _plane_nodes.get_node("Hand") as Node3D
+	if w.is_empty():
+		return
+	var wp := CampusGeometry.to_scene(room, w["p"])
+	var lp := CampusGeometry.to_scene(room, Vector2(float(e["lx"]), float(e["ly"])))
+	hand_n.visible = e["kind"] == "danger" and e["phase"] != "ground"
+	hand_n.position = Vector3(wp.x + 0.3, 1.55, wp.y + float(w["nz"]) * 0.14)
+	var ph := String(e["phase"])
+	body_n.visible = ph in ["fly", "ground", "wait", "flight"]
+	if ph == "fly":
+		var k := minf(1.0, float(e["t"]) / PaperPlaneModule.FLY_IN)
+		body_n.position = Vector3(lerpf(wp.x, lp.x, k), 1.7 - 1.67 * k + 0.3 * sin(k * PI), lerpf(wp.y, lp.y, k))
+	elif ph == "ground" or ph == "wait":
+		body_n.position = Vector3(lp.x, 0.03, lp.y)
+	elif ph == "flight":
+		var f: Dictionary = e["f"]
+		var fp := CampusGeometry.to_scene(room, Vector2(float(f["x"]), float(f["y"])))
+		body_n.position = Vector3(fp.x, float(f["h"]), fp.y)
+		body_n.rotation = Vector3(-float(f["pitch"]), -float(f["yaw"]) - PI * 0.5, 0.0)
+		if _plane_pose == null:
+			_plane_pose = player.capture_pose()
+		player.enabled = false
+		var back := Vector2(cos(float(f["yaw"])), sin(float(f["yaw"]))) * 0.9
+		player.place({"position": [fp.x - back.x, float(f["h"]) + 0.28 - player.camera.position.y, fp.y - back.y], "yaw": CampusGeometry.yaw_from_ang(float(f["yaw"])), "pitch": float(f["pitch"]) - 0.12})
+
+
+func _apply_paper_events() -> void:
+	var plane := paper()
+	if plane == null:
+		return
+	for e: Dictionary in plane.take_events():
+		match e["kind"]:
+			"notice":
+				ui.show_notice(String(e["text"]))
+			"fact":
+				fact({"kind": "paper", "what": e["what"], "clean": e.get("clean", false)})
+			"give":
+				plane.gave(_add_item(String(e["id"])))
+				_apply_paper_events()
+			"steps":
+				ui.hide_choice()
+				audio.cue("step_heavy", -2.0)
+			"read":
+				_choice_count += 1
+				var mine := _choice_count
+				_choice_handler = func(index: int) -> void:
+					var pl := paper()
+					if pl == null or mine != _choice_count:
+						return
+					pl.set_context(_paper_context())
+					if index == 0:
+						pl.fold()
+					else:
+						pl.fail("drop")
+					_apply_paper_events()
+				player.enabled = false
+				player.clear_input()
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				ui.show_choice("纸上的字：\n" + String(e["text"]), ["折好投回（E）", "扔掉"], false)
+			"kill":
+				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
+				return
+
+
 # ---- the gaze behind a window (features/story/window_gaze_module.gd) ----
 
 var _gaze_nodes: Node3D
@@ -1482,7 +1640,8 @@ func _gaze_context() -> Dictionary:
 	var weird := anomaly()
 	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "pitch": float(pose["pitch"]), "eye": 1.65,
 		"now": session.clock.active_seconds, "san": school().san, "drain_mul": _drain_mul(), "dead": story().dead,
-		"busy": (weird != null and weird.is_active()) or player.hiding or school().inspection_pending() or school().inspection_upcoming() or (patrol() != null and patrol().local_chase())}
+		"busy": (weird != null and weird.is_active()) or player.hiding or school().inspection_pending() or school().inspection_upcoming() or (patrol() != null and patrol().local_chase())
+			or (paper() != null and paper().calm(session.clock.active_seconds))}
 
 
 func _gaze_step(delta: float) -> void:
