@@ -10,6 +10,7 @@ extends Node
 
 var session: GameSession
 var saves := SaveStore.new()
+var settings := GameSettings.new()
 var _hint_cooldown := 0.0
 var _choice_handler: Callable
 var _death_hold := 0.0
@@ -37,6 +38,10 @@ func _ready() -> void:
 	audio = AudioFx.new()
 	audio.name = "AudioFx"
 	add_child(audio)
+	settings.load_file(DisplayServer.is_touchscreen_available())
+	ui.settings_requested.connect(func() -> void: ui.show_settings(settings.values))
+	ui.setting_changed.connect(_setting_changed)
+	_apply_settings()
 	# ui.click on every button press (audio.js click), including buttons made later (choices).
 	get_tree().node_added.connect(func(n: Node) -> void:
 		if n is BaseButton and n.is_inside_tree() and ui.is_ancestor_of(n):
@@ -1030,6 +1035,9 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	var lit := _campus_world()
 	if lit != null:
 		var weird_light := anomaly()
+		if lit.lighting != null:
+			lit.lighting.reduce_flash = settings.get_int("reduce_flash") == 1
+			lit.lighting.brightness = float(settings.get_int("bright")) / 100.0
 		lit.update_lighting(delta, day_rules.tsec, player.camera, watcher.flick if watcher != null else 0.0, watcher.red if watcher != null else 0.0,
 			weird_light != null and weird_light.blackout_now(), weird_light.overcast_target() if weird_light != null else 0.0)
 		if watcher != null:
@@ -1625,7 +1633,7 @@ func _sensory_step(delta: float) -> void:
 	_sense_t += delta
 	_sense_body = SensoryRules.step(_sense_body, school().san, delta)
 	var watcher := patrol()
-	var v := SensoryRules.view(_sense_body, {"time": _sense_t, "threat": watcher != null and watcher.local_threat(),
+	var v := SensoryRules.view(_sense_body, {"time": _sense_t, "distortion": settings.get_int("distortion"), "reduce_flash": settings.get_int("reduce_flash") == 1, "threat": watcher != null and watcher.local_threat(),
 		"takeover": driving() or ui.terminal_open(), "chase": watcher != null and bool(watcher.pat["locked"])})
 	_sense_view = v
 	# The picture follows the body's sounds (modules/sensory): the view tightens as the heart beats and
@@ -1727,6 +1735,47 @@ func _apply_dread_events() -> void:
 					cw.show_dread_note("", 0.0, {})
 					if cw.lighting != null:
 						cw.lighting.dread_lamp = -1
+
+
+# ---- settings (app/game_settings.gd) ----
+
+func _setting_changed(key: String, value: int) -> void:
+	if key == "reset_comfort":
+		settings.reset_comfort()
+		ui.show_settings(settings.values)
+		ui.show_notice("操作与文字设置已恢复默认")
+	else:
+		settings.set_value(key, value)
+		if key == "quality":
+			ui.show_notice("画质：" + String(GameSettings.QUALITY_LABELS[settings.get_int("quality")]))
+	settings.save_file()
+	_apply_settings()
+
+
+## Push every stored setting to where it takes effect (presentation and comfort only).
+func _apply_settings() -> void:
+	audio.volume = float(settings.get_int("vol")) / 100.0
+	audio.ambience = settings.get_int("amb") == 1
+	audio.captions.mode = settings.get_int("captions")
+	ui.apply_caption_scale(float(GameSettings.SUB_MULT[settings.get_int("sub")]))
+	ui.apply_text_scale(settings.get_int("text"))
+	ui.apply_touch_scale(settings.get_int("touch_size"))
+	ui.set_grain(settings.get_int("grain") == 1)
+	player.mouse_sensitivity = 0.0025 * float(settings.get_int("mouse")) / 100.0
+	player.touch_sensitivity = 0.004 * float(settings.get_int("touch")) / 100.0
+	var q := settings.get_int("quality")
+	var vp := get_viewport()
+	vp.scaling_3d_scale = float(GameSettings.QUALITY_SCALE[q])
+	vp.msaa_3d = int(GameSettings.QUALITY_MSAA[q]) as Viewport.MSAA
+	CampusLighting.shadows_on = bool(GameSettings.QUALITY_SHADOW[q])
+	var cw := _campus_world()
+	if cw != null and cw.lighting != null:
+		cw.lighting.sun_light.shadow_enabled = CampusLighting.shadows_on
+	if DisplayServer.is_touchscreen_available():
+		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE if settings.get_int("auto_land") == 1 else DisplayServer.SCREEN_SENSOR)
+	var want := DisplayServer.WINDOW_MODE_FULLSCREEN if settings.get_int("full_screen") == 1 else DisplayServer.WINDOW_MODE_WINDOWED
+	if DisplayServer.window_get_mode() != want and DisplayServer.get_name() != "headless":
+		DisplayServer.window_set_mode(want)
 
 
 # ---- global atmosphere A1–A7 (features/story/atmos_module.gd, world/campus/atmos_fx.gd) ----

@@ -25,6 +25,8 @@ signal terminal_command(line: String)
 signal opening_finished(skipped: bool)
 signal terminal_closed
 signal sound_toggled(on: bool)
+signal settings_requested
+signal setting_changed(key: String, value: int)
 
 @onready var menu: Control = %Menu
 @onready var pause_panel: Control = %PausePanel
@@ -103,6 +105,18 @@ func _ready() -> void:
 	load_row.add_child(run)
 	touch_toggle.reparent(option_row, false)
 	option_row.add_child(sound)
+	var gear := Button.new()
+	gear.name = "SettingsMenu"
+	gear.text = "设置"
+	gear.custom_minimum_size = Vector2(0, 48)
+	gear.pressed.connect(func() -> void: settings_requested.emit())
+	option_row.add_child(gear)
+	var gear2 := Button.new()
+	gear2.name = "SettingsPause"
+	gear2.text = "设置"
+	gear2.custom_minimum_size = Vector2(0, 48)
+	gear2.pressed.connect(func() -> void: settings_requested.emit())
+	%Save.add_sibling(gear2)
 	load_button.owner = self
 	touch_toggle.owner = self
 	set_touch_enabled(DisplayServer.is_touchscreen_available())
@@ -118,6 +132,8 @@ func _input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	tick_opening(delta)
+	if _grain_rect != null and _grain_rect.visible:
+		(_grain_rect.material as ShaderMaterial).set_shader_parameter("t", Time.get_ticks_msec() / 1000.0)
 	if _bolt_rect != null and _bolt_level > 0.0:
 		_bolt_level = maxf(0.0, _bolt_level - delta * 3.0)
 		_bolt_rect.color.a = _bolt_level
@@ -720,6 +736,163 @@ void fragment() {
 	m.set_shader_parameter("halo", float(v.get("halo", 0.0)))
 	m.set_shader_parameter("blink", blink)
 	m.set_shader_parameter("t", t)
+
+
+# ---- settings (settings.js): a panel over the menu or the pause screen ----
+
+const SETTING_ROWS := [
+	["声音", "", "", []],
+	["vol", "音量", "slider", [0, 100, 5]],
+	["amb", "环境声", "choice", [["开", 1], ["关", 0]]],
+	["captions", "声音字幕", "choice", [["自动", 0], ["开", 1], ["关", 2]]],
+	["sub", "提示文字大小", "choice", [["小", 0], ["中", 1], ["大", 2]]],
+	["画面与舒适", "", "", []],
+	["distortion", "视野扭曲", "choice", [["关", 0], ["减弱", 1], ["完整", 2]]],
+	["reduce_flash", "减少闪光", "choice", [["关", 0], ["开", 1]]],
+	["bright", "亮度", "slider", [50, 150, 5]],
+	["grain", "胶片颗粒", "choice", [["开", 1], ["关", 0]]],
+	["quality", "画质", "choice", [["流畅", 0], ["均衡", 1], ["精细", 2], ["超精细", 3], ["真实", 4]]],
+	["操作与文字", "", "", []],
+	["mouse", "鼠标灵敏度 %", "slider", [25, 250, 5]],
+	["touch", "触屏灵敏度 %", "slider", [25, 250, 5]],
+	["text", "文字大小 %", "slider", [85, 150, 5]],
+	["touch_size", "触屏按钮大小 %", "slider", [85, 125, 5]],
+	["auto_land", "自动横屏（手机）", "choice", [["开", 1], ["关", 0]]],
+	["full_screen", "全屏", "choice", [["关", 0], ["开", 1]]],
+]
+var settings_panel: PanelContainer
+var _settings_box: VBoxContainer
+var _grain_rect: ColorRect
+
+
+func show_settings(values: Dictionary) -> void:
+	if settings_panel == null:
+		settings_panel = PanelContainer.new()
+		settings_panel.name = "SettingsPanel"
+		settings_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		settings_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		settings_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+		settings_panel.custom_minimum_size = Vector2(440, 0)
+		var back := StyleBoxFlat.new()
+		back.bg_color = Color(0.03, 0.05, 0.07, 0.98)
+		back.set_content_margin_all(14)
+		back.set_corner_radius_all(6)
+		settings_panel.add_theme_stylebox_override("panel", back)
+		var outer := VBoxContainer.new()
+		outer.add_theme_constant_override("separation", 8)
+		var head := Label.new()
+		head.text = "设置"
+		outer.add_child(head)
+		var scroll := ScrollContainer.new()
+		scroll.custom_minimum_size = Vector2(410, 340)
+		_settings_box = VBoxContainer.new()
+		_settings_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_settings_box.add_theme_constant_override("separation", 6)
+		scroll.add_child(_settings_box)
+		outer.add_child(scroll)
+		var buttons := HBoxContainer.new()
+		var reset := Button.new()
+		reset.text = "恢复操作与文字默认"
+		reset.pressed.connect(func() -> void: setting_changed.emit("reset_comfort", 0))
+		buttons.add_child(reset)
+		var close := Button.new()
+		close.text = "关闭"
+		close.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		close.pressed.connect(func() -> void: settings_panel.visible = false)
+		buttons.add_child(close)
+		outer.add_child(buttons)
+		settings_panel.add_child(outer)
+		$Root.add_child(settings_panel)
+	for child in _settings_box.get_children():
+		child.queue_free()
+	for row: Array in SETTING_ROWS:
+		var key := String(row[0])
+		if String(row[2]).is_empty():
+			var title := Label.new()
+			title.text = "— " + key + " —"
+			title.modulate = Color(1, 1, 1, 0.6)
+			_settings_box.add_child(title)
+			continue
+		var line := HBoxContainer.new()
+		var name_label := Label.new()
+		name_label.text = String(row[1])
+		name_label.custom_minimum_size = Vector2(150, 0)
+		line.add_child(name_label)
+		var cur := int(values.get(key, 0))
+		if row[2] == "slider":
+			var spec: Array = row[3]
+			var slider := HSlider.new()
+			slider.name = "S_" + key
+			slider.min_value = float(spec[0])
+			slider.max_value = float(spec[1])
+			slider.step = float(spec[2])
+			slider.value = cur
+			slider.custom_minimum_size = Vector2(170, 24)
+			slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var value_label := Label.new()
+			value_label.text = str(cur)
+			value_label.custom_minimum_size = Vector2(36, 0)
+			slider.value_changed.connect(func(v: float) -> void:
+				value_label.text = str(int(v))
+				setting_changed.emit(key, int(v)))
+			line.add_child(slider)
+			line.add_child(value_label)
+		else:
+			var group := ButtonGroup.new()
+			for opt: Array in row[3]:
+				var b := Button.new()
+				b.name = "O_%s_%d" % [key, int(opt[1])]
+				b.text = String(opt[0])
+				b.toggle_mode = true
+				b.button_group = group
+				b.button_pressed = int(opt[1]) == cur
+				b.pressed.connect(func() -> void: setting_changed.emit(key, int(opt[1])))
+				line.add_child(b)
+		_settings_box.add_child(line)
+	settings_panel.visible = true
+
+
+func apply_text_scale(pct: int) -> void:
+	var theme := Theme.new()
+	theme.default_font_size = roundi(16.0 * float(pct) / 100.0)
+	$Root.theme = theme
+
+
+func apply_touch_scale(pct: int) -> void:
+	for c: Control in [%MovePad, %TouchInteract, %TouchSprint]:
+		c.pivot_offset = c.size / 2.0
+		c.scale = Vector2.ONE * float(pct) / 100.0
+
+
+## sub: the size of toast and caption lines (SUB_MULT 0.6 / 1.0 / 1.6 in the Web version).
+func apply_caption_scale(mult: float) -> void:
+	if _captions != null:
+		_captions.add_theme_font_size_override("font_size", roundi(15.0 * mult))
+	%Toast.add_theme_font_size_override("font_size", roundi(18.0 * mult))
+
+
+## Film grain over the picture (Engine.grain): faint moving noise.
+func set_grain(on: bool) -> void:
+	if _grain_rect == null:
+		_grain_rect = ColorRect.new()
+		_grain_rect.name = "Grain"
+		_grain_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_grain_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		var shader := Shader.new()
+		shader.code = """shader_type canvas_item;
+uniform float t = 0.0;
+float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void fragment() {
+	float n = h(floor(FRAGCOORD.xy / 2.0) + floor(t * 24.0) * 7.31) - 0.5;
+	COLOR = vec4(vec3(n < 0.0 ? 0.0 : 1.0), abs(n) * 0.07);
+}"""
+		var mat := ShaderMaterial.new()
+		mat.shader = shader
+		_grain_rect.material = mat
+		$Root.add_child(_grain_rect)
+		$Root.move_child(_grain_rect, 1)
+	_grain_rect.visible = on
+	set_process(true)
 
 
 func sensory_on() -> bool:

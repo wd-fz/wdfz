@@ -35,6 +35,8 @@ var patrol_flick := 0.0
 var crackles: Array = []
 ## A revisit's broken lamp (index, modulo the room's lamps), −1 for none.
 var dread_lamp := -1
+static var shadows_on := false     # the quality setting (sun shadows from 精细 up)
+var brightness := 1.0              # the brightness setting (100 % = 1.0)
 var lamp_dark: Dictionary = {}     # A2: corridor lamps whose tubes are dead (AtmosModule.dark_lamps)
 var lamp_mul: Dictionary = {}      # lamp index → multiplier (the timed lamp scene)
 var atmos_mods: Dictionary = {}    # A7: AtmosModule.light_mods, set each frame
@@ -67,6 +69,7 @@ func setup(id: String, room_data: Variant, model: Node, stair_rise: float) -> vo
 	we.environment = env
 	add_child(we)
 	sun_light = DirectionalLight3D.new()
+	sun_light.shadow_enabled = shadows_on
 	sun_light.name = "SunMoon"
 	add_child(sun_light)
 	cam_light = OmniLight3D.new()
@@ -222,6 +225,8 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 		env.background_color = fc
 		env.fog_density = 0.09 if scene_id == "garage1" else (0.04 if scene_id == "portal_tunnel" else 0.072 + 0.03 * fnight)
 	env.fog_density *= float(am.get("fog", 1.0))
+	env.adjustment_enabled = absf(brightness - 1.0) > 0.001
+	env.adjustment_brightness = brightness
 	# lighting.js dayExpo: outdoors the picture is pressed down to 0.6 at noon (DAY_K).
 	env.tonemap_exposure = 1.0 if indoor else 1.0 - (1.0 - 0.6) * day
 	var sum := 0.0

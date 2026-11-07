@@ -89,6 +89,7 @@ func _run() -> void:
 	_test_atmos_rules()
 	_test_mono_rules()
 	_test_scene_rules()
+	_test_settings_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -2375,7 +2376,8 @@ func _test_mono_rules() -> void:
 	check(tiers.size() == 4 and tiers["calm"] == "outNight", "four tiers by SAN (75, 50, 25), and the night outside has its own lines")
 	check(MonoModule.LINES["calm"]["any"].size() == 4 and MonoModule.LINES["breaking"]["any"].size() == 5, "the lines are the Web version's")
 	m.set_context({"scene": "garage1", "x": 0.0, "y": 0.0, "tile": "", "san": 30.0, "night": false, "busy": false, "seated_class": false})
-	check(m.place() == "garage" and MonoModule.LINES["frayed"]["garage"].has(m.pick()) or MonoModule.LINES["frayed"]["any"].has(m.pick()), "the garage has its own lines")
+	var garage_line := m.pick()
+	check(m.place() == "garage" and (MonoModule.LINES["frayed"]["garage"].has(garage_line) or MonoModule.LINES["frayed"]["any"].has(garage_line)), "the garage has its own lines")
 	# 40–75 s apart, with no repeats among the last eight, nothing while busy.
 	var said: Array = []
 	m.reset()
@@ -2458,6 +2460,36 @@ func _test_scene_rules() -> void:
 	reopened.set_context(_atmos_ctx(20, 18, {"day": 1, "dread": DreadModule.new(rooms)}))
 	reopened.door_action("teach1", 30, 15, true)
 	check(reopened.scene_event().is_empty(), "opening the door again cancels the answer")
+
+
+func _test_settings_rules() -> void:
+	var d := GameSettings.normalize({})
+	check(d["vol"] == 70 and d["captions"] == 1 and d["amb"] == 1 and d["distortion"] == 2 and d["reduce_flash"] == 0 and d["bright"] == 100 and d["mouse"] == 100,
+		"settings default to the Web version's (volume 70, captions on, ambience on, full distortion)")
+	var bad := GameSettings.normalize({"vol": 250, "bright": 3, "mouse": 9999, "text": 10, "captions": 7, "quality": -1, "unknown": 5, "sub": "x"})
+	check(bad["vol"] == 100 and bad["bright"] == 50 and bad["mouse"] == 250 and bad["text"] == 85 and bad["captions"] == 1 and bad["quality"] == 2 and bad["sub"] == 1 and not bad.has("unknown"),
+		"out-of-range or invalid values are clamped or defaulted, unknown keys dropped")
+	var path := _test_path.get_base_dir() + "/settings-rules.json"
+	var a := GameSettings.new(path)
+	check(not a.load_file(false) and a.get_int("quality") == 2, "no file: defaults")
+	var t := GameSettings.new(path + ".touch")
+	t.load_file(true)
+	check(t.get_int("quality") == 0, "a first run on a touch device starts at 流畅")
+	a.set_value("vol", 35)
+	a.set_value("captions", 2)
+	a.set_value("mouse", 400)
+	check(a.save_file() and GameSettings.new(path).load_file() , "saves to its own file")
+	var b := GameSettings.new(path)
+	b.load_file()
+	check(b.get_int("vol") == 35 and b.get_int("captions") == 2 and b.get_int("mouse") == 250, "a saved setting is read back, clamped")
+	b.set_value("text", 140)
+	b.set_value("touch_size", 120)
+	b.reset_comfort()
+	check(b.get_int("text") == 100 and b.get_int("touch_size") == 100 and b.get_int("vol") == 35, "restoring comfort defaults leaves sound and picture alone")
+	check(GameSettings.QUALITY_SCALE.size() == 5 and GameSettings.QUALITY_LABELS[4] == "真实" and GameSettings.SUB_MULT == [0.6, 1.0, 1.6], "five quality tiers, three caption sizes")
+	for p2: String in [path, path + ".touch"]:
+		if FileAccess.file_exists(p2):
+			DirAccess.remove_absolute(p2)
 
 
 func _test_facility_rules() -> void:
@@ -2924,6 +2956,7 @@ func _night_hunt(scene: String) -> bool:
 func _test_campus_app() -> void:
 	var app: GameApp = APP.instantiate()
 	app.saves = SaveStore.new(_test_path)
+	app.settings = GameSettings.new(_test_path.get_base_dir() + "/settings.json")
 	root.size = Vector2i(1280, 720)
 	root.add_child(app)
 	await _frames()
@@ -3062,6 +3095,7 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_speedrun_app(app)
 	await _test_marks_app(app)
 	await _test_sensory_app(app)
+	await _test_settings_app(app)
 	await _test_checkup_app(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
@@ -3758,6 +3792,48 @@ func _test_sensory_app(app: GameApp) -> void:
 	app.return_to_menu()
 	await _frames(2)
 	check(not app.ui.sensory_on(), "back at the menu the picture is clear")
+
+
+func _test_settings_app(app: GameApp) -> void:
+	app.saves.clear()
+	app.start_new_game()
+	await _frames(3)
+	app.ui.settings_requested.emit()
+	await _frames(2)
+	check(app.ui.settings_panel != null and app.ui.settings_panel.visible, "the settings panel opens")
+	app.ui.setting_changed.emit("vol", 40)
+	app.ui.setting_changed.emit("amb", 0)
+	app.ui.setting_changed.emit("captions", 2)
+	app.ui.setting_changed.emit("mouse", 200)
+	app.ui.setting_changed.emit("reduce_flash", 1)
+	app.ui.setting_changed.emit("bright", 120)
+	app.ui.setting_changed.emit("quality", 0)
+	await _frames(3)
+	check(absf(app.audio.volume - 0.4) < 0.0001 and not app.audio.ambience and app.audio.captions.mode == 2, "volume, ambience and the caption mode take effect")
+	check(absf(app.player.mouse_sensitivity - 0.005) < 0.000001, "look sensitivity follows the setting")
+	var cw := app._campus_world()
+	check(cw.lighting.reduce_flash and absf(cw.lighting.brightness - 1.2) < 0.0001, "reduce flash and brightness reach the lighting")
+	check(absf(app.get_viewport().scaling_3d_scale - 0.55) < 0.0001, "the 流畅 tier renders at 55 %% of the resolution")
+	app.ui.setting_changed.emit("distortion", 0)
+	app.school().san = 10.0
+	await _frames(30)
+	check(float(app._sense_view["warp"]) == 0.0 and float(app._sense_view["tunnel"]) > 0.5, "distortion off keeps the static narrowing but stops the warping")
+	var saved := GameSettings.new(app.settings.path)
+	saved.load_file()
+	check(saved.get_int("vol") == 40 and saved.get_int("quality") == 0, "changes are saved immediately")
+	app.ui.setting_changed.emit("reset_comfort", 0)
+	check(app.settings.get_int("mouse") == 100 and app.settings.get_int("vol") == 40, "restoring comfort defaults keeps the sound")
+	app.school().san = 100.0
+	app.ui.setting_changed.emit("quality", 2)
+	app.ui.setting_changed.emit("reduce_flash", 0)
+	app.ui.setting_changed.emit("distortion", 2)
+	app.ui.setting_changed.emit("vol", 70)
+	app.ui.setting_changed.emit("amb", 1)
+	app.ui.setting_changed.emit("captions", 1)
+	app.ui.setting_changed.emit("bright", 100)
+	app.ui.settings_panel.visible = false
+	app.return_to_menu()
+	await _frames(2)
 
 
 func _test_death_flow(app: GameApp) -> void:
