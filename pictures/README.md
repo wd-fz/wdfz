@@ -33,3 +33,4 @@
 | [手机外壳](手机外壳/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_phone.gd`：手机外壳的主页与无线接入页、纸飞机小游戏（结束画面）、相机页拍了两张之后的相册（缩略图带时钟戳） |
 | [机房贪吃蛇](机房贪吃蛇/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_snake.gd`：机房电脑旁的贪吃蛇走到墙边结束（得分 3），下面是触屏方向键 |
 | [值日表](值日表/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_duty.gd`：教学楼一楼第一间教室黑板旁的值日表，同化 0、2、4 档（4 档整张表只剩连笔的「名字」） |
+| [结算画面](结算画面/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_results.gd`：用示例记录（不是真实通关）拍的结算页（B）与九档评级画面中的 F、E、D、C、A、S、SS、SSS（B 在结算页里）；揭示动画拍的是最后一帧 |

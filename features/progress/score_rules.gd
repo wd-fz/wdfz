@@ -139,3 +139,44 @@ static func band(letter: String) -> String:
 ## The SAN state shown first on the result page (the exact value stays in the expanded detail).
 static func san_band(v: float) -> String:
 	return "清醒" if v >= 60.0 else ("动摇" if v >= 30.0 else "濒临")
+
+
+## A sample breakdown that puts the grade score in the middle of the grade's range (the debug panel and the
+## archive's directly-unlocked result screens; SSS/SS use the nightmare, never rescued, never woken).
+static func sample(letter: String, par: float) -> Dictionary:
+	var x: Dictionary = by_letter(letter) if not by_letter(letter).is_empty() else GRADES[0]
+	var i := grade_index(String(x["g"]))
+	var hi: float = float(GRADES[i + 1]["min"]) if i + 1 < GRADES.size() else float(x["min"]) + 200.0
+	var target := roundi((float(x["min"]) + hi) / 2.0)
+	var hard := letter == "SSS" or letter == "SS"
+	var mul: float = {"F": 3.2, "E": 2.4, "D": 1.8, "C": 1.4, "B": 1.15, "A": 1.0, "S": 0.9}.get(letter, 0.8)
+	var sec := roundi(par * float(mul))
+	var t := time_score(sec, par)
+	var want := target - t
+	var mult := HARD_MULT if hard else 1.0
+	var base := roundi(float(want) / mult)
+	var items: Array = [{"cat": "结局", "text": "通关", "pts": PTS["ending"]}]
+	var left: int = base - int(PTS["ending"])
+	var san := clampi(roundi(40.0 + float(left) * 0.1), 5, 100)
+	items.append({"cat": "SAN", "text": "最终状态", "pts": san})
+	left -= san
+	items.append({"cat": "应对 · 异象", "text": "调试示例", "pts": left})
+	var sum := 0
+	for it: Dictionary in items:
+		sum += int(it["pts"])
+	return {"items": items, "sum": sum, "mult": mult, "total": maxi(0, roundi(float(sum) * mult)), "sec": sec, "diff": "hard" if hard else "easy", "san": san}
+
+
+## A complete sample record for a grade (not played: source "debug" until the app marks it).
+static func sample_meta(letter: String, route: String, diff: String = "") -> Dictionary:
+	var par := float(PAR.get(route, 1200))
+	var smp := sample(letter, par)
+	var d := diff if diff != "" else String(smp["diff"])
+	var ctx := {"diff": "hard" if letter == "SSS" or letter == "SS" else d, "saved": false, "wakes": 0}
+	var r := rate(float(smp["total"]), float(smp["sec"]), par, ctx)
+	return {"id": "", "at": int(Time.get_unix_time_from_system() * 1000.0), "mode": "normal", "diff": ctx["diff"], "talent": "tech", "route": route, "routeName": route,
+		"day": 1, "clock": 900.0, "time": {"active": float(smp["sec"]), "rta": null, "par": par, "used": float(smp["sec"])},
+		"score": {"rules": RULES, "total": smp["total"], "sum": smp["sum"], "mult": smp["mult"], "items": group(smp["items"])},
+		"grade": r["grade"], "gradeName": r["gradeName"], "band": r["band"], "memo": r["memo"], "gradeScore": r["gradeScore"], "timeScore": r["timeScore"], "gate": r["gate"],
+		"capped": r["capped"], "explore": {"pct": 40, "place": 45, "sketch": 30, "clue": 40}, "san": {"final": smp["san"], "min": maxi(5, int(smp["san"]) - 30)},
+		"ach": {"run": [], "newly": []}, "legacy": 0, "source": "debug", "version": "", "rated": true, "debug": false}

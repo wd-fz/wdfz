@@ -27,6 +27,8 @@ signal opening_finished(skipped: bool)
 signal terminal_closed
 signal sound_toggled(on: bool)
 signal settings_requested
+signal results_requested
+signal grade_sound(band: String)
 signal fullscreen_requested
 signal map_requested(id: String)
 signal notes_requested(query: String)
@@ -501,7 +503,7 @@ func death_scene_style() -> int:
 	return int((_death_fade.material as ShaderMaterial).get_shader_parameter("style"))
 
 
-func show_death_card(message: String, epitaph: String, cause: String, hints: PackedStringArray, achieved: PackedStringArray = PackedStringArray()) -> void:
+func show_death_card(message: String, epitaph: String, cause: String, hints: PackedStringArray, achieved: PackedStringArray = PackedStringArray(), score_line: String = "") -> void:
 	var lines := [message]
 	if not epitaph.is_empty():
 		lines.append("「%s」" % epitaph)
@@ -511,6 +513,8 @@ func show_death_card(message: String, epitaph: String, cause: String, hints: Pac
 		lines.append("· " + h)
 	if not achieved.is_empty():
 		lines.append("本局新达成\n" + "\n".join(achieved))
+	if not score_line.is_empty():
+		lines.append(score_line)
 	_death_text.text = "\n\n".join(lines)
 	death_panel.visible = true
 
@@ -1238,7 +1242,7 @@ var ending_panel: PanelContainer
 var _ending_text: Label
 
 
-func show_ending(title: String, tag: String, lines: Array, meta: String, achieved: PackedStringArray = PackedStringArray()) -> void:
+func show_ending(title: String, tag: String, lines: Array, meta: String, achieved: PackedStringArray = PackedStringArray(), result_note: String = "") -> void:
 	if ending_panel == null:
 		ending_panel = PanelContainer.new()
 		ending_panel.name = "EndingPanel"
@@ -1253,6 +1257,14 @@ func show_ending(title: String, tag: String, lines: Array, meta: String, achieve
 		_ending_text.custom_minimum_size = Vector2(480, 0)
 		_ending_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(_ending_text)
+		_ending_results = Button.new()
+		_ending_results.name = "EndingResults"
+		_ending_results.text = "结算"
+		_ending_results.pressed.connect(func() -> void: results_requested.emit())
+		box.add_child(_ending_results)
+		_ending_note = Label.new()
+		_ending_note.modulate = Color(1, 1, 1, 0.6)
+		box.add_child(_ending_note)
 		var back := Button.new()
 		back.text = "回到主菜单"
 		back.pressed.connect(func() -> void: death_menu_requested.emit())
@@ -1263,7 +1275,28 @@ func show_ending(title: String, tag: String, lines: Array, meta: String, achieve
 	_ending_text.text = "%s\n\n%s\n\n%s" % [head, "\n".join(PackedStringArray(lines)), meta]
 	if not achieved.is_empty():
 		_ending_text.text += "\n\n本局新达成\n" + "\n".join(achieved)
+	_ending_results.visible = result_note == "rated"
+	_ending_note.text = "调试局 · 不评级，不进通关记录" if result_note == "debug" else ""
+	_ending_note.visible = result_note == "debug"
 	ending_panel.visible = true
+
+
+var _ending_results: Button
+var _ending_note: Label
+var results_panel: ResultsPanel
+
+
+func show_results(m: Dictionary, opts: Dictionary = {}) -> void:
+	if results_panel == null:
+		results_panel = ResultsPanel.new()
+		results_panel.sound.connect(func(b: String) -> void: grade_sound.emit(b))
+		$Root.add_child(results_panel)
+	results_panel.open(m, opts)
+
+
+func hide_results() -> void:
+	if results_panel != null:
+		results_panel.visible = false
 
 
 func hide_ending() -> void:

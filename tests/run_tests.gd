@@ -105,6 +105,7 @@ func _run() -> void:
 	_test_call_budget()
 	_test_score_rules()
 	_test_run_records()
+	_test_results_page()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -3123,6 +3124,29 @@ func _test_run_records() -> void:
 	check(other.run == "r2" and other.samples.is_empty() and other.partial == 1, "when it does not match it starts again, marked partial")
 	var done := log.finish()
 	check(done["track"] != "" and RunTrack.decode(String(done["track"])).size() == log.samples.size(), "a clear hands over the encoded track")
+
+
+func _test_results_page() -> void:
+	check(ResultsPanel.fmt(0) == "00:00" and ResultsPanel.fmt(1245.4) == "20:45" and ResultsPanel.fmt(-5) == "00:00", "times read mm:ss")
+	var items: Array = [{"cat": "应对 · 异象", "text": "化解「下不完的雨」", "pts": 40, "n": 1}, {"cat": "校规与巡察", "text": "学生会检查 · 在教室", "pts": 20, "n": 3},
+		{"cat": "校规与巡察", "text": "躲在柜子里躲过", "pts": 15, "n": 2}, {"cat": "校规与巡察", "text": "电梯门在它面前合上", "pts": 15, "n": 1}, {"cat": "保命与惊醒", "text": "不知名药丸挡下一次", "pts": -60, "n": 1}]
+	var rep := ResultsPanel.report_card({"score": {"items": items}, "day": 2},
+		{"events": [[100, "anomaly", "遭遇「下不完的雨」", 0, 0, 0, 0]], "clock": [[0, 1, 500], [200, 1, 700]]})
+	check(rep.size() == 3 and String(rep[0]).begins_with("该生 ") and String(rep[0]).contains(SchoolClock.fmt_clock(500.0)) and String(rep[0]).ends_with("在「下不完的雨」里没有回头。") and String(rep[1]).contains("3 次检查都在座位上"), "the class teacher's remarks come from what happened, at most three")
+	var plain := ResultsPanel.report_card({"score": {"items": []}, "day": 3})
+	check(plain == ["该生第 3 天离开了学校。没有人看见是怎么走的。"], "with nothing to say: left without anyone seeing")
+	var secret := ResultsPanel.report_card({"score": {"items": [{"cat": "应对 · 异象", "text": "化解「满员」", "pts": 20, "n": 1}, {"cat": "应对 · 异象", "text": "化解「可乐」", "pts": 20, "n": 1}]}, "day": 1})
+	var leaked := false
+	for line in secret:
+		for w: String in ResultsPanel.REPORT_SECRET:
+			if String(line).contains(w):
+				leaked = true
+	check(not leaked and secret.size() == 1 and String(secret[0]).contains("离开了学校"), "hidden content never reaches the report card (the secrecy guard)")
+	var m := ScoreRules.sample_meta("SSS", "cyber")
+	check(m["grade"] == "SSS" and m["diff"] == "hard" and m["score"]["mult"] == 1.2 and m["time"]["par"] == 1680.0, "a sample record for SSS is nightmare and clears the gate")
+	for g: Dictionary in ScoreRules.GRADES:
+		var sm := ScoreRules.sample_meta(String(g["g"]), "car")
+		check(sm["grade"] == g["g"], "the sample for %s grades %s" % [g["g"], sm["grade"]])
 
 
 func _test_facility_rules() -> void:

@@ -43,6 +43,8 @@ func _ready() -> void:
 	ui.setting_changed.connect(_setting_changed)
 	ui.fullscreen_requested.connect(func() -> void: _setting_changed("full_screen", 1 - settings.get_int("full_screen")))
 	ui.notes_requested.connect(_show_notes)
+	ui.results_requested.connect(_open_results)
+	ui.grade_sound.connect(func(b: String) -> void: audio.play("ui.grade." + b))
 	ui.map_requested.connect(_show_map)
 	ui.notes_focus_requested.connect(_notes_focus)
 	_apply_settings()
@@ -1406,7 +1408,7 @@ func _finish_death() -> void:
 		return
 	_death_phase = "card"
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	ui.show_death_card(fate.death_msg, fate.epitaph(), fate.cause(), StoryModule.hints(_read_death_log()), achievements().run_new_labels() if achievements() != null else PackedStringArray())
+	ui.show_death_card(fate.death_msg, fate.epitaph(), fate.cause(), StoryModule.hints(_read_death_log()), achievements().run_new_labels() if achievements() != null else PackedStringArray(), _death_score_line())
 
 
 ## Player state the patroller reads (old S / HIDE / Inspection state).
@@ -2627,6 +2629,38 @@ func _score_death() -> void:
 	sm.death_line(_score_context())
 	_runlog.discard()
 	_write_side("runlog_cur.json", null)
+
+
+## The result page after a clear (ending card → 结算).
+func _open_results() -> void:
+	if _last_result.is_empty():
+		return
+	var m := _last_result
+	var rec := runs().get_record(String(m.get("id", ""))) if String(m.get("id", "")) != "" else {}
+	ui.show_results(rec if not rec.is_empty() else m, {"replay": runs().replay(String(m.get("id", ""))) if String(m.get("id", "")) != "" else {},
+		"back_label": "回到主菜单"})
+	if ui.results_panel != null and not ui.results_panel.back_pressed.is_connected(_results_back):
+		ui.results_panel.back_pressed.connect(_results_back)
+
+
+var _results_back_to: Callable
+
+
+func _results_back() -> void:
+	ui.hide_results()
+	if _results_back_to.is_valid():
+		var f := _results_back_to
+		_results_back_to = Callable()
+		f.call()
+	else:
+		return_to_menu()
+
+
+func _death_score_line() -> String:
+	var dl := runscore().last_death_line() if runscore() != null else {}
+	if dl.is_empty() or not dl.has("total"):
+		return ""
+	return "调试局 · 不计分" if bool(dl.get("debug", false)) else "本局积分 %d · 探索度 %d%%" % [int(dl["total"]), int(dl["explore"])]
 
 
 # ---- the protagonist's muttering (features/story/mono_module.gd) ----
@@ -4140,7 +4174,8 @@ func _reach_ending(id: String) -> void:
 		meta += " · " + SchoolClock.fmt_clock(school().tsec)
 	if run_line != "":
 		meta += "\n" + run_line
-	ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta, achievements().run_new_labels() if achievements() != null else PackedStringArray())
+	ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta, achievements().run_new_labels() if achievements() != null else PackedStringArray(),
+		"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""))
 
 
 func _anomaly_context(room: Variant, pose: Dictionary) -> Dictionary:
