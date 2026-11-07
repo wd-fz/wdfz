@@ -86,7 +86,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(CampusData.rooms()), ClassmatesModule.new(CampusData.rooms()), DreadModule.new(CampusData.rooms()), AtmosModule.new(CampusData.rooms()), MonoModule.new(CampusData.rooms()), InvestigationModule.new(), ExplorationModule.new(CampusData.rooms()), CameraModule.new()]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(CampusData.rooms()), ClassmatesModule.new(CampusData.rooms()), DreadModule.new(CampusData.rooms()), AtmosModule.new(CampusData.rooms()), MonoModule.new(CampusData.rooms()), InvestigationModule.new(), ExplorationModule.new(CampusData.rooms()), CameraModule.new(), RunScoreModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus(), _anomaly_names())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -100,6 +100,17 @@ func campus() -> CampusModule:
 
 func dread() -> DreadModule:
 	return session.modules.get_module(&"story.dread") as DreadModule if session != null else null
+
+
+func runscore() -> RunScoreModule:
+	return session.modules.get_module(&"progress.score") as RunScoreModule if session != null else null
+
+
+func _anomaly_names() -> Dictionary:
+	var out := {}
+	for id: String in AnomalyModule.DEFS:
+		out[id] = String(AnomalyModule.DEFS[id].get("cn", id))
+	return out
 
 
 func camera() -> CameraModule:
@@ -213,6 +224,7 @@ func fact(f: Dictionary) -> void:
 	var ach := achievements()
 	if ach == null:
 		return
+	_score_fact(f)
 	ach.fact(f)
 	for e: Dictionary in ach.take_events():
 		ui.show_notice("成就：%s" % e["name"])
@@ -413,6 +425,11 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 		var mood := candidate.modules.get_module(&"story.atmos") as AtmosModule
 		if mood != null:
 			mood.set_seed(net.run_seed)
+	var scoring := candidate.modules.get_module(&"progress.score") as RunScoreModule
+	if scoring != null:
+		scoring.begin("s%d%04d" % [int(Time.get_unix_time_from_system()), randi() % 10000])
+		_write_side("runlog_cur.json", null)
+		_runlog.begin(scoring.run)
 	var rules := candidate.modules.get_module(&"campus.world") as CampusModule
 	var pose := rules.start_pose() if rules != null and initial_world == rules.start_world() else router.current.spawn_pose()
 	# Game.start: the run begins seated on the player's own seat in teach1.
@@ -562,6 +579,8 @@ func load_game() -> void:
 		return
 	candidate.restore(data)
 	_install_session(candidate, data["player"])
+	if runscore() != null:
+		_runlog.restore(runscore().run, _read_side("runlog_cur.json"))
 	if dread() != null:
 		dread().set_context(_dread_context())
 		dread().enter(session.world_id, true)
@@ -599,6 +618,7 @@ func resume_game() -> void:
 
 
 func return_to_menu() -> void:
+	_last_result = {}
 	_fake_people_clear()
 	_stop_snake(true)
 	_close_phone()
@@ -1058,6 +1078,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	_atmos_step(delta)
 	_mono_step(delta)
 	_explore_step(delta)
+	_score_step(delta)
 	_anomaly_step(delta, day_rules, room, pose)
 	_audio_step(delta, watcher, day_rules, room, p)
 	_progress_step(watcher, day_rules, weird_now)
@@ -1265,7 +1286,7 @@ func kill(msg: String, fx: String, source: String) -> void:
 	if result.has("protected"):
 		if result["protected"] == "elixir":
 			bag.remove("elixir")
-		fact({"kind": "protect"})
+		fact({"kind": "protect", "by": String(result["protected"])})
 		if garage() != null:
 			garage().rescued()
 		school().survive(source)
@@ -1282,7 +1303,9 @@ func kill(msg: String, fx: String, source: String) -> void:
 		return
 	if not result.get("dead", false):
 		return
-	fact({"kind": "death", "source": source, "fx": fx})
+	fact({"kind": "death", "source": source, "fx": fx, "wake": bool(result["wake"])})
+	if not bool(result["wake"]):
+		_score_death()
 	if not result["wake"] and not (session.world_id in ["lift_dream", "portal_tunnel"]):
 		var lp: Array = player.capture_pose()["position"]
 		var lw := CampusGeometry.to_world(campus().room(session.world_id), float(lp[0]), float(lp[2]))
@@ -1411,6 +1434,7 @@ func _patrol_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, 
 	for e: Dictionary in day_rules.take_events():
 		if e["kind"] == "absence":
 			watcher.registered_absence(String(e["id"]))
+			fact({"kind": "patrol", "what": "permanent"})
 		elif e["kind"] == "exam":
 			fact({"kind": "exam", "phase": e["phase"], "pass": e.get("pass", false), "day": e.get("day", 1)})
 		elif e["kind"] == "inspection":
@@ -1457,6 +1481,8 @@ func _progress_step(watcher: PatrolModule, day_rules: SchoolModule, weird: Anoma
 			fact({"kind": "patrol", "what": "lost"})
 		if _seen_hide and not hid and _seen_lock_ach and not story().dead:
 			fact({"kind": "patrol", "what": "locker"})
+		if locked and not _seen_lock_ach and not story().dead:
+			fact({"kind": "patrol", "what": "locked", "permanent": bool(watcher.pat["permanent"])})
 		_seen_lock_ach = locked
 		_seen_hide = hid
 
@@ -1605,6 +1631,9 @@ func _apply_facility_events() -> void:
 		return
 	for e: Dictionary in fac.take_events():
 		match e["kind"]:
+			"clue":
+				if runscore() != null:
+					runscore().add_clue(String(e["id"]), school().day)
 			"record":
 				_record(e)
 			"notice", "toast":
@@ -2462,6 +2491,142 @@ func _snake_step(delta: float) -> void:
 	_snake.tick(delta, key, func() -> float: return _snake_random.randf())
 	if _snake_panel != null:
 		_snake_panel.board.queue_redraw()
+
+
+# ---- score, grade and clear records (features/progress/run_score_module.gd, run_log.gd, run_records.gd) ----
+
+var _runlog := RunLog.new(CampusData.rooms())
+var _last_result: Dictionary = {}
+var _runs_store: RunRecords
+var _runs_path := ""
+var _ach_logged := 0
+
+
+## The clear records of this device (next to the saves).
+func runs() -> RunRecords:
+	var dir := saves.side_path("records")
+	if _runs_store == null or _runs_path != dir:
+		_runs_store = RunRecords.new(dir)
+		_runs_path = dir
+	return _runs_store
+
+
+func _score_fact(f: Dictionary) -> void:
+	var sm := runscore()
+	if sm == null:
+		return
+	sm.fact(f)
+	match String(f["kind"]):
+		"lesson":
+			if bool(f.get("correct", false)):
+				sm.add_clue("lesson", school().day)
+		"ending":
+			_runlog.point(true)
+			if not bool(f.get("fake", false)):
+				_runlog.event("ending", "结局" + String(f["id"]), 0)
+		"death":
+			_runlog.event("death", "死去，又在座位上惊醒" if bool(f.get("wake", false)) else "死亡", 0)
+		"rest":
+			_runlog.event("rest", String(FacilitiesModule.SAN_ACTS.get(String(f["key"]), {}).get("n", "休息")), 0)
+		"garage":
+			_runlog.event("garage", "手电照退了车库里的东西" if f.get("what") == "torch" else "开走了车", 0)
+		"specialDay":
+			_runlog.event("day", "特殊的上学日", 0)
+		"day":
+			_runlog.event("day", "第 %d 天" % int(f["day"]), 0)
+
+
+func _runlog_room(id: String) -> void:
+	var r: Variant = campus().room(id)
+	_runlog.scene = id
+	_runlog.point(true)
+	_runlog.event("room", "进入 " + (String(r.get("name", id)) if r != null else id), 0)
+
+
+func _score_step(delta: float) -> void:
+	var sm := runscore()
+	if sm == null or story().dead:
+		return
+	sm.observe_san(school().san)
+	if items() != null:
+		if items().has("roomkey"):
+			sm.add_clue("roomkey", school().day)
+		if items().has("atlas"):
+			sm.add_clue("atlas", school().day)
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	sm.zone_tick(delta, session.world_id, w if room == null else Vector2(-1e9, -1e9))
+	if not sm.on_event.is_valid():
+		sm.on_event = func(kind: String, text: String, pts: int) -> void: _runlog.event(kind, text, pts)
+	var watcher := patrol()
+	_runlog.now_s = session.clock.active_seconds
+	_runlog.scene = session.world_id
+	_runlog.pos = w
+	_runlog.ang = CampusGeometry.ang_from_yaw(float(pose["yaw"]))
+	_runlog.day = school().day
+	_runlog.tsec = school().tsec
+	var fresh: Array = []
+	var ach := achievements()
+	if ach != null:
+		for id: String in ach.run_new:
+			fresh.append(String(AchievementsModule.LIST[id][1]))
+	var pstate := {}
+	if watcher != null:
+		pstate = {"walk": watcher.pat["state"] == "walk", "room": String(watcher.pat["room"]), "x": float(watcher.pat["x"]), "y": float(watcher.pat["y"])}
+	if _runlog.tick(delta, pstate, fresh):
+		_write_side("runlog_cur.json", _runlog.pack())
+
+
+## Everything the ending's score needs from the other modules.
+func _score_context() -> Dictionary:
+	var sm := runscore()
+	var ach := achievements()
+	var run_ach: Array = []
+	var new_ach: Array = []
+	var ach_rows: Array = []
+	if ach != null:
+		for id: String in ach.run_new:
+			run_ach.append(id)
+			new_ach.append(id)
+			if not AchievementsModule.SCORELESS.has(id):
+				ach_rows.append({"name": "%s · %s" % [AchievementsModule.TIERS[AchievementsModule.LIST[id][0]]["name"], AchievementsModule.LIST[id][1]], "pts": int(AchievementsModule.TIERS[AchievementsModule.LIST[id][0]]["pts"])})
+	var extra: Array = []
+	if anomaly() != null:
+		extra.append_array(anomaly().clues.keys())
+	if routes() != null:
+		extra.append_array(routes().clues.keys())
+	var rta := 0.0
+	var mode := "normal"
+	if not speedrun.run.is_empty() and speedrun.run.get("ms") != null:
+		mode = "speedrun"
+		rta = float(speedrun.run["ms"]) / 1000.0
+	return {"achievements": ach_rows, "san": school().san, "explore": sm.explore(exploration(), extra), "diff": story().diff, "talent": talent().id if talent() != null else "none",
+		"day": school().day, "clock": school().tsec, "active": session.clock.active_seconds, "rta": rta, "mode": mode, "run_ach": run_ach, "new_ach": new_ach, "version": "godot"}
+
+
+## At a clear: the score, the time score and the grade; a rated run goes into the records with its replay.
+func _score_ending(id: String, title: String) -> Dictionary:
+	var sm := runscore()
+	if sm == null:
+		return {}
+	var ctx := _score_context()
+	ctx["route_name"] = title.replace(" ", "")
+	var res := sm.finish({"id": id, "legit": true}, ctx)
+	if bool(res.get("rated", false)):
+		res["id"] = runs().add(res, _runlog.finish())
+		_write_side("runlog_cur.json", null)
+	return res
+
+
+func _score_death() -> void:
+	var sm := runscore()
+	if sm == null:
+		return
+	sm.death_line(_score_context())
+	_runlog.discard()
+	_write_side("runlog_cur.json", null)
 
 
 # ---- the protagonist's muttering (features/story/mono_module.gd) ----
@@ -3392,6 +3557,8 @@ func _apply_fake_normal_events() -> void:
 				ui.flash_hurt(0.45)
 			"fact":
 				fact({"kind": "fakeNormal", "done": true, "laughs": int(e["laughs"])})
+			"fact_laugh":
+				fact({"kind": "fakeNormal", "laugh": bool(e["laugh"])})
 			"choice":
 				_choice_count += 1
 				var mine := _choice_count
@@ -3897,6 +4064,8 @@ func _routes_step(delta: float) -> void:
 func _apply_route_events(route: RoutesModule) -> void:
 	for e: Dictionary in route.take_events():
 		match e["kind"]:
+			"fact_face":
+				fact({"kind": "face", "correct": bool(e["correct"])})
 			"record":
 				_record(e)
 			"notice":
@@ -3965,6 +4134,7 @@ func _reach_ending(id: String) -> void:
 		achievements().face_wrong = maxi(0, routes().wrong_answers())
 	_write_side("last_life.json", null)
 	fact({"kind": "ending", "id": id, "day": school().day, "diff": story().diff, "talent": talent().id if talent() != null else "none"})
+	_last_result = _score_ending(id, String(card["title"]))
 	var meta := "第 %d 天" % school().day
 	if (items() != null and items().has_clock()) or (talent() != null and talent().has("watch")):
 		meta += " · " + SchoolClock.fmt_clock(school().tsec)
@@ -4007,6 +4177,9 @@ func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 	weird.tick(delta)
 	for e: Dictionary in weird.take_events():
 		match e["kind"]:
+			"clue":
+				if runscore() != null:
+					runscore().add_clue(String(e["id"]), school().day)
 			"notice":
 				ui.show_notice(String(e["text"]))
 			"smile":
@@ -4016,6 +4189,8 @@ func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 				else:
 					audio.play("threat.smileBack", {"pan": 0.3, "lp": 0.8})
 			"hurt":
+				if anomaly() != null and anomaly().active_id() != "":
+					fact({"kind": "anomaly", "phase": "hurt", "id": anomaly().active_id()})
 				day_rules.change_san(-float(e["amount"]), 0.0)
 				ui.flash_hurt(0.4 if e.get("quiet", false) else 0.65)
 				audio.play("foley.colaHit", {"k": 0.4 if e.get("quiet", false) else 0.8})
@@ -4122,6 +4297,9 @@ func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
 		_apply_dread_events()
 	if atmos() != null and from_world != world_id:
 		atmos().enter(world_id)
+	if runscore() != null and from_world != world_id:
+		runscore().enter_room(world_id)
+		_runlog_room(world_id)
 	_enter_cool = 0.0 if seamless else 0.9
 	if seamless:
 		player.place(pose)

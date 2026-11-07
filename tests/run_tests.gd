@@ -103,6 +103,8 @@ func _run() -> void:
 	_test_vault_hold()
 	await _test_fake_people()
 	_test_call_budget()
+	_test_score_rules()
+	_test_run_records()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -2934,6 +2936,195 @@ func _test_call_budget() -> void:
 	check(radio.b["current"] != null and float(radio.b["nextCall"]) > 180.0 and _of_kind(ev, "dread_note").size() == 1 and _of_kind(ev, "dread_note")[0]["what"] == "broadcast-call", "when it is quiet the call is made, the next one 180–260 s later, and the budget is spent")
 
 
+func _test_score_rules() -> void:
+	# Time score: 400 × par/sec, clamped to 0.25–1.5.
+	check(ScoreRules.time_score(1080.0, 1080.0) == 400 and ScoreRules.time_score(720.0, 1080.0) == 600 and ScoreRules.time_score(100.0, 1080.0) == 600 and ScoreRules.time_score(10800.0, 1080.0) == 100 and ScoreRules.time_score(0.0, 1080.0) == 0, "the time score is 400 × par / time, between 100 and 600")
+	# Nine grades by grade score.
+	check(ScoreRules.grade_of(0)["g"] == "F" and ScoreRules.grade_of(399)["g"] == "F" and ScoreRules.grade_of(400)["g"] == "E" and ScoreRules.grade_of(700)["g"] == "C" and ScoreRules.grade_of(1000)["g"] == "A"
+		and ScoreRules.grade_of(1300)["g"] == "SS" and ScoreRules.grade_of(1450)["g"] == "SSS" and ScoreRules.grade_of(9999)["g"] == "SSS", "nine grades at 0, 400, 550, 700, 850, 1000, 1150, 1300, 1450")
+	check(ScoreRules.band("D") == "low" and ScoreRules.band("B") == "mid" and ScoreRules.band("S") == "high" and ScoreRules.band("SSS") == "top" and ScoreRules.san_band(80) == "清醒" and ScoreRules.san_band(45) == "动摇" and ScoreRules.san_band(10) == "濒临", "the sound band of a grade and the SAN state")
+	# SSS needs the nightmare difficulty, no rescue, no waking.
+	var hard := {"diff": "hard", "saved": false, "wakes": 0}
+	check(ScoreRules.gate(hard) and not ScoreRules.gate({"diff": "easy", "saved": false, "wakes": 0}) and not ScoreRules.gate({"diff": "hard", "saved": true, "wakes": 0}) and not ScoreRules.gate({"diff": "hard", "saved": false, "wakes": 1}), "SSS needs hard, no rescue, no waking")
+	var sss := ScoreRules.rate(1100.0, 1080.0, 1080.0, hard)
+	check(sss["grade"] == "SSS" and sss["gradeScore"] == 1500 and not sss["capped"], "enough grade score with the gate is SSS")
+	var capped := ScoreRules.rate(1100.0, 1080.0, 1080.0, {"diff": "easy", "saved": false, "wakes": 0})
+	check(capped["grade"] == "SS" and capped["capped"] and not capped["gate"], "without the gate an SSS score gives SS and says it was capped")
+	# Exploration: places 50 %, sketch 30 %, clues 20 %.
+	var ex := ScoreRules.explore({"places": 5, "places_total": 10, "cells": 50, "cells_total": 100, "clues": 10, "clues_total": 20})
+	check(ex["pct"] == 50 and ex["place"] == 50 and ex["sketch"] == 50 and ex["clue"] == 50 and ScoreRules.explore({"places": 0, "places_total": 0, "cells": 0, "cells_total": 0, "clues": 0, "clues_total": 21})["pct"] == 0, "exploration is the weighted share of places, sketch and clues")
+	# Total: the ending, achievements, SAN and exploration, the hard multiplier, and merged entries.
+	var ledger: Array = [{"cat": "应对 · 选择", "text": "课桌任务答对", "pts": 5}, {"cat": "应对 · 选择", "text": "课桌任务答对", "pts": 5}, {"cat": "校规与巡察", "text": "甩掉了巡察者", "pts": 10}]
+	var easy := ScoreRules.total(ledger, {"ending": true, "ending_name": "通关 · 闸门", "san": 70.0, "min_san": 50.0, "explore": {"pct": 40}, "diff": "easy",
+		"achievements": [{"name": "普通 · 还活着", "pts": 10}, {"name": "x", "pts": 0}]})
+	check(easy["sum"] == 300 + 5 + 5 + 10 + 10 + 70 + 80 and easy["total"] == 480 and easy["mult"] == 1.0, "ending 300 + the ledger + achievements + final SAN + 2 a point of exploration")
+	var merged := ScoreRules.group(ledger)
+	check(merged.size() == 2 and merged[0]["n"] == 2 and merged[0]["pts"] == 5, "like entries are merged: desk answer ×2")
+	var nm := ScoreRules.total([], {"ending": true, "san": 100.0, "min_san": 10.0, "explore": {"pct": 50}, "diff": "hard"})
+	check(nm["mult"] == 1.2 and nm["sum"] == 300 + 100 - 30 - 30 + 100 and nm["total"] == roundi(440 * 1.2), "the nightmare multiplies by 1.2; a low SAN low costs 30, a very low one 30 more")
+	check(ScoreRules.total([{"cat": "保命与惊醒", "text": "x", "pts": -900}], {"diff": "easy"})["total"] == 0, "the total never goes below 0")
+	check(ScoreRules.PAR["cyber"] == 1680 and ScoreRules.PAR["car"] == 1080 and ScoreRules.GRADES.size() == 9 and ScoreRules.CATS.size() == 8, "par times and the eight categories")
+	# The track codec.
+	var track: Array = [[0, 0, 100, 50, 3], [5, 0, 101, 52, 4], [12, 1, 400, -20, 63], [40, 1, 400, -20, 0]]
+	var text := RunTrack.encode(track)
+	check(RunTrack.decode(text) == track and text.length() < 40, "a track encodes small and decodes to the same samples")
+	check(RunTrack.decode("AB!AB") == RunTrack.decode("AB") and RunTrack.decode("").is_empty(), "bad data stops there; what came before is used")
+	var mid := RunTrack.at(track, 2.5)
+	check(absf(float(mid[2]) - 100.5) < 0.0001 and absf(float(mid[3]) - 51.0) < 0.0001 and RunTrack.at(track, 20.0)[1] == 0 + 1 - 0 and RunTrack.at(track, -5.0) == track[0] and RunTrack.at(track, 999.0) == track[3], "between samples the position is interpolated; across a scene change it is not")
+	# The ledger from facts.
+	var rooms := CampusData.rooms()
+	var sc := RunScoreModule.new(rooms, CampusData.layout("out"), CampusData.campus(), {"rain": "下不完的雨"})
+	sc.begin("s1")
+	var logged: Array = []
+	sc.on_event = func(kind: String, text2: String, pts: int) -> void: logged.append([kind, text2, pts])
+	sc.fact({"kind": "anomaly", "phase": "start", "id": "rain"})
+	sc.fact({"kind": "anomaly", "phase": "end", "id": "rain", "survived": true, "lethal": true})
+	sc.fact({"kind": "anomaly", "phase": "start", "id": "moth"})
+	sc.fact({"kind": "anomaly", "phase": "hurt", "id": "moth"})
+	sc.fact({"kind": "anomaly", "phase": "end", "id": "moth", "survived": true, "lethal": false})
+	sc.fact({"kind": "anomaly", "phase": "start", "id": "turn"})
+	sc.fact({"kind": "anomaly", "phase": "end", "id": "turn", "survived": false, "lethal": true})
+	check(sc.ledger.size() == 2 and sc.ledger[0]["text"] == "化解「下不完的雨」" and sc.ledger[0]["pts"] == 40 and sc.ledger[1]["text"] == "「moth」受伤后脱身" and sc.ledger[1]["pts"] == -10, "a lethal anomaly survived is +40, one survived hurt is −10, one not survived is nothing")
+	sc.fact({"kind": "fakeNormal", "laugh": true})
+	sc.fact({"kind": "fakeNormal", "laugh": false})
+	sc.fact({"kind": "face", "correct": true})
+	sc.fact({"kind": "face", "correct": false})
+	sc.fact({"kind": "lesson", "correct": true})
+	sc.fact({"kind": "lesson", "correct": false})
+	sc.fact({"kind": "exam", "phase": "paper", "pass": true})
+	sc.fact({"kind": "exam", "phase": "bell"})
+	sc.fact({"kind": "inspection", "compliant": true})
+	sc.fact({"kind": "inspection", "compliant": false})
+	sc.fact({"kind": "inspection", "compliant": false, "excused": true})
+	var pts := []
+	for e: Dictionary in sc.ledger.slice(2):
+		pts.append(int(e["pts"]))
+	check(pts == [-20, 15, 10, -15, 5, 20, 20, -30], "laugh −20, held back +15, quiz +10/−15, desk +5, exam +20, inspection +20/−30; an excused absence is nothing")
+	for _i in 9:
+		sc.fact({"kind": "patrol", "what": "locked"})
+	var lock_sum := 0
+	for e: Dictionary in sc.ledger:
+		if e["text"] == "被巡察者盯上":
+			lock_sum += int(e["pts"])
+	check(lock_sum == -60 and sc.locked == -60, "being locked on costs 10 each, at most 60 in all")
+	sc.fact({"kind": "patrol", "what": "lost"})
+	sc.fact({"kind": "patrol", "what": "locker"})
+	sc.fact({"kind": "patrol", "what": "door"})
+	sc.fact({"kind": "patrol", "what": "permanent"})
+	sc.fact({"kind": "protect", "by": "immune"})
+	sc.fact({"kind": "wake"})
+	check(sc.saved == 1 and sc.wakes == 1 and sc.ledger[sc.ledger.size() - 1]["pts"] == -80 and sc.ledger[sc.ledger.size() - 2]["pts"] == -60 and sc.ledger[sc.ledger.size() - 3]["pts"] == -80, "rescue −60, waking −80, permanent chase −80")
+	check(logged.any(func(x: Array) -> bool: return x[0] == "anomaly" and x[1] == "遭遇「下不完的雨」") and logged.any(func(x: Array) -> bool: return x[0] == "choice" and x[1] == "课桌任务答错") and logged.any(func(x: Array) -> bool: return x[0] == "exam" and x[1] == "撞响了钟楼的钟"), "the replay log hears the ledger and the zero-point events too")
+	# Save, restore, validate.
+	var back := RunScoreModule.new(rooms, CampusData.layout("out"), CampusData.campus())
+	back.restore(sc.capture())
+	check(back.ledger == sc.ledger and back.saved == 1 and back.run == "s1" and back.validate(sc.capture()).is_empty() and not back.validate({"run": 5, "ledger": []}).is_empty(), "the ledger saves and loads; a bad one is rejected")
+	# Clues and the totals of the exploration.
+	sc.add_clue("server", 2)
+	sc.add_clue("stall", 2)
+	check(sc.clues.has("server") and not sc.clues.has("stall"), "only public clues count (a hidden route's is not kept)")
+	var t := sc.totals()
+	check((t["rooms"] as Array).size() >= 30 and (t["zones"] as Array).has("gateN") and int(t["cells"]) > 5000, "the totals: rooms with a sketch, open outdoor areas and three gates, walkable tiles (%d rooms, %d cells)" % [(t["rooms"] as Array).size(), int(t["cells"])])
+	sc.rooms["teach1"] = 1
+	sc.zones["gateN"] = 1
+	var e1 := sc.explore(null, ["usb"])
+	check(e1["pct"] > 0 and e1["clue"] == roundi(2.0 / 21.0 * 100.0), "visited places and found clues raise the exploration (%d%%)" % int(e1["pct"]))
+	# Min SAN and a clear.
+	sc.observe_san(80.0)
+	sc.observe_san(12.0)
+	sc.observe_san(40.0)
+	check(sc.min_san == 12.0, "the lowest SAN is remembered")
+	var res := sc.finish({"id": "car", "legit": true}, {"achievements": [], "san": 40.0, "explore": e1, "diff": "hard", "talent": "none", "day": 2, "clock": 900.0, "active": 1080.0, "route_name": "《闸门》", "mode": "normal", "version": "t"})
+	check(res["rated"] and res["route"] == "car" and res["grade"] == ScoreRules.grade_of(float(res["gradeScore"]))["g"] and res["san"]["min"] == 12 and res["time"]["par"] == 1080.0 and res["timeScore"] == 400
+		and res["score"]["mult"] == 1.2 and sc.result() == res, "a clear makes a rated record: score, time score (par time) and grade")
+	check(res["score"]["items"][0]["cat"] == "结局" and res["score"]["items"][0]["text"] == "通关 · 《闸门》", "the first line of the detail is the ending")
+	sc.trusted = false
+	check(not sc.finish({"id": "car", "legit": true}, {"san": 40.0, "explore": e1, "diff": "easy", "active": 1080.0})["rated"], "a run that used the debug panel is not rated")
+	sc.trusted = true
+	var unlawful := sc.finish({"id": "car", "legit": false}, {"san": 40.0, "explore": e1, "diff": "easy", "active": 1080.0})
+	check(not unlawful["rated"] and unlawful["score"]["items"][0]["cat"] != "结局", "an ending that is not legit gets no ending points and no record")
+	var dl := sc.death_line({"san": 40.0, "explore": e1, "diff": "easy"})
+	check(dl.has("total") and dl["explore"] == int(e1["pct"]) and not dl["debug"], "a death gives one line: the score and the exploration")
+
+
+func _rec(route: String, diff: String, grade: String, gscore: int, used: float, at: int, extra: Dictionary = {}) -> Dictionary:
+	var r := {"at": at, "mode": "normal", "diff": diff, "talent": "none", "route": route, "routeName": route, "day": 1, "clock": 700.0,
+		"time": {"active": used, "rta": null, "par": 1200.0, "used": used}, "score": {"rules": 1, "total": gscore - 400, "sum": gscore - 400, "mult": 1.0, "items": []},
+		"grade": grade, "gradeName": "x", "band": "mid", "memo": "m", "gradeScore": gscore, "timeScore": 400, "gate": false, "capped": false,
+		"explore": {"pct": 10, "place": 10, "sketch": 10, "clue": 10}, "san": {"final": 50, "min": 20}, "ach": {"run": [], "newly": []}, "source": "play", "version": "t"}
+	r.merge(extra, true)
+	return r
+
+
+func _test_run_records() -> void:
+	var dir := _test_path.get_base_dir() + "/records-test"
+	var store := RunRecords.new(dir)
+	for f in DirAccess.get_files_at(dir) if DirAccess.dir_exists_absolute(dir) else PackedStringArray():
+		DirAccess.remove_absolute(dir + "/" + f)
+	check(store.list().is_empty() and store.grades().is_empty(), "no records at first")
+	var pack := {"v": 1, "run": "r", "scenes": ["teach1"], "track": "AAAAA", "pat": [], "clock": [], "events": [], "start": 1, "partial": 0}
+	var a := store.add(_rec("car", "easy", "C", 700, 900.0, 1000), pack)
+	var b := store.add(_rec("car", "easy", "B", 860, 1100.0, 2000), pack)
+	var c := store.add(_rec("face", "hard", "A", 1010, 800.0, 3000, {"mode": "speedrun", "time": {"active": 800.0, "rta": 805.0, "par": 1200.0, "used": 805.0}}), pack)
+	check(store.list().size() == 3 and store.get_record(b)["grade"] == "B" and int(store.get_record(a)["replay"]) == 1 and not store.replay(a).is_empty() and store.replay(a)["track"] == "AAAAA", "records are kept with their replay files")
+	check(store.grades()["B"]["count"] == 1 and store.grades()["B"]["best"] == b and float(store.grades()["C"]["first"]) == 1000.0, "the grade obtained summary: first time, count, best record")
+	store.add(_rec("car", "easy", "B", 870, 1000.0, 4000), pack)
+	check(store.grades()["B"]["count"] == 2 and store.grades()["B"]["best"] != b, "the best of a grade follows the higher grade score")
+	# Debug records are marked and never count.
+	var d := store.add(_rec("car", "easy", "SS", 1400, 500.0, 5000, {"source": "debug"}), {})
+	check(not store.grades().has("SS") and store.best_grade("easy", "car") == "B" and int(store.get_record(d)["replay"]) == 0, "a debug record is not a real grade, not a best, and has no replay")
+	check(store.remove_debug() == 1 and store.get_record(d).is_empty(), "debug records can be cleared")
+	# Ranking: real speedrun records with an RTA.
+	store.add(_rec("face", "hard", "B", 900, 700.0, 6000, {"mode": "speedrun", "time": {"active": 700.0, "rta": 705.0, "par": 1200.0, "used": 705.0}}), {})
+	var by_time := store.ranking("hard", "face")
+	var by_grade := store.ranking("hard", "face", "grade")
+	check(by_time.size() == 2 and by_time[0]["time"]["rta"] == 705.0 and by_grade[0]["grade"] == "A" and store.ranking("easy", "car").is_empty(), "the speedrun ranking by time or by grade; none without an RTA")
+	# Reload from disk.
+	var again := RunRecords.new(dir)
+	check(again.list().size() == store.list().size() and again.grades()["B"]["count"] == 3 and again.best_grade("hard", "face") == "A", "the records are read back from their file")
+	# At most 50, but the bests of every route × difficulty survive and only the last 10 keep a replay.
+	var many := RunRecords.new(dir + "-many")
+	for f in DirAccess.get_files_at(dir + "-many") if DirAccess.dir_exists_absolute(dir + "-many") else PackedStringArray():
+		DirAccess.remove_absolute(dir + "-many/" + f)
+	var first := many.add(_rec("portal", "easy", "S", 1200, 600.0, 1), pack)
+	for i in 55:
+		many.add(_rec("car", "easy", "D", 560 + i, 1000.0 + i, 100 + i), pack)
+	check(many.list().size() == 50 and not many.get_record(first).is_empty(), "at most 50 records; the oldest go, but the best of a route survives")
+	var with_replay := 0
+	for x: Dictionary in many.list():
+		with_replay += int(x.get("replay", 0))
+	check(with_replay <= RunRecords.REPLAYS_MAX + 3 and with_replay >= RunRecords.REPLAYS_MAX, "only the recent ten and the bests keep a replay (%d)" % with_replay)
+	check(many.remove(first) and many.get_record(first).is_empty() and not many.remove("nope"), "a record can be deleted")
+	# The log.
+	var log := RunLog.new(CampusData.rooms())
+	log.begin("r1")
+	log.scene = "teach1"
+	log.pos = Vector2(100, 60)
+	log.now_s = 1.0
+	log.tick(0.5, {}, [])
+	log.pos = Vector2(100.5, 60.5)
+	log.now_s = 1.5
+	log.tick(0.5, {}, [])
+	check(log.samples.size() == 1, "a point is kept only when the player moved, turned or changed scene")
+	log.pos = Vector2(130, 60)
+	log.now_s = 2.0
+	log.tick(0.5, {}, [])
+	check(log.samples.size() == 2 and log.samples[1][2] == 65, "moving adds a point (x/2)")
+	log.event("anomaly", "遭遇「雨」")
+	log.scene = "out"
+	log.tick(10.0, {"walk": true, "room": "out", "x": 400.0, "y": 200.0}, ["还活着"])
+	check(log.events.size() == 2 and log.events[1][1] == "achieve" and log.clock.size() == 1 and log.scenes == ["teach1", "out"] and log.pat.size() == 1, "events, the clock every 10 s, a new achievement event, and the patroller's position in the same building")
+	var packed := log.pack()
+	var restored := RunLog.new(CampusData.rooms())
+	restored.restore("r1", packed)
+	check(restored.run == "r1" and restored.samples == log.samples and restored.events == log.events and restored.partial == 0, "the log in progress carries on when the run id matches")
+	var other := RunLog.new(CampusData.rooms())
+	other.restore("r2", packed)
+	check(other.run == "r2" and other.samples.is_empty() and other.partial == 1, "when it does not match it starts again, marked partial")
+	var done := log.finish()
+	check(done["track"] != "" and RunTrack.decode(String(done["track"])).size() == log.samples.size(), "a clear hands over the encoded track")
+
+
 func _test_facility_rules() -> void:
 	var rooms := CampusData.rooms()
 	var fac := FacilitiesModule.new(rooms, CampusData.layout("out"), CampusData.campus())
@@ -3149,7 +3340,7 @@ func _test_routes_rules() -> void:
 	rt.choose(wrong, "easy")
 	var after_wrong := rt.take_events()
 	check(after_wrong[0]["kind"] == "san" and absf(float(after_wrong[0]["amount"]) + 4.0 * 0.82) < 0.001, "a wrong answer costs 4 SAN (×0.82 on 预知梦)")
-	check(after_wrong.back()["kind"] == "choice" and String(after_wrong.back()["text"]).contains(RoutesModule.EXPLANATIONS[order[0]]), "and shows the explanation")
+	check(_of_kind(after_wrong, "choice").size() == 1 and String(_of_kind(after_wrong, "choice")[0]["text"]).contains(RoutesModule.EXPLANATIONS[order[0]]) and _of_kind(after_wrong, "fact_face")[0]["correct"] == false, "and shows the explanation, and the wrong answer is a fact for the ledger")
 	check(rt.face_quiz["order"][0] != order[0] and rt.face_quiz["used"].size() == 4, "the question is swapped for one not asked yet")
 	rt.choose(0, "easy")
 	var again := rt.take_events()
@@ -3538,6 +3729,7 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_marks_app(app)
 	await _test_sensory_app(app)
 	await _test_settings_app(app)
+	await _test_score_app(app)
 	await _test_checkup_app(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
@@ -4279,6 +4471,38 @@ func _test_settings_app(app: GameApp) -> void:
 	app.facilities().flags["coil"] = true
 	app._drop_item("coil")
 	check(not app.items().has("coil") and app.facilities().flags["coil"] == false, "a dropped portal material can be taken again from where it was found")
+	app.return_to_menu()
+	await _frames(2)
+
+
+func _test_score_app(app: GameApp) -> void:
+	app.saves.clear()
+	app.start_new_game()
+	await _frames(4)
+	app.patrol().pat["safety"] = 999.0
+	var sm := app.runscore()
+	check(sm != null and sm.run.begins_with("s") and sm.ledger.is_empty() and app._runlog.run == sm.run, "a new game starts a score ledger and a replay log")
+	await _frames(30)
+	check(app._runlog.samples.size() >= 1 and app._runlog.events.size() >= 0 and sm.min_san <= 100.0, "the log samples the player and the lowest SAN is watched")
+	app.fact({"kind": "anomaly", "phase": "start", "id": "rain"})
+	app.fact({"kind": "anomaly", "phase": "end", "id": "rain", "survived": true, "lethal": true})
+	app.fact({"kind": "face", "correct": true})
+	check(sm.ledger.size() == 2 and sm.ledger[0]["pts"] == 40 and app._runlog.events.any(func(e: Array) -> bool: return e[1] == "anomaly"), "facts become ledger lines and replay events")
+	var before := app.runs().list().size()
+	app._reach_ending("car")
+	await _frames(2)
+	var res := app._last_result
+	check(bool(res.get("rated", false)) and res["route"] == "car" and res["id"] != "" and app.runs().list().size() == before + 1, "a clear is rated and written into the records")
+	check(not app.runs().replay(String(res["id"])).is_empty() and app.runs().replay(String(res["id"]))["track"] != "", "with its replay")
+	check(res["score"]["items"][0]["cat"] == "结局" and int(res["score"]["total"]) >= 300 + 40 + 10, "the score starts with the ending and the ledger")
+	app.return_to_menu()
+	await _frames(2)
+	app.start_new_game("hard")
+	await _frames(3)
+	app.patrol().pat["safety"] = 999.0
+	app.kill("test", "vignette", "patrol")
+	await _frames(2)
+	check(app.runscore().last_death_line().has("total") and app._runlog.run == "", "a death gives one score line and drops the replay log")
 	app.return_to_menu()
 	await _frames(2)
 

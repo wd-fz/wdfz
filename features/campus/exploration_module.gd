@@ -194,7 +194,7 @@ func percent(id: String) -> int:
 	var walk := 0
 	var got := 0
 	for i in b.size():
-		if String(grid[i / cols]).substr(i % cols, 1) != "#":
+		if String(grid[floori(float(i) / float(cols))]).substr(i % cols, 1) != "#":
 			walk += 1
 			got += b[i]
 	return roundi(float(got) / float(walk) * 100.0) if walk > 0 else 0

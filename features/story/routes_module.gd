@@ -321,6 +321,7 @@ func choose(index: int, diff: String) -> void:
 			if index == int(question["answer"]):
 				q["done"] = int(q["done"]) + 1
 				face_open()
+				_emit("fact_face", {"correct": true})
 				return
 			var loss := 0.0 if face_remedy.is_valid() and bool(face_remedy.call()) else FACE_WRONG_SAN * (1.15 if diff == "hard" else 0.82)
 			_emit("san", {"amount": -loss, "min": 0.0})
@@ -329,6 +330,7 @@ func choose(index: int, diff: String) -> void:
 			_swap(q)
 			_pending = {"handler": "face_retry"}
 			_emit("choice", {"text": "验证未通过。耳边猛地响了一下。" + feedback + " 已通过的题目仍然保留。", "labels": ["继续验证", "先离开"]})
+			_emit("fact_face", {"correct": false})
 
 
 # ---- the trash bin (story.js tryTrashRoute) ----
