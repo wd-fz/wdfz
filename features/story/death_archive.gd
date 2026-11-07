@@ -9,6 +9,7 @@ extends RefCounted
 
 ## [id, name, one-line record]; the id is the kill source ("an:<id>" for anomalies).
 const DEATHS := [
+	["window_gaze", "窗户内的视线", "窗里那双眼睛一直没有眨。玻璃上的倒影先转了过来。"],
 	["mirror", "镜子", "镜子里那个人先抬起了手。我还看着它，看了很久。"],
 	["campus_fall", "中国人能飞", "手离开了栏杆。一排排窗框从身边往上掠过，地面的影子迎了上来。"],
 	["laugh", "笑出了声", "灯前看字字如旧。我笑得停不下来，笑了很久。"],

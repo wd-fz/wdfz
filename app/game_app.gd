@@ -69,7 +69,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms())]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms()), WindowGazeModule.new(CampusData.rooms())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -79,6 +79,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func gaze() -> WindowGazeModule:
+	return session.modules.get_module(&"story.window_gaze") as WindowGazeModule if session != null else null
 
 
 func tales() -> TalesModule:
@@ -329,6 +333,9 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 	var radio := candidate.modules.get_module(&"story.broadcast") as BroadcastModule
 	if radio != null:
 		radio.set_seed(int((Time.get_ticks_usec() * 13) % 2147483647))
+	var wg := candidate.modules.get_module(&"story.window_gaze") as WindowGazeModule
+	if wg != null:
+		wg.set_seed(int((Time.get_ticks_usec() * 31) % 2147483647))
 	var dm := candidate.modules.get_module(&"school.days") as DayModule
 	if dm != null:
 		dm.set_seed(int((Time.get_ticks_usec() * 29) % 4294967295))
@@ -511,6 +518,9 @@ func resume_game() -> void:
 
 
 func return_to_menu() -> void:
+	if is_instance_valid(_gaze_nodes):
+		_gaze_nodes.queue_free()
+	_gaze_nodes = null
 	if speedrun.active():
 		var rec_a := _read_speedrun()
 		_speedrun_result(speedrun.fail("abandoned", rec_a), rec_a)
@@ -891,6 +901,9 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	if story().dead or story().over():
 		return
 	_tales_step(delta)
+	if story().dead or story().over():
+		return
+	_gaze_step(delta)
 	_anomaly_step(delta, day_rules, room, pose)
 	_audio_step(delta, watcher, day_rules, room, p)
 	_progress_step(watcher, day_rules, weird_now)
@@ -1454,6 +1467,107 @@ func _facility_travel(e: Dictionary) -> void:
 	else:
 		pose = campus().default_spawn(world)
 	travel(world, pose, false)
+
+
+# ---- the gaze behind a window (features/story/window_gaze_module.gd) ----
+
+var _gaze_nodes: Node3D
+
+
+func _gaze_context() -> Dictionary:
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var weird := anomaly()
+	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "pitch": float(pose["pitch"]), "eye": 1.65,
+		"now": session.clock.active_seconds, "san": school().san, "drain_mul": _drain_mul(), "dead": story().dead,
+		"busy": (weird != null and weird.is_active()) or player.hiding or school().inspection_pending() or school().inspection_upcoming() or (patrol() != null and patrol().local_chase())}
+
+
+func _gaze_step(delta: float) -> void:
+	var g := gaze()
+	if g == null:
+		return
+	g.set_context(_gaze_context())
+	g.tick(delta)
+	_show_gaze(g)
+	_apply_gaze_events()
+
+
+func _show_gaze(g: WindowGazeModule) -> void:
+	var cur := g.current()
+	if cur.is_empty():
+		if is_instance_valid(_gaze_nodes):
+			_gaze_nodes.queue_free()
+		_gaze_nodes = null
+		return
+	var world := _campus_world()
+	if world == null:
+		return
+	var room: Variant = campus().room(session.world_id)
+	var win: Dictionary = cur["w"]
+	var sp := CampusGeometry.to_scene(room, win["p"])
+	var nz := float(win["nz"])
+	if not is_instance_valid(_gaze_nodes):
+		_gaze_nodes = Node3D.new()
+		_gaze_nodes.name = "WindowGaze"
+		var body := MeshInstance3D.new()
+		var cap := CapsuleMesh.new()
+		cap.radius = 0.22
+		cap.height = 1.7
+		body.mesh = cap
+		var dark := StandardMaterial3D.new()
+		dark.albedo_color = Color(0.04, 0.05, 0.06)
+		dark.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		body.material_override = dark
+		body.position = Vector3(0, 0.8, -nz * 0.35)
+		_gaze_nodes.add_child(body)
+		for dx: float in [-0.045, 0.045]:
+			var eye := MeshInstance3D.new()
+			var ball := SphereMesh.new()
+			ball.radius = 0.016
+			ball.height = 0.02
+			eye.mesh = ball
+			var white := StandardMaterial3D.new()
+			white.albedo_color = Color(0.91, 0.89, 0.83)
+			white.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			eye.material_override = white
+			eye.position = Vector3(dx, WindowGazeModule.EYE, nz * 0.16)
+			_gaze_nodes.add_child(eye)
+		world.add_child(_gaze_nodes)
+	_gaze_nodes.position = Vector3(sp.x, 0.0, sp.y)
+
+
+func _apply_gaze_events() -> void:
+	var g := gaze()
+	if g == null:
+		return
+	for e: Dictionary in g.take_events():
+		match e["kind"]:
+			"notice":
+				ui.show_notice(String(e["text"]))
+			"breath":
+				var room: Variant = campus().room(session.world_id)
+				var bp := CampusGeometry.to_scene(room, e["p"])
+				audio.cue_at("static", Vector3(bp.x, 1.6, bp.y), -12.0)
+				ui.show_notice("（窗后 · 呼吸声）")
+			"fact":
+				fact({"kind": "gaze", "what": e["what"]})
+			"pull":
+				var pose := player.capture_pose()
+				var ang := CampusGeometry.ang_from_yaw(float(pose["yaw"])) + float(e["yaw"])
+				pose["yaw"] = CampusGeometry.yaw_from_ang(ang)
+				pose["pitch"] = clampf(float(pose["pitch"]) + float(e["pitch"]), -1.4, 1.4)
+				player.place(pose)
+			"san":
+				school().san = maxf(0.0, school().san + float(e["amount"]))
+			"san_zero":
+				school().san = 0.0
+			"kill":
+				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
+				g.after_kill(story().dead)
+				return
 
 
 # ---- campus tales: the midnight canteen and the late mirror ----

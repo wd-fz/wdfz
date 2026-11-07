@@ -78,6 +78,7 @@ func _run() -> void:
 	_test_day_rules()
 	_test_tales_rules()
 	_test_speedrun_rules()
+	_test_gaze_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -1722,6 +1723,79 @@ func _test_speedrun_rules() -> void:
 	var ach := AchievementsModule.new(25)
 	ach.reset()
 	check(ach.fact({"kind": "speedrun", "status": "finished", "route": "face", "ms": 600000}).has("p.fast") and ach.unlocked.has("e.speedrun"), "a 10-minute finish: 计时 and 赶在铃响前")
+
+
+func _test_gaze_rules() -> void:
+	var rooms := CampusData.rooms()
+	var g := WindowGazeModule.new(rooms)
+	g.reset()
+	g.set_seed(4)
+	check(g.windows("teach1").is_empty(), "the teaching building has no gaze windows")
+	var room_id := ""
+	var win: Dictionary = {}
+	var stand := Vector2.ZERO
+	var look_at := 0.0
+	var ctx: Dictionary = {}
+	for id: String in rooms:
+		for w: Dictionary in g.windows(id):
+			for dist: float in [40.0, 60.0, 90.0]:
+				var st: Vector2 = w["p"] + Vector2(0, float(w["nz"]) * dist)
+				var la := atan2(w["p"].y - st.y, w["p"].x - st.x)
+				var probe := WindowGazeModule.new(rooms)
+				probe.reset()
+				probe.set_seed(1)
+				var c := {"scene": id, "x": st.x, "y": st.y, "ang": la + PI * 0.5, "pitch": 0.0, "eye": 1.65, "now": 300.0, "san": 80.0, "drain_mul": 1.0}
+				probe.set_context(c)
+				probe.tick(0.1)
+				if probe.s["ev"] != null and int(probe.s["ev"]["c"]) == int(w["c"]) and int(probe.s["ev"]["r"]) == int(w["r"]):
+					room_id = id
+					win = w
+					stand = st
+					look_at = la
+					ctx = c
+					break
+			if room_id != "":
+				break
+		if room_id != "":
+			break
+	check(room_id != "", "outer-wall windows exist in the other buildings and can start the gaze")
+	if room_id == "":
+		return
+	ctx["now"] = 100.0
+	g.set_context(ctx)
+	g.tick(0.1)
+	check(g.s["ev"] == null, "not in the first 240 s")
+	g.s["next"] = 240.0
+	ctx["now"] = 300.0
+	g.set_context(ctx)
+	g.tick(0.1)
+	var ev := g.take_events()
+	check(ev.any(func(e: Dictionary) -> bool: return e["kind"] == "breath"), "a breath behind a window first")
+	ctx["ang"] = look_at
+	ctx["pitch"] = atan2(WindowGazeModule.EYE - 1.65, stand.distance_to(win["p"]) * CampusGeometry.U2M)
+	g.set_context(ctx)
+	for _i in 5:
+		g.tick(0.1)
+	ev = g.take_events()
+	check(_notices(ev).has("我：……窗里有一双眼睛。我挪不开眼。"), "looking straight at it for 0.35 s catches the eye")
+	for _i in 10:
+		g.tick(0.1)
+	ev = g.take_events()
+	check(ev.any(func(e: Dictionary) -> bool: return e["kind"] == "pull") and ev.any(func(e: Dictionary) -> bool: return e["kind"] == "san" and e["amount"] < 0.0), "it pulls the view and drains SAN")
+	ctx["pitch"] = -0.8
+	g.set_context(ctx)
+	for _i in 8:
+		g.tick(0.1)
+	ev = g.take_events()
+	check(g.s["ev"] == null and ev.any(func(e: Dictionary) -> bool: return e["kind"] == "fact" and e["what"] == "escape"), "looking down 35° for 0.6 s breaks free")
+	var d := WindowGazeModule.new(rooms)
+	d.reset()
+	d.s["ev"] = {"room": room_id, "c": win["c"], "r": win["r"], "t": 0.0, "contact": 0.0, "pull": 3.0, "away": 0.0, "pulled": true, "escaped": false}
+	ctx["pitch"] = atan2(WindowGazeModule.EYE - 1.65, stand.distance_to(win["p"]) * CampusGeometry.U2M)
+	ctx["san"] = 0.3
+	d.set_context(ctx)
+	d.tick(0.1)
+	check(d.take_events().any(func(e: Dictionary) -> bool: return e["kind"] == "kill" and e["source"] == "window_gaze"), "drained to zero it is the window gaze death")
 
 
 func _test_facility_rules() -> void:
