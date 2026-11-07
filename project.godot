@@ -36,3 +36,6 @@ move_right={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":68)
 sprint={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":4194325)]}
 interact={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":69)]}
 pause={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":4194305)]}
+inventory={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":4194306)]}
+quick_1={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":49)]}
+quick_2={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":50)]}

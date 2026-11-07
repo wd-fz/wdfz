@@ -6,3 +6,5 @@ build/
 .idea/
 .vscode/
 export_credentials.cfg
+__pycache__/
+*.pyc

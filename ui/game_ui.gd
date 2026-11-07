@@ -11,6 +11,9 @@ signal touch_move(value: Vector2)
 signal touch_look(relative: Vector2)
 signal touch_sprint(value: bool)
 signal interact_requested
+signal inventory_requested
+signal inventory_closed
+signal drop_requested(id: String)
 
 @onready var menu: Control = %Menu
 @onready var pause_panel: Control = %PausePanel
@@ -18,6 +21,7 @@ signal interact_requested
 @onready var touch_controls: Control = %TouchControls
 @onready var stick: TouchStick = %MovePad
 @onready var look_pad: TouchLook = %LookPad
+@onready var inventory_panel: InventoryPanel = %InventoryPanel
 
 var _mode := "menu"
 var _touch_enabled := false
@@ -33,6 +37,10 @@ func _ready() -> void:
 	%BackToMenu.pressed.connect(func() -> void: menu_requested.emit())
 	%PauseButton.pressed.connect(func() -> void: pause_requested.emit())
 	%TouchInteract.pressed.connect(func() -> void: interact_requested.emit())
+	%InventoryButton.pressed.connect(func() -> void: inventory_requested.emit())
+	%PauseInventory.pressed.connect(func() -> void: inventory_requested.emit())
+	inventory_panel.close_requested.connect(func() -> void: inventory_closed.emit())
+	inventory_panel.drop_requested.connect(func(id: String) -> void: drop_requested.emit(id))
 	%TouchSprint.toggled.connect(func(value: bool) -> void: touch_sprint.emit(value))
 	stick.moved.connect(func(value: Vector2) -> void: touch_move.emit(value))
 	look_pad.looked.connect(func(value: Vector2) -> void: touch_look.emit(value))
@@ -86,6 +94,9 @@ func set_mode(mode: String) -> void:
 	_mode = mode
 	menu.visible = mode == "menu"
 	pause_panel.visible = mode == "pause"
+	inventory_panel.visible = mode == "inventory"
+	if mode != "inventory":
+		inventory_panel.clear()
 	hud.visible = mode == "play"
 	touch_controls.visible = mode == "play" and _touch_enabled
 	clear_touch()
@@ -105,6 +116,9 @@ func set_save_available(available: bool) -> void:
 
 
 func show_notice(text: String) -> void:
+	if _mode == "inventory":
+		inventory_panel.show_status(text)
+		return
 	%Toast.text = text
 	%Toast.visible = not text.is_empty()
 	_toast_seconds = 6.0
@@ -115,4 +129,9 @@ func show_prompt(text: String) -> void:
 
 
 func show_runtime(seconds: float) -> void:
-	%Runtime.text = "移植测试场景 · 运行 %ds" % int(seconds)
+	%Runtime.text = "Godot 移植版 · 运行 %ds" % int(seconds)
+
+
+func show_objective(text: String) -> void:
+	%Objective.text = text
+	inventory_panel.refresh()

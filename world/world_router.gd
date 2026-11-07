@@ -6,6 +6,10 @@ var current: WorldDefinition
 var _instance: Node3D
 
 
+func world_instance() -> Node3D:
+	return _instance
+
+
 func known_ids() -> PackedStringArray:
 	var result := PackedStringArray()
 	for definition: WorldDefinition in worlds:

@@ -2,6 +2,7 @@ class_name PlayerController
 extends CharacterBody3D
 
 signal interaction_requested(id: StringName)
+signal interaction_rejected(reason: String)
 signal focus_changed(prompt: String)
 
 @export var walk_speed := 4.0
@@ -67,6 +68,10 @@ func request_interaction() -> void:
 		return
 	_update_focus() # Never use a target cached before a teleport/pause.
 	if is_instance_valid(_focus) and not _focus.interaction_id.is_empty():
+		var reason := _focus.blocked_reason(self)
+		if not reason.is_empty():
+			interaction_rejected.emit(reason)
+			return
 		interaction_requested.emit(_focus.interaction_id)
 
 

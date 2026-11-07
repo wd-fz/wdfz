@@ -15,6 +15,10 @@ func state_version() -> int:
 	return 1
 
 
+func validate_snapshot(_module_snapshots: Dictionary) -> String:
+	return ""
+
+
 func interaction_ids() -> PackedStringArray:
 	return PackedStringArray()
 

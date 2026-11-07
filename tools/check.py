@@ -61,5 +61,9 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (OSError, subprocess.TimeoutExpired) as error:
+    except subprocess.TimeoutExpired as error:
+        if error.stdout:
+            print(error.stdout.decode(errors="replace") if isinstance(error.stdout, bytes) else error.stdout)
+        sys.exit(str(error))
+    except OSError as error:
         sys.exit(str(error))
