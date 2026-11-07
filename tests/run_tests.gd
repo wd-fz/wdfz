@@ -112,6 +112,7 @@ func _run() -> void:
 	_test_opening()
 	_test_ending_cut()
 	_test_day_banner()
+	_test_chalk_notes()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -3187,6 +3188,27 @@ func _test_records_panel() -> void:
 	check(panel.open_view(a, true) and panel._map.trails[0]["pts"].size() == 4 and not panel._map.here, "the footprint map shows the whole path, no marker")
 	check(not panel.open_view("nope", true), "a missing replay does not open")
 	panel.queue_free()
+
+
+func _test_chalk_notes() -> void:
+	var room: Dictionary = CampusData.rooms()["teach1"]
+	var w := Vector2(float(room["ox"]) + 48.5 * float(room["tw"]), float(room["oy"]) + 11.5 * float(room["th"]))
+	var west := ChalkNotes.spot(room, w, Vector2(-1, 0))
+	check(String(west["kind"]) == "wall" and int(west["nx"]) == -1 and int(west["d"]) <= 6, "the forecast finds the wall ahead (the front wall with the board)")
+	check(String(ChalkNotes.spot(room, w, Vector2(0, 1))["kind"]) == "wall" and String(ChalkNotes.spot({}, w, Vector2(1, 0))["kind"]) == "floor", "a wall within six tiles, else the floor")
+	check(is_equal_approx(ChalkNotes.skip_interval(12.0), 5.024) and ChalkNotes.skip_interval(100.0) == 1.0, "truancy writing comes faster with violation, at most once a second")
+	check(ChalkNotes.skip_active(true, 12.0, false) and not ChalkNotes.skip_active(true, 10.0, false) and ChalkNotes.skip_active(true, 10.0, true) and not ChalkNotes.skip_active(true, 7.0, true) and not ChalkNotes.skip_active(false, 50.0, true), "truancy writing starts at 12, stays above 8, needs a wrong place")
+	var cn := ChalkNotes.new()
+	root.add_child(cn)
+	check(cn.update_forecast(true, "10:15", room, w, Vector2(-1, 0), Vector3.ZERO, 0.1) and cn.forecast_text() == "10:15", "the forecast is written")
+	cn.update_forecast(false, "", room, w, Vector2(-1, 0), Vector3.ZERO, 0.1)
+	check(not cn.has_forecast(), "and wiped when no anomaly is coming")
+	for i in 40:
+		cn.update_skip(10.0, true, 60.0, room, Vector3(0, 0, 0))
+	check(cn.skip_count() > 0 and cn.skip_count() <= ChalkNotes.MAX_SKIP, "the truancy writing is capped at 28")
+	cn.update_skip(0.1, false, 0.0, room, Vector3.ZERO)
+	check(cn.skip_count() == 0, "and wiped when the violation falls")
+	cn.queue_free()
 
 
 func _test_day_banner() -> void:

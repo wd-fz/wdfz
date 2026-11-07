@@ -4260,13 +4260,39 @@ func _anomaly_context(room: Variant, pose: Dictionary) -> Dictionary:
 		"in_lift": session.world_id in ElevatorModule.RIDE_ROOMS, "can_stand": _can_stand.bind(room, float(p[1])), "drain_mul": _drain_mul()}
 
 
+## The chalk writing (world/campus/chalk_notes.gd): the forecast of the next anomaly and the truancy warnings.
+var _skip_on := false
+
+
+func _chalk_step(delta: float, weird: AnomalyModule, day_rules: SchoolModule, room: Variant, pose: Dictionary) -> bool:
+	var world := _campus_world()
+	if world == null or world.chalk == null:
+		return false
+	var p: Array = pose["position"]
+	var yaw := float(pose["yaw"])
+	var rd: Dictionary = room if room is Dictionary else {}
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var fwd := Vector2(-sin(yaw), -cos(yaw))
+	var here := Vector3(float(p[0]), float(p[1]), float(p[2]))
+	var playing := not story().dead and not get_tree().paused and not opening_busy()
+	var shown := false
+	if playing and weird.warning_visible():
+		var text := SchoolClock.fmt_clock(roundf(day_rules.tsec + float(weird.an["next"]) * SchoolClock.rate_at(day_rules.tsec) / 60.0))
+		shown = world.chalk.update_forecast(true, text, rd, w, fwd, here, delta)
+	else:
+		world.chalk.clear_forecast()
+	_skip_on = ChalkNotes.skip_active(day_rules.wrong, day_rules.viol, _skip_on) and playing and not day_rules.inspection_active()
+	world.chalk.update_skip(delta, _skip_on, day_rules.viol, rd, here)
+	return shown
+
+
 func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: Dictionary) -> void:
 	var weird := anomaly()
 	if weird == null:
 		return
 	var ctx := _anomaly_context(room, pose)
 	weird.set_context(ctx)
-	weird.warning_seen(false)
+	weird.warning_seen(_chalk_step(delta, weird, day_rules, room, pose))
 	weird.tick(delta)
 	for e: Dictionary in weird.take_events():
 		match e["kind"]:
