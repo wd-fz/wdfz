@@ -12,7 +12,7 @@ const STATE_VERSION := 1
 const SEARCH_SECONDS := 0.8
 const SEARCH_REACH := 5.0
 const ITEM_READ := ["card", "notebook", "hw", "usb", "key", "roomkey", "metronome", "goggles", "coat", "battery", "chalk", "pen"]
-const NOT_PORTED := ["phone", "brolly"]
+const NOT_PORTED := ["brolly"]
 const EMPTY_LINES := ["我：空的。只有一层灰。", "我：空的。抽屉底下用圆珠笔写着一个名字，被涂黑了。", "我：空的。最里面有一小撮头发。"]
 
 var _rooms: Dictionary = {}
@@ -205,6 +205,8 @@ func use(id: String, tsec: float) -> Dictionary:
 			return {"car_key": true}
 		"leave":
 			return {"leave": true}
+		"phone":
+			return {"phone": true}
 		"compass", "atlas", "map", "memo", "coil", "lens", "vial":
 			return {"facility_item": id}
 		"coin":

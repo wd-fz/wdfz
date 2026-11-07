@@ -39,6 +39,8 @@ func _ready() -> void:
 	ui.new_hard_requested.connect(start_new_game.bind("hard"))
 	ui.achievements_requested.connect(_show_achievements)
 	ui.archive_requested.connect(_show_archive)
+	ui.terminal_command.connect(_terminal_command)
+	ui.terminal_closed.connect(_terminal_closed)
 	ui.sound_toggled.connect(func(on: bool) -> void: audio.muted = not on)
 	ui.death_menu_requested.connect(return_to_menu)
 	ui.load_requested.connect(load_game)
@@ -64,7 +66,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav())]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new()]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -74,6 +76,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func phone() -> PhoneModule:
+	return session.modules.get_module(&"phone.network") as PhoneModule if session != null else null
 
 
 func broadcast() -> BroadcastModule:
@@ -196,6 +202,9 @@ func start_new_game(difficulty: String = "easy") -> void:
 	var radio := candidate.modules.get_module(&"story.broadcast") as BroadcastModule
 	if radio != null:
 		radio.set_seed(int((Time.get_ticks_usec() * 13) % 2147483647))
+	var net := candidate.modules.get_module(&"phone.network") as PhoneModule
+	if net != null:
+		net.set_seed(int((Time.get_ticks_usec() * 17) % 2147483647))
 	var rules := candidate.modules.get_module(&"campus.world") as CampusModule
 	var pose := rules.start_pose() if rules != null and initial_world == rules.start_world() else router.current.spawn_pose()
 	# Game.start: the run begins seated on the player's own seat in teach1.
@@ -346,6 +355,7 @@ func resume_game() -> void:
 
 func return_to_menu() -> void:
 	_leave_drive()
+	ui.hide_terminal()
 	_mic_open = false
 	_radio_job = null
 	if is_instance_valid(_crowd_nodes):
@@ -520,6 +530,18 @@ func _apply_result(result: Dictionary) -> void:
 		routes().use_gate(String(result["gate"]), school().day)
 		_apply_route_events(routes())
 		return
+	if result.has("facility") and phone() != null and session.world_id == "lab3" and String(result["facility"][0]) in ["n", "K"]:
+		var lab: Dictionary = campus().room("lab3")
+		var tile := CampusGeometry.tile_center(lab, int(result["facility"][1]), int(result["facility"][2]))
+		phone().set_context(_phone_context())
+		phone().computer_menu(tile.x, tile.y)
+		_apply_phone_events()
+		return
+	if result.has("phone") and phone() != null:
+		phone().set_context(_phone_context())
+		phone().phone_menu()
+		_apply_phone_events()
+		return
 	if result.has("facility") and facilities() != null:
 		var fac := facilities()
 		fac.set_context(_facility_context())
@@ -647,6 +669,9 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 		return
 	_facility_step()
 	_broadcast_step(delta)
+	if story().dead or story().over():
+		return
+	_phone_step(delta)
 	if story().dead or story().over():
 		return
 	_anomaly_step(delta, day_rules, room, pose)
@@ -910,6 +935,9 @@ func _finish_death() -> void:
 	if fate.wake_pending:
 		var left := fate.finish_wake()
 		fact({"kind": "wake"})
+		if phone() != null:
+			phone().dream()
+		ui.hide_terminal()
 		if garage() != null:
 			garage().cancel_chase()
 		_leave_drive()
@@ -1189,6 +1217,113 @@ func _facility_travel(e: Dictionary) -> void:
 	else:
 		pose = campus().default_spawn(world)
 	travel(world, pose, false)
+
+
+# ---- the phone, the network and 《网安仙人》 (features/phone) ----
+
+func _phone_context() -> Dictionary:
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var own: Dictionary = CampusData.campus().get("own_seat", {})
+	var classroom := session.world_id == String(own.get("room", "")) and school().in_classroom_here(session.world_id, w)
+	return {"held": items() != null and items().has("phone"), "classroom": classroom, "scene": session.world_id, "x": w.x, "y": w.y, "dead": story().dead}
+
+
+func _phone_step(delta: float) -> void:
+	var net := phone()
+	if net == null:
+		return
+	net.set_context(_phone_context())
+	net.tick(delta)
+	if ui.terminal_open():
+		if not net.terminal_open or Input.is_action_just_pressed("pause"):
+			_terminal_closed()
+		else:
+			_paint_terminal()
+	_apply_phone_events()
+
+
+func _paint_terminal() -> void:
+	var net := phone()
+	ui.show_terminal("\n".join(PackedStringArray(net.puzzle["history"])), net.status_text())
+
+
+func _terminal_command(line: String) -> void:
+	var net := phone()
+	if net == null:
+		return
+	net.set_context(_phone_context())
+	net.run_line(line)
+	_paint_terminal()
+	_apply_phone_events()
+
+
+func _terminal_closed() -> void:
+	ui.hide_terminal()
+	if phone() != null:
+		phone().terminal_open = false
+	if session != null and not story().over() and not story().dead:
+		player.enabled = true
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if not ui.touch_enabled() else Input.MOUSE_MODE_VISIBLE
+
+
+func _apply_phone_events() -> void:
+	var net := phone()
+	if net == null:
+		return
+	for e: Dictionary in net.take_events():
+		match e["kind"]:
+			"toast", "notice":
+				ui.show_notice(String(e["text"]))
+			"save":
+				if not story().dead:
+					save_game()
+			"reveal":
+				if patrol() != null:
+					patrol().set_context(_patrol_context(campus().room(session.world_id), player.capture_pose()))
+					patrol().reveal_wireless()
+			"location":
+				ui.show_notice("巡察查询：" + (patrol().location_label() if patrol() != null and bool(net.device["network"]) else "尚未接入学校网络"))
+			"sync":
+				if routes() != null:
+					routes().sync("phone")
+					_apply_route_events(routes())
+			"rest_pc":
+				if facilities() != null:
+					facilities().set_context(_facility_context())
+					facilities().rest("pc")
+					_apply_facility_events()
+			"terminal":
+				player.enabled = false
+				player.clear_input()
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				_paint_terminal()
+			"choice":
+				_choice_count += 1
+				var mine := _choice_count
+				var menu := String(e["menu"])
+				var cx := float(e.get("x", 0.0))
+				var cy := float(e.get("y", 0.0))
+				_choice_handler = func(index: int) -> void:
+					var n := phone()
+					if n == null or mine != _choice_count:
+						return
+					n.set_context(_phone_context())
+					if menu == "phone":
+						n.phone_choose(index)
+					else:
+						n.computer_choose(index, cx, cy)
+					_apply_phone_events()
+				player.enabled = false
+				player.clear_input()
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				ui.show_choice(String(e["text"]), e["labels"])
+			"ending":
+				ui.hide_terminal()
+				_reach_ending(String(e["id"]))
+				return
 
 
 # ---- the broadcast station and 《放学》 (features/story/broadcast_module.gd) ----

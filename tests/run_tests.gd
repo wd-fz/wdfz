@@ -70,6 +70,7 @@ func _run() -> void:
 	_test_garage_rules()
 	_test_facility_rules()
 	_test_broadcast_rules()
+	_test_phone_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -1186,6 +1187,89 @@ func _test_broadcast_rules() -> void:
 	check(bool(back.b["book"]) and bool(back.b["fuse"]) and back.seed_value == 42, "and restores")
 
 
+## The commands that solve the terminal for this puzzle (the intended reading of the files).
+func _solve_lines(puzzle: Dictionary) -> Array:
+	var a: Dictionary = CampusTerminal.make(String(puzzle["runSeed"]), int(puzzle["attemptId"]))["answer"]
+	var body := "controller=%s\\ntransaction=%s\\ntoken=%s\\nclock=active\\nstop %s\\nstop %s\\nstop %s" % [a["controller"], a["tx"], a["token"], a["order"][0], a["order"][1], a["order"][2]]
+	return ["campusctl select %s /school/assets.tsv" % a["controller"], "campusctl trace %s /school/runtime.log" % a["tx"],
+		"edit /work/shutdown \"%s\"" % body, "campusctl validate /work/shutdown", "campusctl shutdown --confirm"]
+
+
+func _test_phone_rules() -> void:
+	# Energy.
+	var d := PhoneEnergy.fresh()
+	d["initialized"] = true
+	check(absf(PhoneEnergy.rate(d, {"held": true}) + 1.0 / 6.0) < 1e-9 and absf(PhoneEnergy.rate(d, {"held": true, "classroom": true}) - 1.0 / 3.0) < 1e-9, "the phone drains 1/6 % a second and charges in the classroom")
+	d["wireless"] = {"status": "running", "elapsed": 0.0, "target": 200.0}
+	var ev := PhoneEnergy.advance(d, 31.0, {"held": true})
+	check(ev.count("wirelessSignal") == 2 and absf(float(d["battery"]) - (100.0 - 31.0 / 3.0)) < 1e-6, "cracking drains twice as fast and signals every 15 s")
+	ev = PhoneEnergy.advance(d, 200.0, {"held": true, "classroom": true})
+	check(ev.has("connected") and bool(d["network"]) and d["download"]["status"] == "running", "a cracked network starts the container download")
+	ev = PhoneEnergy.advance(d, 60.0, {"held": true, "classroom": true})
+	check(ev.has("downloaded") and d["download"]["status"] == "complete", "the container takes 60 s")
+	var flat := PhoneEnergy.fresh()
+	flat["initialized"] = true
+	flat["battery"] = 1.0
+	ev = PhoneEnergy.advance(flat, 10.0, {"held": true})
+	check(ev.has("off") and not bool(flat["powered"]) and ev.has("low5") and ev.has("low20"), "an empty battery switches the phone off with the warnings")
+	ev = PhoneEnergy.advance(flat, 20.0, {"held": true, "classroom": true})
+	check(ev.has("on") and bool(flat["powered"]), "charging back to 5 % switches it on")
+	# The terminal.
+	var t := CampusTerminal.fresh("abc", 1)
+	check(CampusTerminal.make("abc", 1)["answer"] == CampusTerminal.make("abc", 1)["answer"] and CampusTerminal.make("abc", 1)["answer"] != CampusTerminal.make("abc", 2)["answer"], "the puzzle depends on the seed and the attempt")
+	check(CampusTerminal.run(t, "cat /school/site.txt")["text"].begins_with("试点区域=Z"), "cat reads the school files")
+	check(CampusTerminal.run(t, "cat /school/assets.tsv | grep controller | head -n 2")["text"].split("\n").size() == 2, "pipes work")
+	check(CampusTerminal.run(t, "rm -rf /")["error"] and CampusTerminal.run(t, "cat x > y")["error"], "unknown commands and redirection are refused")
+	check(CampusTerminal.run(t, "edit /school/x \"a\"")["text"].contains("只允许写 /work/"), "only /work is writable")
+	check(CampusTerminal.run(t, "campusctl shutdown --confirm")["text"].contains("先通过 T1—T3"), "no shutdown before the checks")
+	check(CampusTerminal.run(t, "campusctl select ctl-decoy /school/assets.tsv")["error"], "the decoy controller is refused")
+	var out: Dictionary = {}
+	for line: String in _solve_lines(t):
+		out = CampusTerminal.run(t, line)
+	check(out.get("request") == "shutdown" and t["validated"] != null, "reading the files right solves T1–T4")
+	# The phone module.
+	var net := PhoneModule.new()
+	net.reset()
+	net.set_seed(5)
+	var held := {"held": true, "scene": "teach1", "x": 0.0, "y": 0.0, "dead": false, "classroom": false}
+	net.set_context(held)
+	net.phone_menu()
+	check(net.take_events()[0]["labels"][0] == "无线接入 · 开始破解", "the phone shows its apps")
+	net.phone_choose(0)
+	check(net.device["wireless"]["status"] == "running" and float(net.device["wireless"]["target"]) >= 180.0 and float(net.device["wireless"]["target"]) <= 600.0, "cracking takes 180–600 s")
+	net.tick(15.0)
+	check(net.take_events().any(func(e: Dictionary) -> bool: return e["kind"] == "reveal"), "every 15 s it gives the position away")
+	net.set_context({"held": true, "scene": "lab3", "x": 500.0, "y": 500.0, "dead": false})
+	net.computer_choose(2, 500.0, 500.0)
+	check(not net.terminal_open and net.take_events().any(func(e: Dictionary) -> bool: return e["kind"] == "toast" and String(e["text"]).begins_with("需要手机有电")), "the terminal needs the network and the container")
+	net.device["network"] = true
+	net.device["wireless"]["status"] = "complete"
+	net.device["download"] = {"status": "complete", "elapsed": 60.0, "target": 60.0}
+	check(net.open_terminal(500.0, 500.0) and net.connected_computer(), "with them the computer opens the terminal")
+	for line: String in _solve_lines(net.puzzle):
+		net.run_line(line)
+	check(net.termination["status"] == "accepted" and float(net.termination["remaining"]) == 600.0, "the shutdown is accepted: survive ten minutes")
+	net.set_context({"held": true, "scene": "lab3", "x": 540.0, "y": 500.0, "dead": false})
+	net.tick(1.0)
+	check(not net.connected_computer() and not net.terminal_open, "walking away from the computer disconnects it")
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(net.capture()))
+	var back := PhoneModule.new()
+	back.reset()
+	check(back.validate(saved).is_empty(), "the phone state survives JSON")
+	back.restore(saved)
+	check(back.termination["status"] == "accepted" and absf(float(back.termination["remaining"]) - 599.0) < 0.01, "the accepted shutdown keeps its countdown")
+	saved["termination"]["requestId"] = "forged"
+	check(not back.validate(saved).is_empty(), "a forged request is refused")
+	net.tick(600.0)
+	check(net.take_events().any(func(e: Dictionary) -> bool: return e["kind"] == "ending" and e["id"] == "cyber"), "ten minutes alive is 《网安仙人》")
+	var dream := PhoneModule.new()
+	dream.reset()
+	dream.set_seed(9)
+	var first: Dictionary = CampusTerminal.make(dream.run_seed, 1)["answer"]
+	dream.dream()
+	check(dream.attempt_id == 2 and CampusTerminal.make(dream.run_seed, dream.attempt_id)["answer"] != first and dream.termination["status"] == "idle", "a dream wake is a new attempt with a new puzzle")
+
+
 func _test_facility_rules() -> void:
 	var rooms := CampusData.rooms()
 	var fac := FacilitiesModule.new(rooms, CampusData.layout("out"), CampusData.campus())
@@ -1782,6 +1866,7 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_car_route(app)
 	await _test_portal_route(app)
 	await _test_dismissal_route(app)
+	await _test_cyber_route(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
 
@@ -2205,6 +2290,44 @@ func _test_dismissal_route(app: GameApp) -> void:
 			break
 	check(won and app.story().ended == "dismissal" and app.ui.ending_panel.visible, "following the crowd out of the north gate is 《放学》")
 	check(app.achievements().unlocked.has("e.end_dismissal"), "with its achievement")
+	app.return_to_menu()
+	DirAccess.remove_absolute(app._profile_path())
+
+
+## 《网安仙人》 through the app: the lab3 computer, the terminal typed into, ten minutes, the card.
+func _test_cyber_route(app: GameApp) -> void:
+	app.saves.clear()
+	app.start_new_game()
+	await _frames(3)
+	app._stand_up()
+	app.patrol().pat["safety"] = 999.0
+	app.items().add("phone")
+	var net := app.phone()
+	net.set_context(app._phone_context())
+	net.acquire()
+	net.device["network"] = true
+	net.device["wireless"] = {"status": "complete", "elapsed": 200.0, "target": 200.0}
+	net.device["download"] = {"status": "complete", "elapsed": 60.0, "target": 60.0}
+	check(await _face_tile(app, "lab3", "n", "facility"), "a lab3 computer can be reached")
+	app._campus_interact()
+	await _frames(2)
+	check(app.ui.choice_open(), "E at the computer opens its menu")
+	app._choice_made(2)
+	await _frames(2)
+	check(app.ui.terminal_open() and not app.player.enabled, "the terminal opens and takes the keyboard")
+	for line: String in _solve_lines(net.puzzle):
+		app.ui.terminal_command.emit(line)
+		await _frames(1)
+	check(net.termination["status"] == "accepted", "typing the solution submits the shutdown")
+	app.ui.terminal_closed.emit()
+	await _frames(1)
+	check(not app.ui.terminal_open() and app.player.enabled, "closing the terminal gives the player back")
+	app._phone_step(599.0)
+	check(app.story().ended == "", "not before ten minutes")
+	app._phone_step(2.0)
+	await _frames(2)
+	check(app.story().ended == "cyber" and app.ui.ending_panel.visible, "surviving ten minutes is 《网安仙人》")
+	check(app.achievements().unlocked.has("e.end_cyber"), "with its achievement")
 	app.return_to_menu()
 	DirAccess.remove_absolute(app._profile_path())
 

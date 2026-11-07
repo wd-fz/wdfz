@@ -20,6 +20,8 @@ signal item_use_requested(id: String)
 signal item_hot_requested(index: int, id: String)
 signal achievements_requested
 signal archive_requested
+signal terminal_command(line: String)
+signal terminal_closed
 signal sound_toggled(on: bool)
 
 @onready var menu: Control = %Menu
@@ -494,6 +496,81 @@ func show_list(head: String, rows: Array) -> void:
 	ach_panel.visible = true
 
 
+## The lab3 maintenance terminal (TerminalUI): output, a command line, help / hint buttons, exit.
+var terminal_panel: PanelContainer
+var _term_out: RichTextLabel
+var _term_status: Label
+var _term_line: LineEdit
+
+
+func show_terminal(history: String, status: String) -> void:
+	if terminal_panel == null:
+		terminal_panel = PanelContainer.new()
+		terminal_panel.name = "TerminalPanel"
+		terminal_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		terminal_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		terminal_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+		terminal_panel.custom_minimum_size = Vector2(680, 0)
+		var back := StyleBoxFlat.new()
+		back.bg_color = Color(0.01, 0.03, 0.02, 0.97)
+		back.set_content_margin_all(12)
+		terminal_panel.add_theme_stylebox_override("panel", back)
+		var box := VBoxContainer.new()
+		var head := Label.new()
+		head.text = "机房 · 模拟 Linux 终端　（世界仍在运行。留意脚步与灯光；Esc 退出）"
+		box.add_child(head)
+		_term_status = Label.new()
+		_term_status.modulate = Color(0.6, 0.95, 0.7)
+		box.add_child(_term_status)
+		_term_out = RichTextLabel.new()
+		_term_out.custom_minimum_size = Vector2(650, 320)
+		_term_out.scroll_following = true
+		_term_out.selection_enabled = true
+		_term_out.add_theme_color_override("default_color", Color(0.75, 1.0, 0.8))
+		box.add_child(_term_out)
+		var row := HBoxContainer.new()
+		_term_line = LineEdit.new()
+		_term_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_term_line.placeholder_text = "help"
+		_term_line.max_length = 4096
+		_term_line.text_submitted.connect(func(t: String) -> void:
+			terminal_command.emit(t)
+			_term_line.text = ""
+			_term_line.grab_focus())
+		row.add_child(_term_line)
+		for pair: Array in [["执行", ""], ["帮助", "help"], ["线索位置", "campusctl hint 1"], ["关联方法", "campusctl hint 2"], ["退出", "__exit"]]:
+			var b := Button.new()
+			b.text = pair[0]
+			var cmd: String = pair[1]
+			b.pressed.connect(func() -> void:
+				if cmd == "__exit":
+					hide_terminal()
+					terminal_closed.emit()
+				elif cmd == "":
+					terminal_command.emit(_term_line.text)
+					_term_line.text = ""
+				else:
+					terminal_command.emit(cmd))
+			row.add_child(b)
+		box.add_child(row)
+		terminal_panel.add_child(box)
+		$Root.add_child(terminal_panel)
+	_term_out.text = history
+	_term_status.text = status
+	if not terminal_panel.visible:
+		terminal_panel.visible = true
+		_term_line.grab_focus()
+
+
+func hide_terminal() -> void:
+	if terminal_panel != null:
+		terminal_panel.visible = false
+
+
+func terminal_open() -> bool:
+	return terminal_panel != null and terminal_panel.visible
+
+
 ## Ending card (story.js showEndingCard): tag, title, lines, day/time, back to the menu.
 var ending_panel: PanelContainer
 var _ending_text: Label
@@ -637,6 +714,8 @@ func set_mode(mode: String) -> void:
 	_mode = mode
 	if ach_panel != null:
 		ach_panel.visible = false
+	if mode != "play":
+		hide_terminal()
 	menu.visible = mode == "menu"
 	pause_panel.visible = mode == "pause"
 	hud.visible = mode == "play"

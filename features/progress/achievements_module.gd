@@ -26,6 +26,9 @@ const LIST := {
 	"n.inspection": ["n", "按时到场", "黑影围成一圈，又散开。它们没有记下我。"],
 	"n.wake": ["n", "梦里记得", "我猛地抬起头，后背全是汗。"],
 	"n.saved": ["n", "被替了一次", "刚才那一下，像是有人替我挨了。"],
+	"e.end_cyber": ["e", "《网安仙人》", "机柜一架架熄灭。天亮了。"],
+	"p.routes": ["p", "四条路", "我从这所学校出去过很多次，每一次走的路都不一样。"],
+	"p.five_routes": ["p", "五条路", "最后一次，学校以为我只是放学回家。"],
 	"n.broadcast": ["n", "核对", "记录本里没有刚才那一条。喇叭里还在啸叫。"],
 	"e.end_dismissal": ["e", "《放学》", "长铃还在响。我和同学一起走出了北门。"],
 	"n.rest": ["n", "喘口气", "有那么一会儿，我忘了自己在哪儿。"],
@@ -192,11 +195,16 @@ func fact(f: Dictionary) -> Array[String]:
 					sets["anomalies"][String(f["id"])] = true
 			elif bool(f.get("survived", false)) and bool(f.get("lethal", false)) and started == String(f["id"]):
 				sets["lethal"][String(f["id"])] = true
-	for id: String in LIST:
-		if not unlocked.has(id) and _test(id, f):
-			unlocked[id] = true
-			got.append(id)
-			events.append({"kind": "unlock", "id": id, "name": LIST[id][1]})
+	# Entries that look at other entries (four routes, five routes) see this fact's unlocks too.
+	var again := true
+	while again:
+		again = false
+		for id: String in LIST:
+			if not unlocked.has(id) and _test(id, f):
+				unlocked[id] = true
+				got.append(id)
+				events.append({"kind": "unlock", "id": id, "name": LIST[id][1]})
+				again = true
 	return got
 
 
@@ -231,6 +239,12 @@ func _test(id: String, f: Dictionary) -> bool:
 			return kind == "broadcast" and f.get("what") == "verified" and f.get("real", true) == false
 		"e.end_dismissal":
 			return kind == "ending" and f["id"] == "dismissal"
+		"e.end_cyber":
+			return kind == "ending" and f["id"] == "cyber"
+		"p.routes":
+			return ["car", "face", "portal", "cyber"].all(func(e: String) -> bool: return unlocked.has("e.end_" + e))
+		"p.five_routes":
+			return PUBLIC_ENDS.all(func(e: String) -> bool: return unlocked.has("e.end_" + e))
 		"e.rest8":
 			return kind == "rest" and sets["rest"].size() >= FacilitiesModule.SAN_ACTS.size()
 		"n.bell":

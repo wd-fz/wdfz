@@ -200,9 +200,21 @@ func use_data(scene: String) -> void:
 	if data_synced:
 		_emit("toast", {"text": "白名单数据已经同步"})
 		return
+	sync("terminal")
+
+
+## WhitelistSync.commit (the admin3 machine or the phone).
+func sync(source: String) -> bool:
+	if not hacked:
+		_say("我：得先在实验楼三楼的网络中心写入白名单。")
+		return false
+	if data_synced:
+		_emit("toast", {"text": "白名单数据已经同步"})
+		return true
 	data_synced = true
-	data_source = "terminal"
+	data_source = source
 	_say("我：同步完成。照片底下写着：已登记。西小门现在认得我了。")
+	return true
 
 
 # ---- the gates ----
