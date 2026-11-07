@@ -84,6 +84,7 @@ func _run() -> void:
 	_test_marks_rules()
 	_test_classmates_rules()
 	_test_sensory_rules()
+	_test_caption_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -2095,6 +2096,23 @@ func _test_sensory_rules() -> void:
 	check(SensoryRules.blink_at(plan, 0.01) == 1.0 and SensoryRules.blink_at(plan, SensoryRules.blink_end(plan) + 0.1) == 0.0, "a blink goes black and comes back")
 
 
+func _test_caption_rules() -> void:
+	var c := SoundCaptions.new()
+	var e := c.publish("dread.knock", {"place": {"pan": -0.6, "muffled": true}})
+	check(e["text"] == "左 · 隔着墙 · 轻轻的敲门声", "a caption says where: left, through a wall")
+	check(c.publish("music.box", {}).is_empty() and c.publish("step.tile", {"self_step": true}).is_empty(), "uncaptioned sounds and your own steps say nothing")
+	check(String(c.publish("step.tile", {"patrol": true, "place": {"behind": true, "m": 3.0}})["text"]) == "后方 · 近处 · 脚步声", "the patroller's steps: behind, near")
+	c.publish("threat.heartLow", {})
+	check(c.publish("threat.heartLow", {}).is_empty(), "the heart is captioned at most once in 20 s")
+	check(c.publish("dread.door", {}, true).is_empty() and not c.publish("event.bellEnd", {}, true).is_empty(), "with the phone or a lesson open only urgent captions get through")
+	check(c.visible().size() == 2 and int(c.visible()[0]["priority"]) == 3, "two lines at most, the urgent one first")
+	for _i in 30:
+		c.tick(0.25)
+	check(c.visible().is_empty(), "captions expire (the clock steps at most 0.25 s a frame)")
+	c.mode = 0
+	check(not c.enabled(0.7, false) and c.enabled(0.03, false) and c.enabled(0.7, true), "auto mode captions only when the sound is off or nearly")
+
+
 func _test_facility_rules() -> void:
 	var rooms := CampusData.rooms()
 	var fac := FacilitiesModule.new(rooms, CampusData.layout("out"), CampusData.campus())
@@ -2774,6 +2792,10 @@ func _test_audio(app: GameApp) -> void:
 	weird.events.append({"kind": "smile", "mode": "jump"})
 	app._anomaly_step(0.0, app.school(), CampusData.layout("teach1"), app.player.capture_pose())
 	check(fx.played.has("threat.smileJump"), "the smile in your face screams at the ear")
+	fx.update(0.1, base)
+	fx.play("event.bellEnd")
+	await _frames(3)
+	check(app.ui.captions_text().contains("下课铃"), "the HUD shows the caption under the status card")
 	app.audio.muted = true
 	check(AudioServer.is_bus_mute(AudioServer.get_bus_index("Master")), "mute silences the master bus")
 	app.audio.muted = false

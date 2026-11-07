@@ -1393,7 +1393,8 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 		"san": day_rules.san, "viol": day_rules.viol, "anomaly": an_id, "shelter": false, "moving": player.moving, "running": player.sprinting,
 		"hiding": player.hiding, "body": maxf(0.0, _sense_body), "bpm": float(_sense_view.get("bpm", 0.0)),
 		"chase": watcher != null and bool(watcher.pat["locked"]), "threat": watcher != null and watcher.local_threat(),
-		"patrol_pos": patrol_pos, "patrol_behind": behind, "big": big, "blackout": weird != null and weird.blackout_now(), "moth_near": 0.5 if an_id == "moth" else 0.0})
+		"patrol_pos": patrol_pos, "patrol_behind": behind, "big": big, "blackout": weird != null and weird.blackout_now(), "moth_near": 0.5 if an_id == "moth" else 0.0, "busy": ui.terminal_open() or (days() != null and days().waiting != null)})
+	ui.show_captions(audio.captions.lines() if audio.captions.enabled(audio.volume, audio.muted) else PackedStringArray())
 	# fx/weather.js: in the rain a bolt every 6–14 s, the screen whitens twice and the thunder comes late.
 	if an_id in ["rain", "raindots"]:
 		_bolt_next -= delta

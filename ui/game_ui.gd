@@ -172,6 +172,22 @@ func _build_choice() -> void:
 	hud.add_child(lift_close_button)
 
 
+var _captions: Label
+
+
+func show_captions(lines: PackedStringArray) -> void:
+	if _captions == null:
+		return
+	var text := "\n".join(lines)
+	if _captions.text != text:
+		_captions.text = text
+	_captions.position.y = _status_line.position.y + _status_line.size.y + 6.0 if _status_line.visible else 58.0
+
+
+func captions_text() -> String:
+	return _captions.text if _captions != null else ""
+
+
 ## Old HUD (ui/hud.js): clock, place, period line coloured by state, and the stamina bar that
 ## appears only when stamina is below full (red while out of breath).
 func _build_status() -> void:
@@ -182,6 +198,17 @@ func _build_status() -> void:
 	_status_line.add_theme_font_size_override("font_size", 15)
 	_status_line.visible = false
 	hud.add_child(_status_line)
+	# Sound captions sit right under the status card (sound-captions.js place()).
+	_captions = Label.new()
+	_captions.name = "SoundCaptions"
+	_captions.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	_captions.position = Vector2(16, 104)
+	_captions.add_theme_font_size_override("font_size", 14)
+	_captions.add_theme_color_override("font_color", Color(0.86, 0.88, 0.92, 0.92))
+	_captions.add_theme_constant_override("outline_size", 4)
+	_captions.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	_captions.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(_captions)
 	_stamina = ProgressBar.new()
 	_stamina.name = "Stamina"
 	_stamina.show_percentage = false
