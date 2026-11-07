@@ -18,6 +18,7 @@ var _lift_leaves: Array[Node3D] = []
 var _lift_bodies: Array[CollisionShape3D] = []
 var _lift_amount := -1.0
 var anomaly_fx: AnomalyFx
+var atmos_fx: AtmosFx
 
 
 func _ready() -> void:
@@ -28,6 +29,11 @@ func _ready() -> void:
 	anomaly_fx = AnomalyFx.new()
 	anomaly_fx.name = "AnomalyFx"
 	add_child(anomaly_fx)
+	if is_room():
+		atmos_fx = AtmosFx.new()
+		atmos_fx.name = "AtmosFx"
+		add_child(atmos_fx)
+		atmos_fx.setup(layout)
 
 
 func is_room() -> bool:

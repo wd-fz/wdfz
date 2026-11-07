@@ -262,6 +262,14 @@ static func lhash(s: String) -> float:
 	return float(h % 100000) / 100000.0
 
 
+## An atmosphere event (a stare, a vacancy) replaces the revisit change of the room.
+func clear_revisit() -> void:
+	visit_fx = {}
+	echo = false
+	left_at = 0.0
+	_emit("clear")
+
+
 ## Entering a room; restoring rebuilds the saved room without counting a visit.
 func enter(room: String, restoring: bool = false) -> void:
 	_emit("clear")

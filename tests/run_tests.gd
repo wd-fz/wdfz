@@ -86,6 +86,7 @@ func _run() -> void:
 	_test_sensory_rules()
 	_test_caption_rules()
 	_test_dread_rules()
+	_test_atmos_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -2165,6 +2166,193 @@ func _test_dread_rules() -> void:
 	back.set_context(ctx)
 	back.enter("teach1", true)
 	check(back.visit_fx.get("kind", "") == "lamp" and back.visits["1:teach1"] == 2, "a load replays the same change without counting a visit")
+
+
+func _atmos_ctx(col: int, row: int, extra: Dictionary = {}) -> Dictionary:
+	var t1 := CampusData.layout("teach1")
+	var at := CampusGeometry.tile_center(t1, col, row)
+	var ctx := {"scene": "teach1", "x": at.x, "y": at.y, "ang": 0.0, "day": 2, "tsec": 700.0, "viol": 0.0, "busy": false, "an_active": false,
+		"an_next": -1.0, "an_next0": 0, "age": 100.0, "prop": null, "prop_ok": false, "sees_shifted": false}
+	ctx.merge(extra, true)
+	return ctx
+
+
+func _test_atmos_rules() -> void:
+	# Classes and the ground the module reads.
+	check(AtmosModule.class_index(12, 10) == 0 and AtmosModule.class_index(33, 7) == 2 and AtmosModule.class_index(20, 10) == -1 and AtmosModule.class_index(12, 6) == -1,
+		"four classes a floor, rows 7–14 only (ClassroomLayout.classAt)")
+	var rooms := CampusData.rooms()
+	var probe := AtmosModule.new(rooms)
+	check(probe.class_at(rooms["teach1"], 12, 10) == "teach1:0" and probe.class_at(rooms["teach1"], 12, 6).is_empty(), "a tile names its class")
+	# A1: the campus goes quiet day by day.
+	var a := AtmosModule.new(rooms)
+	a.reset()
+	a.set_context(_atmos_ctx(12, 10, {"day": 1}))
+	check(a.campus_kinds().size() == 3, "day 1 keeps whistle, car and bird")
+	a.set_context(_atmos_ctx(12, 10, {"day": 2}))
+	check(a.campus_kinds() == ["car", "bird"], "day 2 loses the whistle")
+	a.set_context(_atmos_ctx(12, 10, {"day": 3}))
+	check(a.campus_kinds() == ["bird"], "day 3 only a bird")
+	var day1 := AtmosModule.new(rooms)
+	day1.reset()
+	day1.set_context(_atmos_ctx(12, 10, {"day": 1}))
+	var heard := 0
+	for _i in 600:
+		day1.tick(0.2)
+		heard += _of_kind(day1.take_events(), "campus").size()
+	check(heard >= 2, "daytime campus noise comes every 16–38 s")
+	var night := AtmosModule.new(rooms)
+	night.reset()
+	night.set_context(_atmos_ctx(12, 10, {"day": 1, "tsec": 1200.0}))
+	var night_heard := 0
+	for _i in 600:
+		night.tick(0.2)
+		night_heard += _of_kind(night.take_events(), "campus").size()
+	check(night_heard == 0, "none after dark")
+	# A1: before an anomaly the place may hush (day 2 on, half the time).
+	var hushed := 0
+	var quiet_day1 := 0
+	for n in 60:
+		var h := AtmosModule.new(rooms)
+		h.reset()
+		h.set_context(_atmos_ctx(12, 10, {"day": 2, "an_next": 5.0, "an_next0": 100 + n}))
+		h.tick(0.1)
+		hushed += _of_kind(h.take_events(), "duck").size()
+		var h1 := AtmosModule.new(rooms)
+		h1.reset()
+		h1.set_context(_atmos_ctx(12, 10, {"day": 1, "an_next": 5.0, "an_next0": 100 + n}))
+		h1.tick(0.1)
+		quiet_day1 += _of_kind(h1.take_events(), "duck").size()
+	check(hushed > 10 and hushed < 50 and quiet_day1 == 0, "from day 2 about half of the anomalies are announced by a hush; day 1 never")
+	# A5: the bell.
+	var b := AtmosModule.new(rooms)
+	b.set_context(_atmos_ctx(12, 10, {"day": 1}))
+	check(b.bell_tune("end", 700.0).is_empty(), "day 1 the bell rings true")
+	b.set_context(_atmos_ctx(12, 10, {"day": 2}))
+	var tune := b.bell_tune("end", 700.0)
+	check(absf(float(tune["pitch"]) - pow(2.0, -0.5 / 12.0)) < 0.0001 and b.bell_tune("start", 700.0).is_empty(), "day 2 the end bell sinks half a tone; the start bell never changes")
+	b.set_context(_atmos_ctx(12, 10, {"day": 3}))
+	check(absf(float(b.bell_tune("end", 700.0)["pitch"]) - pow(2.0, -1.0 / 12.0)) < 0.0001, "day 3 a whole tone")
+	var late := b.bell_tune("end", 1330.0)
+	check(float(late["pitch"]) < pow(2.0, -2.5 / 12.0) + 0.0001 and bool(late["slow"]), "the bell before lights-out is lower and slower")
+	# A7: dusk comes early from day 2.
+	var m1 := AtmosModule.light_mods(1, 1020.0)
+	var m3 := AtmosModule.light_mods(3, 1020.0)
+	check(float(m1["dusk"]) == 0.0 and float(m3["dusk"]) > 0.2 and float(m3["cold"]) < 1.0 and float(AtmosModule.light_mods(3, 700.0)["dusk"]) == 0.0,
+		"day 1 has no early dusk, day 3 does (only in the afternoon)")
+	# A3: a class turns once, three a day at most, never with many violations or something real going on.
+	var stared := 0
+	var vacant := 0
+	var turned: AtmosModule
+	for day in range(2, 40):
+		var s := AtmosModule.new(rooms)
+		s.reset()
+		var d := DreadModule.new(rooms)
+		d.reset()
+		s.set_context(_atmos_ctx(12, 13, {"day": day, "dread": d}))
+		s.tick(0.1)
+		if not s.stare.is_empty():
+			stared += 1
+			turned = s
+	check(stared > 5 and stared < 25, "walking into a class on day 2+ sometimes turns every head (%d of 38)" % stared)
+	check(turned != null and turned.stare["cls"] == "teach1:0" and turned.stares.values().has(1), "the turn is recorded for the day and class")
+	for _i in 30:
+		turned.tick(0.1)
+	check(turned.stare.is_empty(), "the class turns back after 2.7 s")
+	var busy_hits := 0
+	var viol_hits := 0
+	for day in range(2, 40):
+		var s2 := AtmosModule.new(rooms)
+		s2.reset()
+		s2.set_context(_atmos_ctx(12, 13, {"day": day, "busy": true, "dread": DreadModule.new(rooms)}))
+		s2.tick(0.1)
+		busy_hits += 0 if s2.stare.is_empty() else 1
+		var s3 := AtmosModule.new(rooms)
+		s3.reset()
+		s3.set_context(_atmos_ctx(12, 13, {"day": day, "viol": 40.0, "dread": DreadModule.new(rooms)}))
+		s3.tick(0.1)
+		viol_hits += 0 if s3.stare.is_empty() else 1
+	check(busy_hits == 0 and viol_hits == 0, "no stare during anything real or at 35+ violations")
+	var day1_stare := AtmosModule.new(rooms)
+	day1_stare.reset()
+	day1_stare.set_context(_atmos_ctx(12, 13, {"day": 1, "dread": DreadModule.new(rooms)}))
+	day1_stare.tick(0.1)
+	check(day1_stare.stare.is_empty(), "never on day 1")
+	# A3: a return can leave one more seat empty.
+	for day in range(2, 60):
+		var r := AtmosModule.new(rooms)
+		r.reset()
+		var rd := DreadModule.new(rooms)
+		rd.reset()
+		r.left["teach1:0"] = day
+		r.set_context(_atmos_ctx(12, 13, {"day": day, "dread": rd, "ang": PI}))   # facing away: no stare, only a vacancy
+		r.tick(0.1)
+		if r.seats.has("%d:teach1:0" % day):
+			vacant += 1
+			check(int(r.seats["%d:teach1:0" % day]) >= 1 and int(r.seats["%d:teach1:0" % day]) <= 7 and r.stare.is_empty(), "a return leaves one seat of the class empty")
+			break
+	check(vacant == 1, "a return after leaving a class sometimes leaves one more empty seat")
+	# A4: a figure outside the window (not before 90 s into the run).
+	var windows := 0
+	var early := 0
+	for day in range(1, 60):
+		var w := AtmosModule.new(rooms)
+		w.reset()
+		w.set_context(_atmos_ctx(12, 13, {"day": day, "dread": DreadModule.new(rooms)}))
+		w.tick(0.1)
+		windows += 0 if w.window.is_empty() else 1
+		var w2 := AtmosModule.new(rooms)
+		w2.reset()
+		w2.set_context(_atmos_ctx(12, 13, {"day": day, "age": 30.0, "dread": DreadModule.new(rooms)}))
+		w2.tick(0.1)
+		early += 0 if w2.window.is_empty() else 1
+	check(windows > 5 and windows < 45 and early == 0, "some classes show a figure at the window, never in the first 90 s")
+	var gone: AtmosModule
+	for day in range(1, 60):
+		var w3 := AtmosModule.new(rooms)
+		w3.reset()
+		w3.set_context(_atmos_ctx(12, 13, {"day": day, "dread": DreadModule.new(rooms)}))
+		w3.tick(0.1)
+		if not w3.window.is_empty():
+			gone = w3
+			break
+	gone.window_look = true
+	for _i in 10:
+		gone.tick(0.1)
+	check(not bool(gone.window["gone"]), "while it is looked at it stays")
+	gone.window_look = false
+	gone.tick(0.1)
+	check(bool(gone.window["gone"]), "after more than 0.8 s of looking, the next glance away finds it gone")
+	# A6: the mop moves when far away and unseen.
+	var moved := 0
+	var facing := 0
+	for day in range(2, 40):
+		var sh := AtmosModule.new(rooms)
+		sh.reset()
+		var sd := DreadModule.new(rooms)
+		sd.reset()
+		var t1 := CampusData.layout("teach1")
+		sh.set_context(_atmos_ctx(30, 17, {"day": day, "dread": sd, "prop": CampusGeometry.tile_center(t1, 12, 17), "prop_ok": true}))
+		sh.tick(0.1)
+		var rec := str(sh.shift.get("%d:teach1" % day, 0))
+		if rec == "face":
+			facing += 1
+		moved += 1 if (rec == "face" or rec == "push") else 0
+	check(moved > 10 and moved < 36 and facing == moved, "on day 2+ the mop and bucket sometimes face you when nobody saw them move (%d of 38)" % moved)
+	var seen := AtmosModule.new(rooms)
+	seen.reset()
+	seen.set_context(_atmos_ctx(30, 17, {"day": 2, "dread": DreadModule.new(rooms), "prop": Vector2(10, 10), "prop_ok": false}))
+	for _i in 20:
+		seen.tick(0.1)
+	check(seen.shift.is_empty(), "never while it is in sight or close")
+	# A2: dead stretch of lamps, fixed for the room and always at least one lamp lit.
+	var rows := [8, 10, 12, 14, 16, 16, 18, 19]
+	var dark := AtmosModule.dark_lamps(rooms["teach1"], rows)
+	check(AtmosModule.dark_lamps(rooms["teach1"], rows) == dark and dark.size() < rows.size() and not AtmosModule.dark_lamps(rooms["canteen1"], rows).size() > 0, "the dark stretch is fixed per room and only on a teaching, office or lab floor")
+	# Saved state.
+	var back := AtmosModule.new(rooms)
+	back.restore(turned.capture())
+	check(back.stares == turned.stares and back.validate(turned.capture()).is_empty() and not back.validate({"stares": {"1:a": 9}}).is_empty(), "the atmosphere record saves and loads, and a bad one is rejected")
 
 
 func _test_facility_rules() -> void:

@@ -76,7 +76,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(), ClassmatesModule.new(CampusData.rooms()), DreadModule.new(CampusData.rooms())]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(), ClassmatesModule.new(CampusData.rooms()), DreadModule.new(CampusData.rooms()), AtmosModule.new(CampusData.rooms())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -90,6 +90,10 @@ func campus() -> CampusModule:
 
 func dread() -> DreadModule:
 	return session.modules.get_module(&"story.dread") as DreadModule if session != null else null
+
+
+func atmos() -> AtmosModule:
+	return session.modules.get_module(&"story.atmos") as AtmosModule if session != null else null
 
 
 func classmates() -> ClassmatesModule:
@@ -380,6 +384,9 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 		var mates := candidate.modules.get_module(&"school.classmates") as ClassmatesModule
 		if mates != null:
 			mates.set_seed(net.run_seed)
+		var mood := candidate.modules.get_module(&"story.atmos") as AtmosModule
+		if mood != null:
+			mood.set_seed(net.run_seed)
 	var rules := candidate.modules.get_module(&"campus.world") as CampusModule
 	var pose := rules.start_pose() if rules != null and initial_world == rules.start_world() else router.current.spawn_pose()
 	# Game.start: the run begins seated on the player's own seat in teach1.
@@ -392,6 +399,8 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 	if dread() != null:
 		dread().set_context(_dread_context())
 		dread().enter(session.world_id)
+	if atmos() != null:
+		atmos().enter(session.world_id)
 	if rules != null and rules.knows(initial_world):
 		ui.show_notice(String(rules.room(initial_world)["name"]) if rules.room(initial_world) != null else "武大附中 · 校园")
 	else:
@@ -531,6 +540,8 @@ func load_game() -> void:
 		dread().set_context(_dread_context())
 		dread().enter(session.world_id, true)
 		_apply_dread_events()
+	if atmos() != null:
+		atmos().enter(session.world_id)
 	if garage() != null and garage().driving():
 		_enter_drive()
 	ui.show_notice("已恢复测试进度；读档不会再次触发交互奖励。")
@@ -986,6 +997,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	_classmates_step(delta)
 	_sensory_step(delta)
 	_dread_step(delta)
+	_atmos_step(delta)
 	_anomaly_step(delta, day_rules, room, pose)
 	_audio_step(delta, watcher, day_rules, room, p)
 	_progress_step(watcher, day_rules, weird_now)
@@ -1427,7 +1439,8 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 	# tickSchoolBell: the bell when the period changes (outdoors quieter and muffled).
 	var period := String(SchoolClock.period_at(day_rules.tsec)[2])
 	if _audio_period != "" and period != _audio_period and not story().dead:
-		audio.school_bell("start" if SchoolClock.period_at(day_rules.tsec)[3] == "教室" else "end", session.world_id == "out")
+		var bell_kind := "start" if SchoolClock.period_at(day_rules.tsec)[3] == "教室" else "end"
+		audio.school_bell(bell_kind, session.world_id == "out", atmos().bell_tune(bell_kind, day_rules.tsec) if atmos() != null else {})
 	_audio_period = period
 	if watcher != null:
 		var locked := bool(watcher.pat["locked"])
@@ -1682,10 +1695,79 @@ func _apply_dread_events() -> void:
 						cw.lighting.dread_lamp = -1
 
 
+# ---- global atmosphere A1–A7 (features/story/atmos_module.gd, world/campus/atmos_fx.gd) ----
+
+func _atmos_context() -> Dictionary:
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var dc := _dread_context()
+	var cw := _campus_world()
+	var fx: AtmosFx = cw.atmos_fx if cw != null else null
+	var watcher := patrol()
+	_atmos_busy = bool(dc["busy"])
+	var ctx := {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])),
+		"day": school().day, "tsec": school().tsec, "viol": school().viol, "busy": bool(dc["busy"]), "an_active": dc["an_active"],
+		"an_next": dc["an_next"], "an_next0": dc["an_next0"], "age": dread().t if dread() != null else 0.0, "dread": dread(),
+		"prop": null, "prop_ok": false, "sees_shifted": false}
+	if watcher != null:
+		ctx["pat"] = {"room": String(watcher.pat["room"]), "walk": watcher.pat["state"] == "walk", "x": float(watcher.pat["x"]), "y": float(watcher.pat["y"])}
+	if fx != null and player.camera != null:
+		ctx["prop"] = fx.prop_world()
+		ctx["prop_ok"] = fx.can_shift(player.camera)
+		ctx["sees_shifted"] = fx.sees_shifted(player.camera)
+	return ctx
+
+
+func _atmos_step(delta: float) -> void:
+	var a := atmos()
+	if a == null or story().dead:
+		return
+	a.set_context(_atmos_context())
+	a.tick(delta)
+	_apply_atmos_events()
+	var cw := _campus_world()
+	if cw == null:
+		return
+	cw.lighting.atmos_mods = AtmosModule.light_mods(school().day, school().tsec) if cw.lighting != null else {}
+	var fx: AtmosFx = cw.atmos_fx
+	if fx == null or player.camera == null:
+		return
+	var r := a.floor_room()
+	if not r.is_empty():
+		var key := "%d:%s" % [school().day, r["id"]]
+		var rec := str(a.shift.get(key, ""))
+		var kind: Variant = rec if (rec == "push" or rec == "face") else null
+		if kind != fx.shifted:
+			fx.apply_shift(kind, a.shift_pose.get(key, {}))
+		fx.face_camera(player.camera)
+	a.window_look = fx.show_window(a.window, player.camera)
+
+
+func _apply_atmos_events() -> void:
+	var a := atmos()
+	if a == null:
+		return
+	for e: Dictionary in a.take_events():
+		match e["kind"]:
+			"campus":
+				audio.play("campus." + String(e["cue"]), {"pan": float(e["pan"]), "k": float(e["k"]), "lp": float(e["lp"])})
+			"duck":
+				audio.duck(float(e["sec"]))
+				audio.note_caption("world.silence")
+			"dread":
+				var pl: Dictionary = e["place"]
+				audio.play("dread." + String(e["cue"]), {"pan": float(pl["pan"]), "k": float(pl["k"]), "lp": 0.7 if bool(pl["behind"]) else 1.0, "place": pl})
+			"say":
+				ui.show_notice(String(e["text"]))
+
+
 # ---- classmates (features/school/classmates_module.gd) ----
 
 var _mates_nodes: Node3D
 var _mates_key := ""
+var _atmos_busy := false
 
 
 func _classmates_step(delta: float) -> void:
@@ -1740,12 +1822,39 @@ func _show_classmates(mates: ClassmatesModule, room: Variant, me: Vector2, stari
 			fig.mesh = cap
 			fig.position = Vector3(sp.x, 0.62, sp.y)
 			fig.set_meta("w", wp)
+			fig.set_meta("cls", "%s:%d" % [key, AtmosModule.class_index(t.x, t.y)])
 			_mates_nodes.add_child(fig)
+	# A3 (atmos_module.gd): a class turns to you and back; after a return one more seat is empty.
+	var mood := atmos()
+	var turn := 0.0
+	var turning := ""
+	var day_i := school().day
+	if mood != null and not mood.stare.is_empty() and mood.stare["room"] == key:
+		var tt := float(mood.stare["t"])
+		var tm: float = AtmosModule.CFG["stare_turn"]
+		var th: float = AtmosModule.CFG["stare_hold"]
+		var kk := tt / tm if tt < tm else (1.0 if tt < tm + th else maxf(0.0, 1.0 - (tt - tm - th) / tm))
+		turn = kk * kk * (3.0 - 2.0 * kk)
+		turning = String(mood.stare["cls"])
+	var by_class := {}
 	for fig: Node in _mates_nodes.get_children():
 		var f := fig as Node3D
 		var wp: Vector2 = f.get_meta("w")
 		var target := me if staring else wp + Vector2(-10, 0)
-		f.rotation.y = -atan2(target.y - wp.y, target.x - wp.x) - PI * 0.5
+		var base := -atan2(target.y - wp.y, target.x - wp.x) - PI * 0.5
+		var cls: String = f.get_meta("cls")
+		if turn > 0.0 and cls == turning:
+			var want := -atan2(me.y - wp.y, me.x - wp.x) - PI * 0.5
+			base += wrapf(want - base, -PI, PI) * turn * 0.85
+		f.rotation.y = base
+		var list: Array = by_class.get(cls, [])
+		list.append(f)
+		by_class[cls] = list
+	for cls: String in by_class:
+		var gone := int(mood.seats.get("%d:%s" % [day_i, cls], 0)) if mood != null and not _atmos_busy and school().viol < 35.0 else 0
+		var list: Array = by_class[cls]
+		for i in list.size():
+			(list[i] as Node3D).visible = not (gone > 0 and i == gone % list.size())
 
 
 # ---- chalk marks and the last life (features/campus/marks_module.gd) ----
@@ -3181,6 +3290,8 @@ func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
 		dread().set_context(_dread_context())
 		dread().enter(world_id)
 		_apply_dread_events()
+	if atmos() != null and from_world != world_id:
+		atmos().enter(world_id)
 	_enter_cool = 0.0 if seamless else 0.9
 	if seamless:
 		player.place(pose)

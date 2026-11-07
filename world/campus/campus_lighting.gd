@@ -35,6 +35,9 @@ var patrol_flick := 0.0
 var crackles: Array = []
 ## A revisit's broken lamp (index, modulo the room's lamps), −1 for none.
 var dread_lamp := -1
+var lamp_dark: Dictionary = {}     # A2: corridor lamps whose tubes are dead (AtmosModule.dark_lamps)
+var lamp_mul: Dictionary = {}      # lamp index → multiplier (the timed lamp scene)
+var atmos_mods: Dictionary = {}    # A7: AtmosModule.light_mods, set each frame
 var crackle_from: Node3D
 var _flick_prev: Dictionary = {}
 var _crackle_last := 0.0
@@ -73,6 +76,12 @@ func setup(id: String, room_data: Variant, model: Node, stair_rise: float) -> vo
 	add_child(cam_light)
 	if room != null:
 		_add_room_lights(stair_rise)
+		var tile := float(room.get("th", CampusGeometry.TTILE)) * CampusGeometry.U2M
+		var half := float(room["rows"]) * tile * 0.5
+		var lamp_rows: Array = []
+		for l: OmniLight3D in room_lights:
+			lamp_rows.append(floori((l.position.z + half) / tile))
+		lamp_dark = AtmosModule.dark_lamps(room, lamp_rows)
 	else:
 		lamps = CampusData.layout("out").get("lamps", [])
 		for i in LAMP_POOL:
@@ -142,6 +151,11 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var sun := sun_at(h)
 	var indoor := room != null and not _open_air()
 	var day := float(sun["day"])
+	var am: Dictionary = {} if scene_id == "portal_tunnel" or scene_id == "lift_dream" else atmos_mods
+	var dusk := float(am.get("dusk", 0.0))
+	var cold := float(am.get("cold", 1.0))
+	var tint: Array = am.get("tint", [1.0, 1.0, 1.0])
+	day = maxf(0.0, day * (1.0 - dusk))
 	var amb: float
 	var hemi: float
 	var dirv: float
@@ -167,6 +181,10 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var hs := Color(0.16, 0.21, 0.30).lerp(Color(0.70, 0.74, 0.78), day).lerp(Color(0.86, 0.62, 0.50), float(sun["gold"]) * 0.5)
 	var hg := Color(0.05, 0.05, 0.06).lerp(Color(0.34, 0.34, 0.31), day)
 	var ac := Color(0.36, 0.40, 0.50).lerp(Color(0.46, 0.48, 0.50), day)
+	amb *= cold * (1.0 - 0.4 * dusk)
+	hemi *= cold * (1.0 - 0.4 * dusk)
+	ac = Color(ac.r * float(tint[0]), ac.g * float(tint[1]), ac.b * float(tint[2]))
+	dc = Color(dc.r * float(tint[0]), dc.g * float(tint[1]), dc.b * float(tint[2]))
 	if blackout and indoor:
 		amb *= 0.16
 		hemi *= 0.16
@@ -203,6 +221,7 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 		env.fog_light_color = fc
 		env.background_color = fc
 		env.fog_density = 0.09 if scene_id == "garage1" else (0.04 if scene_id == "portal_tunnel" else 0.072 + 0.03 * fnight)
+	env.fog_density *= float(am.get("fog", 1.0))
 	# lighting.js dayExpo: outdoors the picture is pressed down to 0.6 at noon (DAY_K).
 	env.tonemap_exposure = 1.0 if indoor else 1.0 - (1.0 - 0.6) * day
 	var sum := 0.0
@@ -211,6 +230,9 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 		# A revisit's broken lamp (fx/dread-fx.js lampMul): a glimmer, now and then a twitch.
 		if dread_lamp >= 0 and i == dread_lamp % room_lights.size():
 			flick *= 0.85 if not reduce_flash and (sin(time * 7.3 + 1.1) > 0.985 or sin(time * 2.9) > 0.996) else 0.06
+		if lamp_dark.has(i):
+			flick *= 0.35   # A2: a dead stretch of tubes, only the emergency signs' green
+		flick *= float(lamp_mul.get(i, 1.0))
 		if patrol_flick > 0.0:
 			flick *= 1.0 - patrol_flick * (1.0 - patrol_beat(time))
 		sum += flick

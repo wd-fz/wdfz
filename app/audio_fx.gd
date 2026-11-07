@@ -325,9 +325,21 @@ func step_on(surface: String, k: float = 1.0, opts: Dictionary = {}) -> void:
 		play("step.wet", o)
 
 
-func school_bell(kind: String, outdoor: bool) -> void:
+## tune: AtmosModule.bell_tune (A5) — the end-of-class bell sinks as the days pass. The baked bell is
+## one sample, so the whole bell is lowered (the Web version lowers only its last note).
+func school_bell(kind: String, outdoor: bool, tune: Dictionary = {}) -> void:
 	var v := 0.45 if outdoor else 1.0
-	play("event.bellStart" if kind == "start" else "event.bellEnd", {"k": v, "lp": 0.6 if v < 0.7 else 1.0})
+	var opts := {"k": v, "lp": 0.6 if v < 0.7 else 1.0}
+	if not tune.is_empty():
+		opts["pitch"] = float(tune["pitch"]) * (0.97 if bool(tune.get("slow", false)) else 1.0)
+		opts["caption"] = String(tune["caption"])
+	play("event.bellStart" if kind == "start" else "event.bellEnd", opts)
+
+
+## A caption for a sound that has no sample of its own (the hush).
+func note_caption(id: String, opts: Dictionary = {}) -> void:
+	if captions_live:
+		captions.publish(id, opts, captions_busy)
 
 
 func anomaly_start(id: String) -> void:
