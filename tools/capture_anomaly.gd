@@ -46,6 +46,14 @@ func _run() -> void:
 	app.travel("teach1", {"position": [s.x, 0.05, s.y], "yaw": CampusGeometry.yaw_from_ang(PI), "pitch": 0.0}, false)
 	app.patrol().pat["safety"] = 999.0
 	await _shot("1-corridor-normal")
+	_force(app, "stare")
+	app.anomaly().an["data"] = {"scene": "teach1"}
+	await _shot("9-corridor-stare", 8)
+	app.anomaly().end_now()
+	_force(app, "feast")
+	app.anomaly().an["data"] = {"scene": "teach1"}
+	await _shot("10-corridor-feast", 8)
+	app.anomaly().end_now()
 	_force(app, "blackout")
 	await _shot("2-corridor-blackout")
 	app.anomaly().end_now()

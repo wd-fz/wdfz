@@ -5,8 +5,9 @@ extends Node3D
 ## anomaly module's state; nothing here writes back to the rules.
 ## Covered: rain streaks, moth swarm, exercising crowd, hand under the stall, board text, the struck-off
 ## roster, ceiling drips, the ritual circle, the second you, the falling cup and cola.
-## Not drawn (rules only): turn, broad, bell13, bells, repeat, loop, cold, shifting, stare, lamps,
-## feast, necker, shadow, raindots.
+## Also: the hand on the shoulder (turn), the back-row classmate (repeat), the staring faces (stare),
+## the feast table, the walker beyond the east fence (necker), the late shadow, the following lamp,
+## the cold room's frost. Sound or text only: broad, bell13, bells, loop, shifting.
 
 const CUP_H := AnomalyModule.CUP_H
 const COLA_H := AnomalyModule.COLA_H
@@ -196,6 +197,89 @@ func _build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vec
 				_props.add_child(lamp)
 		"twin":
 			_extra["twin"] = _figure(Color(0.03, 0.03, 0.04))
+		"turn", "repeat":
+			var f := _figure(Color(0.04, 0.04, 0.05), 1.75 if id == "turn" else 1.25)
+			if id == "turn" and bool(d.get("smile", false)):
+				var face := SphereMesh.new()
+				face.radius = 0.13
+				face.height = 0.26
+				var fm := MeshInstance3D.new()
+				fm.mesh = face
+				fm.material_override = _unlit(Color(0.9, 0.88, 0.82))
+				fm.position = Vector3(0, 1.62, 0.12)
+				f.add_child(fm)
+			_extra["fig"] = f
+		"stare":
+			var faces: Array[Node3D] = []
+			for i in 12:
+				var head := SphereMesh.new()
+				head.radius = 0.12
+				head.height = 0.24
+				var hm := _mesh(head, _unlit(Color(0.86, 0.84, 0.8)))
+				faces.append(hm)
+			_extra["faces"] = faces
+		"feast":
+			var table := _mesh(BoxMesh.new(), _unlit(Color(0.42, 0.3, 0.2)))
+			(table.mesh as BoxMesh).size = Vector3(1.0, 0.75, 6.0)
+			_extra["table"] = table
+			var plates: Array[Node3D] = []
+			for i in 8:
+				var plate := CylinderMesh.new()
+				plate.top_radius = 0.13
+				plate.bottom_radius = 0.1
+				plate.height = 0.03
+				plates.append(_mesh(plate, _unlit(Color(0.95, 0.95, 0.92))))
+			_extra["plates"] = plates
+			var steam := _particles(30, 1.5, Vector3(0.03, 0.08, 0.03), Color(0.9, 0.9, 0.9, 0.35), Vector3(0.4, 0.05, 2.8), Vector3(0, 0.5, 0), 0.1)
+			_extra["steam"] = steam
+		"necker":
+			var walker := Node3D.new()
+			_props.add_child(walker)
+			var body := CapsuleMesh.new()
+			body.radius = 0.24
+			body.height = 1.7
+			var bm := MeshInstance3D.new()
+			bm.mesh = body
+			bm.material_override = _unlit(Color(0.05, 0.05, 0.06))
+			bm.position.y = 0.85
+			walker.add_child(bm)
+			var neck := CylinderMesh.new()
+			neck.top_radius = 0.06
+			neck.bottom_radius = 0.08
+			neck.height = 1.9
+			var nm := MeshInstance3D.new()
+			nm.mesh = neck
+			nm.material_override = _unlit(Color(0.75, 0.68, 0.6))
+			nm.position.y = 1.7 + 0.95
+			walker.add_child(nm)
+			var head2 := SphereMesh.new()
+			head2.radius = 0.14
+			head2.height = 0.3
+			var hm2 := MeshInstance3D.new()
+			hm2.mesh = head2
+			hm2.material_override = _unlit(Color(0.78, 0.7, 0.62))
+			hm2.position.y = 1.7 + 1.9 + 0.1
+			walker.add_child(hm2)
+			_extra["walker"] = walker
+		"shadow":
+			var disc := CylinderMesh.new()
+			disc.top_radius = 0.42
+			disc.bottom_radius = 0.42
+			disc.height = 0.01
+			var sm := _mesh(disc, _unlit(Color(0.0, 0.0, 0.0), 0.75))
+			sm.scale = Vector3(1.0, 1.0, 2.2)
+			_extra["shadow"] = sm
+			_extra["trail"] = []
+		"lamps":
+			var lamp := OmniLight3D.new()
+			lamp.light_color = Color(1.0, 0.95, 0.8)
+			lamp.light_energy = 1.4
+			lamp.omni_range = 6.0
+			_props.add_child(lamp)
+			_extra["lamp"] = lamp
+		"cold":
+			var frost := _particles(120, 2.0, Vector3(0.02, 0.02, 0.02), Color(0.9, 0.95, 1.0, 0.8), Vector3(2.5, 1.2, 2.5), Vector3(0, -0.2, 0), 0.1)
+			_extra["frost"] = frost
 		"cup":
 			var cup := CylinderMesh.new()
 			cup.top_radius = 0.11
@@ -255,6 +339,59 @@ func _animate(id: String, t: float, d: Dictionary, room: Variant, feet: Vector3,
 			tw.rotation.y = atan2(me.x - p.x, me.z - p.y)
 		"cup", "cola":
 			_animate_fall(id, t, d, room, me)
+		"turn", "repeat":
+			var f4 := facing.normalized() if facing.length() > 0.01 else Vector2(0, -1)
+			var back := 0.9 if id == "turn" else 0.85
+			var fig := _extra["fig"] as Node3D
+			fig.position = Vector3(me.x - f4.x * back, me.y, me.z - f4.y * back)
+			fig.rotation.y = atan2(f4.x, f4.y)
+		"stare":
+			var f5 := facing.normalized() if facing.length() > 0.01 else Vector2(0, -1)
+			var side := Vector2(-f5.y, f5.x)
+			var faces: Array = _extra["faces"]
+			for i in faces.size():
+				var row := float(i / 4)
+				var col := float(i % 4) - 1.5
+				var p := Vector2(me.x, me.z) + f5 * (2.2 + row * 1.2) + side * col * 1.1
+				(faces[i] as Node3D).position = Vector3(p.x, me.y + 1.15, p.y)
+		"feast":
+			var f6 := facing.normalized() if facing.length() > 0.01 else Vector2(0, -1)
+			var c := Vector2(me.x, me.z) + f6 * 2.4
+			if not _extra.has("at"):
+				_extra["at"] = c
+				_extra["dir"] = f6
+			var at: Vector2 = _extra["at"]
+			var dir: Vector2 = _extra["dir"]
+			var table := _extra["table"] as Node3D
+			table.position = Vector3(at.x, me.y + 0.375, at.y)
+			table.rotation.y = atan2(dir.x, dir.y) + PI * 0.5
+			var across := Vector2(-dir.y, dir.x)
+			var plates: Array = _extra["plates"]
+			for i in plates.size():
+				var off := (float(i % 4) - 1.5) * 1.3
+				var sidek := 0.3 if i < 4 else -0.3
+				var pp := at + across * off + dir * sidek
+				(plates[i] as Node3D).position = Vector3(pp.x, me.y + 0.77, pp.y)
+			(_extra["steam"] as Node3D).global_position = Vector3(at.x, me.y + 0.8, at.y)
+			(_extra["steam"] as Node3D).rotation.y = table.rotation.y
+		"necker":
+			var wall_x := float(CampusData.campus().get("bound_map", {}).get("x1", 830)) * 2.0 + 30.0
+			var p2 := _at(room, wall_x, me.z / CampusGeometry.U2M if room == null else 0.0)
+			(_extra["walker"] as Node3D).position = Vector3(p2.x, 0.0, me.z)
+		"shadow":
+			var trail: Array = _extra["trail"]
+			trail.append(Vector3(me.x, me.y, me.z))
+			var lag := 30
+			while trail.size() > lag:
+				trail.pop_front()
+			var tail: Vector3 = trail[0]
+			(_extra["shadow"] as Node3D).position = Vector3(tail.x, me.y + 0.012, tail.z)
+		"lamps":
+			var lamp := _extra["lamp"] as OmniLight3D
+			var target := Vector3(me.x, me.y + 2.6, me.z)
+			lamp.position = target if lamp.position == Vector3.ZERO else lamp.position.lerp(target, clampf(dt * 2.0, 0.0, 1.0))
+		"cold":
+			(_extra["frost"] as Node3D).global_position = Vector3(me.x, me.y + 1.2, me.z)
 
 
 func _animate_fall(id: String, t: float, d: Dictionary, room: Variant, me: Vector3) -> void:

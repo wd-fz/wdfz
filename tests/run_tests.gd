@@ -2012,6 +2012,7 @@ func _test_anomaly_fx(app: GameApp) -> void:
 		"moth": {"src": {"x": me.x + 40.0, "y": me.y}}, "exercise": {"src": {"x": me.x + 40.0, "y": me.y}}, "hand": {"chosen": null},
 		"chalk": {"until": 800.0}, "roster": {"rx": me.x, "ry": me.y, "done": false}, "leak": {"pts": [{"x": me.x + 20.0, "y": me.y}, {"x": me.x + 30.0, "y": me.y + 9.0}]},
 		"rite": {"c": {"x": me.x + 30.0, "y": me.y}}, "twin": {"x": me.x + 40.0, "y": me.y, "room": "teach1"},
+		"turn": {"chosen": null, "smile": true}, "repeat": {"chosen": null}, "stare": {}, "feast": {}, "shadow": {"acc": 0.0}, "lamps": {}, "cold": {"chosen": null},
 	}
 	for id: String in datas:
 		weird.an["id"] = id
@@ -2025,12 +2026,14 @@ func _test_anomaly_fx(app: GameApp) -> void:
 		weird.end_now()
 		await _frames(2)
 		check(fx.current() == "" and fx.shown_count() == 0, "%s props go away with it" % id)
-	weird.an["id"] = "turn"
+	weird.an["id"] = "broad"
 	weird.an["active"] = true
-	weird.an["data"] = {"scene": "teach1", "chosen": null, "smile": false}
+	weird.an["data"] = {"scene": "teach1"}
 	await _frames(2)
-	check(fx.shown_count() == 0, "an anomaly without a place in the world draws nothing")
-	weird.an["data"]["scene"] = "out"
+	check(fx.shown_count() == 0, "a sound-only anomaly (the broadcast call) draws nothing")
+	weird.end_now()
+	weird.an["active"] = true
+	weird.an["data"] = {"scene": "out"}
 	weird.an["id"] = "moth"
 	weird.an["data"]["src"] = {"x": 0.0, "y": 0.0}
 	await _frames(2)
