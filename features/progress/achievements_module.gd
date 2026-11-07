@@ -3,7 +3,7 @@ extends FeatureModule
 ## Achievements, ported from the Web version (reference wd-fz.github.io@0bf508a,
 ## domain/achievement-rules.js + modules/achievements). Record only, no bonuses.
 ## Ported here: the public entries whose facts the ported systems can produce. Entries that need
-## systems not yet in Godot (exams, snake, garage, paper planes, the other routes, talents, the
+## systems not yet in Godot (exams, garage, paper planes, the other routes, talents, the
 ## archive, speedrun, ...) are absent, not locked. Hidden entries are not part of this public table
 ## (see CLAUDE.md); the achievement method text stays internal, the player sees only the name and,
 ## once unlocked, a memory line.
@@ -19,6 +19,7 @@ const EXPLORE_ANY := [["dorm1", "dorm2", "dorm3"], ["dorm4", "dorm5", "dorm6"]]
 ## id -> [tier, name, memory]
 const LIST := {
 	"n.day2": ["n", "熬过第一天", "熄灯，换日。日历往后翻了一页。"],
+	"n.snake": ["n", "一口一口", "屏幕上那条蛇越来越长。机房里只有我这一台亮着。"],
 	"n.anomaly": ["n", "看见了", "从那一刻起，我知道这所学校不对劲。"],
 	"n.survive": ["n", "还活着", "它过去了。手还在发抖，但我还站着。"],
 	"n.lost": ["n", "两短一长", "灯还在闪。脚步声停在了拐角另一边。"],
@@ -250,6 +251,8 @@ func _test(id: String, f: Dictionary) -> bool:
 	match id:
 		"n.day2":
 			return kind == "day" and int(f["day"]) == 2
+		"n.snake":
+			return kind == "snake" and int(f.get("score", 0)) >= 7
 		"n.anomaly":
 			return kind == "anomaly" and f["phase"] == "start"
 		"n.survive":

@@ -95,6 +95,7 @@ func _run() -> void:
 	_test_drop_rules()
 	_test_plane_rules()
 	_test_camera_rules()
+	_test_snake_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -2719,6 +2720,53 @@ func _test_camera_rules() -> void:
 	var back := CameraModule.new()
 	back.restore(cam.capture())
 	check(back.photos == cam.photos and back.flash == cam.flash and back.validate(cam.capture()).is_empty() and not back.validate({"photos": [{"cap": 1}], "flash": true}).is_empty(), "the album saves and loads; a bad one is rejected")
+
+
+func _test_snake_rules() -> void:
+	var g := SnakeGame.new()
+	var rnd := RandomNumberGenerator.new()
+	rnd.seed = 3
+	var roll := func() -> float: return rnd.randf()
+	g.start(roll)
+	check(g.on and g.body == [Vector2i(8, 8)] and g.dir == Vector2i(1, 0) and g.cd == SnakeGame.COUNTDOWN, "a game starts with a one-segment snake in the middle, facing right, after a 3 s countdown")
+	check(g.tick(1.0, Vector2i.ZERO, roll) and g.body.size() == 1 and g.body[0] == Vector2i(8, 8), "during the countdown nothing moves")
+	g.tick(2.5, Vector2i.ZERO, roll)
+	check(g.cd <= 0.0 and g.body[0] == Vector2i(8, 8), "(the countdown is over)")
+	check(not g.tick(0.1, Vector2i.ZERO, roll) and g.tick(0.05, Vector2i.ZERO, roll) and g.body[0] == Vector2i(9, 8), "a step every 0.14 s")
+	g.food = Vector2i(10, 8)
+	g.tick(0.15, Vector2i.ZERO, roll)
+	check(g.score == 1 and g.body.size() == 2 and g.food != Vector2i(10, 8), "eating grows the snake and scores a point")
+	g.tick(0.15, Vector2i(-1, 0), roll)
+	check(g.dir == Vector2i(1, 0), "with a body you cannot turn straight back")
+	g.turn(Vector2i(0, 1))
+	g.tick(0.15, Vector2i.ZERO, roll)
+	check(g.dir == Vector2i(0, 1) and g.want == null, "a swipe is used on the next step")
+	g.turn(Vector2i(-1, 0))
+	g.tick(0.15, Vector2i(1, 0), roll)
+	check(g.dir == Vector2i(1, 0) and g.want == Vector2i(-1, 0), "a held key beats a swipe; the swipe waits")
+	var wall := SnakeGame.new()
+	wall.start(roll)
+	wall.cd = 0.0
+	wall.body = [Vector2i(15, 8)]
+	wall.tick(0.2, Vector2i.ZERO, roll)
+	check(wall.dead and not wall.tick(0.2, Vector2i.ZERO, roll), "the wall ends the game")
+	var own := SnakeGame.new()
+	own.start(roll)
+	own.cd = 0.0
+	own.body = [Vector2i(5, 5), Vector2i(6, 5), Vector2i(6, 4), Vector2i(5, 4), Vector2i(4, 4)]
+	own.dir = Vector2i(0, -1)
+	own.tick(0.2, Vector2i.ZERO, roll)
+	check(own.dead, "hitting yourself ends the game")
+	var scorer := SnakeGame.new()
+	check(scorer.gain(1.0) == 0.0, "no score, no rest")
+	scorer.score = 3
+	check(scorer.gain(1.0) == 12.0 and absf(scorer.gain(0.5) - 6.0) < 0.001, "rest is 6 + 2 a point, scaled by the pressure")
+	scorer.score = 30
+	check(scorer.gain(1.0) == 20.0, "at most 20")
+	check(AchievementsModule.LIST.has("n.snake"), "the snake achievement exists")
+	var ach := AchievementsModule.new(25)
+	ach.reset()
+	check(ach.fact({"kind": "snake", "score": 6}).is_empty() and ach.fact({"kind": "snake", "score": 7}).has("n.snake"), "seven bites unlock 一口一口")
 
 
 func _test_facility_rules() -> void:

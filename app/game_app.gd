@@ -598,6 +598,8 @@ func resume_game() -> void:
 
 
 func return_to_menu() -> void:
+	_stop_snake(true)
+	_close_phone()
 	_audio_period = ""
 	ui.show_sensory({"tunnel": 0.0}, 0.0, 0.0)
 	_sense_body = -1.0
@@ -1606,6 +1608,8 @@ func _apply_facility_events() -> void:
 				ui.show_notice("…%d 分钟过去了 · %s" % [int(e["minutes"]), e["name"]])
 			"fact":
 				fact({"kind": "rest", "key": String(e["key"])})
+				if String(e["key"]) == "pc":
+					_start_snake()
 			"anomaly_lock":
 				if anomaly() != null:
 					anomaly().lock_forecast()
@@ -1743,7 +1747,7 @@ func _dread_context() -> Dictionary:
 	var night := 0.0
 	if cw != null and cw.lighting != null:
 		night = 1.0 - float(cw.lighting.sun_at(day_rules.tsec / 60.0)["day"])
-	var busy := story().dead or get_tree().paused or ui.choice_open() or ui.terminal_open() or driving() \
+	var busy := story().dead or get_tree().paused or ui.choice_open() or ui.terminal_open() or driving() or phone_open() or snake_open() \
 		or (weird != null and bool(weird.an["active"])) or (watcher != null and watcher.local_chase()) or day_rules.inspection_active() \
 		or (days() != null and days().waiting != null) or session.world_id in ElevatorModule.RIDE_ROOMS or session.world_id == "portal_tunnel" \
 		or (fake_normal() != null and fake_normal().active())
@@ -2370,6 +2374,74 @@ func _phone_shell_step(delta: float) -> void:
 		_close_phone(danger and not story().dead)
 		return
 	_phone_paint()
+
+
+# ---- the snake game at the lab computer (features/phone/snake_game.gd, ui/snake_panel.gd) ----
+
+var _snake := SnakeGame.new()
+var _snake_panel: SnakePanel
+var _snake_random := RandomNumberGenerator.new()
+
+
+func snake_open() -> bool:
+	return _snake.on
+
+
+func _start_snake() -> void:
+	if _snake_panel == null:
+		_snake_panel = SnakePanel.new()
+		_snake_panel.turned.connect(func(d: Vector2i) -> void: _snake.turn(d))
+		_snake_panel.closed.connect(_stop_snake)
+		ui.get_node("Root").add_child(_snake_panel)
+		_snake_panel.board.game = _snake
+		_snake_panel.game = _snake
+	_snake.start(func() -> float: return _snake_random.randf())
+	player.enabled = false
+	player.clear_input()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_snake_panel.hint.text = ("方向键或在画面上滑动转向 · 点「离开」退出" if ui.touch_enabled() else "WASD / 方向键转向 · Esc 退出") + " · 玩一会儿，缓口气"
+	_snake_panel.visible = true
+	audio.play("ui.click")
+
+
+## Leaving the game (Esc, the exit button): the score earns rest. cancelled: a session end, no reward.
+func _stop_snake(cancelled: bool = false) -> void:
+	if not _snake.on:
+		return
+	var gain := _snake.gain(float(school().pressure()["rest"])) if not cancelled and school() != null else 0.0
+	var score := _snake.score
+	_snake.cancel()
+	if _snake_panel != null:
+		_snake_panel.visible = false
+	if cancelled:
+		return
+	fact({"kind": "snake", "score": score})
+	if gain > 0.0:
+		school().san = minf(100.0, school().san + gain)
+		ui.show_notice("游戏结束 · 得分 %d" % score)
+	if session != null and session.running and not get_tree().paused and not story().dead:
+		player.enabled = true
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
+
+
+func _snake_step(delta: float) -> void:
+	if not _snake.on:
+		return
+	if story().dead:
+		_stop_snake(true)
+		return
+	var key := Vector2i.ZERO
+	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+		key = Vector2i(0, -1)
+	elif Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+		key = Vector2i(0, 1)
+	elif Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+		key = Vector2i(-1, 0)
+	elif Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+		key = Vector2i(1, 0)
+	_snake.tick(delta, key, func() -> float: return _snake_random.randf())
+	if _snake_panel != null:
+		_snake_panel.board.queue_redraw()
 
 
 # ---- the protagonist's muttering (features/story/mono_module.gd) ----
@@ -3295,6 +3367,7 @@ func _phone_step(delta: float) -> void:
 	net.set_context(_phone_context())
 	net.tick(delta)
 	_phone_shell_step(delta)
+	_snake_step(delta)
 	if ui.terminal_open():
 		if not net.terminal_open or Input.is_action_just_pressed("pause"):
 			_terminal_closed()
@@ -3989,6 +4062,11 @@ func _notification(what: int) -> void:
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
+	if key != null and key.pressed and not key.echo and snake_open():
+		if key.keycode == KEY_ESCAPE:
+			_stop_snake()
+		get_viewport().set_input_as_handled()
+		return
 	if key != null and key.pressed and not key.echo and phone_open():
 		if key.keycode == KEY_ESCAPE:
 			_close_phone()
