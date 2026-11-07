@@ -2705,11 +2705,25 @@ func _test_stair_walk(app: GameApp) -> void:
 ## Synthesised sound: every cue exists, layers follow the context, mute works, rules are untouched.
 func _test_audio(app: GameApp) -> void:
 	var fx := app.audio
-	for id in ["step", "step_heavy", "heart", "thud", "bell", "ding", "drip", "creak", "static", "sting", "scare", "chime", "hum", "wind", "rain"]:
+	check(fx.ids().size() == 139, "the baked bank has the 139 public recipes (%d)" % fx.ids().size())
+	check(not fx.ids().any(func(id: String) -> bool: return id.begins_with("void.") or id == "death.void"), "hidden content's sounds are not baked")
+	for id: String in ["step.tile", "step.garage", "threat.heartLow", "event.bellEnd", "event.dismissal", "death.generic", "ui.click", "anomaly.bell13", "music.box"]:
 		var stream := fx.stream_of(id)
-		check(stream != null and stream.data.size() > 400, "the %s cue is synthesised" % id)
-	check(fx.stream_of("hum").loop_mode == AudioStreamWAV.LOOP_FORWARD and fx.stream_of("step").loop_mode == AudioStreamWAV.LOOP_DISABLED, "ambient cues loop, one-shots do not")
-	check(fx.stream_of("nothing") == null, "an unknown cue is empty, not an error")
+		check(stream is AudioStreamOggVorbis and stream.get_length() > 0.02 and not (stream as AudioStreamOggVorbis).loop, "%s is a baked one-shot" % id)
+	check(fx.stream_of("nothing") == null and not fx.play("nothing"), "an unknown sound is nothing, not an error")
+	var court := Vector2.ZERO
+	var out := CampusData.layout("out")
+	for o: Dictionary in out["objects"]:
+		if o["k"] == "court":
+			court = Vector2(float(o["x"]) + float(o["w"]) * 0.5, float(o["y"]) + float(o["h"]) * 0.5) * float(out["SC"])
+	check(AudioFx.surface("garage1", false, Vector2.ZERO, [], 1.0) == "garage" and AudioFx.surface("teach6", false, Vector2.ZERO, [], 1.0) == "roof"
+		and AudioFx.surface("bell1", true, Vector2.ZERO, [], 1.0) == "stair" and AudioFx.surface("teach1", false, Vector2.ZERO, [], 1.0) == "tile"
+		and AudioFx.surface("out", false, court, out["objects"], float(out["SC"])) == "court" and AudioFx.surface("out", false, Vector2(-9999, -9999), out["objects"], float(out["SC"])) == "road",
+		"footing: garage, roof, spiral stairs, tile; outdoors the court, otherwise the road")
+	fx.update(0.1, {"menu": true})
+	for _i in 30:
+		fx.update(0.1, {"menu": true})
+	check(fx.bed_playing("pad_menu") and fx.bed_gain("pad_menu") > 0.02, "the menu has its low pad")
 	app.saves.clear()
 	app.start_new_game()
 	await _frames(3)
@@ -2717,27 +2731,47 @@ func _test_audio(app: GameApp) -> void:
 	var t1 := CampusData.layout("teach1")
 	app.travel("teach1", _campus_pose(t1, CampusGeometry.tile_center(t1, 30, 17), PI), false)
 	app.patrol().pat["safety"] = 999.0
+	var base := {"scene": "teach1", "out": false, "san": 100.0, "surface": "tile"}
 	fx.played.clear()
-	fx.update(0.1, {"moving": true, "running": false, "indoors": true, "san": 100.0})
-	check(fx.played.has("step"), "walking plays a footstep")
+	var walk := base.duplicate()
+	walk["moving"] = true
+	fx.update(0.1, walk)
+	check(fx.played.has("step.tile"), "walking indoors steps on tile")
 	fx.played.clear()
-	fx.update(0.1, {"moving": false, "indoors": true, "san": 10.0})
-	check(fx.played.has("heart"), "low SAN plays the heartbeat")
+	var low := base.duplicate()
+	low["bpm"] = 120.0
+	low["body"] = 0.8
+	fx.update(0.1, low)
+	check(fx.played.has("threat.heartLow") and fx.played.has("threat.breath"), "a shaken body: heartbeat at the sensory rate and breath")
 	fx.played.clear()
-	fx.update(0.1, {"moving": false, "indoors": true, "san": 100.0, "patrol_pos": Vector3(3, 0, 3)})
-	check(fx.played.has("step_heavy"), "the patroller's footsteps play in space")
-	await _frames(2)
-	check(fx.looping("hum") and not fx.looping("wind"), "indoors the room tone plays, not the wind")
-	fx.update(0.1, {"indoors": false, "san": 100.0, "rain": true})
-	check(fx.looping("wind") and fx.looping("rain") and not fx.looping("hum"), "outdoors the wind and the rain play")
-	fx.update(0.1, {"indoors": true, "san": 100.0, "blackout": true})
-	check(not fx.looping("hum"), "a blackout kills the hum")
+	var pat := base.duplicate()
+	pat["patrol_pos"] = Vector3(3, 0, 3)
+	fx.update(0.1, pat)
+	check(fx.played.has("step.tile"), "the patroller's footsteps play in space")
+	for _i in 30:
+		fx.update(0.1, base)
+	check(fx.bed_playing("hum") and fx.bed_playing("pad_in_calm") and not fx.bed_playing("wind"), "indoors: the lamp hum and the indoor pad, no wind")
+	var outdoors := {"scene": "out", "out": true, "san": 100.0, "anomaly": "rain", "night": 0.0}
+	for _i in 40:
+		fx.update(0.1, outdoors)
+	check(fx.bed_playing("wind") and fx.bed_playing("rain") and fx.bed_playing("pad_day_tense") and fx.bed_gain("hum") < 0.001, "outdoors in the rain: wind, rain and a tenser day pad; the hum fades")
+	var dark := base.duplicate()
+	dark["blackout"] = true
+	for _i in 40:
+		fx.update(0.1, dark)
+	check(fx.bed_gain("hum") < 0.001, "a blackout kills the hum")
+	fx.played.clear()
+	fx.anomaly_start("bell13")
+	fx.death("swarm")
+	fx.death("no_such_death")
+	check(fx.played.has("anomaly.base") and fx.played.has("anomaly.bell13") and fx.played.has("death.swarm") and fx.played.has("death.generic"),
+		"an anomaly opens with the low drop and its own recipe; a death plays its own sound, or the generic one")
 	app.audio.muted = true
 	check(AudioServer.is_bus_mute(AudioServer.get_bus_index("Master")), "mute silences the master bus")
 	app.audio.muted = false
 	check(not AudioServer.is_bus_mute(AudioServer.get_bus_index("Master")), "unmute restores it")
 	fx.stop_all()
-	check(not fx.looping("wind"), "stop_all stops the loops")
+	check(not fx.bed_playing("wind") and not fx.bed_playing("hum"), "stop_all stops the beds")
 
 
 ## The placeholder anomaly props follow the module state and vanish when it ends.

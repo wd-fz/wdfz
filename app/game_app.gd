@@ -22,13 +22,13 @@ var speedrun := Speedrun.new()
 var audio: AudioFx
 var _seen_anomaly := ""
 var _seen_lock := false
-var _bell_count := 0
 var _seen_phase := 0
 var _seen_day := 1
 var _seen_hide := false
 var _seen_lock_ach := false
 var _ach_started := ""
 var _enter_cool := 0.0
+var _audio_period := ""
 var _drive_view: CarChaseView
 
 
@@ -36,6 +36,12 @@ func _ready() -> void:
 	audio = AudioFx.new()
 	audio.name = "AudioFx"
 	add_child(audio)
+	# ui.click on every button press (audio.js click), including buttons made later (choices).
+	get_tree().node_added.connect(func(n: Node) -> void:
+		if n is BaseButton and n.is_inside_tree() and ui.is_ancestor_of(n):
+			(n as BaseButton).pressed.connect(func() -> void: audio.play("ui.click")))
+	for b: Node in ui.find_children("*", "BaseButton", true, false):
+		(b as BaseButton).pressed.connect(func() -> void: audio.play("ui.click"))
 	ui.new_requested.connect(_pick_talent.bind("easy", false))
 	ui.new_hard_requested.connect(_pick_talent.bind("hard", false))
 	ui.speedrun_requested.connect(_speedrun_menu)
@@ -175,7 +181,7 @@ func fact(f: Dictionary) -> void:
 	ach.fact(f)
 	for e: Dictionary in ach.take_events():
 		ui.show_notice("成就：%s" % e["name"])
-		audio.cue("chime", -10.0)
+		audio.achieve(String(e.get("tier", "n")))
 		_save_profile(ach)
 
 
@@ -544,6 +550,7 @@ func resume_game() -> void:
 
 
 func return_to_menu() -> void:
+	_audio_period = ""
 	ui.show_sensory({"tunnel": 0.0}, 0.0, 0.0)
 	_sense_body = -1.0
 	if is_instance_valid(_mates_nodes):
@@ -618,6 +625,8 @@ func _physics_process(delta: float) -> void:
 		_campus_step(delta)
 		if days() != null and days().waiting != null:
 			_study_fast_forward(delta)
+	elif audio != null and ui.menu.visible:
+		audio.update(delta, {"menu": true})
 
 
 # ---- formal campus (features/campus) ----
@@ -758,7 +767,7 @@ func _apply_result(result: Dictionary) -> void:
 	if result.is_empty():
 		return
 	if result.has("door"):
-		audio.cue("creak", -10.0)
+		audio.play("foley.door")
 	if result.has("choice"):
 		_open_choice(result["choice"])
 	var text := String(result.get("notice", ""))
@@ -1182,7 +1191,7 @@ func kill(msg: String, fx: String, source: String) -> void:
 	player.enabled = false
 	player.clear_input()
 	audio.stop_all()
-	audio.cue("scare", -2.0)
+	audio.death(fx)
 	ui.hide_choice()
 	ui.hide_bag()
 	if bag != null:
@@ -1339,6 +1348,11 @@ func _progress_step(watcher: PatrolModule, day_rules: SchoolModule, weird: Anoma
 			elif _ach_started != "":
 				fact({"kind": "anomaly", "phase": "end", "id": _ach_started, "survived": not story().dead, "lethal": bool(AnomalyModule.DEFS[_ach_started].get("lethal", false))})
 			_ach_started = id
+	# tickSchoolBell: the bell when the period changes (outdoors quieter and muffled).
+	var period := String(SchoolClock.period_at(day_rules.tsec)[2])
+	if _audio_period != "" and period != _audio_period and not story().dead:
+		audio.school_bell("start" if SchoolClock.period_at(day_rules.tsec)[3] == "教室" else "end", session.world_id == "out")
+	_audio_period = period
 	if watcher != null:
 		var locked := bool(watcher.pat["locked"])
 		var hid := bool(watcher.hide["on"])
@@ -1363,48 +1377,47 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 		near = clampf(1.0 - dist / 360.0, 0.0, 1.0)
 		var fs := CampusGeometry.to_scene(room, Vector2(float(watcher.pat["x"]), float(watcher.pat["y"])))
 		patrol_pos = Vector3(fs.x, float(watcher.pat["fy"]) + 0.2, fs.y)
-	audio.update(delta, {"bpm": float(_sense_view.get("bpm", 0.0)), "moving": player.moving, "running": player.sprinting, "indoors": session.world_id != "out", "san": day_rules.san,
-		"blackout": weird != null and weird.blackout_now(), "rain": an_id in ["rain", "raindots"] and session.world_id == "out", "hiding": player.hiding,
-		"patrol_near": near, "patrol_pos": patrol_pos, "chase": watcher != null and bool(watcher.pat["locked"])})
+	var scene := session.world_id
+	var w_here := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var out_room := CampusData.layout("out")
+	var cw := _campus_world()
+	var night := 0.0
+	if cw != null and cw.lighting != null:
+		night = 1.0 - float(cw.lighting.sun_at(day_rules.tsec / 60.0)["day"])
+	var behind := false
+	if patrol_pos is Vector3:
+		var to_p: Vector3 = (patrol_pos as Vector3) - player.camera.global_position
+		behind = (-player.camera.global_basis.z).dot(to_p.normalized()) < -0.2
+	var big := false
+	if room is Dictionary and (room as Dictionary).has("cols"):
+		big = int(room["cols"]) * int(room["rows"]) > 900
+	audio.update(delta, {"scene": scene, "out": scene == "out", "night": night, "dead": story().dead,
+		"surface": AudioFx.surface(scene, scene == "bell1" and float(p[1]) > 0.4, w_here, out_room.get("objects", []), float(out_room.get("SC", 1.0))),
+		"san": day_rules.san, "viol": day_rules.viol, "anomaly": an_id, "shelter": false, "moving": player.moving, "running": player.sprinting,
+		"hiding": player.hiding, "body": maxf(0.0, _sense_body), "bpm": float(_sense_view.get("bpm", 0.0)),
+		"chase": watcher != null and bool(watcher.pat["locked"]), "threat": watcher != null and watcher.local_threat(),
+		"patrol_pos": patrol_pos, "patrol_behind": behind, "big": big, "blackout": weird != null and weird.blackout_now(), "moth_near": 0.5 if an_id == "moth" else 0.0})
 	if watcher != null:
 		var locked := bool(watcher.pat["locked"])
 		if locked and not _seen_lock:
-			audio.cue("scare", -6.0)
+			audio.play("threat.sting")
 		_seen_lock = locked
 	if an_id != _seen_anomaly:
-		_seen_anomaly = an_id
-		_bell_count = 0
-		_seen_phase = 0
 		if an_id != "":
-			match an_id:
-				"broad":
-					audio.cue("static", -8.0)
-				"leak", "raindots":
-					audio.cue("drip", -8.0)
-				"hand":
-					audio.cue("creak", -8.0)
-				_:
-					audio.cue("sting", -10.0)
-	if weird != null and an_id != "":
-		var t := float(weird.an["t"])
-		var data: Dictionary = weird.an["data"]
-		match an_id:
-			"bell13":
-				if _bell_count < 13 and t >= float(_bell_count) * 1.4:
-					_bell_count += 1
-					audio.cue("bell", -6.0)
-			"bells":
-				if _bell_count < 9 and t >= float(_bell_count) * 0.25:
-					_bell_count += 1
-					audio.cue("ding", -10.0, 0.9 + 0.05 * float(_bell_count % 4))
-			"leak":
-				if fmod(t, 0.9) < delta:
-					audio.cue("drip", -14.0, 0.9 + randf() * 0.3)
-			"cup", "cola":
-				var phase := int(data.get("phase", 0))
-				if phase == 2 and _seen_phase != 2:
-					audio.cue("thud", -2.0)
-				_seen_phase = phase
+			audio.anomaly_start(an_id)
+		elif _seen_anomaly != "":
+			audio.play("anomaly.end")
+		_seen_anomaly = an_id
+		_seen_phase = 0
+	if weird != null and an_id in ["cup", "cola"]:
+		# cupFall / colaFall while it drops, cupHit / colaHit on landing (audio.js).
+		var phase := int((weird.an["data"] as Dictionary).get("phase", 0))
+		if phase != _seen_phase:
+			if phase == 1:
+				audio.play("foley.%sFall" % an_id)
+			elif phase == 2:
+				audio.play("foley.%sHit" % an_id)
+		_seen_phase = phase
 
 
 # ---- facilities, rest and the portal (features/campus/facilities_module.gd) ----
@@ -1481,11 +1494,11 @@ func _apply_facility_events() -> void:
 				if anomaly() != null:
 					anomaly().end_now()
 			"exam_start":
-				audio.cue("bell", -2.0)
+				audio.play("event.bigBell", {"k": 1.0})
 				if school().exam_start():
 					ui.show_notice("考试模式 · 今天剩下的课都是考试，熄灯后结束")
 			"bell":
-				audio.cue("bell", -6.0)
+				audio.play("event.bigBell")
 			"save":
 				save_game()
 			"map":
@@ -1856,7 +1869,7 @@ func _apply_paper_events() -> void:
 				_apply_paper_events()
 			"steps":
 				ui.hide_choice()
-				audio.cue("step_heavy", -2.0)
+				audio.play("dread.steps", {"k": 1.0})
 			"read":
 				_choice_count += 1
 				var mine := _choice_count
@@ -1961,7 +1974,7 @@ func _apply_gaze_events() -> void:
 			"breath":
 				var room: Variant = campus().room(session.world_id)
 				var bp := CampusGeometry.to_scene(room, e["p"])
-				audio.cue_at("static", Vector3(bp.x, 1.6, bp.y), -12.0)
+				audio.play("threat.breath", {"pos": Vector3(bp.x, 1.6, bp.y)})
 				ui.show_notice("（窗后 · 呼吸声）")
 			"fact":
 				fact({"kind": "gaze", "what": e["what"]})
@@ -2664,9 +2677,9 @@ func _apply_broadcast_events() -> void:
 					facilities()._guard()
 					_apply_facility_events()
 			"note":
-				audio.cue("ding", -12.0, [1.0, 1.0, 1.12, 1.26, 1.0, 0.75][int(e["note"])])
+				audio.play("music.piano", {"pitch": [1.0, 1.0, 1.12, 1.26, 1.0, 0.75][int(e["note"])]})
 			"radio":
-				audio.cue("static", -6.0, 1.0 if bool(e["real"]) else 0.87)
+				audio.play("dread.radio", {"pitch": 1.0 if bool(e["real"]) else 0.87})
 			"bell_start":
 				_close_mic()
 				audio.loop("dismissal", true, -10.0)
@@ -2744,7 +2757,7 @@ func _apply_garage_events() -> void:
 			"step":
 				var room: Variant = campus().room(session.world_id)
 				var s := CampusGeometry.to_scene(room, Vector2(float(e["x"]), float(e["y"])))
-				audio.cue_at("step_heavy", Vector3(s.x, float(player.capture_pose()["position"][1]) + 0.2, s.y), -2.0)
+				audio.step_on("garage", 1.1, {"pos": Vector3(s.x, float(player.capture_pose()["position"][1]) + 0.2, s.y)})
 			"fact":
 				fact({"kind": "garage", "what": e["what"], "tried": int(e.get("tried", 0))})
 			"save":
@@ -2799,7 +2812,7 @@ func _enter_drive() -> void:
 	night.fog_light_color = Color(0.04, 0.045, 0.06)
 	night.fog_density = 0.02
 	player.camera.environment = night
-	audio.loop("engine", true, -14.0)
+	audio.play("scene.engine")
 
 
 func _leave_drive() -> void:
@@ -2812,7 +2825,7 @@ func _leave_drive() -> void:
 	if player != null and player.camera != null:
 		player.camera.environment = null
 	if audio != null:
-		audio.loop("engine", false)
+		audio.stop("scene")
 
 
 func driving() -> bool:
@@ -2885,7 +2898,7 @@ func _reach_ending(id: String) -> void:
 	player.enabled = false
 	player.clear_input()
 	audio.stop_all()
-	audio.cue("chime", -4.0)
+	audio.play("ui.achieve.epic")
 	ui.hide_choice()
 	ui.hide_bag()
 	if items() != null:
@@ -2962,7 +2975,7 @@ func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 			"hurt":
 				day_rules.change_san(-float(e["amount"]), 0.0)
 				ui.flash_hurt(0.4 if e.get("quiet", false) else 0.65)
-				audio.cue("thud", -8.0 if e.get("quiet", false) else -3.0)
+				audio.play("foley.colaHit", {"k": 0.4 if e.get("quiet", false) else 0.8})
 				ui.show_notice(String(e["msg"]))
 			"san":
 				var after := day_rules.san + float(e["amount"])

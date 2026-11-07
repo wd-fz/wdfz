@@ -232,7 +232,7 @@ func fact(f: Dictionary) -> Array[String]:
 			if not unlocked.has(id) and _test(id, f):
 				unlocked[id] = true
 				got.append(id)
-				events.append({"kind": "unlock", "id": id, "name": LIST[id][1]})
+				events.append({"kind": "unlock", "id": id, "name": LIST[id][1], "tier": LIST[id][0]})
 				again = true
 	return got
 
