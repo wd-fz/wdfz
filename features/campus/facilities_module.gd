@@ -222,6 +222,9 @@ func rest(key: String) -> void:
 	var a: Dictionary = SAN_ACTS.get(key, {})
 	if a.is_empty():
 		return
+	if (_c.get("closed", []) as Array).has(key):
+		_say(DayModule.CLOSED_MSG.get(key, "我：门锁着。"))
+		return
 	if act_cool.has(key) and _clock() < float(act_cool[key]):
 		_say("我：刚做过。现在没那个心情。")
 		return

@@ -32,6 +32,9 @@ const LIST := {
 	"p.five_routes": ["p", "五条路", "最后一次，学校以为我只是放学回家。"],
 	"e.end_international": ["e", "《外国语学生》", "队尾的人回头看了一眼。"],
 	"e.exchange_together": ["e", "一个都没少", "一个都没少。"],
+	"n.desk": ["n", "看课桌", "纸条上那一句，后来救过我。"],
+	"n.special": ["n", "特别的一天", "今天的广播，和平时不一样。"],
+	"e.notes": ["e", "十张纸条", "桌肚里的纸条，我一张一张都记下了。"],
 	"n.vault": ["n", "换一条路", "我摔在地上，腿一阵剧痛，还能走。"],
 	"n.first_aid": ["n", "还能走", "包扎好了，还能走。"],
 	"e.campus_fall": ["e", "楼层之外", "手离开了栏杆。"],
@@ -63,7 +66,7 @@ const SCORELESS := ["n.wake", "n.saved", "e.campus_fall"]
 const LETHAL_GOAL := 4
 
 var unlocked: Dictionary = {}     # profile: id -> true
-var sets: Dictionary = {"lethal": {}, "anomalies": {}, "rest": {}, "talents": {}}   # profile: collected ids
+var sets: Dictionary = {"lethal": {}, "anomalies": {}, "rest": {}, "talents": {}, "notes": {}}   # profile: collected ids
 var rooms: Dictionary = {}        # run
 var insp: Dictionary = {}         # run: "day" -> {slot: 0/1}
 var face_wrong := 0               # run
@@ -128,7 +131,7 @@ func load_profile(data: Dictionary) -> void:
 	for id: String in (data.get("unlocked", {}) as Dictionary):
 		if LIST.has(id):
 			unlocked[id] = true
-	sets = {"lethal": {}, "anomalies": {}, "rest": {}, "talents": {}}
+	sets = {"lethal": {}, "anomalies": {}, "rest": {}, "talents": {}, "notes": {}}
 	for name: String in sets:
 		for k: String in ((data.get("sets", {}) as Dictionary).get(name, {}) as Dictionary):
 			sets[name][k] = true
@@ -162,6 +165,8 @@ func progress(id: String) -> Dictionary:
 			return {"n": mini(sets["anomalies"].size(), _anomaly_total), "of": _anomaly_total}
 		"p.talents":
 			return {"n": mini(sets["talents"].size(), TalentModule.KEYS.size()), "of": TalentModule.KEYS.size()}
+		"e.notes":
+			return {"n": mini(sets["notes"].size(), DayModule.TASKS.size()), "of": DayModule.TASKS.size()}
 		"e.rest8":
 			return {"n": mini(sets["rest"].size(), FacilitiesModule.SAN_ACTS.size()), "of": FacilitiesModule.SAN_ACTS.size()}
 	return {}
@@ -192,6 +197,9 @@ func fact(f: Dictionary) -> Array[String]:
 			saved = true
 		"rest":
 			sets["rest"][String(f["key"])] = true
+		"lesson":
+			if bool(f.get("correct", false)):
+				sets["notes"][str(int(f["task"]))] = true
 		"ending":
 			if _public_end_id(String(f.get("id", ""))) and TalentModule.KEYS.has(String(f.get("talent", ""))):
 				sets["talents"][String(f["talent"])] = true
@@ -255,6 +263,12 @@ func _test(id: String, f: Dictionary) -> bool:
 			return kind == "ending" and f["id"] == "international"
 		"e.exchange_together":
 			return kind == "exchange" and f.get("what") == "arrived" and bool(f.get("together", false))
+		"n.desk":
+			return kind == "lesson" and bool(f.get("correct", false))
+		"n.special":
+			return kind == "specialDay"
+		"e.notes":
+			return sets["notes"].size() >= DayModule.TASKS.size()
 		"n.vault":
 			return kind == "vault" and f.get("what") == "landed"
 		"n.first_aid":

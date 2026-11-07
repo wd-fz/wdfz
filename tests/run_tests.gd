@@ -75,6 +75,7 @@ func _run() -> void:
 	_test_fake_normal_rules()
 	_test_body_rules()
 	_test_exchange_rules()
+	_test_day_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -1567,6 +1568,67 @@ func _test_exchange_rules() -> void:
 	check(back.s["phase"] == x.s["phase"] and int(back.s["passed"]["fr"]) == 1, "and restores")
 
 
+func _test_day_rules() -> void:
+	var d := DayModule.new()
+	d.reset()
+	d.set_seed(12345)
+	check(DayModule.day_hash(12345, 3) == DayModule.day_hash(12345, 3) and DayModule.day_hash(12345, 3) != DayModule.day_hash(12345, 4), "the day hash is stable")
+	check(d.ensure(1) == "none", "the first half-day is never special")
+	var kinds := {}
+	for day in range(2, 200):
+		kinds[d.ensure(day)] = int(kinds.get(d.ensure(day), 0)) + 1
+	check(int(kinds.get("anniversary", 0)) <= 1 and int(kinds.get("occupied", 0)) > 10 and not kinds.has("checkup"), "the anniversary comes at most once; occupied days happen; checkups are not ported")
+	var occ := ""
+	for day: String in d.day_events:
+		if d.day_events[day] == "occupied":
+			occ = day
+			break
+	check(not d.day_events.has(str(int(occ) + 1)) or d.day_events[str(int(occ) + 1)] != "occupied", "no two occupied days in a row")
+	check(d.today(int(occ), 300.0) == "none" and d.today(int(occ), 800.0) == "occupied", "a special day counts from 07:20")
+	check(d.closed("piano", int(occ), 800.0) and d.closed("pc", int(occ), 800.0) and d.lesson_bonus(int(occ), 800.0) == 2.0, "occupied closes the piano and the games and adds to the desk answer")
+	var a := DayModule.new()
+	a.reset()
+	a.day_events = {"3": "anniversary"}
+	check(a.drain_mul(3, 800.0) == 0.5 and a.drain_mul(4, 800.0) == 1.0, "the anniversary halves per-second drains")
+	a.tick_day(3, 800.0)
+	var said := a.take_events()
+	check(said.any(func(e: Dictionary) -> bool: return e["kind"] == "notice" and String(e["text"]).contains("建校纪念日")), "the morning broadcast names the day")
+	a.tick_day(3, 900.0)
+	check(a.take_events().is_empty(), "once")
+	# Lessons.
+	var l := DayModule.new()
+	l.reset()
+	l.press({"available": false, "day": 1, "tsec": 710.0})
+	check(l.take_events().is_empty(), "no desk question unless seated in class")
+	l.press({"available": true, "day": 1, "tsec": 710.0, "room": "teach1"})
+	var q: Dictionary = l.take_events()[0]
+	var task: Dictionary = DayModule.TASKS[int(l.lessons[l.lesson_key]["task"])]
+	check(q["menu"] == "lesson" and q["timer"] == 12.0 and q["labels"] == task["choices"], "R at the desk shows the 12-second question")
+	l.answer(int(task["answer"]), {"day": 1, "tsec": 710.0})
+	var ev := l.take_events()
+	check(ev.any(func(e: Dictionary) -> bool: return e["kind"] == "san" and e["amount"] == 2.0) and ev.any(func(e: Dictionary) -> bool: return e["kind"] == "fact" and e["correct"]), "a right answer: +2 SAN and the note")
+	l.press({"available": true, "day": 1, "tsec": 715.0, "room": "teach1"})
+	check(l.take_events()[0]["menu"] == "wait", "a second R offers to study until the bell")
+	l.start_wait(1, 715.0, "teach1")
+	check(l.wait_allowed({"available": true, "day": 1, "tsec": 716.0, "room": "teach1"}) and not l.wait_allowed({"available": false, "day": 1, "tsec": 716.0, "room": "teach1"}), "studying stops when anything needs attention")
+	var t := DayModule.new()
+	t.reset()
+	t.press({"available": true, "day": 2, "tsec": 600.0, "room": "teach1"})
+	t.take_events()
+	t.answer(-1, {})
+	check(_notices(t.take_events()).has("我：老师把纸收走了。"), "letting the 12 seconds run out loses the question")
+	var fac := FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
+	fac.reset()
+	fac.set_context(_fctx("lab5", {"closed": DayModule.CLOSED}))
+	fac.rest("piano")
+	check(_notices(fac.take_events())[0].contains("改上数学"), "on an occupied day the music room is locked")
+	var ach := AchievementsModule.new(25)
+	ach.reset()
+	for i in DayModule.TASKS.size():
+		ach.fact({"kind": "lesson", "task": i, "correct": true})
+	check(ach.unlocked.has("n.desk") and ach.unlocked.has("e.notes"), "the desk notes: 看课桌 and 十张纸条")
+
+
 func _test_facility_rules() -> void:
 	var rooms := CampusData.rooms()
 	var fac := FacilitiesModule.new(rooms, CampusData.layout("out"), CampusData.campus())
@@ -2165,6 +2227,7 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_dismissal_route(app)
 	await _test_cyber_route(app)
 	await _test_vault_app(app)
+	await _test_lesson_app(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
 
@@ -2656,6 +2719,38 @@ func _test_vault_app(app: GameApp) -> void:
 	await _frames(3)
 	check(app.session.world_id == "out" and app.body().injury == 45.0 and app.player.enabled, "the fall ends on the ground outside, hurt")
 	check(app.player.speed_multiplier < 1.0 and app.achievements().unlocked.has("n.vault"), "walking slower, with 换一条路")
+	app.return_to_menu()
+	DirAccess.remove_absolute(app._profile_path())
+
+
+## A desk question and studying until the bell, through the app.
+func _test_lesson_app(app: GameApp) -> void:
+	app.saves.clear()
+	app.start_new_game()
+	await _frames(3)
+	app.patrol().pat["safety"] = 999.0
+	check(app.school().seated, "the run starts seated in class")
+	var before := app.school().san
+	app._lesson_press()
+	await _frames(1)
+	check(app.ui.choice_open() and app._choice_left > 11.0, "R opens the desk question with its timer")
+	var task: Dictionary = DayModule.TASKS[int(app.days().lessons.values()[0]["task"])]
+	app._choice_made(int(task["answer"]))
+	await _frames(1)
+	check(app.school().san >= minf(100.0, before + 1.9) and app.achievements().unlocked.has("n.desk"), "the right answer helps")
+	app._lesson_press()
+	await _frames(1)
+	app._choice_made(0)
+	var t0 := app.school().tsec
+	for _i in 30:
+		await physics_frame
+	var fast := app.school().tsec - t0
+	app._lesson_press()
+	var t1 := app.school().tsec
+	for _i in 30:
+		await physics_frame
+	var slow := app.school().tsec - t1
+	check(app.days().waiting == null and fast > slow * 3.0, "studying runs the class faster (R stops it)")
 	app.return_to_menu()
 	DirAccess.remove_absolute(app._profile_path())
 

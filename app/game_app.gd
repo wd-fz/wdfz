@@ -66,7 +66,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus())]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new()]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -76,6 +76,15 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func days() -> DayModule:
+	return session.modules.get_module(&"school.days") as DayModule if session != null else null
+
+
+## Per-second SAN drains of today (the anniversary halves them).
+func _drain_mul() -> float:
+	return days().drain_mul(school().day, school().tsec) if days() != null and school() != null else 1.0
 
 
 func exchange() -> ExchangeModule:
@@ -242,6 +251,9 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 	var radio := candidate.modules.get_module(&"story.broadcast") as BroadcastModule
 	if radio != null:
 		radio.set_seed(int((Time.get_ticks_usec() * 13) % 2147483647))
+	var dm := candidate.modules.get_module(&"school.days") as DayModule
+	if dm != null:
+		dm.set_seed(int((Time.get_ticks_usec() * 29) % 4294967295))
 	var visit := candidate.modules.get_module(&"story.exchange") as ExchangeModule
 	if visit != null:
 		visit.roll(int((Time.get_ticks_usec() * 23) % 2147483647))
@@ -312,7 +324,7 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	var gift_now := talent()
 	if gift_now != null:
 		if school() != null:
-			school().danger_mul = gift_now.danger_mul
+			school().danger_mul = func(kind: String) -> float: return gift_now.danger_mul(kind) * _drain_mul()
 		if routes() != null:
 			routes().face_remedy = gift_now.face_remedy
 		if patrol() != null:
@@ -466,6 +478,8 @@ func _physics_process(delta: float) -> void:
 			ui.show_location(_location_name())
 		ui.show_runtime(session.clock.active_seconds)
 		_campus_step(delta)
+		if days() != null and days().waiting != null:
+			_study_fast_forward(delta)
 
 
 # ---- formal campus (features/campus) ----
@@ -776,6 +790,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	_exchange_step(delta)
 	if story().dead or story().over():
 		return
+	_day_step(delta)
 	_anomaly_step(delta, day_rules, room, pose)
 	_audio_step(delta, watcher, day_rules, room, p)
 	_progress_step(watcher, day_rules, weird_now)
@@ -1231,7 +1246,8 @@ func _facility_context() -> Dictionary:
 				bag.remove(id),
 		"anomaly": weird.pendulum_info() if weird != null else {},
 		"busy": (weird != null and weird.is_active()) or day_rules.inspection_pending() or (patrol() != null and patrol().local_chase()),
-		"gate_n_map": CampusData.campus().get("gates", {}).get("n", {"x": 514, "y": 95}), "bound_x1": float(CampusData.campus().get("bound_map", {}).get("x1", 830))}
+		"gate_n_map": CampusData.campus().get("gates", {}).get("n", {"x": 514, "y": 95}), "bound_x1": float(CampusData.campus().get("bound_map", {}).get("x1", 830)),
+		"closed": DayModule.CLOSED if days() != null and days().today(day_rules.day, day_rules.tsec) == "occupied" else [], "drain_mul": _drain_mul()}
 
 
 ## Inventory add with the old messages (a full bag says so).
@@ -1334,6 +1350,92 @@ func _facility_travel(e: Dictionary) -> void:
 	else:
 		pose = campus().default_spawn(world)
 	travel(world, pose, false)
+
+
+# ---- special days and desk lessons (features/school/day_module.gd) ----
+
+func _lesson_context() -> Dictionary:
+	var day_rules := school()
+	var room: Variant = campus().room(session.world_id)
+	var p: Array = player.capture_pose()["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var weird := anomaly()
+	var ok: bool = day_rules.seated and day_rules.at_my_seat(session.world_id, w) and SchoolClock.need_where(day_rules.tsec) == "教室" \
+		and not player.hiding and not (weird != null and weird.is_active()) and not (patrol() != null and patrol().local_chase()) \
+		and not day_rules.inspection_pending() and not day_rules.inspection_upcoming() and not story().dead
+	return {"available": ok, "day": day_rules.day, "tsec": day_rules.tsec, "room": session.world_id, "exam": day_rules.exam_now(),
+		"quiet": day_rules.inspection_pending() or day_rules.inspection_upcoming()}
+
+
+func _day_step(_delta: float) -> void:
+	var dm := days()
+	if dm == null:
+		return
+	dm.tick_day(school().day, school().tsec)
+	if dm.waiting != null and not dm.wait_allowed(_lesson_context()):
+		dm.waiting = null
+	_apply_day_events()
+
+
+func _lesson_press() -> void:
+	var dm := days()
+	if dm == null or ui.choice_open():
+		return
+	dm.press(_lesson_context())
+	_apply_day_events()
+
+
+## LESSON.fastForward: studying runs extra full simulation steps (6× in all), never a jump.
+func _study_fast_forward(delta: float) -> void:
+	var dm := days()
+	for _i in 5:
+		if dm == null or dm.waiting == null or story().over() or story().dead:
+			return
+		if not dm.wait_allowed(_lesson_context()):
+			dm.waiting = null
+			return
+		session.advance(delta, router.current.advances_calendar)
+		_campus_step(delta)
+
+
+func _apply_day_events() -> void:
+	var dm := days()
+	if dm == null:
+		return
+	for e: Dictionary in dm.take_events():
+		match e["kind"]:
+			"notice":
+				ui.show_notice(String(e["text"]))
+			"san":
+				school().san = minf(float(e.get("max", 100.0)), school().san + float(e["amount"]))
+			"save":
+				save_game()
+			"fact":
+				if e["what"] == "specialDay":
+					fact({"kind": "specialDay", "id": e["id"]})
+				else:
+					fact({"kind": "lesson", "task": e["task"], "correct": e["correct"]})
+			"choice":
+				_choice_count += 1
+				var mine := _choice_count
+				var menu := String(e["menu"])
+				_choice_handler = func(index: int) -> void:
+					var d := days()
+					if d == null or mine != _choice_count:
+						return
+					if menu == "lesson":
+						d.answer(index, _lesson_context())
+					elif index == 0:
+						d.start_wait(school().day, school().tsec, session.world_id)
+					elif index == 1:
+						_stand_up()
+					_apply_day_events()
+				player.enabled = false
+				player.clear_input()
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				ui.show_choice(String(e["text"]), e["labels"], menu != "lesson")
+				if e.has("timer"):
+					_choice_left = float(e["timer"])
 
 
 # ---- the exchange visit and 《外国语学生》 (features/story/exchange_module.gd) ----
@@ -1737,7 +1839,8 @@ func _broadcast_context() -> Dictionary:
 	ctx.merge({"day": school().day, "diff": story().diff, "dead": story().dead, "hiding": player.hiding, "night": SchoolClock.is_night(school().tsec),
 		"anomaly_active": weird != null and weird.is_active(), "anomaly_id": weird.active_id() if weird != null else "",
 		"inspection_pending": school().inspection_pending(), "inspection_quiet": school().inspection_pending(),
-		"gate_n": Vector2(float(gn["x"]) * 2.0, float(gn["y"]) * 2.0)}, true)
+		"gate_n": Vector2(float(gn["x"]) * 2.0, float(gn["y"]) * 2.0),
+		"piano_closed": days() != null and days().closed("piano", school().day, school().tsec)}, true)
 	return ctx
 
 
@@ -1909,7 +2012,7 @@ func _garage_context() -> Dictionary:
 	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "run": player.sprinting,
 		"torch": bag != null and bag.torch_on, "has_key": bag != null and bag.has("key"), "hotwire": talent() != null and talent().has("drive"), "dead": story().dead, "enter_cool": _enter_cool,
 		"busy": (weird != null and weird.is_active()) or (school() != null and school().inspection_pending()),
-		"can_stand": _can_stand.bind(room, float(p[1]))}
+		"can_stand": _can_stand.bind(room, float(p[1])), "drain_mul": _drain_mul()}
 
 
 func _garage_step(delta: float, room: Variant, pose: Dictionary) -> void:
@@ -2135,7 +2238,7 @@ func _anomaly_context(room: Variant, pose: Dictionary) -> Dictionary:
 		"item_names": item_names, "dead": story() != null and story().dead, "hiding": watcher != null and bool(watcher.hide["on"]),
 		"patrol_chase": watcher != null and watcher.local_chase(), "choice_open": ui.choice_open(), "brolly": false,
 		"inspection_quiet": day_rules.inspection_pending() or day_rules.inspection_upcoming() or float(day_rules.inspection.get("calm", 0.0)) > 0.0,
-		"in_lift": session.world_id in ElevatorModule.RIDE_ROOMS, "can_stand": _can_stand.bind(room, float(p[1]))}
+		"in_lift": session.world_id in ElevatorModule.RIDE_ROOMS, "can_stand": _can_stand.bind(room, float(p[1])), "drain_mul": _drain_mul()}
 
 
 func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: Dictionary) -> void:
@@ -2287,6 +2390,10 @@ func _notification(what: int) -> void:
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
+	if key != null and key.pressed and not key.echo and key.keycode == KEY_R and days() != null and session != null and not story().over():
+		_lesson_press()
+		get_viewport().set_input_as_handled()
+		return
 	if key != null and key.pressed and not key.echo and key.keycode == KEY_H and facilities() != null and player.enabled and not story().over():
 		facilities().set_context(_facility_context())
 		facilities().think()

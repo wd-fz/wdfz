@@ -349,7 +349,7 @@ func tick(dt: float) -> void:
 			_say("我：那东西停了一下，脚步朝硬币落地的方向去了。")
 	var dist := me.distance_to(Vector2(float(roam["x"]), float(roam["y"])))
 	if dist < 150.0:
-		_emit("san", {"amount": -1.1 * dt, "min": 0.0})
+		_emit("san", {"amount": -1.1 * dt * float(_c.get("drain_mul", 1.0)), "min": 0.0})
 		if not bool(roam["seen"]):
 			roam["seen"] = true
 			_say("我：车道那头有东西。它不是走路的姿势。")

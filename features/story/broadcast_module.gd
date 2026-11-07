@@ -320,6 +320,9 @@ func _take_page(index: int) -> void:
 		_remove("archivekey")
 		_emit("save")
 	if index == 1:
+		if bool(_c.get("piano_closed", false)):
+			_say("我：琴房的门锁着。门上贴着一张纸：「今天的音乐课改上数学。」")
+			return
 		piano(-1)
 		return
 	if index == 2 and not bool(_c.get("night", false)):
@@ -577,7 +580,7 @@ func tick(dt: float) -> void:
 		else:
 			call["age"] = float(call["age"]) + dt
 			if float(call["age"]) >= 8.0:
-				_emit("san", {"amount": -1.5 * dt, "min": 0.0})
+				_emit("san", {"amount": -1.5 * dt * float(_c.get("drain_mul", 1.0)), "min": 0.0})
 	elif call is Dictionary and bool(call["arrived"]) and not bool(call["real"]) and String(_c.get("scene", "")) != call["room"]:
 		call["done"] = true
 	if float(b["clock"]) >= float(b["nextCall"]):

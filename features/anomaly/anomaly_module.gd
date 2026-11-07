@@ -645,7 +645,7 @@ func _on(id: String) -> void:
 
 func _drain(rate: float, dt: float) -> void:
 	if rate > 0.0 and dt > 0.0:
-		_emit("san", {"amount": -dt * rate, "min": 0.0})
+		_emit("san", {"amount": -dt * rate * float(_c.get("drain_mul", 1.0)), "min": 0.0})
 
 
 func _hurt(msg: String, loss: float, quiet: bool = false, keep: bool = false) -> void:
