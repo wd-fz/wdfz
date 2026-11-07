@@ -82,6 +82,7 @@ func _run() -> void:
 	_test_paper_rules()
 	_test_marks_rules()
 	_test_classmates_rules()
+	_test_sensory_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -2004,6 +2005,22 @@ func _test_classmates_rules() -> void:
 	check(not bool(c.state["blocking"]), "below 80 the door is free again")
 
 
+func _test_sensory_rules() -> void:
+	check(SensoryRules.target(80.0) == 0.0 and absf(SensoryRules.target(45.0) - 0.25) < 0.001 and SensoryRules.target(0.0) == 1.0, "nothing above 60 SAN; it deepens below")
+	var b := SensoryRules.step(0.0, 0.0, 0.35)
+	var back := SensoryRules.step(1.0, 100.0, 0.35)
+	check(b > 0.6 and back > 0.8, "quick to get worse, slow to get better")
+	var v := SensoryRules.view(0.8, {})
+	check(v["tunnel"] > 0.7 and v["drain"] > 0.9 and v["flicker"] == 1.0 and v["bpm"] > 120.0, "very low SAN: narrow, grey, blinking, a fast heart")
+	var calm := SensoryRules.view(0.8, {"distortion": 0, "threat": true})
+	check(calm["warp"] == 0.0 and calm["tunnel"] > 0.2 and calm["tunnel"] < 0.3, "distortion off removes the warp; real danger softens to 35 %")
+	check(SensoryRules.view(0.8, {"takeover": true})["tunnel"] == 0.0, "a takeover turns it off")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2
+	var plan := SensoryRules.blink_plan(0.7, rng)
+	check(SensoryRules.blink_at(plan, 0.01) == 1.0 and SensoryRules.blink_at(plan, SensoryRules.blink_end(plan) + 0.1) == 0.0, "a blink goes black and comes back")
+
+
 func _test_facility_rules() -> void:
 	var rooms := CampusData.rooms()
 	var fac := FacilitiesModule.new(rooms, CampusData.layout("out"), CampusData.campus())
@@ -2605,6 +2622,7 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_lesson_app(app)
 	await _test_speedrun_app(app)
 	await _test_marks_app(app)
+	await _test_sensory_app(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
 
@@ -3199,6 +3217,19 @@ func _test_marks_app(app: GameApp) -> void:
 	app.return_to_menu()
 	DirAccess.remove_absolute(app.saves.side_path("last_life.json"))
 	DirAccess.remove_absolute(app._profile_path())
+
+
+func _test_sensory_app(app: GameApp) -> void:
+	app.saves.clear()
+	app.start_new_game()
+	await _frames(3)
+	check(not app.ui.sensory_on(), "a calm start draws no low-SAN picture")
+	app.school().san = 10.0
+	await _frames(40)
+	check(app.ui.sensory_on() and float(app._sense_view["tunnel"]) > 0.5 and float(app._sense_view["bpm"]) > 100.0, "low SAN narrows the picture and quickens the heart, with no number on the HUD")
+	app.return_to_menu()
+	await _frames(2)
+	check(not app.ui.sensory_on(), "back at the menu the picture is clear")
 
 
 func _test_death_flow(app: GameApp) -> void:

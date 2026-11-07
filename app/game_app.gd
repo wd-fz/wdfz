@@ -544,6 +544,8 @@ func resume_game() -> void:
 
 
 func return_to_menu() -> void:
+	ui.show_sensory({"tunnel": 0.0}, 0.0, 0.0)
+	_sense_body = -1.0
 	if is_instance_valid(_mates_nodes):
 		_mates_nodes.queue_free()
 	_mates_nodes = null
@@ -961,6 +963,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	_paper_step(delta)
 	_show_marks()
 	_classmates_step(delta)
+	_sensory_step(delta)
 	_anomaly_step(delta, day_rules, room, pose)
 	_audio_step(delta, watcher, day_rules, room, p)
 	_progress_step(watcher, day_rules, weird_now)
@@ -1357,7 +1360,7 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 		near = clampf(1.0 - dist / 360.0, 0.0, 1.0)
 		var fs := CampusGeometry.to_scene(room, Vector2(float(watcher.pat["x"]), float(watcher.pat["y"])))
 		patrol_pos = Vector3(fs.x, float(watcher.pat["fy"]) + 0.2, fs.y)
-	audio.update(delta, {"moving": player.moving, "running": player.sprinting, "indoors": session.world_id != "out", "san": day_rules.san,
+	audio.update(delta, {"bpm": float(_sense_view.get("bpm", 0.0)), "moving": player.moving, "running": player.sprinting, "indoors": session.world_id != "out", "san": day_rules.san,
 		"blackout": weird != null and weird.blackout_now(), "rain": an_id in ["rain", "raindots"] and session.world_id == "out", "hiding": player.hiding,
 		"patrol_near": near, "patrol_pos": patrol_pos, "chase": watcher != null and bool(watcher.pat["locked"])})
 	if watcher != null:
@@ -1528,6 +1531,42 @@ func _facility_travel(e: Dictionary) -> void:
 	else:
 		pose = campus().default_spawn(world)
 	travel(world, pose, false)
+
+
+# ---- the low-SAN picture (features/school/sensory_rules.gd) ----
+
+var _sense_body := -1.0
+var _sense_view: Dictionary = {}
+var _sense_t := 0.0
+var _blink_plan: Array = []
+var _blink_t := 0.0
+var _blink_next := 0.0
+var _sense_rng := RandomNumberGenerator.new()
+
+
+func _sensory_step(delta: float) -> void:
+	_sense_t += delta
+	_sense_body = SensoryRules.step(_sense_body, school().san, delta)
+	var watcher := patrol()
+	var v := SensoryRules.view(_sense_body, {"time": _sense_t, "threat": watcher != null and watcher.local_threat(),
+		"takeover": driving() or ui.terminal_open(), "chase": watcher != null and bool(watcher.pat["locked"])})
+	_sense_view = v
+	var blink := 0.0
+	if float(v["flicker"]) > 0.0:
+		if _blink_plan.is_empty():
+			_blink_next -= delta
+			if _blink_next <= 0.0:
+				_blink_plan = SensoryRules.blink_plan(_sense_body, _sense_rng)
+				_blink_t = 0.0
+		else:
+			_blink_t += delta
+			blink = SensoryRules.blink_at(_blink_plan, _blink_t) * float(v["flicker"])
+			if _blink_t >= SensoryRules.blink_end(_blink_plan):
+				_blink_plan = []
+				_blink_next = float(v["flicker_gap"]) * (0.7 + 0.6 * _sense_rng.randf())
+	else:
+		_blink_plan = []
+	ui.show_sensory(v, blink, _sense_t)
 
 
 # ---- classmates (features/school/classmates_module.gd) ----

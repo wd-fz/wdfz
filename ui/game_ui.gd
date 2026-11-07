@@ -589,6 +589,62 @@ func tick_opening(delta: float) -> void:
 		_next_opening()
 
 
+## The low-SAN picture (SensoryRules.view): tunnel, blur, colour drain, warp and black blinks,
+## drawn over the world (under the HUD text) with the screen texture.
+var _sense: ColorRect
+
+
+func show_sensory(v: Dictionary, blink: float, t: float) -> void:
+	if _sense == null:
+		_sense = ColorRect.new()
+		_sense.name = "Sensory"
+		_sense.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_sense.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		var shader := Shader.new()
+		shader.code = """shader_type canvas_item;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform float tunnel = 0.0;
+uniform float blur = 0.0;
+uniform float drain = 0.0;
+uniform float warp = 0.0;
+uniform float blink = 0.0;
+uniform float t = 0.0;
+void fragment() {
+	vec2 uv = SCREEN_UV;
+	vec2 c = uv - 0.5;
+	uv += warp * 0.006 * vec2(sin(uv.y * 14.0 + t * 1.7), cos(uv.x * 11.0 + t * 1.3));
+	float edge = length(c) * 1.4142;
+	float lod = blur * (1.0 + 2.5 * edge);
+	vec3 col = textureLod(screen_tex, uv, lod).rgb;
+	float g = dot(col, vec3(0.299, 0.587, 0.114));
+	col = mix(col, vec3(g), drain * 0.85);
+	float v = smoothstep(1.05 - tunnel * 0.55, 0.45 - tunnel * 0.3, edge);
+	col *= mix(1.0, v, tunnel);
+	col *= 1.0 - blink;
+	COLOR = vec4(col, 1.0);
+}"""
+		var mat := ShaderMaterial.new()
+		mat.shader = shader
+		_sense.material = mat
+		$Root.add_child(_sense)
+		$Root.move_child(_sense, 0)
+	var on := float(v.get("tunnel", 0.0)) > 0.01 or blink > 0.0
+	_sense.visible = on
+	if not on:
+		return
+	var m := _sense.material as ShaderMaterial
+	m.set_shader_parameter("tunnel", float(v["tunnel"]))
+	m.set_shader_parameter("blur", float(v["blur"]))
+	m.set_shader_parameter("drain", float(v["drain"]))
+	m.set_shader_parameter("warp", float(v["warp"]))
+	m.set_shader_parameter("blink", blink)
+	m.set_shader_parameter("t", t)
+
+
+func sensory_on() -> bool:
+	return _sense != null and _sense.visible
+
+
 ## The lab3 maintenance terminal (TerminalUI): output, a command line, help / hint buttons, exit.
 var terminal_panel: PanelContainer
 var _term_out: RichTextLabel

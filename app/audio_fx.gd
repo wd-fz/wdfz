@@ -116,7 +116,8 @@ func stop_all() -> void:
 
 
 ## Per-frame layers. ctx: moving, running, indoors, san, blackout, rain, hiding, patrol_near
-## (0..1 closeness while the patroller is in the scene), patrol_pos (Vector3 or null), chase.
+## (0..1 closeness while the patroller is in the scene), patrol_pos (Vector3 or null), chase,
+## bpm (the low-SAN heart rate from SensoryRules.view, 0 when calm).
 func update(delta: float, ctx: Dictionary) -> void:
 	if not enabled:
 		return
@@ -133,7 +134,8 @@ func update(delta: float, ctx: Dictionary) -> void:
 	if fear > 0.05:
 		_beat_t -= delta
 		if _beat_t <= 0.0:
-			_beat_t = lerpf(1.1, 0.5, fear)
+			var bpm := float(ctx.get("bpm", 0.0))
+			_beat_t = 60.0 / bpm if bpm > 0.0 else lerpf(1.1, 0.5, fear)
 			cue("heart", lerpf(-24.0, -6.0, fear))
 	else:
 		_beat_t = 0.0
