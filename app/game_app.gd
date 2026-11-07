@@ -796,7 +796,7 @@ func _death_step(delta: float) -> void:
 	if _death_phase != "fade":
 		return
 	_death_wait += delta
-	ui.show_death_fade(minf(1.0, _death_wait / maxf(0.2, _death_hold)) * 0.9)
+	ui.show_death_scene(story().death_fx, minf(1.0, _death_wait / maxf(0.2, _death_hold)))
 	# story.js deathSkip: at least 0.6 s of the scene, then a key skips to the result.
 	var skip := _death_wait >= 0.6 and (Input.is_action_just_pressed("interact") or Input.is_action_just_pressed("ui_accept"))
 	if _death_wait >= _death_hold or skip:

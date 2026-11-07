@@ -1292,6 +1292,7 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_whitelist_route(app)
 	await _test_achievement_flow(app)
 	await _test_archive(app)
+	await _test_death_scene(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
 
@@ -1527,6 +1528,16 @@ func _test_archive(app: GameApp) -> void:
 	app.return_to_menu()
 	app._show_archive()
 	check(app.ui.ach_panel != null and app.ui.ach_panel.visible, "the menu opens the archive")
+
+
+func _test_death_scene(app: GameApp) -> void:
+	check(GameUI.death_style("drown")[0] == 1 and GameUI.death_style("swarm")[0] == 2 and GameUI.death_style("floor")[0] == 3 and GameUI.death_style("grip")[0] == 4 and GameUI.death_style("unknown")[0] == 0, "each family of causes has its own death scene style")
+	app.ui.show_death_scene("drown", 0.5)
+	check(app.ui.death_scene_style() == 1 and app.ui._death_fade.visible, "the scene shows with its style")
+	app.ui.show_death_scene("drown", 0.0)
+	check(not app.ui._death_fade.visible, "no progress, no scene")
+	app.ui.hide_death()
+	check(not app.ui._death_fade.visible, "hiding the death card hides the scene")
 
 
 func _test_death_flow(app: GameApp) -> void:

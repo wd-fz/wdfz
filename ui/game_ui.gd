@@ -287,7 +287,9 @@ var _death_text: Label
 func _build_death() -> void:
 	_death_fade = ColorRect.new()
 	_death_fade.name = "DeathFade"
-	_death_fade.color = Color(0.1, 0.0, 0.0, 0.0)
+	_death_fade.color = Color(1, 1, 1, 1)
+	_death_fade.material = _death_material()
+	_death_fade.visible = false
 	_death_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_death_fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	$Root.add_child(_death_fade)
@@ -311,8 +313,70 @@ func _build_death() -> void:
 	$Root.add_child(death_panel)
 
 
-func show_death_fade(alpha: float) -> void:
-	_death_fade.color.a = clampf(alpha, 0.0, 0.92)
+## Screen-space death scene (a placeholder for fx/death-cg.js): the style follows the family of the
+## cause. 0 closing vignette, 1 rising water, 2 flickering specks, 3 falling streaks, 4 hands from the sides.
+const DEATH_STYLE := {"drown": [1, Color(0.04, 0.12, 0.15)], "water": [1, Color(0.05, 0.1, 0.16)], "freeze": [1, Color(0.55, 0.7, 0.78)],
+	"swarm": [2, Color(0.06, 0.05, 0.03)], "shatter": [2, Color(0.75, 0.8, 0.85)], "floor": [3, Color(0.03, 0.03, 0.04)],
+	"deep": [3, Color(0.02, 0.02, 0.03)], "slit": [3, Color(0.0, 0.0, 0.0)], "squeeze": [3, Color(0.04, 0.04, 0.04)],
+	"campus_fall": [3, Color(0.03, 0.03, 0.04)], "grip": [4, Color(0.04, 0.0, 0.0)], "hand": [4, Color(0.05, 0.02, 0.02)],
+	"liftdoor": [4, Color(0.03, 0.03, 0.04)], "follow": [4, Color(0.06, 0.06, 0.07)], "neck": [4, Color(0.03, 0.0, 0.0)],
+	"trash": [4, Color(0.0, 0.0, 0.0)], "ring": [0, Color(0.1, 0.1, 0.09)], "names": [0, Color(0.1, 0.02, 0.02)]}
+
+
+static func death_style(fx: String) -> Array:
+	return DEATH_STYLE.get(fx, [0, Color(0.1, 0.0, 0.0)])
+
+
+func _death_material() -> ShaderMaterial:
+	var shader := Shader.new()
+	shader.code = """shader_type canvas_item;
+uniform vec4 tint : source_color = vec4(0.1, 0.0, 0.0, 1.0);
+uniform float progress = 0.0;
+uniform int style = 0;
+float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void fragment() {
+	vec2 uv = UV;
+	float a = 0.0;
+	float d = distance(uv, vec2(0.5)) * 1.4142;
+	if (style == 0) {
+		a = smoothstep(1.0 - progress, 1.25 - progress * 0.5, d);
+		a = max(a, progress * 0.55);
+	} else if (style == 1) {
+		float lvl = 1.0 - progress;
+		a = smoothstep(lvl - 0.04, lvl + 0.04, uv.y) * 0.9;
+		a = max(a, progress * 0.3);
+	} else if (style == 2) {
+		float t = floor(TIME * 14.0);
+		float s = step(0.95 - progress * 0.35, h(floor(uv * vec2(90.0, 50.0)) + t));
+		a = max(s * 0.9, progress * 0.5);
+	} else if (style == 3) {
+		a = progress * progress;
+		a = max(a, smoothstep(0.0, 1.0, (1.0 - uv.y) * progress) * 0.8);
+		float st = step(0.985, h(vec2(floor(uv.x * 60.0), floor(TIME * 20.0))));
+		a = max(a, st * progress * 0.6);
+	} else {
+		float side = min(uv.x, 1.0 - uv.x);
+		a = smoothstep(progress * 0.5, progress * 0.5 - 0.12, side);
+		a = max(a, progress * 0.45);
+	}
+	COLOR = vec4(tint.rgb, clamp(a, 0.0, 0.95));
+}"""
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	return mat
+
+
+func show_death_scene(fx: String, progress: float) -> void:
+	var info := death_style(fx)
+	var mat := _death_fade.material as ShaderMaterial
+	mat.set_shader_parameter("style", int(info[0]))
+	mat.set_shader_parameter("tint", info[1])
+	mat.set_shader_parameter("progress", clampf(progress, 0.0, 1.0))
+	_death_fade.visible = progress > 0.0
+
+
+func death_scene_style() -> int:
+	return int((_death_fade.material as ShaderMaterial).get_shader_parameter("style"))
 
 
 func show_death_card(message: String, epitaph: String, cause: String, hints: PackedStringArray) -> void:
@@ -468,7 +532,7 @@ func hide_ending() -> void:
 
 func hide_death() -> void:
 	death_panel.visible = false
-	_death_fade.color.a = 0.0
+	_death_fade.visible = false
 
 
 var _choice_timer_label: Label
