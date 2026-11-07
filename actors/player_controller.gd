@@ -16,6 +16,12 @@ signal focus_changed(prompt: String)
 @onready var ray: RayCast3D = %InteractionRay
 
 var enabled := false
+## Seated (old S.seated): the body stays on the chair, the view still turns.
+var seated := false
+## Sprint allowed by the stamina rules (input.js tired / STAM_BACK).
+var can_sprint := true
+var moving := false
+var sprinting := false
 var _touch_move := Vector2.ZERO
 var _touch_sprint := false
 var _focus: WorldInteractable
@@ -42,17 +48,37 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if not enabled:
 		return
+	if seated:
+		# The seated body overlaps its chair (old S.seated skips moveBy entirely).
+		velocity = Vector3.ZERO
+		moving = false
+		sprinting = false
+		_update_focus()
+		return
 	var direction := (Input.get_vector("move_left", "move_right", "move_forward", "move_back") + _touch_move).limit_length()
 	var world_direction := global_basis * Vector3(direction.x, 0.0, direction.y)
-	var speed := sprint_speed if Input.is_action_pressed("sprint") or _touch_sprint else walk_speed
+	var want_run := (Input.is_action_pressed("sprint") or _touch_sprint or _touch_move.length() > 0.96) and direction.length() > 0.08
+	sprinting = want_run and can_sprint
+	var speed := sprint_speed if sprinting else walk_speed
 	velocity.x = world_direction.x * speed
 	velocity.z = world_direction.z * speed
 	if not is_on_floor():
 		velocity += get_gravity() * delta
 	else:
 		velocity.y = 0.0
+	var before := global_position
 	move_and_slide()
+	moving = Vector2(global_position.x - before.x, global_position.z - before.z).length() > 0.0001 / 9.0
+	if not moving:
+		sprinting = false
 	_update_focus()
+
+
+## Movement input this frame (old updatePlayer: a seated player stands up when it exceeds 0.08).
+func wants_move() -> bool:
+	if not enabled:
+		return false
+	return (Input.get_vector("move_left", "move_right", "move_forward", "move_back") + _touch_move).length() > 0.08
 
 
 func _update_focus() -> void:

@@ -60,6 +60,7 @@ func _run() -> void:
 	await _test_app()
 	_test_campus_rules()
 	_test_elevator_rules()
+	_test_school_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -435,6 +436,64 @@ func _test_elevator_rules() -> void:
 	check(rare_rolls == 0, "no wrong-elevator roll before the void maze is ported")
 
 
+func _test_school_rules() -> void:
+	check(SchoolClock.fmt_clock(700) == "11:40" and SchoolClock.period_at(700)[2] == "第 4 节", "a run starts at 11:40 in period 4")
+	check(SchoolClock.need_where(1340) == "宿舍" and SchoolClock.need_where(600) == "操场" and SchoolClock.need_where(530) == "自由", "need_where follows the schedule")
+	# A whole natural day is 1200 simulation seconds (four phases 360/360/360/120).
+	var total := 0.0
+	var t := 440.0
+	while t < 1500.0 - 1e-9:
+		var end := SchoolClock.clock_boundary(t)
+		total += (end - t) * 60.0 / SchoolClock.rate_at(t)
+		t = end
+	check(absf(total - 1200.0) < 0.01, "one natural day costs 1200 simulation seconds (%.3f)" % total)
+	var school := SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
+	school.reset()
+	var seat := school.start_seated("teach1")
+	var own := CampusGeometry.to_world(CampusData.layout("teach1"), float(seat["position"][0]), float(seat["position"][2]))
+	var ctx := {"world_id": "teach1", "w": own, "moving": false, "running": false, "calendar": true}
+	school.san = 50.0
+	school.step(10.0, ctx)
+	# 700 -> 705 takes 5.3 s at the first phase's rate; the internal window after 11:45 runs at 2 game min / min.
+	check(absf(school.tsec - 705.16) < 0.02, "ten seconds from 11:40 reach 11:45 and enter the slow window (%.3f)" % school.tsec)
+	check(absf(school.san - (50.0 + 0.42 * 10.0)) < 0.01, "seated at the own seat in class restores 0.42 SAN per second")
+	check(absf(school.tt - 0.26 * 10.0) < 0.01, "sitting through class raises assimilation 0.26 per second")
+	school.stand_up()
+	ctx["world_id"] = "out"
+	ctx["w"] = Vector2(1000, 1000)
+	school.tsec = 1345.0
+	school.viol = 0.0
+	school.step(2.0, ctx)
+	check(absf(school.viol - 2.0 * 0.85 * 0.5) < 0.01, "after lights-out outside, violation grows at the halved night rate")
+	school.tsec = 900.0
+	school.viol = 10.0
+	school.step(1.0, ctx)
+	check(absf(school.viol - (10.0 - 3.2)) < 0.01, "outside the rules violation decays 3.2 per second")
+	school.stam = 40.0
+	school.step(1.0, {"world_id": "out", "w": Vector2(1000, 1000), "moving": true, "running": true, "calendar": false})
+	check(absf(school.stam - 32.0) < 0.01, "running costs 8 stamina per second")
+	school.stam = 5.0
+	school.step(0.1, {"world_id": "out", "w": Vector2(1000, 1000), "moving": true, "running": true, "calendar": false})
+	check(school.tired and not school.can_run(), "below 6 stamina the player is out of breath")
+	school.stam = 29.0
+	school.step(0.01, {"world_id": "out", "w": Vector2(1000, 1000), "moving": false, "running": false, "calendar": false})
+	check(school.tired, "still out of breath until stamina is back at 30")
+	school.stam = 31.0
+	school.step(0.01, {"world_id": "out", "w": Vector2(1000, 1000), "moving": false, "running": false, "calendar": false})
+	check(not school.tired, "stamina 30 lets the player run again")
+	check(is_equal_approx(SchoolModule.stamina_max_for(50.0), 70.0), "stamina maximum is 40 + 0.6 × SAN")
+	var later := SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
+	later.reset()
+	later.tsec = 1340.0
+	later.advance_game_time(20.0)
+	check(later.day == 2 and is_equal_approx(later.tsec, 1360.0), "day two starts at 22:30")
+	later.advance_game_time(140.0)
+	check(is_equal_approx(later.tsec, 440.0), "01:00 jumps to 07:20")
+	check(int(later.pressure()["stage"]) >= 2, "campus pressure climbs after the first night")
+	var data: Dictionary = JSON.parse_string(JSON.stringify(later.capture()))
+	check(school.validate(data).is_empty(), "school state survives JSON")
+
+
 func _test_campus_app() -> void:
 	var app: GameApp = APP.instantiate()
 	app.saves = SaveStore.new(_test_path)
@@ -449,7 +508,14 @@ func _test_campus_app() -> void:
 	check(world.find_children("*", "MultiMeshInstance3D", true, false).size() > 50, "instanced furniture rebuilt as MultiMesh")
 	check(world.door_keys().size() == 8, "teach1 has its eight classroom doors as bodies")
 	var start: Array = app.player.capture_pose()["position"]
-	check(absf(start[0] - 17.3) < 0.01 and absf(start[2] - 1.4456) < 0.01, "start pose is the old leaveSeat spot by the own seat")
+	check(absf(start[0] - 17.3) < 0.01 and absf(start[2] - 0.39) < 0.01 and app.school().seated, "a run starts seated on the own seat (ClassroomLayout.anchor)")
+	check(app.school().at_my_seat("teach1", CampusGeometry.to_world(CampusData.layout("teach1"), start[0], start[2])), "the start seat counts as the own seat")
+	Input.action_press("move_left")
+	await _frames(2)
+	Input.action_release("move_left")
+	await _frames(1)
+	var stood: Array = app.player.capture_pose()["position"]
+	check(not app.school().seated and absf(stood[2] - 1.4456) < 0.15, "moving stands up into the aisle where leaveSeat puts the body")
 	# Real physics: walking into the classroom's north window wall must stop.
 	var t1 := CampusData.layout("teach1")
 	app.player.restore_pose(_campus_pose(t1, CampusGeometry.tile_center(t1, 54, 9), -PI * 0.5))
@@ -533,6 +599,7 @@ func _walk(app: GameApp, points: Array, frames_each: int = 120) -> void:
 func _test_stair_walk(app: GameApp) -> void:
 	app.start_new_game()
 	await _frames(3)
+	app._stand_up()
 	var t1 := CampusData.layout("teach1")
 	var s := CampusPortals.stair_config(CampusData.campus()["stair_layout"], "stair_teach_w")
 	var port := CampusPortals.stair_port(s, 0, CampusData.rooms(), CampusData.layout("out"))

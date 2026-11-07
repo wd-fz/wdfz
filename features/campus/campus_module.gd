@@ -272,6 +272,8 @@ func hint(world_id: String, pose: Dictionary) -> String:
 			return "关门" if is_open(CampusGeometry.door_key(r, hit["c"], hit["r"])) else "开门"
 		"J":
 			return "电梯"
+		"P":
+			return "坐下"
 		"O":
 			return "" if _exit_is_open(r, hit["w"]) or int(r.get("floor", 1) if r.get("floor") != null else 1) > 1 else "离开"
 	return ""
@@ -327,6 +329,8 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 			return {"notice": "武大附中 · 校园", "travel": {"world": "out", "pose": _pose(CampusGeometry.to_scene(null, outside_pos), ang, float(pose["pitch"]))}}
 		"J":
 			return {"notice": "", "elevator": true}
+		"P":
+			return {"notice": "", "seat": [hit["c"], hit["r"]]}
 		"S":
 			# interact.js stairGo: shafts are walked; a room without one (canteen) has its stair as a way out.
 			for st: Dictionary in _stair_layout():

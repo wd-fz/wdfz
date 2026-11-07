@@ -45,6 +45,7 @@ func _ready() -> void:
 	look_pad.looked.connect(func(value: Vector2) -> void: touch_look.emit(value))
 	%TouchToggle.toggled.connect(set_touch_enabled)
 	_build_choice()
+	_build_status()
 	set_touch_enabled(DisplayServer.is_touchscreen_available())
 	get_tree().root.size_changed.connect(_resize)
 	_resize()
@@ -95,6 +96,49 @@ func _build_choice() -> void:
 	lift_close_button.position.x -= 40
 	lift_close_button.pressed.connect(func() -> void: lift_close_requested.emit())
 	hud.add_child(lift_close_button)
+
+
+## Old HUD (ui/hud.js): clock, place, period line coloured by state, and the stamina bar that
+## appears only when stamina is below full (red while out of breath).
+func _build_status() -> void:
+	_status_line = Label.new()
+	_status_line.name = "Status"
+	_status_line.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	_status_line.position = Vector2(16, 44)
+	_status_line.add_theme_font_size_override("font_size", 15)
+	_status_line.visible = false
+	hud.add_child(_status_line)
+	_stamina = ProgressBar.new()
+	_stamina.name = "Stamina"
+	_stamina.show_percentage = false
+	_stamina.custom_minimum_size = Vector2(180, 8)
+	_stamina.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_stamina.position.y -= 90
+	_stamina.visible = false
+	hud.add_child(_stamina)
+
+
+func show_status(place: String, period: String, state: String, clock: String) -> void:
+	_status_on = true
+	_location = clock
+	_status_line.visible = true
+	_status_line.text = "%s\n%s" % [place, period]
+	_status_line.modulate = Color(0.95, 0.78, 0.4) if state == "warn" else Color(0.75, 0.95, 0.85)
+
+
+func reset_status() -> void:
+	_status_on = false
+	_location = "移植测试场景"
+	if _status_line != null:
+		_status_line.visible = false
+		_stamina.visible = false
+
+
+func show_stamina(value: float, maximum: float, out_of_breath: bool) -> void:
+	_stamina.visible = value < 99.5
+	_stamina.max_value = 100.0
+	_stamina.value = clampf(value, 0.0, 100.0)
+	_stamina.modulate = Color(0.85, 0.45, 0.35) if out_of_breath else Color(0.55, 0.75, 0.95)
 
 
 func show_choice(text: String, labels: Array) -> void:
@@ -193,6 +237,9 @@ func show_prompt(text: String) -> void:
 
 
 var _location := "移植测试场景"
+var _status_line: Label
+var _stamina: ProgressBar
+var _status_on := false
 
 
 func show_location(text: String) -> void:
@@ -200,4 +247,4 @@ func show_location(text: String) -> void:
 
 
 func show_runtime(seconds: float) -> void:
-	%Runtime.text = "%s · 运行 %ds" % [_location, int(seconds)]
+	%Runtime.text = _location if _status_on else "%s · 运行 %ds" % [_location, int(seconds)]

@@ -35,7 +35,8 @@ func _ready() -> void:
 
 func _make_session() -> GameSession:
 	var candidate := GameSession.new()
-	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms())]:
+	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
+			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -45,6 +46,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func school() -> SchoolModule:
+	return session.modules.get_module(&"school.day") as SchoolModule if session != null else null
 
 
 func elevator() -> ElevatorModule:
@@ -62,6 +67,12 @@ func start_new_game() -> void:
 	candidate.start(initial_world)
 	var rules := candidate.modules.get_module(&"campus.world") as CampusModule
 	var pose := rules.start_pose() if rules != null and initial_world == rules.start_world() else router.current.spawn_pose()
+	# Game.start: the run begins seated on the player's own seat in teach1.
+	var day_rules := candidate.modules.get_module(&"school.day") as SchoolModule
+	if day_rules != null and rules != null and initial_world == rules.start_world():
+		var seated := day_rules.start_seated(initial_world)
+		if not seated.is_empty():
+			pose = seated
 	_install_session(candidate, pose)
 	if rules != null and rules.knows(initial_world):
 		ui.show_notice(String(rules.room(initial_world)["name"]) if rules.room(initial_world) != null else "武大附中 · 校园")
@@ -74,6 +85,8 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 		session.stop()
 	session = candidate
 	session.notice_requested.connect(ui.show_notice)
+	var day_rules := school()
+	player.seated = day_rules != null and day_rules.seated
 	var rules := campus()
 	if rules != null:
 		rules.door_changed.connect(_door_changed)
@@ -139,6 +152,8 @@ func resume_game() -> void:
 
 func return_to_menu() -> void:
 	ui.hide_choice()
+	ui.reset_status()
+	player.seated = false
 	_choice_handler = Callable()
 	if session != null:
 		session.stop()
@@ -157,7 +172,8 @@ func return_to_menu() -> void:
 func _physics_process(delta: float) -> void:
 	if session != null and session.running and not get_tree().paused:
 		session.advance(delta, router.current.advances_calendar)
-		ui.show_location(_location_name())
+		if school() == null or campus() == null or not campus().knows(session.world_id):
+			ui.show_location(_location_name())
 		ui.show_runtime(session.clock.active_seconds)
 		_campus_step(delta)
 
@@ -188,6 +204,7 @@ func _campus_step(delta: float) -> void:
 	var rules := campus()
 	if rules == null or not rules.knows(session.world_id):
 		return
+	_school_step(delta, rules)
 	var lift := elevator()
 	if lift != null:
 		var stepped := lift.step(delta, session.world_id, player.capture_pose())
@@ -216,6 +233,11 @@ func _campus_interact() -> void:
 	if session == null or get_tree().paused or rules == null or not rules.knows(session.world_id):
 		return
 	var pose := player.capture_pose()
+	var day_rules := school()
+	# tryInteract: a seated player stands up first.
+	if day_rules != null and day_rules.seated:
+		_stand_up("我站了起来。")
+		return
 	var lift := elevator()
 	var result: Dictionary
 	var room: Variant = rules.room(session.world_id)
@@ -235,6 +257,13 @@ func _apply_result(result: Dictionary) -> void:
 		return
 	if result.has("choice"):
 		_open_choice(result["choice"])
+	if result.has("seat") and school() != null:
+		var sat := school().sit(session.world_id, int(result["seat"][0]), int(result["seat"][1]))
+		if not sat.is_empty():
+			player.restore_pose(sat["pose"])
+			player.seated = true
+			ui.show_notice(sat["notice"])
+		return
 	var text := String(result.get("notice", ""))
 	if result.has("toast"):
 		text = text + "\n" + String(result["toast"])
@@ -242,6 +271,40 @@ func _apply_result(result: Dictionary) -> void:
 		travel(result["travel"]["world"], result["travel"]["pose"], bool(result["travel"].get("seamless", false)))
 	if not text.is_empty():
 		ui.show_notice(text)
+
+
+func _stand_up(text: String = "") -> void:
+	var day_rules := school()
+	if day_rules == null:
+		return
+	var stood := day_rules.stand_up()
+	player.seated = false
+	if stood.has("pose"):
+		var pose: Dictionary = stood["pose"]
+		pose["yaw"] = player.capture_pose()["yaw"]
+		pose["pitch"] = player.capture_pose()["pitch"]
+		player.place(pose)
+	if not text.is_empty():
+		ui.show_notice(text)
+
+
+func _school_step(delta: float, rules: CampusModule) -> void:
+	var day_rules := school()
+	if day_rules == null:
+		return
+	if day_rules.seated and player.wants_move():
+		_stand_up()
+	var pose := player.capture_pose()
+	var room: Variant = rules.room(session.world_id)
+	var p: Array = pose["position"]
+	day_rules.step(delta, {"world_id": session.world_id, "w": CampusGeometry.to_world(room, float(p[0]), float(p[2])),
+		"height": float(p[1]), "moving": player.moving, "running": player.sprinting, "calendar": router.current.advances_calendar})
+	player.can_sprint = day_rules.can_run()
+	for text: String in day_rules.take_notices():
+		ui.show_notice(text)
+	var frozen := not router.current.advances_calendar
+	ui.show_status(day_rules.place_name(session.world_id, float(p[1])), day_rules.period_text(frozen), day_rules.period_class(frozen), day_rules.clock_text(false))
+	ui.show_stamina(day_rules.stam, day_rules.stamina_max(), day_rules.tired)
 
 
 func _open_choice(choice: Dictionary) -> void:

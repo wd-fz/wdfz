@@ -211,6 +211,21 @@
     return pose(R, x, y, ang);
   }
   /* 开局：坐在本人座位上（ClassroomLayout.anchor）；站起来的位置用旧版 leaveSeat 现场算 */
+  /* 所有座位格（'P'）：坐下的锚点（ClassroomLayout.anchor）与旧版 leaveSeat 算出的起身位置 */
+  function seatList(R){
+    var out = [], L = window.ClassroomLayout, S = window.S;
+    for(var r = 0; r < R.rows; r++) for(var c = 0; c < R.cols; c++){
+      if(R.grid[r][c] !== 'P') continue;
+      var seat = L.seat(R.id, c, r), a = L.anchor(R, seat);
+      var keep = {mode:S.mode, room:S.room, x:S.x, y:S.y, ang:S.ang, seated:S.seated, seat:S.seat};
+      S.mode = 'in'; S.room = R.id; S.x = a.x; S.y = a.y; S.ang = a.ang; S.seated = true; S.seat = seat;
+      window.leaveSeat();
+      var stand = pose(R, S.x, S.y, a.ang);
+      Object.assign(S, keep);
+      out.push({c:c, r:r, seat_id:seat.seatId, facing:seat.facing, seated:pose(R, a.x, a.y, a.ang), stand:stand});
+    }
+    return out;
+  }
   function seatStart(R){
     var L = window.ClassroomLayout, a = L.anchor(R, L.ownSeat), S = window.S;
     var keep = {mode:S.mode, room:S.room, x:S.x, y:S.y, ang:S.ang, seated:S.seated, seat:S.seat};
@@ -251,7 +266,7 @@
     return {
       id:id, name:R.name, host:R.host || null, floor:R.floor === undefined ? null : R.floor,
       cols:R.cols, rows:R.rows, tw:R.tw, th:R.th, ox:R.ox, oy:R.oy, cx:R.cx, cy:R.cy,
-      shift:shift, exit_world:exit, grid:grid, spawn:spawn, start:start,
+      shift:shift, exit_world:exit, grid:grid, spawn:spawn, start:start, seats:seatList(R),
       flags:{stairwell:!!R.stairwell, spiral:!!R.spiral, custom:!!R.build, collide:!!R.collide, noClock:!!R.noClock, gallery:!!R.gallery, noMap:!!R.noMap},
       walls:mergeCells(walls, R, toM), boxes:boxes, doors:doors, stairs:stairs
     };
@@ -280,6 +295,10 @@
       Object.keys(window.DOOR_LOCKS).forEach(function(k){ var id = window.DOOR_LOCKS[k]; locks[k] = {item:id, name:window.ITEMS[id] ? window.ITEMS[id].n : id}; });
       return {campus_doors:campusDoors(), door_locks:locks, PRAD:window.PRAD, TTILE:window.TTILE, U2M:U, SC:window.SC, EYE:window.EYE, WALLH:window.WALLH,
         SPD_WALK:window.SPD_WALK, SPD_RUN:window.SPD_RUN, start_room:window.ClassroomLayout.ownSeat.room,
+        own_seat:window.ClassroomLayout.ownSeat, classroom_rows:window.ClassroomLayout.rows,
+        sched:window.SCHED, day_phases:window.DAY_PHASES, lights_out:window.LIGHTS_OUT, evening:window.EVENING,
+        pressure_curve:window.CampusPressure.curve, pressure_messages:window.CampusPressure.messages,
+        stamina:{back:window.STAM_BACK, run:window.STAM_RUN, rest:window.STAM_REST, snack_sec:window.SNACK_SEC},
         stair_layout:window.STAIR_LAYOUT, stair_geometry:window.StairGeometry.config, spiral:window.SPIRAL,
         campus_link:window.CAMPUS_LINK ? {width:window.CAMPUS_LINK.width, annex:window.CAMPUS_LINK.annex, pairs:window.CAMPUS_LINK.pairs} : null,
         reference:'wd-fz/wd-fz.github.io@0bf508a47eac154c2a7047cdb45d314f61c48fdc'};
