@@ -572,6 +572,11 @@ func _ambient(delta: float, ctx: Dictionary, out: bool, night: float, garage: bo
 		if _next_drip <= 0.0:
 			_next_drip = _rng.randf_range(0.8, 3.0) if garage else _rng.randf_range(0.3, 0.8)
 			play("world.drip", {"pan": _rng.randf_range(-0.7, 0.7)} if garage else {"k": 1.3, "pan": _rng.randf_range(-0.4, 0.4)})
+	elif rain_on and not cover and bool(ctx.get("brolly", false)):
+		# audio.js: under the open umbrella the rain patters on the canopy (about 28 a second).
+		var n := floori(delta * 28.0 + _rng.randf())
+		for _i in n:
+			play("world.patter", {"at": _rng.randf() * delta, "pan": _rng.randf_range(-0.6, 0.6)})
 	elif rain_on and not cover and bool(ctx.get("shelter", false)):
 		_next_drip -= delta
 		if _next_drip <= 0.0:

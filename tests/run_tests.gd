@@ -99,6 +99,7 @@ func _run() -> void:
 	_test_run_new_rules()
 	_test_duty_rules()
 	_test_last_life_box()
+	_test_umbrella_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -2826,6 +2827,27 @@ func _test_last_life_box() -> void:
 	check(not m.near_box(), "only close to the box")
 	m.set_context({"scene": "teach1", "x": at.x, "y": at.y})
 	check(not m.near_box(), "only at the guard post")
+
+
+func _test_umbrella_rules() -> void:
+	var bag := InventoryModule.new(CampusData.rooms(), CampusData.campus())
+	bag.reset()
+	bag.add("brolly")
+	check(not bag.brolly_up, "the umbrella starts closed")
+	var open := bag.use("brolly", 700.0)
+	check(bag.brolly_up and open["toast"] == "撑开伞", "using it opens it")
+	var shut := bag.use("brolly", 700.0)
+	check(not bag.brolly_up and shut["toast"] == "收起伞", "using it again closes it")
+	bag.use("brolly", 700.0)
+	bag.drop("brolly")
+	check(not bag.brolly_up and not bag.has("brolly"), "dropping an open umbrella closes it")
+	bag.add("brolly")
+	bag.use("brolly", 700.0)
+	bag.reset()
+	check(not bag.brolly_up, "a new run starts with it closed")
+	# The cola anomaly's can bounces off an open umbrella (anomaly.js): it costs SAN instead of the can.
+	var an := CampusData.make_anomaly()
+	check(an != null, "(the anomaly module reads the umbrella from its context)")
 
 
 func _test_facility_rules() -> void:

@@ -12,7 +12,7 @@ const STATE_VERSION := 1
 const SEARCH_SECONDS := 0.8
 const SEARCH_REACH := 5.0
 const ITEM_READ := ["card", "notebook", "hw", "usb", "key", "roomkey", "metronome", "goggles", "coat", "battery", "chalk", "pen"]
-const NOT_PORTED := ["brolly"]
+const NOT_PORTED: Array = []
 const EMPTY_LINES := ["我：空的。只有一层灰。", "我：空的。抽屉底下用圆珠笔写着一个名字，被涂黑了。", "我：空的。最里面有一小撮头发。"]
 
 var _rooms: Dictionary = {}
@@ -20,6 +20,7 @@ var _campus: Dictionary = {}
 var bag: Array = []
 var hot: Array = [null, null]
 var torch_on := false
+var brolly_up := false          # the umbrella is open (USE.brollyShield): not saved, a new run starts closed
 var pill_t := 0.0
 var snack_t := 0.0
 var desk_used: Dictionary = {}
@@ -48,6 +49,7 @@ func reset() -> void:
 	bag = []
 	hot = [null, null]
 	torch_on = false
+	brolly_up = false
 	pill_t = 0.0
 	snack_t = 0.0
 	desk_used = {}
@@ -159,6 +161,8 @@ func remove(id: String) -> bool:
 			hot[k] = null
 	if id == "torch":
 		torch_on = false
+	if id == "brolly":
+		brolly_up = false
 	return true
 
 
@@ -196,6 +200,9 @@ func use(id: String, tsec: float) -> Dictionary:
 		"torch":
 			torch_on = not torch_on
 			return {"toast": "手电：开" if torch_on else "手电：关"}
+		"brolly":
+			brolly_up = not brolly_up
+			return {"toast": "撑开伞" if brolly_up else "收起伞"}
 		"pill":
 			pill_t = float(_campus.get("pill", {}).get("sec", 30))
 			remove("pill")

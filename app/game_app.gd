@@ -1165,7 +1165,7 @@ func _bag_entries() -> Array:
 	var bag := items()
 	var out: Array = []
 	for id: String in bag.bag:
-		out.append({"id": id, "name": bag.item_name(id), "text": bag.item_text(id)})
+		out.append({"id": id, "name": bag.item_name(id) + (" · 撑开着" if id == "brolly" and bag.brolly_up else ""), "text": bag.item_text(id)})
 	return out
 
 
@@ -1489,7 +1489,7 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 		big = int(room["cols"]) * int(room["rows"]) > 900
 	audio.update(delta, {"scene": scene, "out": scene == "out", "night": night, "dead": story().dead,
 		"surface": AudioFx.surface(scene, scene == "bell1" and float(p[1]) > 0.4, w_here, out_room.get("objects", []), float(out_room.get("SC", 1.0))),
-		"san": day_rules.san, "viol": day_rules.viol, "anomaly": an_id, "shelter": false, "moving": player.moving, "running": player.sprinting,
+		"san": day_rules.san, "viol": day_rules.viol, "anomaly": an_id, "shelter": false, "brolly": items() != null and items().brolly_up, "moving": player.moving, "running": player.sprinting,
 		"hiding": player.hiding, "body": maxf(0.0, _sense_body), "bpm": float(_sense_view.get("bpm", 0.0)),
 		"chase": watcher != null and bool(watcher.pat["locked"]), "threat": watcher != null and watcher.local_threat(),
 		"patrol_pos": patrol_pos, "patrol_behind": behind, "big": big, "blackout": weird != null and weird.blackout_now(), "moth_near": 0.5 if an_id == "moth" else 0.0, "busy": ui.terminal_open() or (days() != null and days().waiting != null), "echo": dread() != null and dread().echo})
@@ -3921,7 +3921,7 @@ func _anomaly_context(room: Variant, pose: Dictionary) -> Dictionary:
 		"on_field": day_rules.on_field(session.world_id, w), "in_classroom": day_rules.in_classroom_here(session.world_id, w),
 		"game_clock": day_rules.game_clock(), "pressure_anomaly": float(day_rules.pressure()["anomaly"]), "bag": bag.bag if bag != null else [],
 		"item_names": item_names, "dead": story() != null and story().dead, "hiding": watcher != null and bool(watcher.hide["on"]),
-		"patrol_chase": watcher != null and watcher.local_chase(), "choice_open": ui.choice_open(), "brolly": false,
+		"patrol_chase": watcher != null and watcher.local_chase(), "choice_open": ui.choice_open(), "brolly": items() != null and items().brolly_up,
 		"inspection_quiet": day_rules.inspection_pending() or day_rules.inspection_upcoming() or float(day_rules.inspection.get("calm", 0.0)) > 0.0,
 		"in_lift": session.world_id in ElevatorModule.RIDE_ROOMS, "can_stand": _can_stand.bind(room, float(p[1])), "drain_mul": _drain_mul()}
 
