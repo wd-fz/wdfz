@@ -72,6 +72,7 @@ func _run() -> void:
 	_test_broadcast_rules()
 	_test_phone_rules()
 	_test_talent_rules()
+	_test_fake_normal_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -1354,6 +1355,62 @@ func _test_talent_rules() -> void:
 	check(ach.unlocked.has("p.talents") and ach.progress("p.talents")["n"] == 7, "seven talents each through a true ending: 七种活法")
 
 
+func _test_fake_normal_rules() -> void:
+	var f := FakeNormalModule.new()
+	f.reset()
+	f.set_seed(1)
+	f.day_two()
+	check(not f.active(), "without the note day 2 is ordinary")
+	f.fn["roll"] = 1
+	f.lights_out_note()
+	check(bool(f.fn["note"]) and f.take_events()[0]["text"].contains("笑时莫出声"), "the folded note at lights out on day 1")
+	f.day_two()
+	check(f.active() and f.take_events()[0]["text"].begins_with("我：第二天。"), "a rolled note makes day 2 fake normal")
+	f.tick(11.0, {"tag": "teach"})
+	var ask := f.take_events()
+	check(ask[0]["kind"] == "choice" and ask[0]["labels"] == ["笑一下", "不笑，装作没这回事"], "an everyday moment asks to laugh")
+	f.choose(1)
+	check(float(f.fn["v"]) == 5.0 and f.take_events()[0]["text"].begins_with("其实——"), "holding it in adds 5 and shows what was real")
+	for _i in 3:
+		f.tick(40.0, {"tag": "teach"})
+		f.take_events()
+		f.choose(1)
+		f.take_events()
+	f.tick(1.0, {"tag": "teach"})
+	var done := f.take_events()
+	check(not f.active() and done.any(func(e: Dictionary) -> bool: return e["kind"] == "fact" and e["laughs"] == 0), "four moments without laughing end the day quietly")
+	var g := FakeNormalModule.new()
+	g.reset()
+	g.fn["note"] = true
+	g.fn["roll"] = 1
+	g.day_two()
+	g.fn["v"] = 100.0
+	g.tick(0.1, {"tag": "out"})
+	check(g.take_events().any(func(e: Dictionary) -> bool: return e["kind"] == "kill" and e["source"] == "laugh"), "laughing to 100 is the laughing death")
+	var ach := AchievementsModule.new(25)
+	ach.reset()
+	check(ach.fact({"kind": "fakeNormal", "done": true, "laughs": 0}).has("e.nolaugh") and not AchievementsModule.new(25).fact({"kind": "fakeNormal", "done": true, "laughs": 1}).has("e.nolaugh"), "笑时莫出声 only without a laugh")
+	var fac := FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
+	fac.reset()
+	fac.set_context(_fctx("out", {"x": 1028.0, "y": 190.0, "gate_n_map": {"x": 514, "y": 95}}))
+	fac.think()
+	check(_notices(fac.take_events()).has("我：还没有头绪。先去看看学校里有什么。"), "no places marked, no ideas")
+	fac.spots["front"] = true
+	fac.spots["guard"] = true
+	fac.think()
+	var list: Dictionary = fac.take_events()[0]
+	check(list["labels"] == ["拿那串车钥匙", "从正门走"], "marked places unlock their ideas")
+	fac.choose(1)
+	check(fac.take_events()[0]["labels"] == ["再想想", "就这么办"], "at the north gate the front-door idea asks once more")
+	fac.choose(1)
+	check(fac.take_events()[0]["source"] == "trap_out", "and walking out of the front gate is the trap")
+	fac.set_context(_fctx("teach1", {"gate_n_map": {"x": 514, "y": 95}}))
+	fac.think()
+	fac.take_events()
+	fac.choose(1)
+	check(_notices(fac.take_events()).has("我：正门在北边。要走，得先走到北门的闸机前面。"), "away from the gate it only says where to go")
+
+
 func _test_facility_rules() -> void:
 	var rooms := CampusData.rooms()
 	var fac := FacilitiesModule.new(rooms, CampusData.layout("out"), CampusData.campus())
@@ -2186,6 +2243,8 @@ func _test_archive(app: GameApp) -> void:
 	var ids := {}
 	for k in StoryModule.SOURCES:
 		ids[k] = true
+	for k: String in ["laugh", "trap_out", "trap_wall", "trap_beg"]:
+		ids[k] = true # kill sources without a cause text in the old table either
 	for d: Array in DeathArchive.DEATHS:
 		check(ids.has(d[0]) or String(d[0]).begins_with("an:") and AnomalyModule.IDS.has(String(d[0]).substr(3)), "archive entry %s is a real kill source" % d[0])
 	app.saves.clear()

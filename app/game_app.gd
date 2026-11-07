@@ -66,7 +66,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new()]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new()]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -76,6 +76,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func fake_normal() -> FakeNormalModule:
+	return session.modules.get_module(&"story.fake_normal") as FakeNormalModule if session != null else null
 
 
 func talent() -> TalentModule:
@@ -230,6 +234,9 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 	var radio := candidate.modules.get_module(&"story.broadcast") as BroadcastModule
 	if radio != null:
 		radio.set_seed(int((Time.get_ticks_usec() * 13) % 2147483647))
+	var fnm := candidate.modules.get_module(&"story.fake_normal") as FakeNormalModule
+	if fnm != null:
+		fnm.set_seed(int((Time.get_ticks_usec() * 19) % 2147483647))
 	var net := candidate.modules.get_module(&"phone.network") as PhoneModule
 	if net != null:
 		net.set_seed(int((Time.get_ticks_usec() * 17) % 2147483647))
@@ -285,6 +292,7 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 		session.stop()
 	session = candidate
 	_load_profile(achievements())
+	_fn_day = school().day if school() != null else 1
 	_leave_drive()
 	if campus() != null and garage() != null:
 		campus().car_hint = garage().car_hint
@@ -720,6 +728,9 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	if story().dead or story().over():
 		return
 	_phone_step(delta)
+	if story().dead or story().over():
+		return
+	_fake_normal_step(delta)
 	if story().dead or story().over():
 		return
 	_anomaly_step(delta, day_rules, room, pose)
@@ -1170,7 +1181,8 @@ func _facility_context() -> Dictionary:
 			if bag != null:
 				bag.remove(id),
 		"anomaly": weird.pendulum_info() if weird != null else {},
-		"busy": (weird != null and weird.is_active()) or day_rules.inspection_pending() or (patrol() != null and patrol().local_chase())}
+		"busy": (weird != null and weird.is_active()) or day_rules.inspection_pending() or (patrol() != null and patrol().local_chase()),
+		"gate_n_map": CampusData.campus().get("gates", {}).get("n", {"x": 514, "y": 95}), "bound_x1": float(CampusData.campus().get("bound_map", {}).get("x1", 830))}
 
 
 ## Inventory add with the old messages (a full bag says so).
@@ -1232,6 +1244,11 @@ func _apply_facility_events() -> void:
 			"travel":
 				_facility_travel(e)
 				return
+			"route_hint":
+				_route_hint(String(e["route"]))
+			"kill":
+				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
+				return
 			"later":
 				var run := session
 				get_tree().create_timer(float(e["seconds"]), false).timeout.connect(func() -> void:
@@ -1268,6 +1285,83 @@ func _facility_travel(e: Dictionary) -> void:
 	else:
 		pose = campus().default_spawn(world)
 	travel(world, pose, false)
+
+
+# ---- the fake-normal day and the escape ideas ----
+
+var _fn_day := 0
+
+
+func _fake_normal_step(delta: float) -> void:
+	var fnm := fake_normal()
+	if fnm == null:
+		return
+	var day_rules := school()
+	if day_rules.day == 1 and day_rules.tsec >= SchoolClock.LIGHTS_OUT:
+		fnm.lights_out_note()
+	if _fn_day != day_rules.day:
+		if _fn_day == 1 and day_rules.day == 2:
+			fnm.day_two()
+		_fn_day = day_rules.day
+	var room: Variant = campus().room(session.world_id)
+	fnm.tick(delta, {"tag": FakeNormalModule.where_tag(session.world_id, String(room.get("host", "")) if room != null else ""),
+		"busy": ui.choice_open() or day_rules.inspection_pending(), "dead": story().dead})
+	_apply_fake_normal_events()
+
+
+func _apply_fake_normal_events() -> void:
+	var fnm := fake_normal()
+	if fnm == null:
+		return
+	for e: Dictionary in fnm.take_events():
+		match e["kind"]:
+			"notice", "toast":
+				ui.show_notice(String(e["text"]))
+			"hurt":
+				ui.flash_hurt(0.45)
+			"fact":
+				fact({"kind": "fakeNormal", "done": true, "laughs": int(e["laughs"])})
+			"choice":
+				_choice_count += 1
+				var mine := _choice_count
+				_choice_handler = func(index: int) -> void:
+					var f := fake_normal()
+					if f != null and mine == _choice_count:
+						f.choose(index)
+						_apply_fake_normal_events()
+				player.enabled = false
+				player.clear_input()
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				ui.show_choice(String(e["text"]), e["labels"], false)
+			"kill":
+				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
+				return
+
+
+## story.js tryFaceRoute / tryTrashRoute from the ideas list.
+func _route_hint(route: String) -> void:
+	var r := routes()
+	if r == null:
+		return
+	if route == "face":
+		if not r.hacked:
+			ui.show_notice("我：得先进实验楼三楼机房里那间锁着的网络中心，再去行政楼三楼改数据。")
+		elif not r.data_synced:
+			ui.show_notice("我：白名单还没改完。")
+		else:
+			var pose := player.capture_pose()
+			var w := CampusGeometry.to_world(null, float(pose["position"][0]), float(pose["position"][2]))
+			if session.world_id != "out" or r.gate_at(w) != "w":
+				ui.show_notice("我：还得去西小门的闸机前。")
+			else:
+				r.use_gate("w", school().day)
+				_apply_route_events(r)
+	elif route == "trash":
+		if session.world_id != "trash1":
+			ui.show_notice("我：得先进垃圾房。")
+		else:
+			r.use_trash("trash1", school().day)
+			_apply_route_events(r)
 
 
 # ---- the phone, the network and 《网安仙人》 (features/phone) ----
@@ -1942,6 +2036,12 @@ func _notification(what: int) -> void:
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
+	if key != null and key.pressed and not key.echo and key.keycode == KEY_H and facilities() != null and player.enabled and not story().over():
+		facilities().set_context(_facility_context())
+		facilities().think()
+		_apply_facility_events()
+		get_viewport().set_input_as_handled()
+		return
 	if key != null and key.pressed and not key.echo and key.keycode == KEY_M and audio != null:
 		audio.muted = not audio.muted
 		ui.show_notice("声音：关" if audio.muted else "声音：开")

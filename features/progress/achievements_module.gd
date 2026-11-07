@@ -30,6 +30,7 @@ const LIST := {
 	"p.talents": ["p", "七种活法", "换了好几种活法，每一种都走出了校门。"],
 	"p.routes": ["p", "四条路", "我从这所学校出去过很多次，每一次走的路都不一样。"],
 	"p.five_routes": ["p", "五条路", "最后一次，学校以为我只是放学回家。"],
+	"e.nolaugh": ["e", "笑时莫出声", "那一天，我一直没有出声。"],
 	"n.broadcast": ["n", "核对", "记录本里没有刚才那一条。喇叭里还在啸叫。"],
 	"e.end_dismissal": ["e", "《放学》", "长铃还在响。我和同学一起走出了北门。"],
 	"n.rest": ["n", "喘口气", "有那么一会儿，我忘了自己在哪儿。"],
@@ -245,6 +246,8 @@ func _test(id: String, f: Dictionary) -> bool:
 			return kind == "garage" and f["what"] == "torch"
 		"n.rest":
 			return kind == "rest"
+		"e.nolaugh":
+			return kind == "fakeNormal" and bool(f.get("done", false)) and int(f.get("laughs", 1)) == 0
 		"n.broadcast":
 			return kind == "broadcast" and f.get("what") == "verified" and f.get("real", true) == false
 		"e.end_dismissal":

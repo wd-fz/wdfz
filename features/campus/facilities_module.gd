@@ -620,6 +620,68 @@ func spot_tick() -> void:
 			spots[id] = true
 
 
+## story.js IDEAS (the public ones): escape ideas unlocked by the places the player has marked.
+const IDEAS := [["key", "拿那串车钥匙", "guard", "car"], ["car", "开车走", "garage", "car"], ["white", "走闸机白名单", "data", "face"],
+	["bin", "钻进第三个垃圾桶", "trash", "trash"], ["front", "从正门走", "front", "trap_out"], ["climb", "翻墙", "climb", "trap_wall"],
+	["beg", "去东围墙等一个路过的人", "wall", "trap_beg"], ["portal", "在物理实验室造一扇门", "portal", "portal"]]
+
+
+func ideas() -> Array:
+	return IDEAS.filter(func(it: Array) -> bool: return spots.has(it[2]))
+
+
+## Open the ideas list (the H panel) as a choice.
+func think() -> void:
+	var list := ideas()
+	if list.is_empty():
+		_say("我：还没有头绪。先去看看学校里有什么。")
+		return
+	_pending = {"kind": "idea", "ids": list.map(func(it: Array) -> String: return it[0])}
+	_emit("choice", {"text": "逃生思路（只是想法，不保证可行）", "labels": list.map(func(it: Array) -> String: return it[1])})
+
+
+func _trap_where(route: String) -> String:
+	var scene := String(_c.get("scene", ""))
+	var m := Vector2(float(_c.get("x", 0.0)), float(_c.get("y", 0.0))) / 2.0
+	var out := scene == "out"
+	if route == "trap_out":
+		var gn: Dictionary = _c.get("gate_n_map", {"x": 514, "y": 95})
+		return "" if out and m.distance_to(Vector2(float(gn["x"]), float(gn["y"]))) < 60.0 else "我：正门在北边。要走，得先走到北门的闸机前面。"
+	if route == "trap_wall":
+		for sp: Array in SPOTS:
+			if sp[0] == "climb":
+				var inside: bool = m.x > float(sp[2]) - 20.0 and m.x < float(sp[2]) + float(sp[4]) + 20.0 and m.y > float(sp[3]) - 20.0 and m.y < float(sp[3]) + float(sp[5]) + 20.0
+				return "" if out and inside else "我：得先到车棚后面那段矮墙（攀爬点）去。"
+	return "" if out and m.x > float(_c.get("bound_x1", 830.0)) - 70.0 else "我：得先走到东边的围墙底下。"
+
+
+func _choose_idea(id: String) -> void:
+	for it: Array in IDEAS:
+		if it[0] != id:
+			continue
+		var route := String(it[3])
+		if route.begins_with("trap_"):
+			var where := _trap_where(route)
+			if where != "":
+				_say(where)
+				return
+			_pending = {"kind": "trap", "route": route}
+			_emit("choice", {"text": "「%s」——真的要这么做吗？" % it[1], "labels": ["再想想", "就这么办"]})
+			return
+		match route:
+			"car":
+				if not _has("key"):
+					_say("我：我没有钥匙。")
+				elif String(_c.get("scene", "")) != "garage1":
+					_say("我：得先下到车库去。")
+				else:
+					_say("我：牌号对得上的那两辆，油表不是零。")
+			"face", "trash":
+				_emit("route_hint", {"route": route})
+			"portal":
+				_say("我：%s" % ("门还在物理实验室的实验台前面。" if bool(portal["open"]) else ("图纸分散在实验楼二、四、五楼的教师台。" if bool(portal["diary"]) and not bool(portal["sketch"]) else ("物理实验室的实验台后面似乎有条隧道。" if not bool(portal["sketch"]) else "还差" + portal_need_text().strip_edges()))))
+
+
 ## Marked spots for the map list, in table order.
 func spot_rows() -> Array:
 	var out: Array = []
@@ -776,6 +838,18 @@ func choose(index: int) -> void:
 				_emit("ending", {"id": "portal"})
 			elif index >= 0:
 				_say("我：圈还在。它不会等太久。")
+		"idea":
+			if index >= 0 and index < (p["ids"] as Array).size():
+				_choose_idea(String(p["ids"][index]))
+		"trap":
+			if index == 1:
+				match String(p["route"]):
+					"trap_out":
+						_emit("kill", {"msg": "你从门缝里挤了出去。外面是一条很长的马路，路尽头有一扇校门。你走进去——衣服上还有雨，教学楼里，铃刚刚响。", "fx": "slit", "source": "trap_out"})
+					"trap_wall":
+						_emit("kill", {"msg": "你翻上了墙头。墙外面还有一道墙。再外面，还有一道。你一直翻，翻到手指不再是手指的形状。", "fx": "squeeze", "source": "trap_wall"})
+					_:
+						_emit("kill", {"msg": "路过的那个人停了下来。他慢慢转过头——他没有脸，只有一个很大的、在笑的洞。然后他从墙里直接走了进来。", "fx": "face", "source": "trap_beg"})
 		"blueprint":
 			var floor_n := int(p["floor"])
 			var task: Dictionary = OBSERVATIONS[floor_n]
