@@ -218,6 +218,111 @@ func show_garage_shadow(visible_now: bool, scene_pos: Vector2, height: float) ->
 var _portal_ring: Node3D
 
 
+## The checkup day in admin1 (checkup.js, placeholder): height rule, scale and eye chart in the
+## office's front aisle, a sign by the door, and five people queueing in the corridor facing the
+## wall; the queue blocks the way (its own collision) while it stands.
+var _checkup: Node3D
+var _checkup_queue: StaticBody3D
+var _checkup_line := ""
+
+
+func show_checkup(on: bool, queue: bool, line: String) -> void:
+	if not on or scene_id != "admin1":
+		if is_instance_valid(_checkup):
+			_checkup.queue_free()
+		_checkup = null
+		return
+	if is_instance_valid(_checkup) and _checkup_line != line:
+		_checkup.queue_free()
+		_checkup = null
+	if not is_instance_valid(_checkup):
+		_checkup_line = line
+		_checkup = Node3D.new()
+		_checkup.name = "CheckupDay"
+		add_child(_checkup)
+		var room := CampusData.layout("admin1")
+		var at := func(c: float, r: float) -> Vector3:
+			var w := Vector2(float(room["ox"]) + c * float(room["tw"]), float(room["oy"]) + r * float(room["th"]))
+			var sp := CampusGeometry.to_scene(room, w)
+			return Vector3(sp.x, 0.0, sp.y)
+		var white := StandardMaterial3D.new()
+		white.albedo_color = Color(0.91, 0.91, 0.89)
+		var metal := StandardMaterial3D.new()
+		metal.albedo_color = Color(0.55, 0.58, 0.59)
+		var box := func(size: Vector3, pos: Vector3, mat: Material) -> void:
+			var m := MeshInstance3D.new()
+			var b := BoxMesh.new()
+			b.size = size
+			m.mesh = b
+			m.material_override = mat
+			m.position = pos
+			_checkup.add_child(m)
+		var rp: Vector3 = at.call(1.16, 15.45)
+		box.call(Vector3(0.05, 2.0, 0.16), rp + Vector3(0, 1.0, 0), white)
+		box.call(Vector3(0.26, 0.025, 0.12), rp + Vector3(0.14, 1.92, 0), metal)
+		box.call(Vector3(0.34, 0.04, 0.36), rp + Vector3(0.17, 0.02, 0), metal)
+		box.call(Vector3(0.34, 0.06, 0.4), at.call(2.7, 15.45) + Vector3(0, 0.03, 0), white)
+		var chart := Label3D.new()
+		chart.text = "E\nE  E\nE  E  E\nE  E  E  E\n\n" + line
+		chart.font_size = 28
+		chart.pixel_size = 0.0015
+		chart.modulate = Color(0.08, 0.08, 0.08)
+		chart.outline_size = 0
+		var back := MeshInstance3D.new()
+		var quad := QuadMesh.new()
+		quad.size = Vector2(0.5, 0.88)
+		back.mesh = quad
+		back.material_override = white
+		var cp: Vector3 = at.call(8.84, 15.45)
+		back.position = cp + Vector3(0, 1.45, 0)
+		back.rotation.y = -PI * 0.5
+		chart.position = cp + Vector3(-0.01, 1.45, 0)
+		chart.rotation.y = -PI * 0.5
+		_checkup.add_child(back)
+		_checkup.add_child(chart)
+		var sign := Label3D.new()
+		sign.text = "医 务 室\n（体检）"
+		sign.font_size = 40
+		sign.pixel_size = 0.0012
+		sign.position = at.call(7.0, 17.14) + Vector3(0, 1.55, 0)
+		_checkup.add_child(sign)
+		_checkup_queue = StaticBody3D.new()
+		_checkup_queue.name = "Queue"
+		_checkup_queue.collision_layer = 1
+		_checkup_queue.collision_mask = 0
+		_checkup.add_child(_checkup_queue)
+		var coat := StandardMaterial3D.new()
+		coat.albedo_color = Color(0.29, 0.34, 0.41)
+		var k := 0
+		for q: Vector2 in [Vector2(1.45, 17.32), Vector2(2.22, 17.32), Vector2(3.0, 17.32), Vector2(3.78, 17.32), Vector2(4.55, 17.32)]:
+			var p: Vector3 = at.call(q.x, q.y)
+			var fig := MeshInstance3D.new()
+			var cap := CapsuleMesh.new()
+			cap.radius = 0.2
+			cap.height = 1.6 + 0.05 * float((k * 37) % 3)
+			fig.mesh = cap
+			fig.material_override = coat
+			fig.position = p + Vector3(0, cap.height * 0.5, 0)
+			_checkup_queue.add_child(fig)
+			var shape := CollisionShape3D.new()
+			var bs := BoxShape3D.new()
+			bs.size = Vector3(0.48 * float(room["tw"]) * CampusGeometry.U2M, 1.8, 0.34 * float(room["th"]) * CampusGeometry.U2M)
+			shape.shape = bs
+			shape.position = p + Vector3(0, 0.9, 0)
+			_checkup_queue.add_child(shape)
+			k += 1
+	_checkup_queue.visible = queue
+	_checkup_queue.collision_layer = 1 if queue else 0
+
+
+func checkup_shown() -> bool:
+	return is_instance_valid(_checkup)
+
+
+func checkup_queue_blocks() -> bool:
+	return is_instance_valid(_checkup_queue) and _checkup_queue.collision_layer == 1
+
+
 func show_portal(visible_now: bool) -> void:
 	if not visible_now or scene_id != "lab1":
 		if is_instance_valid(_portal_ring):

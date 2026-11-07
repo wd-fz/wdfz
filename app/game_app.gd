@@ -69,7 +69,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms()), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(), ClassmatesModule.new(CampusData.rooms())]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(), ClassmatesModule.new(CampusData.rooms())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -971,6 +971,9 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 		ui.show_notice(text)
 	var frozen := not router.current.advances_calendar
 	var period := day_rules.period_text(frozen)
+	var tale_now := tales()
+	if tale_now != null and not frozen and not day_rules.inspection_active() and not day_rules.inspection_upcoming() and tale_now.checkup_period() != "":
+		period = tale_now.checkup_period()
 	if watcher != null and bool(watcher.pat["permanent"]) and not frozen:
 		period += " · 持续追踪"
 	ui.show_status(day_rules.place_name(session.world_id, float(p[1])), period, day_rules.period_class(frozen), day_rules.clock_text((bag != null and bag.has_clock()) or (talent() != null and talent().has("watch"))))
@@ -1986,7 +1989,9 @@ func _tales_context() -> Dictionary:
 	var p: Array = pose["position"]
 	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
 	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "tsec": school().tsec,
-		"clock": school().game_clock(), "san": school().san, "tt": school().tt, "dead": story().dead}
+		"clock": school().game_clock(), "san": school().san, "tt": school().tt, "dead": story().dead, "day": school().day,
+		"special": days().today(school().day, school().tsec) if days() != null else "none", "on_leave": school().on_leave(),
+		"seed": phone().run_seed if phone() != null else ""}
 
 
 func _tales_step(delta: float) -> void:
@@ -1996,6 +2001,9 @@ func _tales_step(delta: float) -> void:
 	tale.set_context(_tales_context())
 	tale.tick(delta)
 	_apply_tales_events()
+	var cw := _campus_world()
+	if cw != null:
+		cw.show_checkup(tale.checkup_today() and session.world_id == TalesModule.CHECKUP["room"], tale.queue_on(), tale.chart_line())
 
 
 func _apply_tales_events() -> void:
@@ -2009,7 +2017,11 @@ func _apply_tales_events() -> void:
 			"advance":
 				school().advance_game_time(float(e["minutes"]))
 			"san":
-				school().san = minf(float(e.get("max", 100.0)), school().san + float(e["amount"]))
+				school().san = clampf(school().san + float(e["amount"]), float(e.get("min", -INF)), float(e.get("max", 100.0)))
+			"viol":
+				school().add_violation(float(e["amount"]))
+			"saved":
+				save_game()
 			"tt":
 				school().tt = minf(float(e["cap"]), school().tt + float(e["amount"]))
 			"hold":

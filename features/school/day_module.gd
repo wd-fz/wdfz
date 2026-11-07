@@ -4,18 +4,20 @@ extends FeatureModule
 ## wd-fz.github.io@0bf508a): day-events.js (DayEvents: anniversary halves per-second SAN drains,
 ## occupied closes the music room and the computer games and adds +2 to a right desk answer) and
 ## lesson.js (LESSON: once per lesson, seated at the own seat during class, a 12-second question on
-## the desk; afterwards "study until the bell" runs the simulation at 6×). The checkup day belongs
-## to the campus tales, which are not ported, so a checkup roll counts as an ordinary day.
+## the desk; afterwards "study until the bell" runs the simulation at 6×). The checkup day (third
+## day on, once a run) is played in TalesModule.
 
 const STATE_VERSION := 1
 const FIRST_DAY := 2
+const CHECKUP_FIRST_DAY := 3
 const P := {"anniversary": 0.18, "occupied": 0.22, "checkup": 0.14}
 const CLOSED := ["piano", "pc"]
 const SAY := {
 	"anniversary": "广播：「今天是我校建校纪念日。各班照常上课，课间可以去教学楼前看看校庆横幅。」——喇叭里的声音很高兴。我也跟着松了一点。",
-	"occupied": "广播：「今天的音乐课、信息课改上数学，琴房暂停开放，机房暂停游戏活动，维护终端照常可用。」——教室里响起一片很轻的叹气。"}
+	"occupied": "广播：「今天的音乐课、信息课改上数学，琴房暂停开放，机房暂停游戏活动，维护终端照常可用。」——教室里响起一片很轻的叹气。",
+	"checkup": "广播：「今天上午第三节课体检。各班同学十点二十到行政楼一楼医务室排队，不要缺席。」——喇叭里的声音很平。"}
 const CLOSED_MSG := {"piano": "我：琴房的门锁着。门上贴着一张纸：「今天的音乐课改上数学。」", "pc": "我：今天机房暂停游戏活动。接线与维护终端仍可使用。"}
-const TAG := {"anniversary": "校庆日", "occupied": "占课"}
+const TAG := {"anniversary": "校庆日", "occupied": "占课", "checkup": "体检日"}
 const TASKS := [
 	{"text": "老师让我校对课表。三行字里，有一行不该在这里。", "choices": ["课间可以离开座位", "熄灯后继续早读", "上课前把书翻开"], "answer": 1, "note": "我把「熄灯后继续早读」划掉了。下一秒，那几个字又渗了出来。"},
 	{"text": "点名册翻到我这一页。有一处应该先圈出来。", "choices": ["同一个名字写满了第三排", "最后一行的字迹很淡", "纸的边缘有一道折痕"], "answer": 0, "note": "我圈出了第三排。每一个名字都是我的。老师没有再往下念。"},
@@ -115,6 +117,8 @@ func roll(day: int) -> String:
 		return "none" if _had("anniversary") else "anniversary"
 	if u < P["anniversary"] + P["occupied"]:
 		return "none" if day_events.get(str(day - 1)) == "occupied" else "occupied"
+	if u < P["anniversary"] + P["occupied"] + P["checkup"]:
+		return "none" if day < CHECKUP_FIRST_DAY or _had("checkup") else "checkup"
 	return "none"
 
 

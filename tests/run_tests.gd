@@ -77,6 +77,7 @@ func _run() -> void:
 	_test_exchange_rules()
 	_test_day_rules()
 	_test_tales_rules()
+	_test_checkup_rules()
 	_test_speedrun_rules()
 	_test_gaze_rules()
 	_test_paper_rules()
@@ -1595,7 +1596,12 @@ func _test_day_rules() -> void:
 	var kinds := {}
 	for day in range(2, 200):
 		kinds[d.ensure(day)] = int(kinds.get(d.ensure(day), 0)) + 1
-	check(int(kinds.get("anniversary", 0)) <= 1 and int(kinds.get("occupied", 0)) > 10 and not kinds.has("checkup"), "the anniversary comes at most once; occupied days happen; checkups are not ported")
+	var first_checkup := 999
+	for day: String in d.day_events:
+		if d.day_events[day] == "checkup":
+			first_checkup = mini(first_checkup, int(day))
+	check(int(kinds.get("anniversary", 0)) <= 1 and int(kinds.get("occupied", 0)) > 10 and int(kinds.get("checkup", 0)) <= 1 and first_checkup >= 3,
+		"the anniversary and the checkup come at most once (checkup from day 3); occupied days happen")
 	var occ := ""
 	for day: String in d.day_events:
 		if d.day_events[day] == "occupied":
@@ -1645,6 +1651,74 @@ func _test_day_rules() -> void:
 	for i in DayModule.TASKS.size():
 		ach.fact({"kind": "lesson", "task": i, "correct": true})
 	check(ach.unlocked.has("n.desk") and ach.unlocked.has("e.notes"), "the desk notes: 看课桌 and 十张纸条")
+
+
+func _test_checkup_rules() -> void:
+	var rooms := CampusData.rooms()
+	var t := TalesModule.new(rooms, CampusData.patrol_data()["route"]["nodes"])
+	t.reset()
+	var a1: Dictionary = rooms["admin1"]
+	var ruler := Vector2(float(a1["ox"]) + 1.6 * float(a1["tw"]), float(a1["oy"]) + 15.45 * float(a1["th"]))
+	var base := {"scene": "admin1", "x": ruler.x, "y": ruler.y, "day": 3, "special": "checkup", "seed": "abc"}
+	var ctx := base.duplicate()
+	ctx["tsec"] = 600.0
+	t.set_context(ctx)
+	t.tick(0.1)
+	check(_notices(t.take_events()).has("广播：「第三节课体检。请各班同学到行政楼一楼医务室排队。」") and t.checkup_period() == "体检将至 · 行政楼一楼医务室" and t.hint() == "体检还没开始",
+		"10:00 the broadcast; before 10:20 nobody is there")
+	ctx["tsec"] = 612.0
+	t.set_context(ctx)
+	check(t.queue_on() and t.use_here() and not t.checkup_done(), "the queue stands from 10:10; the room is empty until 10:20")
+	ctx["tsec"] = 625.0
+	t.set_context(ctx)
+	t.take_events()
+	check(t.hint() == "体检（量身高、称体重）" and t.use_here() and t.checkup_done(), "in the window the rule or the scale is the checkup")
+	var ev := t.take_events()
+	check(ev.any(func(e: Dictionary) -> bool: return e["kind"] == "advance" and e["minutes"] == 5.0) and _notices(ev).any(func(n: String) -> bool: return n.contains("心率：0")), "five minutes and the form: height —, heart rate 0")
+	ctx["tsec"] = 670.0
+	t.set_context(ctx)
+	t.tick(0.1)
+	check(not t.take_events().any(func(e: Dictionary) -> bool: return e["kind"] == "viol"), "done: no penalty when it ends")
+	var miss := TalesModule.new(rooms)
+	miss.reset()
+	var mctx := base.duplicate()
+	mctx["scene"] = "teach1"
+	mctx["tsec"] = 666.0
+	miss.set_context(mctx)
+	miss.tick(0.1)
+	var mev := miss.take_events()
+	check(mev.any(func(e: Dictionary) -> bool: return e["kind"] == "viol" and e["amount"] == 10.0) and mev.any(func(e: Dictionary) -> bool: return e["kind"] == "san" and e["amount"] == -8.0), "missed: 10 violations and −8 SAN")
+	miss.tick(0.1)
+	check(miss.take_events().is_empty(), "the penalty is once")
+	var leave := TalesModule.new(rooms)
+	leave.reset()
+	mctx["on_leave"] = true
+	leave.set_context(mctx)
+	leave.tick(0.1)
+	check(not leave.take_events().any(func(e: Dictionary) -> bool: return e["kind"] == "viol"), "on leave it is only marked absent")
+	var saved := TalesModule.new(rooms)
+	saved.restore(t.capture())
+	saved.set_context(ctx)
+	check(saved.checkup_done() and saved.validate(t.capture()) == "", "the checkup is saved")
+	var other := base.duplicate()
+	other["special"] = "none"
+	other["tsec"] = 625.0
+	var plain := TalesModule.new(rooms)
+	plain.reset()
+	plain.set_context(other)
+	check(plain.hint() == "" and not plain.queue_on() and plain.checkup_period() == "", "on an ordinary day nothing is there")
+	check(TalesModule.LINES.has(t.chart_line()), "the eye chart's last line is one of the public risks")
+	# The patrol log pages.
+	var seq := t.route_rooms()
+	check(seq.size() > 6 and not seq.any(func(r: String) -> bool: return r.begins_with("stair_") or r.begins_with("link")), "the route floors leave out stairwells and links")
+	var seg := t.note_segment(0)
+	check(seg.size() == 6 and seq.has(seg[0]) and t.note_segment(0) == seg, "each page is six floors of the route, stable in a run")
+	var a3: Dictionary = rooms["admin3"]
+	var desk := Vector2(float(a3["ox"]) + 30.5 * float(a3["tw"]), float(a3["oy"]) + 3.5 * float(a3["th"]))
+	t.set_context({"scene": "admin3", "x": desk.x, "y": desk.y, "day": 3, "tsec": 700.0, "seed": "abc"})
+	check(t.hint() == "撕下来的一页纸" and t.use_here(), "a torn sheet in the admin3 drawer")
+	var nev := t.take_events()
+	check(_notices(nev).any(func(n: String) -> bool: return n.begins_with("值班表（撕下的一页）") and n.contains("若有事，另行处置。")) and t.hint() == "再看一眼值班表", "it reads the floors, then 'if anything, handle otherwise'")
 
 
 func _test_tales_rules() -> void:
@@ -2623,6 +2697,7 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_speedrun_app(app)
 	await _test_marks_app(app)
 	await _test_sensory_app(app)
+	await _test_checkup_app(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
 
@@ -3217,6 +3292,29 @@ func _test_marks_app(app: GameApp) -> void:
 	app.return_to_menu()
 	DirAccess.remove_absolute(app.saves.side_path("last_life.json"))
 	DirAccess.remove_absolute(app._profile_path())
+
+
+func _test_checkup_app(app: GameApp) -> void:
+	app.saves.clear()
+	app.start_new_game()
+	await _frames(2)
+	app._stand_up()
+	app.patrol().pat["safety"] = 999.0
+	app.school().day = 3
+	app.days().day_events["3"] = "checkup"
+	app.school().tsec = 625.0
+	var a1 := CampusData.layout("admin1")
+	var at := Vector2(float(a1["ox"]) + 1.6 * float(a1["tw"]), float(a1["oy"]) + 15.45 * float(a1["th"]))
+	app.travel("admin1", _campus_pose(a1, at, PI), false)
+	await _frames(3)
+	var w := app._campus_world()
+	check(w != null and w.checkup_shown() and w.checkup_queue_blocks(), "on the checkup day admin1 has the rule, scale, chart and a queue that blocks the corridor")
+	app._campus_interact()
+	await _frames(1)
+	check(app.tales().checkup_done(), "pressing E at the rule in the window is the checkup")
+	app.school().tsec = 700.0
+	await _frames(2)
+	check(not w.checkup_queue_blocks(), "after 11:05 the queue is gone")
 
 
 func _test_sensory_app(app: GameApp) -> void:
