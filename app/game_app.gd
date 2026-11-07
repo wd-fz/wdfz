@@ -3560,7 +3560,9 @@ func _broadcast_context() -> Dictionary:
 	var weird := anomaly()
 	var gates: Dictionary = CampusData.campus().get("gates", {})
 	var gn: Dictionary = gates.get("n", {"x": 514, "y": 95})
-	ctx.merge({"day": school().day, "diff": story().diff, "dead": story().dead, "hiding": player.hiding, "night": SchoolClock.is_night(school().tsec),
+	var scare := dread()
+	ctx.merge({"dread_ok": scare != null and not bool(_dread_context()["busy"]) and scare.allow(1),
+		"day": school().day, "diff": story().diff, "dead": story().dead, "hiding": player.hiding, "night": SchoolClock.is_night(school().tsec),
 		"anomaly_active": weird != null and weird.is_active(), "anomaly_id": weird.active_id() if weird != null else "",
 		"inspection_pending": school().inspection_pending(), "inspection_quiet": school().inspection_pending(),
 		"gate_n": Vector2(float(gn["x"]) * 2.0, float(gn["y"]) * 2.0),
@@ -3685,6 +3687,9 @@ func _apply_broadcast_events() -> void:
 		return
 	for e: Dictionary in radio.take_events():
 		match e["kind"]:
+			"dread_note":
+				if dread() != null:
+					dread().note(String(e["what"]), 1)
 			"record":
 				_record(e)
 			"notice", "toast":

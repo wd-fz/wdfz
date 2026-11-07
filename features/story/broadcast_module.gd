@@ -587,9 +587,11 @@ func tick(dt: float) -> void:
 				_emit("san", {"amount": -1.5 * dt * float(_c.get("drain_mul", 1.0)), "min": 0.0})
 	elif call is Dictionary and bool(call["arrived"]) and not bool(call["real"]) and String(_c.get("scene", "")) != call["room"]:
 		call["done"] = true
-	if float(b["clock"]) >= float(b["nextCall"]):
+	# The macro director (dread.js): a roll call is only made when nothing real is going on and the scare budget
+	# allows it; it spends mild budget, and otherwise waits for a quieter moment.
+	if float(b["clock"]) >= float(b["nextCall"]) and bool(_c.get("dread_ok", true)):
 		if announce(hash01(seed_value, "real-call%d" % int(b["callSeq"])) > 0.5):
-			pass
+			_emit("dread_note", {"what": "broadcast-call"})
 		b["nextCall"] = float(b["clock"]) + 180.0 + hash01(seed_value, "next-call%d" % int(b["callSeq"])) * 80.0
 
 

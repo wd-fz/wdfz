@@ -102,6 +102,7 @@ func _run() -> void:
 	_test_umbrella_rules()
 	_test_vault_hold()
 	await _test_fake_people()
+	_test_call_budget()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -2915,6 +2916,22 @@ func _test_fake_people() -> void:
 	check(app._fake_people == null, "and when the fake-normal day ends")
 	app.queue_free()
 	await _frames(2)
+
+
+func _test_call_budget() -> void:
+	var rooms := CampusData.rooms()
+	var radio := BroadcastModule.new(rooms, CampusData.patrol_nav())
+	radio.reset()
+	radio.set_seed(42)
+	var spot := _spot("teach1", [12, 18])
+	radio.b["nextCall"] = 0.0
+	radio.set_context(_bctx("teach1", spot, [], {"dread_ok": false}))
+	radio.tick(1.0)
+	check(radio.b["current"] == null and radio.b["nextCall"] == 0.0 and _of_kind(radio.take_events(), "dread_note").is_empty(), "no roll call while the scare budget says wait: it keeps waiting")
+	radio.set_context(_bctx("teach1", spot, [], {"dread_ok": true}))
+	radio.tick(1.0)
+	var ev := radio.take_events()
+	check(radio.b["current"] != null and float(radio.b["nextCall"]) > 180.0 and _of_kind(ev, "dread_note").size() == 1 and _of_kind(ev, "dread_note")[0]["what"] == "broadcast-call", "when it is quiet the call is made, the next one 180–260 s later, and the budget is spent")
 
 
 func _test_facility_rules() -> void:
