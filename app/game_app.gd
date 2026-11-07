@@ -2773,20 +2773,13 @@ func _show_classmates(mates: ClassmatesModule, room: Variant, me: Vector2, stari
 		_mates_nodes = Node3D.new()
 		_mates_nodes.name = "Classmates"
 		world.add_child(_mates_nodes)
-		var cap := CapsuleMesh.new()
-		cap.radius = 0.2
-		cap.height = 1.25
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(0.32, 0.34, 0.4)
-		cap.material = mat
 		for t: Vector2i in mates.layout(session.world_id)["seats"]:
 			var k := ClassmatesModule.DESK_ROWS.find(t.y)
 			var shift := (0.11 if k % 2 == 0 else -0.11) if k >= 0 else 0.0
 			var wp := Vector2(float(room["ox"]) + (t.x + 0.8) * float(room["tw"]), float(room["oy"]) + (t.y + 0.5 + shift) * float(room["th"]))
 			var sp := CampusGeometry.to_scene(room, wp)
-			var fig := MeshInstance3D.new()
-			fig.mesh = cap
-			fig.position = Vector3(sp.x, 0.62, sp.y)
+			var fig := FigureModel.make("sit", Color(0.32, 0.34, 0.4))
+			fig.position = Vector3(sp.x, 0.0, sp.y)
 			fig.set_meta("w", wp)
 			fig.set_meta("cls", "%s:%d" % [key, AtmosModule.class_index(t.x, t.y)])
 			_mates_nodes.add_child(fig)
@@ -3113,16 +3106,8 @@ func _show_gaze(g: WindowGazeModule) -> void:
 	if not is_instance_valid(_gaze_nodes):
 		_gaze_nodes = Node3D.new()
 		_gaze_nodes.name = "WindowGaze"
-		var body := MeshInstance3D.new()
-		var cap := CapsuleMesh.new()
-		cap.radius = 0.22
-		cap.height = 1.7
-		body.mesh = cap
-		var dark := StandardMaterial3D.new()
-		dark.albedo_color = Color(0.04, 0.05, 0.06)
-		dark.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		body.material_override = dark
-		body.position = Vector3(0, 0.8, -nz * 0.35)
+		var body := FigureModel.make("person", Color(0.04, 0.05, 0.06), true, 0.92)
+		body.position = Vector3(0, -0.05, -nz * 0.35)
 		_gaze_nodes.add_child(body)
 		for dx: float in [-0.045, 0.045]:
 			var eye := MeshInstance3D.new()
@@ -3379,16 +3364,7 @@ func _show_visit(visit: ExchangeModule) -> void:
 		_visit_nodes.name = "ExchangeVisit"
 		world.add_child(_visit_nodes)
 		for i in 7:
-			var fig := MeshInstance3D.new()
-			var body_mesh := CapsuleMesh.new()
-			body_mesh.radius = 0.23
-			body_mesh.height = 1.72
-			fig.mesh = body_mesh
-			var mat := StandardMaterial3D.new()
-			mat.albedo_color = Color(0.2, 0.25, 0.4) if i == 0 else (Color(0.7, 0.62, 0.5) if i < 4 else Color(0.03, 0.03, 0.04))
-			if i >= 4:
-				mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-			fig.material_override = mat
+			var fig := FigureModel.make("person", Color(0.2, 0.25, 0.4) if i == 0 else (Color(0.7, 0.62, 0.5) if i < 4 else Color(0.03, 0.03, 0.04)), i >= 4, 0.93)
 			_visit_nodes.add_child(fig)
 	var spots: Array = visit.members()
 	for h: Dictionary in visit.s.get("search", []):
@@ -3398,7 +3374,7 @@ func _show_visit(visit: ExchangeModule) -> void:
 		fig.visible = i < spots.size()
 		if fig.visible:
 			var sp := CampusGeometry.to_scene(null, spots[i])
-			fig.position = Vector3(sp.x, 0.86, sp.y)
+			fig.position = Vector3(sp.x, 0.0, sp.y)
 
 
 func _apply_exchange_events() -> void:
@@ -3596,13 +3572,6 @@ func _fake_people_step(fnm: FakeNormalModule, room: Variant) -> void:
 	_fake_people = Node3D.new()
 	_fake_people.name = "FakeNormalPeople"
 	world.add_child(_fake_people)
-	var cap := CapsuleMesh.new()
-	cap.radius = 0.2
-	cap.height = 1.7
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = Color("#41505c")
-	cap.material = mat
 	var p: Array = player.capture_pose()["position"]
 	var me := Vector2(float(p[0]), float(p[2]))
 	var grid: Array = room["grid"]
@@ -3619,10 +3588,9 @@ func _fake_people_step(fnm: FakeNormalModule, room: Variant) -> void:
 		var d := s.distance_to(me)
 		if d < 2.2 or d > 7.5:
 			continue
-		var fig := MeshInstance3D.new()
-		fig.mesh = cap
-		fig.position = Vector3(s.x, 0.85, s.y)
-		fig.rotation.y = atan2(me.x - s.x, me.y - s.y)
+		var fig := FigureModel.make("person", Color("#41505c"), true, 0.92)
+		fig.position = Vector3(s.x, 0.0, s.y)
+		fig.rotation.y = atan2(s.x - me.x, s.y - me.y)
 		_fake_people.add_child(fig)
 		made += 1
 
@@ -3872,18 +3840,12 @@ func _show_crowd(radio: BroadcastModule) -> void:
 	if not is_instance_valid(_crowd_nodes):
 		_crowd_nodes = Node3D.new()
 		_crowd_nodes.name = "DismissalCrowd"
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(0.18, 0.2, 0.26)
-		var body := CapsuleMesh.new()
-		body.radius = 0.22
-		body.height = 1.65
-		body.material = mat
 		var rng := RandomNumberGenerator.new()
 		rng.seed = 11
 		for i in 26:
-			var fig := MeshInstance3D.new()
-			fig.mesh = body
-			fig.position = Vector3(rng.randf_range(-2.6, 2.6), 0.825, rng.randf_range(-3.5, 3.5))
+			var fig := FigureModel.make("person", Color(0.18, 0.2, 0.26), false, 0.9)
+			fig.rotation.y = rng.randf() * TAU
+			fig.position = Vector3(rng.randf_range(-2.6, 2.6), 0.0, rng.randf_range(-3.5, 3.5))
 			_crowd_nodes.add_child(fig)
 		world.add_child(_crowd_nodes)
 	var s := CampusGeometry.to_scene(null, Vector2(float(p["x"]), float(p["y"])))

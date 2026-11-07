@@ -191,6 +191,11 @@
   window.__wdfzPatrolData = patrolData;
   window.__wdfzExport = function(kind, id){
     if(kind === 'patrol') return exportScene(patrolFigure(), 'patrol_figure');
+    if(kind === 'figure'){   /* 旧版 figMesh 的人形（tall / roam / person / teacher / neck / sit），白色，颜色由 Godot 侧给 */
+      var fg = new T.Group();
+      fg.add(window.figMesh(id, new T.MeshBasicMaterial({color:0xffffff, vertexColors:true}), 1));
+      return exportScene(fg, 'figure_' + id);
+    }
     if(kind === 'out') return exportScene(window.buildOutdoorGeometry(), 'outdoor');
     var R = window.INTERIORS[id], g = window.buildRoomGeometry(R);
     doorVariants(R, g);

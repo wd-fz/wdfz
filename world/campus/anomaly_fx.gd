@@ -91,15 +91,7 @@ func _at(room: Variant, x: float, y: float) -> Vector2:
 
 func _figure(color: Color, height: float = 1.7) -> Node3D:
 	var n := Node3D.new()
-	var body := CapsuleMesh.new()
-	body.radius = 0.22
-	body.height = height
-	var mi := MeshInstance3D.new()
-	mi.mesh = body
-	mi.material_override = _unlit(color)
-	mi.position.y = height * 0.5
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	n.add_child(mi)
+	n.add_child(FigureModel.make("person", color, true, height / 1.85))
 	_props.add_child(n)
 	return n
 
@@ -235,31 +227,7 @@ func _build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vec
 		"necker":
 			var walker := Node3D.new()
 			_props.add_child(walker)
-			var body := CapsuleMesh.new()
-			body.radius = 0.24
-			body.height = 1.7
-			var bm := MeshInstance3D.new()
-			bm.mesh = body
-			bm.material_override = _unlit(Color(0.05, 0.05, 0.06))
-			bm.position.y = 0.85
-			walker.add_child(bm)
-			var neck := CylinderMesh.new()
-			neck.top_radius = 0.06
-			neck.bottom_radius = 0.08
-			neck.height = 1.9
-			var nm := MeshInstance3D.new()
-			nm.mesh = neck
-			nm.material_override = _unlit(Color(0.75, 0.68, 0.6))
-			nm.position.y = 1.7 + 0.95
-			walker.add_child(nm)
-			var head2 := SphereMesh.new()
-			head2.radius = 0.14
-			head2.height = 0.3
-			var hm2 := MeshInstance3D.new()
-			hm2.mesh = head2
-			hm2.material_override = _unlit(Color(0.78, 0.7, 0.62))
-			hm2.position.y = 1.7 + 1.9 + 0.1
-			walker.add_child(hm2)
+			walker.add_child(FigureModel.make("neck", Color(0.05, 0.05, 0.06), true))
 			_extra["walker"] = walker
 		"shadow":
 			var disc := CylinderMesh.new()

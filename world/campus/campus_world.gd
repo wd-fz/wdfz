@@ -159,18 +159,10 @@ func show_silhouettes(points: Array, room: Variant, height: float) -> void:
 	_silhouettes = Node3D.new()
 	_silhouettes.name = "InspectionSilhouettes"
 	add_child(_silhouettes)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.02, 0.02, 0.025)
-	mat.roughness = 1.0
-	var mesh := CapsuleMesh.new()
-	mesh.radius = 0.22
-	mesh.height = 1.75
-	mesh.material = mat
 	for xy: Array in points:
 		var s := CampusGeometry.to_scene(room, Vector2(xy[0], xy[1]))
-		var fig := MeshInstance3D.new()
-		fig.mesh = mesh
-		fig.position = Vector3(s.x, height + 0.875, s.y)
+		var fig := FigureModel.make("person", Color(0.02, 0.02, 0.025), false, 0.95)
+		fig.position = Vector3(s.x, height, s.y)
 		_silhouettes.add_child(fig)
 
 
@@ -202,7 +194,7 @@ func show_patrol(visible_now: bool, scene_pos: Vector2, height: float, toward: V
 
 
 ## The thing in the garage driveway (systems.js ROAM): a tall dark figure, placeholder.
-var _garage_shadow: MeshInstance3D
+var _garage_shadow: Node3D
 
 
 func show_garage_shadow(visible_now: bool, scene_pos: Vector2, height: float) -> void:
@@ -211,19 +203,11 @@ func show_garage_shadow(visible_now: bool, scene_pos: Vector2, height: float) ->
 			_garage_shadow.visible = false
 		return
 	if not is_instance_valid(_garage_shadow):
-		_garage_shadow = MeshInstance3D.new()
+		_garage_shadow = FigureModel.make("roam", Color(0.01, 0.01, 0.012), true)
 		_garage_shadow.name = "GarageShadow"
-		var body := CapsuleMesh.new()
-		body.radius = 0.26
-		body.height = 2.35
-		_garage_shadow.mesh = body
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(0.01, 0.01, 0.012)
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		_garage_shadow.material_override = mat
 		add_child(_garage_shadow)
 	_garage_shadow.visible = true
-	_garage_shadow.position = Vector3(scene_pos.x, height + 1.175, scene_pos.y)
+	_garage_shadow.position = Vector3(scene_pos.x, height, scene_pos.y)
 
 
 ## The opened door of the portal route (portal.js): a ring of coloured light in front of the physics bench.
@@ -303,18 +287,11 @@ func show_checkup(on: bool, queue: bool, line: String) -> void:
 		_checkup_queue.collision_layer = 1
 		_checkup_queue.collision_mask = 0
 		_checkup.add_child(_checkup_queue)
-		var coat := StandardMaterial3D.new()
-		coat.albedo_color = Color(0.29, 0.34, 0.41)
 		var k := 0
 		for q: Vector2 in [Vector2(1.45, 17.32), Vector2(2.22, 17.32), Vector2(3.0, 17.32), Vector2(3.78, 17.32), Vector2(4.55, 17.32)]:
 			var p: Vector3 = at.call(q.x, q.y)
-			var fig := MeshInstance3D.new()
-			var cap := CapsuleMesh.new()
-			cap.radius = 0.2
-			cap.height = 1.6 + 0.05 * float((k * 37) % 3)
-			fig.mesh = cap
-			fig.material_override = coat
-			fig.position = p + Vector3(0, cap.height * 0.5, 0)
+			var fig := FigureModel.make("person", Color(0.29, 0.34, 0.41), false, (1.6 + 0.05 * float((k * 37) % 3)) / 1.85)
+			fig.position = p
 			_checkup_queue.add_child(fig)
 			var shape := CollisionShape3D.new()
 			var bs := BoxShape3D.new()

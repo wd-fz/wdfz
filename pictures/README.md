@@ -35,3 +35,4 @@
 | [值日表](值日表/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_duty.gd`：教学楼一楼第一间教室黑板旁的值日表，同化 0、2、4 档（4 档整张表只剩连笔的「名字」） |
 | [结算画面](结算画面/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_results.gd`：用示例记录（不是真实通关）拍的结算页（B）与九档评级画面中的 F、E、D、C、A、S、SS、SSS（B 在结算页里）；揭示动画拍的是最后一帧 |
 | [通关记录](通关记录/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_records.gd`：用示例记录（不是真实通关）拍的通关记录列表（难度／路线筛选、四种排序）、地图回放（脚印、巡察者轨迹、事件列表、播放条）与足迹图 |
+| [人形模型](人形模型/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_figures.gd`、`tools/capture_classroom.gd`：旧版 `figure.js` 导出的六种人形（tall／roam／person／teacher／neck／sit）并排；教室里同学换成坐姿人形（面向黑板），同化高时整班转头 |

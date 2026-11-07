@@ -106,7 +106,7 @@ def main():
         if a.only:
             want = set(a.only.split(','))
             todo = [t for t in todo if t in want]
-            if a.only == 'patrol':
+            if a.only in ('patrol', 'figures'):
                 todo = []
         patrol_dir = Path(a.out) / 'patrol'
         patrol_dir.mkdir(parents=True, exist_ok=True)
@@ -117,6 +117,16 @@ def main():
             (patrol_dir / 'patrol_figure.glb').write_bytes(externalize_images(base64.b64decode(fig['glb']), tex, '../textures/'))
             print(f"patrol: data {(patrol_dir / 'patrol_data.json').stat().st_size/1e3:.0f} kB, figure {(patrol_dir / 'patrol_figure.glb').stat().st_size/1e3:.0f} kB", flush=True)
             if a.only == 'patrol':
+                todo = []
+        if not a.only or 'figures' in a.only.split(','):
+            fig_dir = Path(a.out) / 'figures'
+            fig_dir.mkdir(parents=True, exist_ok=True)
+            for kind in ['tall', 'roam', 'person', 'teacher', 'neck', 'sit']:
+                r = pg.evaluate("([k,i])=>window.__wdfzExport(k,i)", ['figure', kind])
+                data = externalize_images(base64.b64decode(r['glb']), tex, '../textures/')
+                (fig_dir / f'{kind}.glb').write_bytes(data)
+                print(f'figure {kind}: {len(data)/1e3:.0f} kB', flush=True)
+            if a.only == 'figures':
                 todo = []
         index_path = out / 'index.json'
         index = json.loads(index_path.read_text()) if index_path.exists() else {}
