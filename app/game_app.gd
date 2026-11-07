@@ -3203,7 +3203,8 @@ func _body_context() -> Dictionary:
 	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
 	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "seated": school().seated,
 		"hiding": player.hiding, "stam": school().stam, "moving": player.moving, "locked": patrol() != null and bool(patrol().pat["locked"]),
-		"anomaly": anomaly() != null and anomaly().is_active(), "day": school().day, "dead": story().dead}
+		"anomaly": anomaly() != null and anomaly().is_active(), "day": school().day, "dead": story().dead,
+		"space": player.enabled and Input.is_key_pressed(KEY_SPACE) and not ui.choice_open()}
 
 
 func _body_step(delta: float) -> void:
@@ -3212,6 +3213,8 @@ func _body_step(delta: float) -> void:
 		return
 	limbs.set_context(_body_context())
 	limbs.tick(delta)
+	if limbs.hold > 0.0:
+		ui.show_search(limbs.hold / BodyModule.VAULT_HOLD)
 	if _eye_base < 0.0:
 		_eye_base = player.camera.position.y
 	player.camera.position.y = _eye_base - limbs.eye_drop()

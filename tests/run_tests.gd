@@ -100,6 +100,7 @@ func _run() -> void:
 	_test_duty_rules()
 	_test_last_life_box()
 	_test_umbrella_rules()
+	_test_vault_hold()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -1462,7 +1463,7 @@ func _test_body_rules() -> void:
 	var l1 := CampusData.layout("link1")
 	var mid := CampusGeometry.tile_center(l1, 1, 10)
 	b.set_context(_bodyctx("link1", mid, PI))
-	check(b.target()["kind"] == "link" and b.hint() == "翻过栏杆 · 外侧悬空", "the bridge railing can be climbed")
+	check(b.target()["kind"] == "link" and b.hint() == "翻过栏杆 · 外侧悬空（按住空格）", "the bridge railing can be climbed")
 	b.set_context(_bodyctx("link1", mid, 0.0))
 	check(b.target().is_empty(), "facing along the bridge there is nothing to climb")
 	var t6 := CampusData.layout("teach6")
@@ -2848,6 +2849,45 @@ func _test_umbrella_rules() -> void:
 	# The cola anomaly's can bounces off an open umbrella (anomaly.js): it costs SAN instead of the can.
 	var an := CampusData.make_anomaly()
 	check(an != null, "(the anomaly module reads the umbrella from its context)")
+
+
+func _test_vault_hold() -> void:
+	var rooms := CampusData.rooms()
+	var roof: Dictionary = rooms["teach6"]
+	var body := BodyModule.new(rooms)
+	body.reset()
+	# Stand one step from the parapet on the north side, facing it.
+	var at := Vector2(float(roof["ox"]) + 10.5 * float(roof["tw"]), float(roof["oy"]) + 1.8 * float(roof["th"]))
+	var ctx := {"scene": "teach6", "x": at.x, "y": at.y, "ang": -PI * 0.5, "seated": false, "hiding": false, "stam": 100.0, "moving": false, "locked": false, "anomaly": false, "day": 1, "dead": false, "space": true}
+	body.set_context(ctx)
+	check(not body.target().is_empty() and body.hint() == "翻过栏杆 · 外侧悬空（按住空格）", "the railing hint now says to hold space")
+	body.tick(0.4)
+	check(body.hold > 0.39 and body.fall == null, "holding space builds progress, nothing yet")
+	var released := ctx.duplicate()
+	released["space"] = false
+	body.set_context(released)
+	body.tick(0.1)
+	check(body.hold == 0.0 and body.fall == null, "letting go cancels")
+	body.set_context(ctx)
+	for _i in 5:
+		body.tick(0.15)
+	check(body.fall != null and body.hold == 0.0, "after 0.6 s of holding the vault begins")
+	var tired := BodyModule.new(rooms)
+	tired.reset()
+	var weak := ctx.duplicate()
+	weak["stam"] = 3.0
+	tired.set_context(weak)
+	for _i in 6:
+		tired.tick(0.15)
+	check(tired.fall == null and _of_kind(tired.take_events(), "notice").size() >= 1, "too tired: holding does not vault, and says so")
+	var away := ctx.duplicate()
+	away["x"] = at.x + 200.0
+	var far := BodyModule.new(rooms)
+	far.reset()
+	far.set_context(away)
+	for _i in 6:
+		far.tick(0.15)
+	check(far.hold == 0.0 and far.fall == null, "away from the railing holding space does nothing")
 
 
 func _test_facility_rules() -> void:
