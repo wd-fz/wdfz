@@ -373,7 +373,8 @@ func clock_tick(dt: float) -> void:
 func step(dt: float, ctx: Dictionary) -> void:
 	if dt <= 0.0 or not is_finite(dt):
 		return
-	_stamina(dt, bool(ctx.get("moving", false)), bool(ctx.get("running", false)))
+	_stamina(dt, bool(ctx.get("moving", false)), bool(ctx.get("running", false)), bool(ctx.get("snack", false)))
+	change_san(float(ctx.get("pill_san", 0.0)))
 	if bool(ctx.get("calendar", true)):
 		clock_tick(dt)
 	var world_id := String(ctx.get("world_id", ""))
@@ -388,17 +389,22 @@ func step(dt: float, ctx: Dictionary) -> void:
 
 
 ## Whether Shift may sprint now (input.js: tired below 6 until back to 30).
-func can_run() -> bool:
-	return not tired
+func can_run(snack: bool = false) -> bool:
+	return snack or not tired
 
 
-func _stamina(dt: float, moving: bool, running: bool) -> void:
+## input.js: the snack lets you run while out of breath and running costs nothing.
+func _stamina(dt: float, moving: bool, running: bool, snack: bool = false) -> void:
 	var cfg: Dictionary = _campus.get("stamina", {"back": 30, "run": 8, "rest": 12})
 	stam = clampf(stam, 0.0, stamina_max())
 	if stam <= 6.0:
 		tired = true
 	elif stam >= float(cfg["back"]):
 		tired = false
+	if snack:
+		if not (running and moving):
+			stam = minf(stamina_max(), stam + float(cfg["rest"]) * dt)
+		return
 	if running and moving and not tired:
 		stam = maxf(0.0, stam - float(cfg["run"]) * dt)
 	else:

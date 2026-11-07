@@ -21,6 +21,14 @@ position = Vector3(0, 1.65, 0)
 current = true
 fov = 75.0
 
+[node name="Torch" type="SpotLight3D" parent="Camera"]
+unique_name_in_owner = true
+visible = false
+light_energy = 4.0
+light_color = Color(1, 0.94, 0.82, 1)
+spot_range = 22.0
+spot_angle = 26.0
+
 [node name="InteractionRay" type="RayCast3D" parent="Camera"]
 unique_name_in_owner = true
 target_position = Vector3(0, 0, -3)

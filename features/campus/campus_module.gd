@@ -16,6 +16,12 @@ const ENTRY_ROOMS := {
 	"trash": "trash1", "guard": "guard1", "gear": "gear1", "bell": "bell1",
 }
 const OPEN_LINES := ["我：门开了。", "我：门开了。合页的声音拖得很长。", "我：门开了。里面比外面冷。"]
+## interact.js TILE_HINT (static texts); tiles without an entry are searched ('翻找').
+const TILE_HINT := {"H": "躲进柜子", "Q": "看服务器终端", "S": "沿楼梯行走", "j": "打开门", "u": "翻看日记", "c": "上车",
+	"X": "钻进去", "Z": "放开单摆", "C": "开离心机", "N": "看显微镜", "Y": "转地球仪", "p": "弹琴", "U": "撞钟", "A": "看供桌",
+	"x": "看挂图", "B": "隔间", "G": "隔间", "w": "洗把脸", "b": "床", "n": "用电脑", "M": "售货机", "k": "看柜台", "t": "看餐桌",
+	"V": "看车牌", "D": "使用终端", "K": "看实验台", "L": ""}
+const SEARCHABLE := "dfR"
 
 signal door_changed(key: String, open: bool)
 
@@ -24,6 +30,8 @@ var _outside: Dictionary = {}
 var _campus: Dictionary = {}
 var _open_doors: Dictionary = {}
 var _line := 0
+## Inventory query (items.js hasItem), wired by the app to the bag module.
+var has_item := func(_id: String) -> bool: return false
 
 
 func _init(rooms: Dictionary = {}, outside: Dictionary = {}, campus: Dictionary = {}) -> void:
@@ -267,16 +275,35 @@ func hint(world_id: String, pose: Dictionary) -> String:
 	var hit := CampusGeometry.near_tile(r, CampusGeometry.to_world(r, float(p[0]), float(p[2])), ang, CampusGeometry.NEAR_ROOM, _open_doors)
 	if hit.is_empty():
 		return ""
-	match hit["ch"]:
+	var ch := String(hit["ch"])
+	match ch:
 		"=":
-			return "关门" if is_open(CampusGeometry.door_key(r, hit["c"], hit["r"])) else "开门"
+			var key := CampusGeometry.door_key(r, hit["c"], hit["r"])
+			var locks: Dictionary = _campus.get("door_locks", {})
+			if locks.has(key) and not has_item.call(String(locks[key]["item"])):
+				return "开门（锁着）"
+			return "关门" if is_open(key) else "开门"
 		"J":
-			return "电梯"
+			return "走向门" if world_id == "lift_dream" else "电梯"
 		"P":
-			return "坐下"
+			var own: Dictionary = _campus.get("own_seat", {})
+			return "坐到自己的座位" if world_id == own.get("room") and int(hit["c"]) == int(own.get("col", -1)) and int(hit["r"]) == int(own.get("row", -1)) else "坐下（非本人座位）"
+		"T":
+			var podium: Array = _campus.get("own_podium", [])
+			if world_id == "teach1" and podium.size() == 2 and int(podium[0]) == int(hit["c"]) and int(podium[1]) == int(hit["r"]):
+				return "看移交单"
+			return "拿粉笔" if world_id == "teach1" else "看讲台"
+		"D":
+			return "门禁管理终端" if world_id == "lab3" else "使用终端"
+		"K":
+			return "看办公桌" if r.get("host") == "admin" else "看实验台"
+		"k":
+			return "查看值班台" if r.get("host") == "guard" else "看柜台"
 		"O":
-			return "" if _exit_is_open(r, hit["w"]) or int(r.get("floor", 1) if r.get("floor") != null else 1) > 1 else "离开"
-	return ""
+			return "" if _exit_is_open(r, hit["w"]) else "出去"
+	if SEARCHABLE.contains(ch) or not TILE_HINT.has(ch):
+		return "翻找"
+	return String(TILE_HINT[ch])
 
 
 func _exit_is_open(r: Dictionary, w: Vector2) -> bool:
@@ -331,6 +358,10 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 			return {"notice": "", "elevator": true}
 		"P":
 			return {"notice": "", "seat": [hit["c"], hit["r"]]}
+		"T":
+			return {"notice": "", "podium": [hit["c"], hit["r"]]}
+		"d", "f", "R":
+			return {"notice": "", "search": [hit["c"], hit["r"]]}
 		"S":
 			# interact.js stairGo: shafts are walked; a room without one (canteen) has its stair as a way out.
 			for st: Dictionary in _stair_layout():
@@ -346,9 +377,8 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 func _toggle_door(r: Dictionary, hit: Dictionary, me: Vector2) -> Dictionary:
 	var key := CampusGeometry.door_key(r, hit["c"], hit["r"])
 	var locks: Dictionary = _campus.get("door_locks", {})
-	if locks.has(key) and not is_open(key):
-		# Inventory is not ported yet, so the required key can never be held here.
-		return {"notice": "我：门锁着。锁孔是圆的，很新。", "toast": "需要「%s」" % locks[key]["name"]}
+	if locks.has(key) and not is_open(key) and not has_item.call(String(locks[key]["item"])):
+		return {"notice": "我：门锁着。锁孔是圆的，很新。", "toast": "需要「%s」· 校长办公室可能有" % locks[key]["name"]}
 	if not is_open(key):
 		_open_doors[key] = true
 		var line: String = OPEN_LINES[_line % OPEN_LINES.size()]

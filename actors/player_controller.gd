@@ -22,6 +22,8 @@ var seated := false
 var can_sprint := true
 var moving := false
 var sprinting := false
+## Snack (items.js): walking and running ×1.5 for 30 s.
+var speed_multiplier := 1.0
 var _touch_move := Vector2.ZERO
 var _touch_sprint := false
 var _focus: WorldInteractable
@@ -59,7 +61,7 @@ func _physics_process(delta: float) -> void:
 	var world_direction := global_basis * Vector3(direction.x, 0.0, direction.y)
 	var want_run := (Input.is_action_pressed("sprint") or _touch_sprint or _touch_move.length() > 0.96) and direction.length() > 0.08
 	sprinting = want_run and can_sprint
-	var speed := sprint_speed if sprinting else walk_speed
+	var speed := (sprint_speed if sprinting else walk_speed) * speed_multiplier
 	velocity.x = world_direction.x * speed
 	velocity.z = world_direction.z * speed
 	if not is_on_floor():

@@ -267,7 +267,7 @@
       id:id, name:R.name, host:R.host || null, floor:R.floor === undefined ? null : R.floor,
       cols:R.cols, rows:R.rows, tw:R.tw, th:R.th, ox:R.ox, oy:R.oy, cx:R.cx, cy:R.cy,
       shift:shift, exit_world:exit, grid:grid, spawn:spawn, start:start, seats:seatList(R),
-      flags:{stairwell:!!R.stairwell, spiral:!!R.spiral, custom:!!R.build, collide:!!R.collide, noClock:!!R.noClock, gallery:!!R.gallery, noMap:!!R.noMap},
+      flags:{principal:!!R.principal, stairwell:!!R.stairwell, spiral:!!R.spiral, custom:!!R.build, collide:!!R.collide, noClock:!!R.noClock, gallery:!!R.gallery, noMap:!!R.noMap},
       walls:mergeCells(walls, R, toM), boxes:boxes, doors:doors, stairs:stairs
     };
   }
@@ -299,6 +299,9 @@
         sched:window.SCHED, day_phases:window.DAY_PHASES, lights_out:window.LIGHTS_OUT, evening:window.EVENING,
         pressure_curve:window.CampusPressure.curve, pressure_messages:window.CampusPressure.messages,
         stamina:{back:window.STAM_BACK, run:window.STAM_RUN, rest:window.STAM_REST, snack_sec:window.SNACK_SEC},
+        items:window.ITEMS, item_glyph:window.ITEM_GLYPH, desk_loot:window.DESK_LOOT, lab_loot:window.LAB_LOOT,
+        pill:{sec:window.PILL_SEC, rate:window.PILL_RATE}, bag_capacity:window.InventoryRules.capacity,
+        own_podium:window.ClassroomLayout.podium(window.ClassroomLayout.ownSeat.classId),
         stair_layout:window.STAIR_LAYOUT, stair_geometry:window.StairGeometry.config, spiral:window.SPIRAL,
         campus_link:window.CAMPUS_LINK ? {width:window.CAMPUS_LINK.width, annex:window.CAMPUS_LINK.annex, pairs:window.CAMPUS_LINK.pairs} : null,
         reference:'wd-fz/wd-fz.github.io@0bf508a47eac154c2a7047cdb45d314f61c48fdc'};

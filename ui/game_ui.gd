@@ -14,6 +14,8 @@ signal interact_requested
 ## A choice panel button (index into the labels given to show_choice).
 signal choice_selected(index: int)
 signal lift_close_requested
+signal item_use_requested(id: String)
+signal item_hot_requested(index: int, id: String)
 
 @onready var menu: Control = %Menu
 @onready var pause_panel: Control = %PausePanel
@@ -46,6 +48,7 @@ func _ready() -> void:
 	%TouchToggle.toggled.connect(set_touch_enabled)
 	_build_choice()
 	_build_status()
+	_build_bag()
 	set_touch_enabled(DisplayServer.is_touchscreen_available())
 	get_tree().root.size_changed.connect(_resize)
 	_resize()
@@ -139,6 +142,88 @@ func show_stamina(value: float, maximum: float, out_of_breath: bool) -> void:
 	_stamina.max_value = 100.0
 	_stamina.value = clampf(value, 0.0, 100.0)
 	_stamina.modulate = Color(0.85, 0.45, 0.35) if out_of_breath else Color(0.55, 0.75, 0.95)
+
+
+## Bag panel (old manual 背包 tab): name, description, 使用 and the two hot slots.
+func _build_bag() -> void:
+	bag_panel = PanelContainer.new()
+	bag_panel.name = "BagPanel"
+	bag_panel.visible = false
+	bag_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	bag_panel.custom_minimum_size = Vector2(460, 0)
+	var box := VBoxContainer.new()
+	var title := Label.new()
+	title.text = "背包（Tab 关闭）"
+	box.add_child(title)
+	_bag_list = VBoxContainer.new()
+	box.add_child(_bag_list)
+	bag_panel.add_child(box)
+	$Root.add_child(bag_panel)
+	_search_ring = ProgressBar.new()
+	_search_ring.name = "SearchRing"
+	_search_ring.show_percentage = false
+	_search_ring.custom_minimum_size = Vector2(90, 6)
+	_search_ring.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_search_ring.position.y += 22
+	_search_ring.max_value = 1.0
+	_search_ring.visible = false
+	hud.add_child(_search_ring)
+	_hot_label = Label.new()
+	_hot_label.name = "HotSlots"
+	_hot_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	_hot_label.position = Vector2(16, -40)
+	_hot_label.add_theme_font_size_override("font_size", 14)
+	hud.add_child(_hot_label)
+
+
+func show_bag(entries: Array) -> void:
+	for child in _bag_list.get_children():
+		child.queue_free()
+	if entries.is_empty():
+		var empty := Label.new()
+		empty.text = "背包是空的。"
+		_bag_list.add_child(empty)
+	for e: Dictionary in entries:
+		var row := VBoxContainer.new()
+		var name := Label.new()
+		name.text = String(e["name"])
+		row.add_child(name)
+		var desc := Label.new()
+		desc.text = String(e["text"])
+		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		desc.custom_minimum_size = Vector2(420, 0)
+		desc.modulate = Color(0.8, 0.85, 0.82)
+		row.add_child(desc)
+		var buttons := HBoxContainer.new()
+		var id := String(e["id"])
+		for spec: Array in [["使用", -1], ["放到快捷栏 1", 0], ["放到快捷栏 2", 1]]:
+			var b := Button.new()
+			b.text = spec[0]
+			if spec[1] < 0:
+				b.pressed.connect(item_use_requested.emit.bind(id))
+			else:
+				b.pressed.connect(item_hot_requested.emit.bind(int(spec[1]), id))
+			buttons.add_child(b)
+		row.add_child(buttons)
+		_bag_list.add_child(row)
+	bag_panel.visible = true
+
+
+func hide_bag() -> void:
+	bag_panel.visible = false
+
+
+func bag_open() -> bool:
+	return bag_panel != null and bag_panel.visible
+
+
+func show_search(progress: float) -> void:
+	_search_ring.visible = progress > 0.0
+	_search_ring.value = progress
+
+
+func show_hot(text: String) -> void:
+	_hot_label.text = text
 
 
 func show_choice(text: String, labels: Array) -> void:
@@ -240,6 +325,10 @@ var _location := "移植测试场景"
 var _status_line: Label
 var _stamina: ProgressBar
 var _status_on := false
+var bag_panel: PanelContainer
+var _bag_list: VBoxContainer
+var _search_ring: ProgressBar
+var _hot_label: Label
 
 
 func show_location(text: String) -> void:

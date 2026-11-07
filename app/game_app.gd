@@ -30,13 +30,16 @@ func _ready() -> void:
 	player.free_interaction_requested.connect(_campus_interact)
 	ui.choice_selected.connect(_choice_made)
 	ui.lift_close_requested.connect(_lift_close)
+	ui.item_use_requested.connect(_use_item)
+	ui.item_hot_requested.connect(_set_hot)
 	return_to_menu()
 
 
 func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
-			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())]:
+			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
+			InventoryModule.new(CampusData.rooms(), CampusData.campus())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -46,6 +49,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func items() -> InventoryModule:
+	return session.modules.get_module(&"items.bag") as InventoryModule if session != null else null
 
 
 func school() -> SchoolModule:
@@ -93,6 +100,9 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	var rules := campus()
 	if rules != null:
 		rules.door_changed.connect(_door_changed)
+	var bag := items()
+	if rules != null and bag != null:
+		rules.has_item = bag.has
 	_sync_world()
 	player.restore_pose(pose)
 	player.show()
@@ -155,6 +165,7 @@ func resume_game() -> void:
 
 func return_to_menu() -> void:
 	ui.hide_choice()
+	ui.hide_bag()
 	ui.reset_status()
 	player.seated = false
 	_choice_handler = Callable()
@@ -260,6 +271,16 @@ func _apply_result(result: Dictionary) -> void:
 		return
 	if result.has("choice"):
 		_open_choice(result["choice"])
+	var text := String(result.get("notice", ""))
+	if result.has("toast"):
+		text = (text + "\n" if not text.is_empty() else "") + String(result["toast"])
+	if result.has("search") and items() != null:
+		var room: Variant = campus().room(session.world_id)
+		var p: Array = player.capture_pose()["position"]
+		items().start_search(session.world_id, int(result["search"][0]), int(result["search"][1]), CampusGeometry.to_world(room, float(p[0]), float(p[2])))
+	if result.has("podium") and items() != null:
+		var said := items().podium(session.world_id, int(result["podium"][0]), int(result["podium"][1]))
+		text = String(said.get("notice", text))
 	if result.has("seat") and school() != null:
 		var sat := school().sit(session.world_id, int(result["seat"][0]), int(result["seat"][1]))
 		if not sat.is_empty():
@@ -267,9 +288,8 @@ func _apply_result(result: Dictionary) -> void:
 			player.seated = true
 			ui.show_notice(sat["notice"])
 		return
-	var text := String(result.get("notice", ""))
-	if result.has("toast"):
-		text = text + "\n" + String(result["toast"])
+	if result.has("san") and school() != null:
+		school().change_san(float(result["san"]), 0.0)
 	if result.has("travel"):
 		travel(result["travel"]["world"], result["travel"]["pose"], bool(result["travel"].get("seamless", false)))
 	if not text.is_empty():
@@ -297,21 +317,39 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 		return
 	if day_rules.seated and player.wants_move():
 		_stand_up()
+	var bag := items()
+	var pill_san := 0.0
+	var snack := false
+	if bag != null:
+		_item_keys(bag)
+		pill_san = bag.step(delta)
+		snack = bag.snack_active()
+		var room_here: Variant = rules.room(session.world_id)
+		var here: Array = player.capture_pose()["position"]
+		bag.search_tick(delta, session.world_id, CampusGeometry.to_world(room_here, float(here[0]), float(here[2])))
+		for text: String in bag.take_notices():
+			ui.show_notice(text)
+		ui.show_search(bag.search_progress())
+		player.speed_multiplier = 1.5 if snack else 1.0
+		player.camera.get_node("Torch").visible = bag.torch_on
+		ui.show_hot("1 · %s    2 · %s" % [bag.item_name(String(bag.hot[0])) if bag.hot[0] != null else "空", bag.item_name(String(bag.hot[1])) if bag.hot[1] != null else "空"])
 	var pose := player.capture_pose()
 	var room: Variant = rules.room(session.world_id)
 	var p: Array = pose["position"]
 	day_rules.step(delta, {"world_id": session.world_id, "w": CampusGeometry.to_world(room, float(p[0]), float(p[2])),
 		"height": float(p[1]), "moving": player.moving, "running": player.sprinting, "calendar": router.current.advances_calendar,
 		"ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "pitch": float(pose["pitch"]),
-		"can_stand": _can_stand.bind(room, float(p[1])), "line_clear": _line_clear.bind(room)})
+		"can_stand": _can_stand.bind(room, float(p[1])), "line_clear": _line_clear.bind(room), "snack": snack, "pill_san": pill_san})
 	var world := _campus_world()
 	if world != null:
 		world.show_silhouettes(day_rules.inspection_points(), room, float(p[1]))
-	player.can_sprint = day_rules.can_run()
+	player.can_sprint = day_rules.can_run(snack)
 	for text: String in day_rules.take_notices():
 		ui.show_notice(text)
 	var frozen := not router.current.advances_calendar
-	ui.show_status(day_rules.place_name(session.world_id, float(p[1])), day_rules.period_text(frozen), day_rules.period_class(frozen), day_rules.clock_text(false))
+	ui.show_status(day_rules.place_name(session.world_id, float(p[1])), day_rules.period_text(frozen), day_rules.period_class(frozen), day_rules.clock_text(bag != null and bag.has_clock()))
+	if day_rules.seated and not player.has_focus():
+		ui.show_prompt("站起来")
 	ui.show_stamina(day_rules.stam, day_rules.stamina_max(), day_rules.tired)
 
 
@@ -359,6 +397,62 @@ func _can_stand_point(w: Vector2) -> bool:
 	query.position = Vector3(s.x, 1.0, s.y)
 	query.collision_mask = 1
 	return world.get_world_3d().direct_space_state.intersect_point(query, 1).is_empty()
+
+
+func _item_keys(bag: InventoryModule) -> void:
+	if Input.is_action_just_pressed("bag"):
+		if ui.bag_open():
+			_close_bag()
+		elif player.enabled:
+			_open_bag()
+	if not player.enabled:
+		return
+	var tsec := school().tsec if school() != null else 0.0
+	if Input.is_action_just_pressed("torch"):
+		if not bag.has("torch"):
+			ui.show_notice("没有手电筒")
+		else:
+			_apply_result(bag.use("torch", tsec))
+	for i in 2:
+		if Input.is_action_just_pressed("hot_%d" % (i + 1)):
+			_apply_result(bag.use_hot(i, tsec))
+
+
+func _bag_entries() -> Array:
+	var bag := items()
+	var out: Array = []
+	for id: String in bag.bag:
+		out.append({"id": id, "name": bag.item_name(id), "text": bag.item_text(id)})
+	return out
+
+
+func _open_bag() -> void:
+	player.enabled = false
+	player.clear_input()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	ui.show_bag(_bag_entries())
+
+
+func _close_bag() -> void:
+	ui.hide_bag()
+	if session != null and session.running and not get_tree().paused:
+		player.enabled = true
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
+
+
+func _use_item(id: String) -> void:
+	var bag := items()
+	if bag == null:
+		return
+	_close_bag()
+	_apply_result(bag.use(id, school().tsec if school() != null else 0.0))
+
+
+func _set_hot(index: int, id: String) -> void:
+	var bag := items()
+	if bag != null and bag.set_hot(index, id):
+		ui.show_notice("「%s」放到快捷栏 %d" % [bag.item_name(id), index + 1])
+		ui.show_bag(_bag_entries())
 
 
 func _open_choice(choice: Dictionary) -> void:

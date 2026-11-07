@@ -61,6 +61,7 @@ func _run() -> void:
 	_test_campus_rules()
 	_test_elevator_rules()
 	_test_school_rules()
+	_test_inventory_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -533,6 +534,74 @@ func _test_school_rules() -> void:
 			break
 	check(absent.inspection["settled"].get("1:1") == "absent", "away from the seat at 17:50 counts as absent")
 	check(absent.viol > 20.0 + 16.0 + 10.0 - 1.0, "moving during the check adds 2 violation per second on top of the absence (%.2f)" % absent.viol)
+
+
+func _test_inventory_rules() -> void:
+	var rooms := CampusData.rooms()
+	var inv := InventoryModule.new(rooms, CampusData.campus())
+	inv.reset()
+	inv.set_seed(3)
+	check(inv.capacity() == 8, "the bag holds eight things")
+	check(inv.add("torch") and not inv.add("torch"), "an item is held once")
+	for id: String in ["chalk", "pen", "coin", "battery", "card", "notebook", "watch"]:
+		inv.add(id)
+	check(inv.bag.size() == 8 and not inv.add("pill") and inv.take_notices().has("我：装不下了。"), "a full bag refuses more")
+	check(inv.set_hot(0, "torch") and not inv.set_hot(1, "pill"), "hot slots only take held items")
+	inv.use_hot(0, 700.0)
+	check(inv.torch_on, "the torch toggles from its hot slot")
+	inv.remove("torch")
+	check(inv.hot[0] == null and not inv.torch_on, "dropping the torch clears its slot and light")
+	check(inv.has_clock() and inv.use("watch", 700.0)["notice"] == "我：现在是 11:40。", "the watch tells the time")
+	inv.remove("coin")
+	inv.add("pill")
+	inv.use("pill", 700.0)
+	var gained := 0.0
+	for _i in 40:
+		gained += inv.step(1.0)
+	check(absf(gained - 60.0) < 0.01 and not inv.has("pill"), "a pill restores 2 SAN per second for 30 s")
+	inv.add("snack")
+	inv.use("snack", 700.0)
+	check(inv.snack_active(), "the snack starts its 30 s")
+	# Searching: hold still 0.8 s; walking away cancels; the same drawer is only searched once.
+	var fresh := InventoryModule.new(rooms, CampusData.campus())
+	fresh.reset()
+	fresh.set_seed(11)
+	var t1: Dictionary = rooms["teach1"]
+	var desk := CampusGeometry.tile_center(t1, 47, 7)
+	fresh.start_search("teach1", 47, 7, desk)
+	fresh.search_tick(0.5, "teach1", desk + Vector2(9, 0))
+	check(not fresh.searching() and fresh.take_notices().has("我：手一松，没翻完。"), "moving away interrupts the search")
+	fresh.start_search("teach1", 47, 7, desk)
+	fresh.search_tick(0.5, "teach1", desk)
+	check(fresh.searching(), "still searching after 0.5 s")
+	fresh.search_tick(0.4, "teach1", desk)
+	check(not fresh.searching() and fresh.hw_taken and fresh.has("hw"), "the first teach1 drawer holds the homework")
+	fresh.start_search("teach1", 47, 7, desk)
+	check(fresh.take_notices().has("我：翻过了。"), "a searched drawer stays searched")
+	# The principal's office keeps its 45 % key chance with the pity on the fourth miss.
+	var keys := InventoryModule.new(rooms, CampusData.campus())
+	keys.reset()
+	var found := false
+	for i in 4:
+		keys.desk_used.clear()
+		keys.do_search("admin5", 10 + i, 3)
+		found = found or keys.has("key") or keys.has("roomkey")
+	check(found, "four principal drawers always give a key (pity)")
+	var campus := CampusData.make_module()
+	campus.reset()
+	var l3: Dictionary = rooms["lab3"]
+	var lab_pose := _campus_pose(l3, CampusGeometry.tile_center(l3, 41, 15) + Vector2(0, 14), -PI * 0.5)
+	check(campus.hint("lab3", lab_pose) == "开门（锁着）", "the lab3 machine room door shows as locked")
+	var bag := InventoryModule.new(rooms, CampusData.campus())
+	bag.reset()
+	campus.has_item = bag.has
+	bag.add("roomkey")
+	var opened := campus.interact_at("lab3", lab_pose)
+	check(opened.get("door", {}).get("open") == true, "the machine room key opens it")
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(bag.capture()))
+	check(bag.validate(saved).is_empty(), "bag state survives JSON")
+	saved["bag"] = ["nonsense"]
+	check(not bag.validate(saved).is_empty(), "unknown items are rejected")
 
 
 func _test_campus_app() -> void:
