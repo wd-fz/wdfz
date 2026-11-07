@@ -87,6 +87,9 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	session.notice_requested.connect(ui.show_notice)
 	var day_rules := school()
 	player.seated = day_rules != null and day_rules.seated
+	var lift_rules := elevator()
+	if lift_rules != null and day_rules != null:
+		lift_rules.unsafe_check = day_rules.inspection_pending
 	var rules := campus()
 	if rules != null:
 		rules.door_changed.connect(_door_changed)
@@ -298,13 +301,64 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	var room: Variant = rules.room(session.world_id)
 	var p: Array = pose["position"]
 	day_rules.step(delta, {"world_id": session.world_id, "w": CampusGeometry.to_world(room, float(p[0]), float(p[2])),
-		"height": float(p[1]), "moving": player.moving, "running": player.sprinting, "calendar": router.current.advances_calendar})
+		"height": float(p[1]), "moving": player.moving, "running": player.sprinting, "calendar": router.current.advances_calendar,
+		"ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "pitch": float(pose["pitch"]),
+		"can_stand": _can_stand.bind(room, float(p[1])), "line_clear": _line_clear.bind(room)})
+	var world := _campus_world()
+	if world != null:
+		world.show_silhouettes(day_rules.inspection_points(), room, float(p[1]))
 	player.can_sprint = day_rules.can_run()
 	for text: String in day_rules.take_notices():
 		ui.show_notice(text)
 	var frozen := not router.current.advances_calendar
 	ui.show_status(day_rules.place_name(session.world_id, float(p[1])), day_rules.period_text(frozen), day_rules.period_class(frozen), day_rules.clock_text(false))
 	ui.show_stamina(day_rules.stam, day_rules.stamina_max(), day_rules.tired)
+
+
+## canStand (world.js): is there room for the body (radius 3 units) at this old world point?
+func _can_stand(w: Vector2, room: Variant, height: float) -> bool:
+	var world := _campus_world()
+	if world == null:
+		return false
+	var s := CampusGeometry.to_scene(room, w)
+	var shape := SphereShape3D.new()
+	shape.radius = CampusGeometry.PRAD * CampusGeometry.U2M
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = shape
+	query.collision_mask = 1
+	query.transform = Transform3D(Basis(), Vector3(s.x, height + 0.9, s.y))
+	return world.get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
+
+
+## inspection.js lineClear: indoors walls and closed doors on the tile grid; outdoors solid obstacles.
+func _line_clear(a: Vector2, b: Vector2, room: Variant) -> bool:
+	var n := int(ceil(a.distance_to(b) / 3.0))
+	var rules := campus()
+	for i in range(1, n):
+		var p := a.lerp(b, float(i) / n)
+		if room != null:
+			var ch := CampusGeometry.tile_at(room, p)
+			if ch == "#":
+				return false
+			if ch == "=":
+				var c := int(floor((p.x - float(room["ox"])) / float(room["tw"])))
+				var r := int(floor((p.y - float(room["oy"])) / float(room["th"])))
+				if not rules.is_open(CampusGeometry.door_key(room, c, r)):
+					return false
+		elif not _can_stand_point(p):
+			return false
+	return true
+
+
+func _can_stand_point(w: Vector2) -> bool:
+	var world := _campus_world()
+	if world == null:
+		return true
+	var s := CampusGeometry.to_scene(null, w)
+	var query := PhysicsPointQueryParameters3D.new()
+	query.position = Vector3(s.x, 1.0, s.y)
+	query.collision_mask = 1
+	return world.get_world_3d().direct_space_state.intersect_point(query, 1).is_empty()
 
 
 func _open_choice(choice: Dictionary) -> void:

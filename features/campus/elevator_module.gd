@@ -27,6 +27,9 @@ var lifts: Dictionary = {}
 var ride: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 var _notices: PackedStringArray = []
+## Elevator.unsafe(): anomaly active, local patrol chase or a pending inspection. The app wires
+## the ported parts in (inspection); anomalies and patrol join when they are ported.
+var unsafe_check := Callable()
 
 
 func _init(rooms: Dictionary = {}) -> void:
@@ -237,7 +240,7 @@ func _pose(room_id: String, w: Vector2, ang: float, pitch: float) -> Dictionary:
 
 
 func _unsafe() -> bool:
-	return false # Anomalies, local patrol chase and inspection are not ported yet.
+	return unsafe_check.is_valid() and bool(unsafe_check.call())
 
 
 func _open(host: String, why: String = "") -> bool:

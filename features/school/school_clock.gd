@@ -121,3 +121,29 @@ static func pressure(points: Array, clock: float) -> Dictionary:
 	for key: String in ["anomaly", "danger", "passive", "rest"]:
 		value[key] = float(a[key]) + (float(b[key]) - float(a[key])) * t
 	return value
+
+
+## core.js realSecondsBetween within one natural day.
+static func real_seconds_between(from: float, to: float) -> float:
+	var seconds := 0.0
+	var t := from
+	while t < to - 1e-9:
+		var end := minf(to, clock_boundary(t))
+		if end <= t:
+			break
+		seconds += (end - t) * 60.0 / rate_at(t)
+		t = end
+	return seconds
+
+
+## core.js clockTimeBefore: the game time `seconds` of simulation before `time`.
+static func clock_time_before(time: float, seconds: float) -> float:
+	var lo := DAY_START
+	var hi := time
+	for _i in 48:
+		var mid := (lo + hi) * 0.5
+		if real_seconds_between(mid, time) > seconds:
+			lo = mid
+		else:
+			hi = mid
+	return (lo + hi) * 0.5

@@ -123,6 +123,44 @@ func set_lift_doors(amount: float) -> void:
 		shape.set_deferred("disabled", amount >= 0.9)
 
 
+## Inspection silhouettes (InspectionView): placeholder dark figures until the figure models and
+## their scatter animation are ported.
+var _silhouettes: Node3D
+var _silhouette_key := ""
+
+
+func show_silhouettes(points: Array, room: Variant, height: float) -> void:
+	var key := str(points)
+	if key == _silhouette_key:
+		return
+	_silhouette_key = key
+	if is_instance_valid(_silhouettes):
+		_silhouettes.queue_free()
+	_silhouettes = null
+	if points.is_empty():
+		return
+	_silhouettes = Node3D.new()
+	_silhouettes.name = "InspectionSilhouettes"
+	add_child(_silhouettes)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.02, 0.02, 0.025)
+	mat.roughness = 1.0
+	var mesh := CapsuleMesh.new()
+	mesh.radius = 0.22
+	mesh.height = 1.75
+	mesh.material = mat
+	for xy: Array in points:
+		var s := CampusGeometry.to_scene(room, Vector2(xy[0], xy[1]))
+		var fig := MeshInstance3D.new()
+		fig.mesh = mesh
+		fig.position = Vector3(s.x, height + 0.875, s.y)
+		_silhouettes.add_child(fig)
+
+
+func silhouette_count() -> int:
+	return _silhouettes.get_child_count() if is_instance_valid(_silhouettes) else 0
+
+
 func lift_leaf_count() -> int:
 	return _lift_leaves.size()
 

@@ -492,6 +492,47 @@ func _test_school_rules() -> void:
 	check(int(later.pressure()["stage"]) >= 2, "campus pressure climbs after the first night")
 	var data: Dictionary = JSON.parse_string(JSON.stringify(later.capture()))
 	check(school.validate(data).is_empty(), "school state survives JSON")
+	# Inspection (inspection.js): warning 60 s before 12:50, eight seconds of checking, settlement.
+	var ins := SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
+	ins.reset()
+	var seat_pose := ins.start_seated("teach1")
+	var at_seat := CampusGeometry.to_world(CampusData.layout("teach1"), float(seat_pose["position"][0]), float(seat_pose["position"][2]))
+	var sit_ctx := {"world_id": "teach1", "w": at_seat, "moving": false, "running": false, "calendar": true, "ang": PI, "pitch": 1.2}
+	ins.tsec = SchoolClock.clock_time_before(770.0, 61.0)
+	ins.step(2.0, sit_ctx)
+	check(ins.inspection_upcoming() and ins.period_text(false) == "集合将至 · 请坐回自己的座位", "the broadcast warns a minute before 12:50")
+	var heard := ins.take_notices()
+	check(heard.size() > 0 and heard[heard.size() - 1].contains("十二点五十"), "broadcast text names 12:50")
+	var waited := 0.0
+	while not ins.inspection_active() and waited < 90.0:
+		ins.step(0.5, sit_ctx)
+		waited += 0.5
+	check(ins.inspection_active() and absf(waited - 59.0) < 1.5, "the check starts at 12:50 (%.1f s later)" % waited)
+	ins.san = 80.0
+	ins.viol = 20.0
+	ins.tt = 10.0
+	var checking := 0.0
+	while ins.inspection_active() and checking < 20.0:
+		ins.step(0.05, sit_ctx)
+		checking += 0.05
+	check(absf(checking - 8.0) < 0.1, "the check lasts eight seconds (%.2f)" % checking)
+	check(absf(ins.san - 77.0) < 0.1 and absf(ins.viol - 12.0) < 0.2 and absf(ins.tt - 13.0) < 0.05, "sitting still: -3 SAN, -8 violation, +3 assimilation (san %.2f viol %.2f tt %.2f)" % [ins.san, ins.viol, ins.tt])
+	check(ins.inspection["settled"].get("1:0") == "present", "the own seat counts as present")
+	var absent := SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
+	absent.reset()
+	absent.tsec = 1069.9
+	absent.san = 80.0
+	absent.viol = 20.0
+	var away := {"world_id": "out", "w": Vector2(1000, 1000), "moving": true, "running": false, "calendar": true, "ang": 0.0, "pitch": 1.2}
+	var started := false
+	for _i in 400:
+		absent.step(0.05, away)
+		if absent.inspection_active():
+			started = true
+		elif started:
+			break
+	check(absent.inspection["settled"].get("1:1") == "absent", "away from the seat at 17:50 counts as absent")
+	check(absent.viol > 20.0 + 16.0 + 10.0 - 1.0, "moving during the check adds 2 violation per second on top of the absence (%.2f)" % absent.viol)
 
 
 func _test_campus_app() -> void:

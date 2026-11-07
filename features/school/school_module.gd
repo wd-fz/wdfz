@@ -25,6 +25,9 @@ const TT_SEAT := {
 }
 const FIELD_IDS := ["field", "court2", "track", "bad2", "bad3"]
 const START_TSEC := 700.0
+## inspection.js INSPECT_CONFIG.
+const INSPECT := {"times": [770.0, 1070.0], "warning_seconds": 60.0, "late_limit": 3.0, "duration": 8.0, "move_every": 1.0,
+	"move_violation": 2.0, "gaze_san": 2.0, "good_san": 3.0, "bad_san": 8.0, "good_violation": 8.0, "bad_violation": 10.0, "assimilation": 3.0}
 
 var _rooms: Dictionary = {}
 var _outside: Dictionary = {}
@@ -45,6 +48,10 @@ var pressure_clock := START_TSEC
 var pressure_seen := 0
 var viol_full := false
 var pending_story := ""          # "san" | "assimilation" once the story port takes over
+## Inspection state (RT.inspection) and the outing permit it grants (RT.outing).
+var inspection := {}
+var outing := {}
+var _warn_times: Array = []
 var _notices: PackedStringArray = []
 
 
@@ -79,12 +86,15 @@ func reset() -> void:
 	viol_full = false
 	pending_story = ""
 	_notices = PackedStringArray()
+	inspection = {"seen": {}, "warned": {}, "queue": [], "current": {}, "settled": {}, "calm": 0.0}
+	outing = {}
 
 
 func capture() -> Dictionary:
 	return {"tsec": tsec, "day": day, "san": san, "viol": viol, "tt": tt, "stam": stam, "tired": tired,
 		"seated": seated, "seat_id": seat_id, "tt_tier": tt_tier, "pressure_clock": pressure_clock,
-		"pressure_seen": pressure_seen, "viol_full": viol_full, "pending_story": pending_story}
+		"pressure_seen": pressure_seen, "viol_full": viol_full, "pending_story": pending_story,
+		"inspection": inspection.duplicate(true), "outing": outing.duplicate(true)}
 
 
 func validate(data: Dictionary) -> String:
@@ -101,6 +111,11 @@ func validate(data: Dictionary) -> String:
 		return "校园压力无效"
 	if not data.get("pending_story") is String:
 		return "剧情状态无效"
+	var ins: Variant = data.get("inspection", {})
+	if not ins is Dictionary or not ins.get("queue", []) is Array or not ins.get("seen", {}) is Dictionary:
+		return "检查状态无效"
+	if not data.get("outing", {}) is Dictionary:
+		return "外出登记无效"
 	return ""
 
 
@@ -119,6 +134,16 @@ func restore(data: Dictionary) -> void:
 	pressure_seen = int(data["pressure_seen"])
 	viol_full = bool(data.get("viol_full", false))
 	pending_story = String(data["pending_story"])
+	inspection = {"seen": {}, "warned": {}, "queue": [], "current": {}, "settled": {}, "calm": 0.0}
+	inspection.merge(data.get("inspection", {}).duplicate(true), true)
+	for item: Dictionary in inspection["queue"]:
+		item["day"] = int(item["day"])
+		item["slot"] = int(item["slot"])
+	var cur: Dictionary = inspection["current"]
+	if not cur.is_empty():
+		cur["day"] = int(cur["day"])
+		cur["slot"] = int(cur["slot"])
+	outing = data.get("outing", {}).duplicate(true)
 
 
 func take_notices() -> PackedStringArray:
@@ -235,13 +260,23 @@ func place_name(world_id: String, height: float) -> String:
 func period_text(frozen: bool) -> String:
 	if frozen:
 		return "???"
+	if inspection_active():
+		return "学生会检查 · 坐稳自己的座位"
+	if inspection_upcoming():
+		return "集合将至 · 请坐回自己的座位"
+	if permit():
+		return "外出登记 · " + return_label()
 	var p := SchoolClock.period_at(tsec)
 	var where := "可探索，留意巡察" if p[3] in ["教室", "操场"] else SchoolClock.need_where(tsec)
 	return "%s · %s" % [p[2], where]
 
 
 func period_class(frozen: bool) -> String:
-	return "ok" if frozen else ("warn" if wrong else "ok")
+	if frozen:
+		return "ok"
+	if inspection_upcoming() or wrong:
+		return "warn"
+	return "leave" if permit() else "ok"
 
 
 ## Watch talent or item (Talent.capability('clock')); neither is ported, so time is unknown.
@@ -305,7 +340,9 @@ func advance_game_time(minutes: float) -> void:
 	var remaining := maxf(0.0, minutes)
 	while remaining > 0.0:
 		var slice := SchoolClock.forward_slice(tsec, day, remaining)
+		var before := float(slice["from"])
 		tsec = float(slice["to"])
+		_inspection_cross(day, before, tsec)
 		remaining = float(slice["remaining"])
 		if int(slice["day"]) != day:
 			day = int(slice["day"])
@@ -341,9 +378,10 @@ func step(dt: float, ctx: Dictionary) -> void:
 		clock_tick(dt)
 	var world_id := String(ctx.get("world_id", ""))
 	var w: Vector2 = ctx.get("w", Vector2.ZERO)
+	_inspection_tick(dt, ctx)
 	var nw := SchoolClock.need_where(tsec)
 	_san_tick(dt, nw, world_id, w)
-	_viol_tick(dt, nw, world_id, w)
+	_viol_tick(dt, nw, world_id, w, ctx)
 	_tt_tick(dt, nw, world_id)
 	_settle_san()
 	_pressure_tick()
@@ -379,6 +417,8 @@ func _rule_there(nw: String, world_id: String, w: Vector2) -> bool:
 
 
 func _san_tick(dt: float, nw: String, world_id: String, w: Vector2) -> void:
+	if inspection_active():
+		return # sanTick: no daily recovery during an inspection.
 	var gain := dt * float(pressure()["passive"])
 	match nw:
 		"教室":
@@ -394,7 +434,10 @@ func _san_tick(dt: float, nw: String, world_id: String, w: Vector2) -> void:
 			change_san(0.8 * gain)
 
 
-func _viol_tick(dt: float, nw: String, world_id: String, w: Vector2) -> void:
+func _viol_tick(dt: float, nw: String, world_id: String, w: Vector2, ctx: Dictionary) -> void:
+	if inspection_active():
+		wrong = not in_classroom_here(world_id, w)
+		return
 	var is_wrong := not _rule_there(nw, world_id, w)
 	if nw in ["教室", "操场"]:
 		is_wrong = false
@@ -420,6 +463,8 @@ func _viol_tick(dt: float, nw: String, world_id: String, w: Vector2) -> void:
 func _tt_tick(dt: float, nw: String, world_id: String) -> void:
 	if tt >= 100.0:
 		_resolve_assimilation()
+		return
+	if inspection_active():
 		return
 	if seated and nw == "教室":
 		tt += TT_CFG["seat"] * dt
@@ -456,3 +501,186 @@ func _pressure_tick() -> void:
 	pressure_seen = stage
 	if messages[stage] != null:
 		_say(String(messages[stage]))
+
+
+
+# ---- outing permit (school-day.js) ----
+
+func _deadline() -> float:
+	return 770.0 if tsec < 770.0 else (1070.0 if tsec < 1070.0 else SchoolClock.LIGHTS_OUT)
+
+
+func permit() -> bool:
+	if day < 2 or outing.is_empty() or int(outing.get("day", 0)) != day:
+		return false
+	var from := float(outing["from"])
+	var until := float(outing["until"])
+	var expect := 770.0 if from < 770.0 else (1070.0 if from < 1070.0 else SchoolClock.LIGHTS_OUT)
+	return from >= 440.0 and from <= tsec and until == expect and tsec < until
+
+
+func grant_outing(quiet: bool) -> bool:
+	if day == 1:
+		if not quiet:
+			_say("第一天暂不开放外出登记 · 假条仍可使用")
+		return false
+	if SchoolClock.is_night(tsec):
+		if not quiet:
+			_say("熄灯后不能登记外出 · 请回宿舍")
+		return false
+	outing = {"day": day, "from": tsec, "until": _deadline()}
+	return true
+
+
+func return_label() -> String:
+	var until := float(outing["until"]) if permit() else _deadline()
+	return "熄灯前回宿舍" if until == SchoolClock.LIGHTS_OUT else SchoolClock.fmt_clock(until) + " 回教室"
+
+
+# ---- student council inspection (inspection.js) ----
+
+func _warn_time(i: int) -> float:
+	if _warn_times.is_empty():
+		for t: float in INSPECT["times"]:
+			_warn_times.append(SchoolClock.clock_time_before(t, INSPECT["warning_seconds"]))
+	return float(_warn_times[i])
+
+
+func _inspection_cross(d: int, before: float, after: float) -> void:
+	if after <= before:
+		return
+	var times: Array = INSPECT["times"]
+	for i in times.size():
+		var key := "%d:%d" % [d, i]
+		if after >= _warn_time(i) and after < times[i] and not inspection["warned"].has(key):
+			inspection["warned"][key] = true
+			_say("广播：「请各班同学注意，学生会将于%s到各班检查，请坐回自己的座位。」" % ("五点五十" if i else "十二点五十"))
+		if before <= times[i] and after >= times[i] and not inspection["seen"].has(key):
+			inspection["seen"][key] = true
+			inspection["warned"][key] = true
+			inspection["queue"].append({"day": d, "slot": i})
+
+
+func inspection_active() -> bool:
+	return not (inspection.get("current", {}) as Dictionary).is_empty()
+
+
+func inspection_pending() -> bool:
+	return inspection_active() or not (inspection.get("queue", []) as Array).is_empty()
+
+
+func inspection_upcoming() -> bool:
+	if inspection_active():
+		return false
+	var times: Array = INSPECT["times"]
+	for i in times.size():
+		var key := "%d:%d" % [day, i]
+		if not inspection["seen"].has(key) and tsec >= _warn_time(i) and tsec < times[i]:
+			return true
+	return false
+
+
+func _stale(item: Dictionary) -> bool:
+	return int(item["day"]) != day or tsec > float(INSPECT["times"][int(item["slot"])]) + INSPECT["late_limit"]
+
+
+func inspection_points() -> Array:
+	var cur: Dictionary = inspection.get("current", {})
+	return cur.get("points", [])
+
+
+## inspection.js points: up to six standing spots 30–66 units around the player, 15 apart.
+static func ring_points(me: Vector2, can_stand: Callable) -> Array:
+	var result: Array = []
+	for i in 20:
+		if result.size() >= 6:
+			break
+		var a := i * TAU / 20.0
+		for j in 4:
+			var p := me + Vector2(cos(a), sin(a)) * (30.0 + j * 12.0)
+			if not can_stand.call(p):
+				continue
+			var spaced := true
+			for q: Vector2 in result:
+				if q.distance_to(p) <= 15.0:
+					spaced = false
+			if spaced:
+				result.append(p)
+			break
+	return result
+
+
+func _inspection_tick(dt: float, ctx: Dictionary) -> void:
+	inspection["calm"] = maxf(0.0, float(inspection.get("calm", 0.0)) - dt)
+	var c: Dictionary = inspection["current"]
+	var world_id := String(ctx.get("world_id", ""))
+	var w: Vector2 = ctx.get("w", Vector2.ZERO)
+	var can_stand: Callable = ctx.get("can_stand", func(_p: Vector2) -> bool: return true)
+	if c.is_empty():
+		var queue: Array = inspection["queue"]
+		while not queue.is_empty() and _stale(queue[0]):
+			queue.pop_front()
+		if not queue.is_empty():
+			var item: Dictionary = queue.pop_front()
+			var present := at_my_seat(world_id, w)
+			inspection["current"] = {"day": item["day"], "slot": item["slot"], "t": 0.0, "look": 0.0, "move": 0.0,
+				"compliant": present, "room": world_id, "points": _points_json(ring_points(w, can_stand))}
+			_say("我：走廊里的声音一下子停了。一圈黑影站在附近——别动，也别看它们。")
+		return
+	if c["room"] != world_id:
+		c["room"] = world_id
+		c["points"] = _points_json(ring_points(w, can_stand))
+	if not at_my_seat(world_id, w):
+		c["compliant"] = false
+	c["t"] = float(c["t"]) + dt
+	if bool(ctx.get("moving", false)):
+		c["move"] = float(c["move"]) + dt
+		while float(c["move"]) >= INSPECT["move_every"]:
+			c["move"] = float(c["move"]) - INSPECT["move_every"]
+			_add_violation(INSPECT["move_violation"], false)
+	if _looking(c, w, float(ctx.get("ang", 0.0)), float(ctx.get("pitch", 0.0)), ctx.get("line_clear", Callable())):
+		c["look"] = float(c["look"]) + dt
+		while float(c["look"]) >= 1.0:
+			c["look"] = float(c["look"]) - 1.0
+			san = maxf(0.0, san - INSPECT["gaze_san"])
+	if float(c["t"]) >= INSPECT["duration"]:
+		_inspection_finish(c, world_id, w)
+
+
+static func _points_json(points: Array) -> Array:
+	var out: Array = []
+	for p: Vector2 in points:
+		out.append([p.x, p.y])
+	return out
+
+
+## Looking at a silhouette: within 95 units, within 0.42 rad of the heading, line not blocked.
+func _looking(c: Dictionary, me: Vector2, ang: float, pitch: float, line_clear: Callable) -> bool:
+	if absf(pitch) > 0.9:
+		return false
+	for xy: Array in c["points"]:
+		var p := Vector2(xy[0], xy[1])
+		var d := me.distance_to(p)
+		if d > 1.0 and d < 95.0 and CampusGeometry.ang_diff(ang, atan2(p.y - me.y, p.x - me.x)) < 0.42:
+			if not line_clear.is_valid() or line_clear.call(me, p):
+				return true
+	return false
+
+
+func _inspection_finish(c: Dictionary, world_id: String, w: Vector2) -> void:
+	inspection["current"] = {}
+	var key := "%d:%d" % [int(c["day"]), int(c["slot"])]
+	if inspection["settled"].has(key):
+		return
+	var good := bool(c["compliant"])
+	inspection["settled"][key] = "present" if good else "absent"
+	inspection["calm"] = 8.0
+	san = maxf(0.0, san - (INSPECT["good_san"] if good else INSPECT["bad_san"]))
+	_add_violation(-INSPECT["good_violation"] if good else INSPECT["bad_violation"], false)
+	tt = clampf(tt + (INSPECT["assimilation"] if good else -INSPECT["assimilation"]), 0.0, 100.0)
+	_say("我：黑影散开了。我一直坐在自己的座位上。" if good else "我：黑影散开了。它们记下了那个空着的座位。")
+	_settle_san()
+	if tt >= 100.0:
+		_resolve_assimilation()
+	if good and at_my_seat(world_id, w):
+		grant_outing(true)
