@@ -21,7 +21,7 @@ const TILE_HINT := {"H": "躲进柜子", "Q": "看服务器终端", "S": "沿楼
 	"X": "钻进去", "Z": "放开单摆", "C": "开离心机", "N": "看显微镜", "Y": "转地球仪", "p": "弹琴", "U": "撞钟", "A": "看供桌",
 	"x": "看挂图", "B": "隔间", "G": "隔间", "w": "洗把脸", "b": "床", "n": "用电脑", "M": "售货机", "k": "看柜台", "t": "看餐桌",
 	"V": "看车牌", "D": "使用终端", "K": "看实验台", "L": ""}
-const SEARCHABLE := "dfR"
+const SEARCHABLE := "dfRq"
 
 signal door_changed(key: String, open: bool)
 
@@ -32,6 +32,10 @@ var _open_doors: Dictionary = {}
 var _line := 0
 ## Plate and tried state for the 'V' hint (the garage module).
 var car_hint: Callable
+## Facility hints and the outdoor rest (the facilities module).
+var facility_hint: Callable
+var rest_out: Callable
+const FACILITY := "ZCNYKQujxUABGMpbktwn"
 ## Inventory query (items.js hasItem), wired by the app to the bag module.
 var has_item := func(_id: String) -> bool: return false
 
@@ -286,6 +290,9 @@ func hint(world_id: String, pose: Dictionary) -> String:
 		var here_w := CampusGeometry.to_world(null, float(p[0]), float(p[2]))
 		var nb := CampusGeometry.near_building(_outside, here_w)
 		if nb.is_empty():
+			var act := String(rest_out.call(here_w)) if rest_out.is_valid() else ""
+			if act != "":
+				return FacilitiesModule.rest_hint(act)
 			var gate := gate_at(here_w)
 			return RoutesModule.gate_name(gate) if gate != "" else ""
 		if _continuous_host(nb["obj"]["id"]):
@@ -298,6 +305,10 @@ func hint(world_id: String, pose: Dictionary) -> String:
 	if hit.is_empty():
 		return ""
 	var ch := String(hit["ch"])
+	if FACILITY.contains(ch) and facility_hint.is_valid():
+		var fh := String(facility_hint.call(r, ch))
+		if fh != "":
+			return fh
 	match ch:
 		"=":
 			var key := CampusGeometry.door_key(r, hit["c"], hit["r"])
@@ -347,6 +358,9 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 		var me := CampusGeometry.to_world(null, float(p[0]), float(p[2]))
 		var nb := CampusGeometry.near_building(_outside, me)
 		if nb.is_empty():
+			var act := String(rest_out.call(me)) if rest_out.is_valid() else ""
+			if act != "":
+				return {"notice": "", "rest": act}
 			var gate := gate_at(me)
 			if gate != "":
 				return {"notice": "", "gate": gate}
@@ -395,7 +409,7 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 			return {"notice": "", "hide": [hit["c"], hit["r"]]}
 		"T":
 			return {"notice": "", "podium": [hit["c"], hit["r"]]}
-		"d", "f", "R":
+		"d", "f", "R", "q":
 			return {"notice": "", "search": [hit["c"], hit["r"]]}
 		"S":
 			# interact.js stairGo: shafts are walked; a room without one (canteen) has its stair as a way out.
@@ -406,6 +420,8 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 			if ex == null:
 				return {"notice": ""}
 			return {"notice": "武大附中 · 校园", "travel": {"world": "out", "pose": _pose(CampusGeometry.to_scene(null, Vector2(ex["x"], ex["y"])), ang, float(pose["pitch"]))}}
+	if FACILITY.contains(String(hit["ch"])):
+		return {"notice": "", "facility": [String(hit["ch"]), hit["c"], hit["r"]]}
 	return {"notice": "（Godot 版尚未移植这里的交互：%s）" % hit["ch"]}
 
 

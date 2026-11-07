@@ -26,6 +26,12 @@ const LIST := {
 	"n.inspection": ["n", "按时到场", "黑影围成一圈，又散开。它们没有记下我。"],
 	"n.wake": ["n", "梦里记得", "我猛地抬起头，后背全是汗。"],
 	"n.saved": ["n", "被替了一次", "刚才那一下，像是有人替我挨了。"],
+	"n.rest": ["n", "喘口气", "有那么一会儿，我忘了自己在哪儿。"],
+	"n.bell": ["n", "钟声", "钟声一圈一圈荡开，广播里有人慢慢地念。"],
+	"n.exam": ["n", "交卷", "监考的人收走卷子，没有看我。"],
+	"e.end_portal": ["e", "《门》", "光圈合上之前，我回头看了一眼。"],
+	"e.allexam": ["e", "全场交卷", "卷子一张接一张收上去，都写满了。"],
+	"e.rest8": ["e", "八种喘息", "我找到了很多让自己缓过来的办法。"],
 	"n.torch": ["n", "照亮", "光打过去的时候，它往后退了一步。"],
 	"e.end_car": ["e", "《闸门》", "车灯照亮了北门。后视镜里，教学楼一层层暗下去。"],
 	"e.firstcar": ["e", "一次就对", "引擎一下就着了。"],
@@ -45,12 +51,13 @@ const SCORELESS := ["n.wake", "n.saved"]
 const LETHAL_GOAL := 4
 
 var unlocked: Dictionary = {}     # profile: id -> true
-var sets: Dictionary = {"lethal": {}, "anomalies": {}}   # profile: collected ids
+var sets: Dictionary = {"lethal": {}, "anomalies": {}, "rest": {}}   # profile: collected ids
 var rooms: Dictionary = {}        # run
 var insp: Dictionary = {}         # run: "day" -> {slot: 0/1}
 var face_wrong := 0               # run
 var saved := false                # run: rescued by the pill
 var started := ""                 # run: the anomaly that started
+var exams: Dictionary = {}        # run: "day" -> {pass, fail}
 var events: Array = []
 var _anomaly_total := 25
 
@@ -73,11 +80,12 @@ func reset() -> void:
 	face_wrong = 0
 	saved = false
 	started = ""
+	exams = {}
 	events = []
 
 
 func capture() -> Dictionary:
-	return {"rooms": rooms.keys(), "insp": insp, "face_wrong": face_wrong, "saved": saved}
+	return {"rooms": rooms.keys(), "insp": insp, "face_wrong": face_wrong, "saved": saved, "exams": exams.duplicate(true)}
 
 
 func validate(data: Dictionary) -> String:
@@ -96,6 +104,7 @@ func restore(data: Dictionary) -> void:
 		insp[day] = (data["insp"][day] as Dictionary).duplicate(true)
 	face_wrong = int(data["face_wrong"])
 	saved = bool(data["saved"])
+	exams = (data.get("exams", {}) as Dictionary).duplicate(true) if data.get("exams") is Dictionary else {}
 
 
 func profile() -> Dictionary:
@@ -107,7 +116,7 @@ func load_profile(data: Dictionary) -> void:
 	for id: String in (data.get("unlocked", {}) as Dictionary):
 		if LIST.has(id):
 			unlocked[id] = true
-	sets = {"lethal": {}, "anomalies": {}}
+	sets = {"lethal": {}, "anomalies": {}, "rest": {}}
 	for name: String in sets:
 		for k: String in ((data.get("sets", {}) as Dictionary).get(name, {}) as Dictionary):
 			sets[name][k] = true
@@ -139,6 +148,8 @@ func progress(id: String) -> Dictionary:
 			return {"n": mini(sets["lethal"].size(), LETHAL_GOAL), "of": LETHAL_GOAL}
 		"p.anomalies":
 			return {"n": mini(sets["anomalies"].size(), _anomaly_total), "of": _anomaly_total}
+		"e.rest8":
+			return {"n": mini(sets["rest"].size(), FacilitiesModule.SAN_ACTS.size()), "of": FacilitiesModule.SAN_ACTS.size()}
 	return {}
 
 
@@ -165,6 +176,13 @@ func fact(f: Dictionary) -> Array[String]:
 			insp[str(int(f["day"]))] = d
 		"protect":
 			saved = true
+		"rest":
+			sets["rest"][String(f["key"])] = true
+		"exam":
+			if f["phase"] == "paper":
+				var x: Dictionary = exams.get(str(int(f.get("day", 1))), {"pass": 0, "fail": 0})
+				x["pass" if bool(f.get("pass", false)) else "fail"] = int(x["pass" if bool(f.get("pass", false)) else "fail"]) + 1
+				exams[str(int(f.get("day", 1)))] = x
 		"anomaly":
 			if f["phase"] == "start":
 				started = String(f["id"])
@@ -205,6 +223,21 @@ func _test(id: String, f: Dictionary) -> bool:
 			return kind == "protect"
 		"n.torch":
 			return kind == "garage" and f["what"] == "torch"
+		"n.rest":
+			return kind == "rest"
+		"e.rest8":
+			return kind == "rest" and sets["rest"].size() >= FacilitiesModule.SAN_ACTS.size()
+		"n.bell":
+			return kind == "exam" and f["phase"] == "start"
+		"n.exam":
+			return kind == "exam" and f["phase"] == "paper" and bool(f.get("pass", false))
+		"e.allexam":
+			if kind != "exam" or f["phase"] != "paper" or not bool(f.get("pass", false)):
+				return false
+			var x: Dictionary = exams.get(str(int(f.get("day", 1))), {})
+			return int(x.get("pass", 0)) >= 2 and int(x.get("fail", 0)) == 0
+		"e.end_portal":
+			return kind == "ending" and f["id"] == "portal"
 		"e.end_car":
 			return kind == "ending" and f["id"] == "car"
 		"e.firstcar":

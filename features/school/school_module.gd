@@ -6,7 +6,7 @@ extends FeatureModule
 ## world.js leaveSeat (stand positions exported per seat), ui/hud.js place/period text.
 ##
 ## Deaths (SAN 0, assimilation 100) are requested through `take_deaths()` and resolved by the
-## story module (story.js kill). Not ported yet: leave slips, exams, anomalies,
+## story module (story.js kill). Not ported yet: anomalies,
 ## patrol threats and talents.
 
 const STATE_VERSION := 1
@@ -75,6 +75,11 @@ func state_version() -> int:
 
 func reset() -> void:
 	danger_seen = {}
+	exam = false
+	exam_cur = null
+	exam_seat = 0.0
+	exam_tot = 0.0
+	leave_until = 0.0
 	tsec = START_TSEC
 	day = 1
 	san = 100.0
@@ -102,7 +107,7 @@ func capture() -> Dictionary:
 	return {"tsec": tsec, "day": day, "san": san, "viol": viol, "tt": tt, "stam": stam, "tired": tired,
 		"seated": seated, "seat_id": seat_id, "tt_tier": tt_tier, "pressure_clock": pressure_clock,
 		"pressure_seen": pressure_seen, "viol_full": viol_full,
-		"danger_seen": danger_seen.duplicate(), "inspection": inspection.duplicate(true), "outing": outing.duplicate(true), "duties": duties.duplicate(true), "active_seconds": active_seconds}
+		"danger_seen": danger_seen.duplicate(), "exam": exam, "exam_cur": exam_cur, "exam_seat": exam_seat, "exam_tot": exam_tot, "leave_until": leave_until, "inspection": inspection.duplicate(true), "outing": outing.duplicate(true), "duties": duties.duplicate(true), "active_seconds": active_seconds}
 
 
 func validate(data: Dictionary) -> String:
@@ -133,6 +138,11 @@ func validate(data: Dictionary) -> String:
 
 func restore(data: Dictionary) -> void:
 	danger_seen = (data.get("danger_seen", {}) as Dictionary).duplicate() if data.get("danger_seen") is Dictionary else {}
+	exam = bool(data.get("exam", false))
+	exam_cur = data.get("exam_cur") if data.get("exam_cur") is String else null
+	exam_seat = maxf(0.0, float(data.get("exam_seat", 0.0)))
+	exam_tot = maxf(0.0, float(data.get("exam_tot", 0.0)))
+	leave_until = maxf(0.0, float(data.get("leave_until", 0.0)))
 	tsec = float(data["tsec"])
 	day = int(data["day"])
 	san = float(data["san"])
@@ -369,6 +379,9 @@ func advance_game_time(minutes: float) -> void:
 		var slice := SchoolClock.forward_slice(tsec, day, remaining)
 		var before := float(slice["from"])
 		tsec = float(slice["to"])
+		if exam and before < SchoolClock.LIGHTS_OUT and tsec >= SchoolClock.LIGHTS_OUT:
+			exam_end()
+			_say("我：熄灯了。今天的考试结束了。")
 		_inspection_cross(day, before, tsec)
 		remaining = float(slice["remaining"])
 		if int(slice["day"]) != day:
@@ -409,6 +422,8 @@ func step(dt: float, ctx: Dictionary) -> void:
 	var w: Vector2 = ctx.get("w", Vector2.ZERO)
 	_inspection_tick(dt, ctx)
 	var nw := SchoolClock.need_where(tsec)
+	_exam_tick(dt, world_id, w)
+	_leave_tick()
 	_san_tick(dt, nw, world_id, w, ctx)
 	_danger_tick(dt, world_id)
 	_viol_tick(dt, nw, world_id, w, ctx)
@@ -456,12 +471,21 @@ func _rule_there(nw: String, world_id: String, w: Vector2) -> bool:
 
 ## systems.js dangerTick: the garage, the trash room and the night outdoors drain SAN, scaled by the
 ## campus pressure; each is described once (the first time). The portal tunnel is not ported.
-const DANGER_RATE := {"garage": 0.55, "trash": 0.40, "night": 0.30}
+const DANGER_RATE := {"garage": 0.55, "trash": 0.40, "night": 0.30, "tunnel": 0.60}
 const DANGER_LINE := {
 	"garage": "我：车库里没有灯。只有最里面那盏在闪——闪的节奏，像有人在开关。",
 	"trash": "我：垃圾房的味道不对。太干净了。像刚刚被人舔过一遍。",
+	"tunnel": "我：不想靠近。脚下的黑色黏液像是在呼吸。",
 	"night": "我：熄灯了。外面的路灯还亮着，可是它们照不到地面。这种时候还在外面走，是要被记下来的。"}
 var danger_seen: Dictionary = {}
+## Exam mode (systems.js examStart / examTick): the bell rung on the bell tower turns the rest of the day into exams.
+var exam := false
+var exam_cur: Variant = null
+var exam_seat := 0.0
+var exam_tot := 0.0
+## Leave slip (systems.js useLeave): 180 game minutes of not having to be anywhere.
+const LEAVE_MIN := 180.0
+var leave_until := 0.0
 
 
 func danger_at(world_id: String) -> String:
@@ -469,9 +493,88 @@ func danger_at(world_id: String) -> String:
 		return "garage"
 	if world_id == "trash1":
 		return "trash"
+	if world_id == "portal_tunnel":
+		return "tunnel"
 	if world_id == "out" and SchoolClock.is_night(tsec):
 		return "night"
 	return ""
+
+
+func exam_start() -> bool:
+	if SchoolClock.is_night(tsec):
+		_say("我：钟声荡出去，很快就被夜吞掉了。整座学校都睡着，没有人回应。")
+		return false
+	exam = true
+	exam_cur = null
+	exam_seat = 0.0
+	exam_tot = 0.0
+	_events.append({"kind": "exam", "phase": "start"})
+	_say("我：钟声一圈一圈荡开。过了很久，广播里有人慢慢地念：「今天剩下的课，全部改为考试。请回到自己的座位。」")
+	return true
+
+
+func exam_end() -> void:
+	exam = false
+	exam_cur = null
+	exam_seat = 0.0
+	exam_tot = 0.0
+
+
+func exam_now() -> bool:
+	return exam and SchoolClock.need_where(tsec) == "教室"
+
+
+func _exam_tick(dt: float, world_id: String, w: Vector2) -> void:
+	if not exam:
+		return
+	if SchoolClock.is_night(tsec):
+		exam_end()
+		_say("我：熄灯了。今天的考试结束了。")
+		return
+	var p := SchoolClock.period_at(tsec)
+	var cur: Variant = String(p[0]) if p[3] == "教室" else null
+	if cur != exam_cur:
+		if exam_cur != null and exam_tot > 4.0:
+			var passed := exam_seat / exam_tot >= 0.7
+			_events.append({"kind": "exam", "phase": "paper", "pass": passed, "day": day})
+			if passed:
+				change_san(15.0)
+				_say("我：交卷了。监考的人从我桌上收走卷子，没有看我。……可我记得我写了什么。")
+			else:
+				_say("我：这一场我没坐住。收上去的卷子里，我那一张只有名字，名字被人画了一个圈。")
+		exam_cur = cur
+		exam_seat = 0.0
+		exam_tot = 0.0
+		if cur != null:
+			_say("我：铃响了。卷子发下来了，我那张的姓名栏里，已经有人替我写好了名字。" if seated else "我：铃响了。卷子已经发到了每个人桌上，只有我的座位空着。")
+	if cur != null:
+		exam_tot += dt
+		if seated and at_my_seat(world_id, w):
+			exam_seat += dt
+
+
+func on_leave() -> bool:
+	return leave_until > 0.0 and game_clock() < leave_until
+
+
+func _leave_tick() -> void:
+	if leave_until > 0.0 and not on_leave():
+		leave_until = 0.0
+		_say("我：假条上写的时间到了。接下来要避开巡察，留意集合广播。")
+
+
+## systems.js useLeave. Returns true when the slip was used (and must be removed from the bag).
+func use_leave() -> bool:
+	if viol >= 100.0 or viol_full:
+		_say("我：违规记满了。班主任看都不会看这张假条。")
+		_say("违规已满 · 不能请假")
+		return false
+	if on_leave():
+		_say("我：已经请过假了，还剩 %d 分钟。" % int(ceil(leave_until - game_clock())))
+		return false
+	leave_until = game_clock() + LEAVE_MIN
+	_say("我：我把日期填上了。字迹和班主任的签名一模一样——好像本来就是我写的。")
+	return true
 
 
 func _danger_tick(dt: float, world_id: String) -> void:
@@ -489,7 +592,7 @@ func _san_tick(dt: float, nw: String, world_id: String, w: Vector2, ctx: Diction
 	if san <= 0.0:
 		_settle_san()
 		return
-	if inspection_active() or bool(ctx.get("patrol_threat", false)) or bool(ctx.get("hiding", false)) or bool(ctx.get("anomaly_active", false)):
+	if danger_at(world_id) != "" or inspection_active() or bool(ctx.get("patrol_threat", false)) or bool(ctx.get("hiding", false)) or bool(ctx.get("anomaly_active", false)):
 		return # no daily recovery during an inspection, a patrol threat or while hiding.
 	var gain := dt * float(pressure()["passive"])
 	match nw:
@@ -511,17 +614,19 @@ func _viol_tick(dt: float, nw: String, world_id: String, w: Vector2, ctx: Dictio
 		wrong = not in_classroom_here(world_id, w)
 		return
 	var is_wrong := not _rule_there(nw, world_id, w)
-	if nw in ["教室", "操场"]:
+	var in_exam := exam_now()
+	if not in_exam and nw in ["教室", "操场"]:
 		is_wrong = false
-	var mul := 1.4 if nw == "教室" else 1.0
+	var mul := (2.4 if in_exam else 1.4) if nw == "教室" else 1.0
 	if world_id == "out" and SchoolClock.is_night(tsec):
 		mul *= 0.5
 	var evening := SchoolClock.evening_activity(tsec)
-	if evening:
+	var leave := on_leave()
+	if evening or leave:
 		is_wrong = false
 	wrong = is_wrong
-	if not evening and (is_wrong or nw == "宿舍"):
-		_add_violation(dt * 0.85 * mul, evening)
+	if not evening and not leave and (is_wrong or nw == "宿舍"):
+		_add_violation(dt * 0.85 * mul, evening or leave)
 	else:
 		viol = maxf(0.0, viol - dt * 3.2)
 	viol = clampf(viol, 0.0, 100.0)
@@ -571,7 +676,7 @@ func _requested(source: String) -> bool:
 
 ## addViolation(amount, source): exempt while on leave or at the evening activity.
 func add_violation(amount: float) -> void:
-	_add_violation(amount, SchoolClock.evening_activity(tsec))
+	_add_violation(amount, on_leave() or SchoolClock.evening_activity(tsec))
 
 
 ## Inspection.cancel (story.js kill): a running check is dropped without settling.

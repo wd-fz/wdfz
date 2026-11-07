@@ -555,6 +555,20 @@ func dream_wake() -> void:
 
 
 ## Force-end (death protection, scene reset): the next anomaly is paced again.
+## What the physics lab pendulum can read (interact.js useFacility 'Z').
+func pendulum_info() -> Dictionary:
+	var pre := String(an["pre"])
+	return {"active": is_active(), "id": active_id(), "pre": pre,
+		"warn_ok": pre != "" and DEFS.has(pre) and bool(DEFS[pre].get("warn", false)) and _allowed(pre),
+		"minutes": maxi(1, roundi(float(an["next"]) * SchoolClock.rate_at(float(_c.get("tsec", 700.0))) / 60.0)),
+		"cn": String(DEFS.get(pre, {}).get("cn", pre))}
+
+
+## The pendulum read the forecast: it will come as told.
+func lock_forecast() -> void:
+	an["locked"] = true
+
+
 func end_now() -> void:
 	if an["active"]:
 		_end()

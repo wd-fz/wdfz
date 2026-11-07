@@ -64,7 +64,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1"))]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -74,6 +74,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func facilities() -> FacilitiesModule:
+	return session.modules.get_module(&"campus.facilities") as FacilitiesModule if session != null else null
 
 
 func garage() -> GarageModule:
@@ -182,6 +186,9 @@ func start_new_game(difficulty: String = "easy") -> void:
 	var cars := candidate.modules.get_module(&"garage.world") as GarageModule
 	if cars != null:
 		cars.set_seed(int(Time.get_ticks_usec() % 2147483647))
+	var fac := candidate.modules.get_module(&"campus.facilities") as FacilitiesModule
+	if fac != null:
+		fac.set_seed(int((Time.get_ticks_usec() * 7) % 2147483647))
 	var rules := candidate.modules.get_module(&"campus.world") as CampusModule
 	var pose := rules.start_pose() if rules != null and initial_world == rules.start_world() else router.current.spawn_pose()
 	# Game.start: the run begins seated on the player's own seat in teach1.
@@ -213,6 +220,8 @@ func _unwire(old: GameSession) -> void:
 	var rules := old.modules.get_module(&"campus.world") as CampusModule
 	if rules != null:
 		rules.car_hint = Callable()
+		rules.facility_hint = Callable()
+		rules.rest_out = Callable()
 		rules.has_item = func(_id: String) -> bool: return false
 		for connection: Dictionary in rules.door_changed.get_connections():
 			rules.door_changed.disconnect(connection["callable"])
@@ -227,6 +236,9 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	_leave_drive()
 	if campus() != null and garage() != null:
 		campus().car_hint = garage().car_hint
+	if campus() != null and facilities() != null:
+		campus().facility_hint = facilities().hint
+		campus().rest_out = facilities().rest_out
 	_seen_day = school().day if school() != null else 1
 	_seen_hide = false
 	_seen_lock_ach = false
@@ -483,6 +495,29 @@ func _apply_result(result: Dictionary) -> void:
 		routes().use_gate(String(result["gate"]), school().day)
 		_apply_route_events(routes())
 		return
+	if result.has("facility") and facilities() != null:
+		var fac := facilities()
+		fac.set_context(_facility_context())
+		fac.use(campus().room(session.world_id), String(result["facility"][0]), int(result["facility"][1]), int(result["facility"][2]))
+		_apply_facility_events()
+		return
+	if result.has("rest") and facilities() != null:
+		facilities().set_context(_facility_context())
+		facilities().rest(String(result["rest"]))
+		_apply_facility_events()
+		return
+	if result.has("facility_item") and facilities() != null:
+		facilities().set_context(_facility_context())
+		facilities().use_item(String(result["facility_item"]))
+		_apply_facility_events()
+		return
+	if result.has("leave") and school() != null:
+		if school().use_leave() and items() != null:
+			items().remove("leave")
+			ui.show_notice("请假 %d 分钟 · 不用待在规定的地方，巡察者也不管你" % int(SchoolModule.LEAVE_MIN))
+		for line: String in school().take_notices():
+			ui.show_notice(line)
+		return
 	if result.has("car") and garage() != null:
 		garage().set_context(_garage_context())
 		garage().inspect_car(int(result["car"][0]), int(result["car"][1]))
@@ -585,6 +620,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	_garage_step(delta, room, pose)
 	if story().dead or story().over():
 		return
+	_facility_step()
 	_anomaly_step(delta, day_rules, room, pose)
 	_audio_step(delta, watcher, day_rules, room, p)
 	_progress_step(watcher, day_rules, weird_now)
@@ -886,7 +922,7 @@ func _patrol_context(room: Variant, pose: Dictionary) -> Dictionary:
 		height = 0.0
 	return {"scene": session.world_id, "x": w.x, "y": w.y, "fy": height, "seated": day_rules != null and day_rules.seated,
 		"at_seat": day_rules != null and day_rules.at_my_seat(session.world_id, w), "excused": day_rules != null and day_rules.permit(),
-		"on_leave": false, "night": SchoolClock.is_night(tsec), "need_where": SchoolClock.need_where(tsec), "dead": story() != null and story().dead,
+		"on_leave": school() != null and school().on_leave(), "night": SchoolClock.is_night(tsec), "need_where": SchoolClock.need_where(tsec), "dead": story() != null and story().dead,
 		"playing": true, "inspection_room": String(cur.get("room", "")) if not cur.is_empty() else "",
 		"calm": float(day_rules.inspection.get("calm", 0.0)) if day_rules != null else 0.0, "calm_room": String(day_rules.inspection.get("calm_room", "")) if day_rules != null else "",
 		"has_seal": bag != null and bag.has("seal"), "active_seconds": day_rules.active_seconds if day_rules != null else 0.0, "car_chase": false}
@@ -898,6 +934,8 @@ func _patrol_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, 
 	for e: Dictionary in day_rules.take_events():
 		if e["kind"] == "absence":
 			watcher.registered_absence(String(e["id"]))
+		elif e["kind"] == "exam":
+			fact({"kind": "exam", "phase": e["phase"], "pass": e.get("pass", false), "day": e.get("day", 1)})
 		elif e["kind"] == "inspection":
 			fact({"kind": "inspection", "day": e["day"], "slot": e["slot"], "compliant": e["compliant"]})
 	watcher.set_context(_patrol_context(room, pose))
@@ -1001,6 +1039,128 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 				if phase == 2 and _seen_phase != 2:
 					audio.cue("thud", -2.0)
 				_seen_phase = phase
+
+
+# ---- facilities, rest and the portal (features/campus/facilities_module.gd) ----
+
+func _facility_context() -> Dictionary:
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var day_rules := school()
+	var bag := items()
+	var weird := anomaly()
+	var meal := false
+	for m: Array in CampusData.campus().get("meals", []):
+		if day_rules.tsec >= float(m[0]) and day_rules.tsec < float(m[1]):
+			meal = true
+	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "tsec": day_rules.tsec,
+		"clock": day_rules.game_clock(), "meal": meal, "rest_mul": float(day_rules.pressure()["rest"]), "exam": day_rules.exam,
+		"has": func(id: String) -> bool: return bag != null and bag.has(id),
+		"add": func(id: String) -> bool: return _add_item(id),
+		"remove": func(id: String) -> void:
+			if bag != null:
+				bag.remove(id),
+		"anomaly": weird.pendulum_info() if weird != null else {},
+		"busy": (weird != null and weird.is_active()) or day_rules.inspection_pending() or (patrol() != null and patrol().local_chase())}
+
+
+## Inventory add with the old messages (a full bag says so).
+func _add_item(id: String) -> bool:
+	var bag := items()
+	if bag == null:
+		return false
+	var ok := bag.add(id)
+	for text: String in bag.take_notices():
+		ui.show_notice(text)
+	return ok
+
+
+func _facility_step() -> void:
+	var fac := facilities()
+	if fac == null:
+		return
+	fac.set_context(_facility_context())
+	fac.spot_tick()
+	var world := _campus_world()
+	if world != null:
+		world.show_portal(bool(fac.portal["open"]))
+
+
+func _apply_facility_events() -> void:
+	var fac := facilities()
+	if fac == null:
+		return
+	for e: Dictionary in fac.take_events():
+		match e["kind"]:
+			"notice", "toast":
+				ui.show_notice(String(e["text"]))
+			"san":
+				school().san = clampf(school().san + float(e["amount"]), float(e.get("min", -INF)), float(e.get("max", INF)))
+			"advance":
+				school().advance_game_time(float(e["minutes"]))
+			"stamina":
+				school().stam = minf(school().stamina_max(), school().stam + float(e["amount"]))
+			"skip":
+				ui.show_notice("…%d 分钟过去了 · %s" % [int(e["minutes"]), e["name"]])
+			"fact":
+				fact({"kind": "rest", "key": String(e["key"])})
+			"anomaly_lock":
+				if anomaly() != null:
+					anomaly().lock_forecast()
+			"anomaly_end":
+				if anomaly() != null:
+					anomaly().end_now()
+			"exam_start":
+				audio.cue("bell", -2.0)
+				if school().exam_start():
+					ui.show_notice("考试模式 · 今天剩下的课都是考试，熄灯后结束")
+			"bell":
+				audio.cue("bell", -6.0)
+			"save":
+				save_game()
+			"map":
+				ui.show_list("地图 · 记下的地方", fac.spot_rows().map(func(r: Dictionary) -> Dictionary: return {"text": r["name"] if r["on"] else "？？？", "on": r["on"], "memo": ""}))
+			"travel":
+				_facility_travel(e)
+				return
+			"later":
+				var run := session
+				get_tree().create_timer(float(e["seconds"]), false).timeout.connect(func() -> void:
+					if session == run and facilities() != null and not story().over() and not ui.choice_open():
+						facilities().set_context(_facility_context())
+						facilities().portal_ask()
+						_apply_facility_events())
+			"choice":
+				_choice_count += 1
+				var mine := _choice_count
+				_choice_handler = func(index: int) -> void:
+					var f := facilities()
+					if f != null and mine == _choice_count:
+						f.set_context(_facility_context())
+						f.choose(index)
+						_apply_facility_events()
+				player.enabled = false
+				player.clear_input()
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				ui.show_choice(String(e["text"]), e["labels"])
+			"ending":
+				_reach_ending(String(e["id"]))
+				return
+	for text: String in school().take_notices():
+		ui.show_notice(text)
+
+
+func _facility_travel(e: Dictionary) -> void:
+	var world := String(e["world"])
+	var pose: Dictionary
+	if e.has("x"):
+		var s := CampusGeometry.to_scene(campus().room(world), Vector2(float(e["x"]), float(e["y"])))
+		pose = {"position": [s.x, 0.05, s.y], "yaw": CampusGeometry.yaw_from_ang(float(e["ang"])), "pitch": 0.0}
+	else:
+		pose = campus().default_spawn(world)
+	travel(world, pose, false)
 
 
 # ---- the garage and the drive (features/garage) ----

@@ -68,6 +68,7 @@ func _run() -> void:
 	_test_routes_rules()
 	_test_achievements()
 	_test_garage_rules()
+	_test_facility_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -1010,6 +1011,199 @@ func _test_garage_rules() -> void:
 	check(CarChaseRules.step(d, {"throttle": true}, 0.2).get("won", false), "past 320 m with both forks right is out")
 
 
+func _fctx(scene: String, extra: Dictionary = {}) -> Dictionary:
+	var bag: Array = extra.get("bag", [])
+	var c := {"scene": scene, "x": 0.0, "y": 0.0, "ang": 0.0, "tsec": 700.0, "clock": 700.0, "meal": false, "rest_mul": 1.0, "exam": false,
+		"has": func(id: String) -> bool: return bag.has(id),
+		"add": func(id: String) -> bool:
+			if bag.has(id) or bag.size() >= 8:
+				return false
+			bag.append(id)
+			return true,
+		"remove": func(id: String) -> void: bag.erase(id),
+		"anomaly": {}, "busy": false}
+	c.merge(extra, true)
+	c["has"] = func(id: String) -> bool: return bag.has(id)
+	return c
+
+
+func _of_kind(events: Array, kind: String) -> Array:
+	return events.filter(func(e: Dictionary) -> bool: return e["kind"] == kind)
+
+
+func _test_facility_rules() -> void:
+	var rooms := CampusData.rooms()
+	var fac := FacilitiesModule.new(rooms, CampusData.layout("out"), CampusData.campus())
+	fac.reset()
+	fac.set_seed(3)
+	# Rest: which tile offers what, the hint, the gain scaled by pressure, the cooldown in game minutes.
+	fac.set_context(_fctx("teach1", {"meal": true}))
+	check(fac.rest_for(rooms["teach1"], "w") == "wash" and fac.rest_for(rooms["dorm1"], "b") == "sleep" and fac.rest_for(rooms["lab5"], "p") == "piano"
+		and fac.rest_for(rooms["lab3"], "n") == "pc" and fac.rest_for(rooms["canteen1"], "k") == "eat", "the rest activities sit where they did")
+	fac.set_context(_fctx("canteen1", {"meal": false}))
+	check(fac.rest_for(rooms["canteen1"], "k") == "" and fac.hint(rooms["canteen1"], "k") == "打饭窗口", "outside meal times the canteen window wants a coin")
+	var field := Vector2.ZERO
+	for o: Dictionary in CampusData.layout("out")["objects"]:
+		if o["id"] == "field":
+			field = Vector2((float(o["x"]) + float(o["w"]) / 2.0) * 2.0, (float(o["y"]) + float(o["h"]) / 2.0) * 2.0)
+	check(fac.rest_out(field) == "run" and FacilitiesModule.rest_hint("run") == "沿跑道跑两圈（12 分钟）", "the field is for running two laps")
+	fac.set_context(_fctx("teach1", {"rest_mul": 0.5, "clock": 800.0}))
+	fac.rest("wash")
+	var ev := fac.take_events()
+	check(_of_kind(ev, "advance")[0]["minutes"] == 4.0 and absf(float(_of_kind(ev, "san")[0]["amount"]) - 4.0) < 0.001 and _of_kind(ev, "fact")[0]["key"] == "wash" and _of_kind(ev, "stamina")[0]["amount"] == 25.0,
+		"washing takes 4 minutes, gives 8 SAN scaled by the pressure, 25 stamina")
+	fac.set_context(_fctx("teach1", {"clock": 820.0}))
+	fac.rest("wash")
+	check(_notices(fac.take_events()).has("我：刚做过。现在没那个心情。"), "a rest has a cooldown in game minutes")
+	fac.set_context(_fctx("teach1", {"clock": 900.0}))
+	fac.rest("wash")
+	check(not _of_kind(fac.take_events(), "san").is_empty(), "after the cooldown it works again")
+	# Lab devices.
+	var bag: Array = []
+	fac.set_context(_fctx("lab1", {"bag": bag, "anomaly": {"active": false, "pre": "rain", "warn_ok": true, "minutes": 7, "cn": "下不完的雨"}}))
+	fac.use(rooms["lab1"], "Z", 0, 0)
+	ev = fac.take_events()
+	check(not _of_kind(ev, "anomaly_lock").is_empty() and _notices(ev)[0].contains("「下不完的雨」。还有大约 7 分钟。"), "the pendulum names the coming anomaly and locks it")
+	fac.use(rooms["lab1"], "Z", 0, 0)
+	check(_notices(fac.take_events()).has("我：刚弄过。等一会儿。"), "the pendulum has a cooldown")
+	fac.set_context(_fctx("lab1", {"bag": bag}))
+	fac.use(rooms["lab1"], "N", 0, 0)
+	check(bag.has("lens") and bool(fac.flags["lens"]), "the microscope gives the lens once")
+	fac.set_context(_fctx("lab3", {"bag": bag}))
+	fac.use(rooms["lab3"], "Q", 0, 0)
+	check(bag.has("coil"), "the server gives the coil")
+	fac.use(rooms["lab3"], "Q", 0, 0)
+	check(_notices(fac.take_events()).back().contains("每一行的时间都是 11:40"), "and only once")
+	var got_vial := false
+	for i in 40:
+		fac.set_context(_fctx("lab2", {"bag": bag, "clock": 1000.0 + i * 100.0}))
+		fac.use(rooms["lab2"], "C", 0, 0)
+		if bag.has("vial"):
+			got_vial = true
+			break
+	check(got_vial, "the centrifuge separates the vial on a good spin")
+	fac.set_context(_fctx("lab2", {"bag": bag}))
+	fac.use(rooms["lab2"], "K", 0, 0)
+	check(bag.has("goggles"), "the chemistry bench has goggles")
+	# Canteen window, vending machine, altar, stall.
+	var purse: Array = []
+	fac.set_context(_fctx("canteen1", {"bag": purse}))
+	fac.use(rooms["canteen1"], "k", 0, 0)
+	check(_notices(fac.take_events()).has("我：窗口里的人头也不抬：「饭点过了。要吃，拿钱来。」"), "no coin, no meal")
+	purse.append("coin")
+	fac.use(rooms["canteen1"], "k", 0, 0)
+	check(_of_kind(fac.take_events(), "choice").size() == 1, "with a coin the window offers a meal")
+	fac.choose(0)
+	ev = fac.take_events()
+	check(not purse.has("coin") and _of_kind(ev, "san")[0]["amount"] == 24.0 and _of_kind(ev, "advance")[0]["minutes"] == 10.0, "a bought meal: 24 SAN, 10 minutes")
+	var altar_room: Dictionary = {}
+	for id: String in rooms:
+		if String("".join(rooms[id]["grid"])).contains("A"):
+			altar_room = rooms[id]
+	fac.set_context(_fctx(String(altar_room.get("id", "x")), {"bag": purse}))
+	fac.use(altar_room, "A", 0, 0)
+	check(purse.has("coin"), "the altar hides a coin")
+	fac.use(rooms["canteen1"], "M", 0, 0)
+	check(not purse.has("coin"), "the vending machine eats it")
+	fac.use(rooms["teach1"], "B", 0, 0)
+	check(_notices(fac.take_events()).back().begins_with("我：第三个隔间的门从里面锁着") and fac.spots.has("stall"), "the third stall is locked from inside")
+	# The bell: the thirteenth stroke ends bell13, otherwise exams start.
+	fac.set_context(_fctx("bell1", {"anomaly": {"active": true, "id": "bell13"}}))
+	fac.use(rooms["bell1"], "U", 0, 0)
+	check(not _of_kind(fac.take_events(), "anomaly_end").is_empty(), "ringing the bell during the thirteen strokes ends them")
+	fac.set_context(_fctx("bell1"))
+	fac.use(rooms["bell1"], "U", 0, 0)
+	check(not _of_kind(fac.take_events(), "exam_start").is_empty(), "otherwise it starts the exams")
+	# Spots, map and compass.
+	fac.set_context(_fctx("guard1"))
+	fac.spot_tick()
+	check(fac.spots.has("guard"), "being in the guard house marks it")
+	var paper: Array = ["map"]
+	fac.set_context(_fctx("teach1", {"bag": paper}))
+	check(fac.use_item("map") and fac.spots.has("trash") and fac.spots.has("wall") and not _of_kind(fac.take_events(), "map").is_empty(), "the plan marks four places and opens the map")
+	fac.set_context(_fctx("teach1", {"x": float(rooms["teach1"]["ox"]) + 30.0, "y": float(rooms["teach1"]["oy"]) + 30.0}))
+	check(fac.use_item("compass") and _of_kind(fac.take_events(), "toast")[0]["text"].begins_with("罗盘 → "), "the compass points to the nearest way out")
+	# The portal (portal.js).
+	var p := FacilitiesModule.new(rooms, CampusData.layout("out"), CampusData.campus())
+	p.reset()
+	var kit: Array = []
+	p.set_context(_fctx("lab1", {"bag": kit, "x": 700.0, "y": 700.0, "ang": 1.0}))
+	p.use(rooms["lab1"], "K", 0, 0)
+	ev = p.take_events()
+	check(_of_kind(ev, "choice")[0]["text"] == "实验台后有一条覆着黑色黏液的狭窄隧道。", "the bench shows the tunnel")
+	p.choose(0)
+	ev = p.take_events()
+	check(_of_kind(ev, "travel")[0]["world"] == "portal_tunnel" and p.portal["ret"]["x"] == 700.0, "entering the tunnel remembers where you stood")
+	p.set_context(_fctx("lab4", {"bag": kit}))
+	p.use(rooms["lab4"], "K", 0, 0)
+	check(_of_kind(p.take_events(), "choice").is_empty(), "no blueprints before the diary")
+	p.set_context(_fctx("portal_tunnel", {"bag": kit}))
+	p.use(rooms["portal_tunnel"], "u", 0, 0)
+	check(bool(p.portal["diary"]) and _notices(p.take_events())[0].contains("二楼、四楼和五楼"), "the diary tells where the blueprints are")
+	p.use(rooms["portal_tunnel"], "j", 0, 5)
+	check(_of_kind(p.take_events(), "travel")[0]["x"] == 700.0, "leaving puts you back at the bench")
+	p.set_context(_fctx("lab2", {"bag": kit}))
+	p.use(rooms["lab2"], "K", 0, 0)
+	p.take_events()
+	p.choose(0)
+	check(not p.portal["blueprints"].has(2) and _notices(p.take_events())[0].contains("发光重液会沉底"), "a wrong answer explains and keeps the blueprint")
+	p.use(rooms["lab2"], "K", 0, 0)
+	p.take_events()
+	p.choose(1)
+	check(p.portal["blueprints"].has(2) and _notices(p.take_events())[0].contains("1 / 3"), "the right layer gives the second-floor blueprint")
+	p.set_context(_fctx("lab4", {"bag": kit}))
+	p.use(rooms["lab4"], "K", 0, 0)
+	p.take_events()
+	p.choose(2)
+	p.take_events()
+	p.set_context(_fctx("lab5", {"bag": kit}))
+	for pick: int in [1, 2]:
+		p.use(rooms["lab5"], "K", 0, 0)
+		p.take_events()
+		p.choose(pick)
+		p.take_events()
+	check(int(p.portal["work"][5]) == 2 and not p.portal["blueprints"].has(5), "the wiring order is pressed step by step")
+	p.use(rooms["lab5"], "K", 0, 0)
+	check(String(_of_kind(p.take_events(), "choice")[0]["text"]).ends_with("（已正确操作 2/3 步）"), "the progress is shown")
+	p.choose(0)
+	check(bool(p.portal["sketch"]) and _notices(p.take_events())[0].begins_with("我：三张图纸拼在一起"), "three blueprints make the sketch")
+	p.set_context(_fctx("lab1", {"bag": kit}))
+	p.use(rooms["lab1"], "K", 0, 0)
+	check(_notices(p.take_events())[0].begins_with("我：草图上的四样，我还差「"), "the bench lists what is missing")
+	for k: String in FacilitiesModule.PORTAL_PARTS:
+		kit.append(k)
+	p.use(rooms["lab1"], "K", 0, 0)
+	check(_of_kind(p.take_events(), "choice")[0]["labels"][0] == "把它们接起来", "with the four parts the bench offers to assemble")
+	p.choose(0)
+	ev = p.take_events()
+	check(bool(p.portal["open"]) and kit.is_empty() and not _of_kind(ev, "later").is_empty(), "assembling uses the parts and opens the circle")
+	p.portal_ask()
+	check(_of_kind(p.take_events(), "choice")[0]["labels"] == ["走进去", "再等一下"], "the circle waits")
+	p.choose(0)
+	check(_of_kind(p.take_events(), "ending")[0]["id"] == "portal", "walking in is 《门》")
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(p.capture()))
+	var back := FacilitiesModule.new(rooms, CampusData.layout("out"), CampusData.campus())
+	back.reset()
+	check(back.validate(saved).is_empty(), "facility state survives JSON")
+	back.restore(saved)
+	check(bool(back.portal["open"]) and back.portal["blueprints"].has(5) and back.blueprint_count() == 3, "and restores with integer floors")
+	# The school side: leave slip, exams, the tunnel drains.
+	var day := SchoolModule.new(rooms, CampusData.layout("out"), CampusData.campus())
+	day.reset()
+	check(day.use_leave() and day.on_leave() and not day.use_leave(), "a leave slip runs for 180 game minutes, once")
+	day.viol = 100.0
+	day.leave_until = 0.0
+	check(not day.use_leave(), "with violations full the slip is refused")
+	day.reset()
+	day.tsec = 1200.0
+	check(day.exam_start() and day.exam, "the bell turns the day into exams")
+	var night := SchoolModule.new(rooms, CampusData.layout("out"), CampusData.campus())
+	night.reset()
+	night.tsec = 1350.0
+	check(not night.exam_start(), "at night the bell gets no answer")
+	check(night.danger_at("portal_tunnel") == "tunnel" and night.danger_at("garage1") == "garage" and night.danger_at("out") == "night", "the danger places")
+
+
 func _notices(events: Array) -> Array:
 	return events.filter(func(e: Dictionary) -> bool: return e["kind"] == "notice").map(func(e: Dictionary) -> String: return e["text"])
 
@@ -1431,6 +1625,7 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_archive(app)
 	await _test_death_scene(app)
 	await _test_car_route(app)
+	await _test_portal_route(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
 
@@ -1726,6 +1921,75 @@ func _test_car_route(app: GameApp) -> void:
 	Input.action_release("move_forward")
 	check(app.story().ended == "car" and app.ui.ending_panel.visible and not app.driving(), "driving out is the 《闸门》 ending")
 	check(app.achievements().unlocked.has("e.end_car") and app.achievements().unlocked.has("e.firstcar"), "with its achievements")
+	app.return_to_menu()
+	DirAccess.remove_absolute(app._profile_path())
+
+
+## Stand next to a `ch` tile of `scene` facing it so that E gives `key`; returns false when none.
+func _face_tile(app: GameApp, scene: String, ch: String, key: String) -> bool:
+	var room := CampusData.layout(scene)
+	var grid: Array = room["grid"]
+	for r in grid.size():
+		for c in String(grid[r]).length():
+			if String(grid[r]).substr(c, 1) != ch:
+				continue
+			for off: Vector2i in [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]:
+				var stand := CampusGeometry.tile_center(room, c + off.x, r + off.y)
+				if String(grid[r + off.y]).substr(c + off.x, 1) != ".":
+					continue
+				var pose := _campus_pose(room, stand, atan2(-off.y, -off.x))
+				var res := CampusData.rules().interact_at(scene, pose)
+				if res.has(key) and (key != "facility" or res[key][0] == ch):
+					app.travel(scene, pose, false)
+					await _frames(2)
+					return true
+	return false
+
+
+## The portal route through the app: tunnel, diary, three blueprints, parts, the circle, 《门》.
+func _test_portal_route(app: GameApp) -> void:
+	app.saves.clear()
+	app.start_new_game()
+	await _frames(3)
+	app._stand_up()
+	app.patrol().pat["safety"] = 999.0
+	check(await _face_tile(app, "lab1", "K", "facility"), "the physics bench can be reached")
+	app._campus_interact()
+	await _frames(2)
+	check(app.ui.choice_open(), "E at the bench offers the tunnel")
+	app._choice_made(0)
+	await _frames(3)
+	check(app.session.world_id == "portal_tunnel", "the tunnel is entered")
+	check(await _face_tile(app, "portal_tunnel", "u", "facility"), "the diary can be reached")
+	app._campus_interact()
+	await _frames(2)
+	check(bool(app.facilities().portal["diary"]), "the diary is read")
+	var answers := {"lab2": [1], "lab4": [2], "lab5": [1, 2, 0]}
+	for scene: String in answers:
+		check(await _face_tile(app, scene, "K", "facility"), "the %s bench can be reached" % scene)
+		for pick: int in answers[scene]:
+			app._campus_interact()
+			await _frames(2)
+			app._choice_made(pick)
+			await _frames(2)
+	check(bool(app.facilities().portal["sketch"]), "the three blueprints are found through the benches")
+	for k: String in FacilitiesModule.PORTAL_PARTS:
+		app.items().add(k)
+	check(await _face_tile(app, "lab1", "K", "facility"), "back at the bench")
+	app._campus_interact()
+	await _frames(2)
+	app._choice_made(0)
+	await _frames(2)
+	check(bool(app.facilities().portal["open"]), "the circle opens")
+	await _frames(2)
+	check(app._campus_world().portal_shown(), "the circle of light stands in front of the bench")
+	await create_timer(2.8).timeout
+	await _frames(2)
+	check(app.ui.choice_open(), "after a moment the circle asks")
+	app._choice_made(0)
+	await _frames(2)
+	check(app.story().ended == "portal" and app.ui.ending_panel.visible, "walking in is the 《门》 ending")
+	check(app.achievements().unlocked.has("e.end_portal"), "with its achievement")
 	app.return_to_menu()
 	DirAccess.remove_absolute(app._profile_path())
 

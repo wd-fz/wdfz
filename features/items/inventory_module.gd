@@ -12,7 +12,7 @@ const STATE_VERSION := 1
 const SEARCH_SECONDS := 0.8
 const SEARCH_REACH := 5.0
 const ITEM_READ := ["card", "notebook", "hw", "usb", "key", "roomkey", "metronome", "goggles", "coat", "battery", "chalk", "pen"]
-const NOT_PORTED := ["phone", "leave", "compass", "atlas", "map", "memo", "brolly"]
+const NOT_PORTED := ["phone", "brolly"]
 const EMPTY_LINES := ["我：空的。只有一层灰。", "我：空的。抽屉底下用圆珠笔写着一个名字，被涂黑了。", "我：空的。最里面有一小撮头发。"]
 
 var _rooms: Dictionary = {}
@@ -203,11 +203,15 @@ func use(id: String, tsec: float) -> Dictionary:
 			return {"notice": "我：符纸在口袋里很安静。等那个高个子盯上我的时候，它才会动。"}
 		"key":
 			return {"car_key": true}
+		"leave":
+			return {"leave": true}
+		"compass", "atlas", "map", "memo", "coil", "lens", "vial":
+			return {"facility_item": id}
 		"coin":
 			return {"coin": true}
 	if id in ITEM_READ:
 		return {"notice": "我：%s。%s" % [nm, item_text(id)]}
-	if id in NOT_PORTED or id in ["coil", "lens", "vial"]:
+	if id in NOT_PORTED:
 		return {"notice": "（Godot 版尚未移植「%s」的用法）" % nm}
 	return {"notice": "我：%s。%s" % [nm, item_text(id)]}
 

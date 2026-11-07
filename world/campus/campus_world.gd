@@ -214,6 +214,74 @@ func show_garage_shadow(visible_now: bool, scene_pos: Vector2, height: float) ->
 	_garage_shadow.position = Vector3(scene_pos.x, height + 1.175, scene_pos.y)
 
 
+## The opened door of the portal route (portal.js): a ring of coloured light in front of the physics bench.
+var _portal_ring: Node3D
+
+
+func show_portal(visible_now: bool) -> void:
+	if not visible_now or scene_id != "lab1":
+		if is_instance_valid(_portal_ring):
+			_portal_ring.visible = false
+		return
+	if not is_instance_valid(_portal_ring):
+		var room := CampusData.layout("lab1")
+		var bench := Vector2.ZERO
+		var n := 0
+		var grid: Array = room["grid"]
+		for r in grid.size():
+			for c in String(grid[r]).length():
+				if String(grid[r]).substr(c, 1) == "K":
+					bench += CampusGeometry.tile_center(room, c, r)
+					n += 1
+		bench /= maxf(1.0, float(n))
+		var mid := Vector2(float(room["cx"]), float(room["cy"]))
+		var at := bench + (mid - bench).normalized() * 14.0
+		var s := CampusGeometry.to_scene(room, at)
+		_portal_ring = Node3D.new()
+		_portal_ring.name = "PortalRing"
+		var ring := MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		torus.inner_radius = 0.85
+		torus.outer_radius = 1.0
+		ring.mesh = torus
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.6, 0.9, 1.0)
+		mat.emission_enabled = true
+		mat.emission = Color(0.5, 0.85, 1.0)
+		mat.emission_energy_multiplier = 3.0
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		ring.material_override = mat
+		ring.rotation.x = PI * 0.5
+		_portal_ring.add_child(ring)
+		var inside := MeshInstance3D.new()
+		var disc := CylinderMesh.new()
+		disc.top_radius = 0.86
+		disc.bottom_radius = 0.86
+		disc.height = 0.01
+		inside.mesh = disc
+		var glow := StandardMaterial3D.new()
+		glow.albedo_color = Color(0.95, 0.8, 0.5, 0.55)
+		glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		inside.material_override = glow
+		inside.rotation.x = PI * 0.5
+		_portal_ring.add_child(inside)
+		var lamp := OmniLight3D.new()
+		lamp.light_color = Color(0.7, 0.9, 1.0)
+		lamp.light_energy = 1.2
+		lamp.omni_range = 5.0
+		_portal_ring.add_child(lamp)
+		_portal_ring.position = Vector3(s.x, 1.15, s.y)
+		var face := (mid - bench)
+		_portal_ring.rotation.y = atan2(face.x, face.y)
+		add_child(_portal_ring)
+	_portal_ring.visible = true
+
+
+func portal_shown() -> bool:
+	return is_instance_valid(_portal_ring) and _portal_ring.visible
+
+
 func garage_shadow_shown() -> bool:
 	return is_instance_valid(_garage_shadow) and _garage_shadow.visible
 
