@@ -69,7 +69,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms()), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new()]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms()), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(), ClassmatesModule.new(CampusData.rooms())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -79,6 +79,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func classmates() -> ClassmatesModule:
+	return session.modules.get_module(&"school.classmates") as ClassmatesModule if session != null else null
 
 
 func marks() -> MarksModule:
@@ -362,6 +366,9 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 	var net := candidate.modules.get_module(&"phone.network") as PhoneModule
 	if net != null:
 		net.set_seed(int((Time.get_ticks_usec() * 17) % 2147483647))
+		var mates := candidate.modules.get_module(&"school.classmates") as ClassmatesModule
+		if mates != null:
+			mates.set_seed(net.run_seed)
 	var rules := candidate.modules.get_module(&"campus.world") as CampusModule
 	var pose := rules.start_pose() if rules != null and initial_world == rules.start_world() else router.current.spawn_pose()
 	# Game.start: the run begins seated on the player's own seat in teach1.
@@ -395,6 +402,8 @@ func _unwire(old: GameSession) -> void:
 	var rules := old.modules.get_module(&"campus.world") as CampusModule
 	if rules != null:
 		rules.car_hint = Callable()
+		rules.door_blocked = Callable()
+		rules.desk_taken = Callable()
 		var day_old := old.modules.get_module(&"school.day") as SchoolModule
 		if day_old != null:
 			day_old.danger_mul = Callable()
@@ -418,6 +427,9 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	_leave_drive()
 	if campus() != null and garage() != null:
 		campus().car_hint = garage().car_hint
+	if campus() != null and classmates() != null:
+		campus().door_blocked = classmates().blocked
+		campus().desk_taken = classmates().occupied
 	if campus() != null and facilities() != null:
 		campus().facility_hint = facilities().hint
 	var gift_now := talent()
@@ -532,6 +544,10 @@ func resume_game() -> void:
 
 
 func return_to_menu() -> void:
+	if is_instance_valid(_mates_nodes):
+		_mates_nodes.queue_free()
+	_mates_nodes = null
+	_mates_key = ""
 	if is_instance_valid(_marks_nodes):
 		_marks_nodes.queue_free()
 	_marks_nodes = null
@@ -944,6 +960,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 		return
 	_paper_step(delta)
 	_show_marks()
+	_classmates_step(delta)
 	_anomaly_step(delta, day_rules, room, pose)
 	_audio_step(delta, watcher, day_rules, room, p)
 	_progress_step(watcher, day_rules, weird_now)
@@ -1511,6 +1528,72 @@ func _facility_travel(e: Dictionary) -> void:
 	else:
 		pose = campus().default_spawn(world)
 	travel(world, pose, false)
+
+
+# ---- classmates (features/school/classmates_module.gd) ----
+
+var _mates_nodes: Node3D
+var _mates_key := ""
+
+
+func _classmates_step(delta: float) -> void:
+	var mates := classmates()
+	if mates == null:
+		return
+	var room: Variant = campus().room(session.world_id)
+	var p: Array = player.capture_pose()["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var day_rules := school()
+	mates.tick(session.world_id, w, day_rules.viol, story().dead)
+	for e: Dictionary in mates.take_events():
+		ui.show_notice(String(e["text"]))
+	var d: Variant = mates.state.get("door")
+	if bool(mates.state.get("blocking", false)) and d is Dictionary and room != null:
+		campus().force_close(CampusGeometry.door_key(room, int(d["c"]), int(d["r"])))
+	var drain := mates.pressure(session.world_id, day_rules.viol)
+	if drain > 0.0 and not story().dead and day_rules.san > 1.0:
+		day_rules.san = maxf(1.0, day_rules.san - drain * delta)
+	_show_classmates(mates, room, w, day_rules.viol >= 70.0)
+
+
+## Seated classmates (placeholder figures on the chairs), facing the board or, at 70+, the player.
+func _show_classmates(mates: ClassmatesModule, room: Variant, me: Vector2, staring: bool) -> void:
+	var world := _campus_world()
+	if world == null or room == null or not ClassmatesModule.eligible(room):
+		if is_instance_valid(_mates_nodes):
+			_mates_nodes.queue_free()
+		_mates_nodes = null
+		_mates_key = ""
+		return
+	var key := session.world_id
+	if key != _mates_key or not is_instance_valid(_mates_nodes) or _mates_nodes.get_parent() != world:
+		_mates_key = key
+		if is_instance_valid(_mates_nodes):
+			_mates_nodes.queue_free()
+		_mates_nodes = Node3D.new()
+		_mates_nodes.name = "Classmates"
+		world.add_child(_mates_nodes)
+		var cap := CapsuleMesh.new()
+		cap.radius = 0.2
+		cap.height = 1.25
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.32, 0.34, 0.4)
+		cap.material = mat
+		for t: Vector2i in mates.layout(session.world_id)["seats"]:
+			var k := ClassmatesModule.DESK_ROWS.find(t.y)
+			var shift := (0.11 if k % 2 == 0 else -0.11) if k >= 0 else 0.0
+			var wp := Vector2(float(room["ox"]) + (t.x + 0.8) * float(room["tw"]), float(room["oy"]) + (t.y + 0.5 + shift) * float(room["th"]))
+			var sp := CampusGeometry.to_scene(room, wp)
+			var fig := MeshInstance3D.new()
+			fig.mesh = cap
+			fig.position = Vector3(sp.x, 0.62, sp.y)
+			fig.set_meta("w", wp)
+			_mates_nodes.add_child(fig)
+	for fig: Node in _mates_nodes.get_children():
+		var f := fig as Node3D
+		var wp: Vector2 = f.get_meta("w")
+		var target := me if staring else wp + Vector2(-10, 0)
+		f.rotation.y = -atan2(target.y - wp.y, target.x - wp.x) - PI * 0.5
 
 
 # ---- chalk marks and the last life (features/campus/marks_module.gd) ----

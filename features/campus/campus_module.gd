@@ -35,6 +35,10 @@ var car_hint: Callable
 ## Facility hints and the outdoor rest (the facilities module).
 var facility_hint: Callable
 var rest_out: Callable
+## Classmates blocking a door (the classmates module).
+var door_blocked: Callable
+## Whether a desk is occupied by a classmate (no searching it).
+var desk_taken: Callable
 const FACILITY := "ZCNYKQujxUABGMpbktwn"
 ## Inventory query (items.js hasItem), wired by the app to the bag module.
 var has_item := func(_id: String) -> bool: return false
@@ -94,6 +98,13 @@ func is_open(key: String) -> bool:
 
 
 ## dreamWake: back at 11:40 every opened door is closed again (OPENDOORS = {}).
+## Close one door (the classmates standing in it).
+func force_close(key: String) -> void:
+	if _open_doors.has(key):
+		_open_doors.erase(key)
+		door_changed.emit(key, false)
+
+
 func close_all_doors() -> void:
 	for key: String in _open_doors.keys():
 		door_changed.emit(key, false)
@@ -410,6 +421,8 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 		"T":
 			return {"notice": "", "podium": [hit["c"], hit["r"]]}
 		"d", "f", "R", "q":
+			if hit["ch"] == "d" and desk_taken.is_valid() and bool(desk_taken.call(world_id, int(hit["c"]), int(hit["r"]))):
+				return {"notice": "我：他坐在这儿。我不能翻他的抽屉。"}
 			return {"notice": "", "search": [hit["c"], hit["r"]]}
 		"S":
 			# interact.js stairGo: shafts are walked; a room without one (canteen) has its stair as a way out.
@@ -427,6 +440,8 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 
 func _toggle_door(r: Dictionary, hit: Dictionary, me: Vector2) -> Dictionary:
 	var key := CampusGeometry.door_key(r, hit["c"], hit["r"])
+	if door_blocked.is_valid() and bool(door_blocked.call(String(r["id"]), int(hit["c"]), int(hit["r"]))):
+		return {"notice": "我：他们堵在门口。没有人让开。"}
 	var locks: Dictionary = _campus.get("door_locks", {})
 	if locks.has(key) and not is_open(key) and not has_item.call(String(locks[key]["item"])):
 		return {"notice": "我：门锁着。锁孔是圆的，很新。", "toast": "需要「%s」· 校长办公室可能有" % locks[key]["name"]}

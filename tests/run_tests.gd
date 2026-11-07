@@ -81,6 +81,7 @@ func _run() -> void:
 	_test_gaze_rules()
 	_test_paper_rules()
 	_test_marks_rules()
+	_test_classmates_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -1966,6 +1967,41 @@ func _test_marks_rules() -> void:
 	back.reset()
 	back.restore(saved)
 	check(back.marks.size() == MarksModule.PER_ROOM, "marks survive the save")
+
+
+func _test_classmates_rules() -> void:
+	var rooms := CampusData.rooms()
+	var c := ClassmatesModule.new(rooms)
+	c.reset()
+	c.set_seed("abc")
+	var lay := c.layout("teach1")
+	var own := 0
+	for t: Vector2i in lay["seats"]:
+		if t.x >= 45 and t.x <= 55:
+			own += 1
+	check(lay["seats"].size() <= 50 and own > 20 and own <= 36, "the own class is nearly full, the floor holds at most 50")
+	check(not c.occupied("teach1", 48, 11) and not c.occupied("teach1", 48, 10), "the own seat and the deskmate's stay empty")
+	var again := ClassmatesModule.new(rooms)
+	again.reset()
+	again.set_seed("abc")
+	check(again.layout("teach1")["seats"] == lay["seats"], "the same seats every visit in one run")
+	check(c.layout("admin1")["seats"].is_empty(), "only the teaching building's classrooms")
+	var taken: Vector2i = lay["seats"][0]
+	var campus := CampusData.make_module()
+	campus.reset()
+	campus.desk_taken = c.occupied
+	var t1 := CampusData.layout("teach1")
+	var stand := CampusGeometry.tile_center(t1, taken.x + 1, taken.y)
+	var res := campus.interact_at("teach1", _campus_pose(t1, stand, PI))
+	check(res.get("notice", "") == "我：他坐在这儿。我不能翻他的抽屉。" or not res.has("search"), "an occupied desk cannot be searched")
+	campus.desk_taken = Callable()
+	c.tick("teach1", Vector2(float(t1["ox"]) + 50 * 9.0, float(t1["oy"]) + 15 * 9.0), 72.0, false)
+	check(c.take_events()[0]["text"] == "我：他们都在看着我。可是没有人说话。" and c.pressure("teach1", 72.0) == 0.12, "at 70 they stare and SAN drains")
+	c.tick("teach1", Vector2(float(t1["ox"]) + 50 * 9.0, float(t1["oy"]) + 15 * 9.0), 95.0, false)
+	var d: Dictionary = c.state["door"]
+	check(bool(c.state["blocking"]) and c.blocked("teach1", int(d["c"]), int(d["r"])), "at 92 they block the nearest door")
+	c.tick("teach1", Vector2.ZERO, 70.0, false)
+	check(not bool(c.state["blocking"]), "below 80 the door is free again")
 
 
 func _test_facility_rules() -> void:
