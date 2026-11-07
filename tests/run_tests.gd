@@ -108,6 +108,7 @@ func _run() -> void:
 	_test_results_page()
 	_test_records_panel()
 	_test_dev_tools()
+	_test_hands()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -3183,6 +3184,19 @@ func _test_records_panel() -> void:
 	check(panel.open_view(a, true) and panel._map.trails[0]["pts"].size() == 4 and not panel._map.here, "the footprint map shows the whole path, no marker")
 	check(not panel.open_view("nope", true), "a missing replay does not open")
 	panel.queue_free()
+
+
+func _test_hands() -> void:
+	check(HandsView.uses(true, true, true, true) == {"L": "brolly", "R": "torch"} and HandsView.uses(false, false, true, true) == {"L": "phone", "R": ""}
+		and HandsView.uses(false, true, true, true) == {"L": "brolly", "R": "phone"} and HandsView.uses(true, true, true, false) == {"L": "", "R": ""},
+		"the umbrella takes the left, the torch the right, the phone the free hand; nothing when hidden")
+	var hv := HandsView.new()
+	root.add_child(hv)
+	hv.update(0.1, true, false, true, true, false, false)
+	check(hv.held("R") == "torch" and hv.held("L") == "phone" and hv.get_child_count() == 2, "the hands are built from the exported models")
+	hv.update(0.1, false, false, false, true, false, false)
+	check(hv.held("R") == "" and hv.held("L") == "", "putting things away empties the hands")
+	hv.queue_free()
 
 
 func _test_dev_tools() -> void:

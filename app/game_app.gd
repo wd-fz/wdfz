@@ -4367,7 +4367,18 @@ func _interact(id: StringName) -> void:
 		session.interact(id)
 
 
+var _hands: HandsView
+
+
 func _process(delta: float) -> void:
+	if session != null and player != null and player.camera != null:
+		if _hands == null or not is_instance_valid(_hands):
+			_hands = HandsView.new()
+			_hands.name = "Hands"
+			player.camera.add_child(_hands)
+		var shown := not get_tree().paused and not story().dead and not driving() and not ui.opening_on()
+		var inv := items()
+		_hands.update(delta, inv != null and inv.torch_on and inv.has("torch"), inv != null and inv.brolly_up, phone_open() and not snake_open(), shown, player.moving, player.sprinting)
 	var m := "menu"
 	if session != null and not get_tree().paused and not ui.opening_on():
 		m = "death" if story().dead else "play"

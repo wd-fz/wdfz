@@ -106,7 +106,7 @@ def main():
         if a.only:
             want = set(a.only.split(','))
             todo = [t for t in todo if t in want]
-            if a.only in ('patrol', 'figures'):
+            if a.only in ('patrol', 'figures', 'hands'):
                 todo = []
         patrol_dir = Path(a.out) / 'patrol'
         patrol_dir.mkdir(parents=True, exist_ok=True)
@@ -127,6 +127,18 @@ def main():
                 (fig_dir / f'{kind}.glb').write_bytes(data)
                 print(f'figure {kind}: {len(data)/1e3:.0f} kB', flush=True)
             if a.only == 'figures':
+                todo = []
+        if not a.only or 'hands' in a.only.split(','):
+            hand_dir = Path(a.out) / 'hands'
+            hand_dir.mkdir(parents=True, exist_ok=True)
+            for item in ['torch', 'phone', 'brolly']:
+                for side in ['R', 'L']:
+                    r = pg.evaluate("([k,i])=>window.__wdfzExport(k,i)", ['hand', f'{item}_{side}'])
+                    data = externalize_images(base64.b64decode(r['glb']), tex, '../textures/')
+                    (hand_dir / f'{item}_{side}.glb').write_bytes(data)
+                    print(f'hand {item}_{side}: {len(data)/1e3:.0f} kB', flush=True)
+            (hand_dir / 'place.json').write_text(json.dumps(pg.evaluate('window.__wdfzHandPlace()'), indent=1))
+            if a.only == 'hands':
                 todo = []
         index_path = out / 'index.json'
         index = json.loads(index_path.read_text()) if index_path.exists() else {}

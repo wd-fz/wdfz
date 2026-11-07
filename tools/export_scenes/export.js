@@ -189,8 +189,18 @@
       stair_geometry:window.StairGeometry.config};
   }
   window.__wdfzPatrolData = patrolData;
+  window.__wdfzHandPlace = function(){ return window.HAND_PLACE; };
   window.__wdfzExport = function(kind, id){
     if(kind === 'patrol') return exportScene(patrolFigure(), 'patrol_figure');
+    if(kind === 'hand'){   /* 第一人称的手与手里的东西：id = torch_R / torch_L / phone_R / … / brolly_L；原点在握持中心，前方 -z */
+      var parts = id.split('_'), item = parts[0], side = parts[1] === 'L' ? -1 : 1;
+      var hand = window.handArm(side);
+      hand.children[0].geometry = window.handGeo(side, item);
+      var it = window.makeHandItem(item);
+      it.scale.x = (item === 'brolly' || side > 0) ? 1 : -1;
+      hand.add(it);
+      return exportScene(hand, 'hand_' + id);
+    }
     if(kind === 'figure'){   /* 旧版 figMesh 的人形（tall / roam / person / teacher / neck / sit），白色，颜色由 Godot 侧给 */
       var fg = new T.Group();
       fg.add(window.figMesh(id, new T.MeshBasicMaterial({color:0xffffff, vertexColors:true}), 1));
