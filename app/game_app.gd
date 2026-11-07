@@ -40,6 +40,7 @@ func _ready() -> void:
 	ui.achievements_requested.connect(_show_achievements)
 	ui.archive_requested.connect(_show_archive)
 	ui.terminal_command.connect(_terminal_command)
+	ui.opening_finished.connect(_opening_done)
 	ui.terminal_closed.connect(_terminal_closed)
 	ui.sound_toggled.connect(func(on: bool) -> void: audio.muted = not on)
 	ui.death_menu_requested.connect(return_to_menu)
@@ -207,6 +208,25 @@ func elevator() -> ElevatorModule:
 	return session.modules.get_module(&"campus.elevator") as ElevatorModule if session != null else null
 
 
+## The prologue: the game waits (paused) until the pages are read or skipped.
+func _play_opening() -> void:
+	if session == null:
+		return
+	player.enabled = false
+	get_tree().paused = true
+	ui.show_opening()
+
+
+func _opening_done(_skipped: bool) -> void:
+	get_tree().paused = false
+	if session == null:
+		return
+	player.enabled = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
+	ui.show_notice("我：第四节。我坐在自己的位子上——至少，名牌上写的是我的名字。")
+	fact({"kind": "opening"})
+
+
 ## TalentPick: the new-game talent screen (seven cards and a random pick).
 func _pick_talent(difficulty: String) -> void:
 	var labels: Array = []
@@ -221,6 +241,7 @@ func _pick_talent(difficulty: String) -> void:
 			return
 		var pick := String(TalentModule.KEYS[index]) if index < TalentModule.KEYS.size() else String(TalentModule.KEYS[randi() % TalentModule.KEYS.size()])
 		start_new_game(difficulty, pick)
+		_play_opening()
 	ui.show_choice("%s · 选择天赋（每局一个；限制写在卡片上）" % ("梦魇" if difficulty == "hard" else "预知梦"), labels)
 
 
@@ -410,6 +431,8 @@ func load_game() -> void:
 
 
 func pause_game() -> void:
+	if ui.opening_on():
+		return
 	# Game.pause: no pause menu once dead (a death cannot be saved around).
 	if session == null or not session.running or _dead():
 		return
@@ -2450,6 +2473,14 @@ func _interact(id: StringName) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if ui.opening_on():
+		if event.is_action_pressed("pause"):
+			ui._end_opening(true)
+			get_viewport().set_input_as_handled()
+		elif event.is_action_pressed("interact") or event.is_action_pressed("ui_accept"):
+			ui._next_opening()
+			get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("pause") and not event.is_echo() and session != null:
 		if get_tree().paused:
 			resume_game()

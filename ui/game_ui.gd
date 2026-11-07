@@ -21,6 +21,7 @@ signal item_hot_requested(index: int, id: String)
 signal achievements_requested
 signal archive_requested
 signal terminal_command(line: String)
+signal opening_finished(skipped: bool)
 signal terminal_closed
 signal sound_toggled(on: bool)
 
@@ -108,6 +109,7 @@ func _input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	tick_opening(delta)
 	if _hurt_rect != null and _hurt_level > 0.0:
 		_hurt_level = maxf(0.0, _hurt_level - delta * 0.5)
 		_hurt_rect.color.a = _hurt_level
@@ -501,6 +503,82 @@ func show_list(head: String, rows: Array) -> void:
 		_ach_list.add_child(line)
 	_ach_head.text = head
 	ach_panel.visible = true
+
+
+## The prologue (prologue.js PRO_PAGES): white text on black, page by page; E / Space / a tap goes on,
+## 跳过 skips. It runs while the game is paused.
+const OPENING := ["你是这学期转来的。", "高二（二）班。第四节，语文。老师在念一篇课文，念到一半，又从头念了一遍。",
+	"前排的人回头问你借橡皮。你还没记住他的名字。\n他好像也不记得你的。", "才第三天。这栋楼你只认得三层。\n可是你数过——楼梯一共有五层半。",
+	"粉笔灰在光里飘。你开始数秒：一，二，三……数到第七秒的时候，它们停在了半空。", "眼皮很重。黑板上的字开始往下淌，淌成一行一行的竖线。",
+	"你把脸埋进胳膊里。袖子上有一股不属于你的味道。", "……", "你睁开眼。\n教室里还是坐满了人。只是没有一个人在呼吸。",
+	"窗外的颜色不见了。走廊里很安静，安静得能听见灯管里的电流。", "下课铃没有响。\n你忽然很确定：这不是你转来的那个学校。\n而它，已经知道你醒了。"]
+const OPENING_PAGE := 3.4
+var opening_panel: Control
+var _opening_text: Label
+var _opening_i := -1
+var _opening_t := 0.0
+
+
+func show_opening() -> void:
+	if opening_panel == null:
+		opening_panel = ColorRect.new()
+		opening_panel.name = "Opening"
+		(opening_panel as ColorRect).color = Color(0, 0, 0, 1)
+		opening_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		opening_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+		_opening_text = Label.new()
+		_opening_text.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_opening_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_opening_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_opening_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_opening_text.add_theme_font_size_override("font_size", 26)
+		_opening_text.offset_left = 72.0
+		_opening_text.offset_right = -72.0
+		opening_panel.add_child(_opening_text)
+		var skip := Button.new()
+		skip.text = "跳过"
+		skip.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+		skip.position -= Vector2(110, 70)
+		skip.pressed.connect(func() -> void: _end_opening(true))
+		opening_panel.add_child(skip)
+		opening_panel.gui_input.connect(func(e: InputEvent) -> void:
+			if (e is InputEventMouseButton and e.pressed) or (e is InputEventScreenTouch and e.pressed):
+				_next_opening())
+		$Root.add_child(opening_panel)
+	_opening_i = 0
+	_opening_t = 0.0
+	_opening_text.text = OPENING[0]
+	opening_panel.visible = true
+
+
+func opening_on() -> bool:
+	return opening_panel != null and opening_panel.visible
+
+
+func _next_opening() -> void:
+	if not opening_on():
+		return
+	_opening_i += 1
+	_opening_t = 0.0
+	if _opening_i >= OPENING.size():
+		_end_opening(false)
+	else:
+		_opening_text.text = OPENING[_opening_i]
+
+
+func _end_opening(skipped: bool) -> void:
+	if not opening_on():
+		return
+	opening_panel.visible = false
+	opening_finished.emit(skipped)
+
+
+func tick_opening(delta: float) -> void:
+	if not opening_on():
+		return
+	_opening_t += delta
+	if _opening_t >= OPENING_PAGE:
+		_next_opening()
 
 
 ## The lab3 maintenance terminal (TerminalUI): output, a command line, help / hint buttons, exit.

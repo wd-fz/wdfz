@@ -227,7 +227,17 @@ func _test_app() -> void:
 	check(app.session == null and app.ui.choice_open(), "real touch tap on menu opens the talent pick")
 	await _tap(app.ui._choice_box.get_child(0))
 	await _frames()
-	check(app.session != null and app.player.enabled and app.talent().id == "tech" and app.items().has("phone"), "tapping the first talent starts the run with it (科技党 starts with a phone)")
+	check(app.session != null and app.talent().id == "tech" and app.items().has("phone"), "tapping the first talent starts the run with it (科技党 starts with a phone)")
+	check(app.ui.opening_on() and paused and not app.player.enabled, "the prologue plays first, with the game waiting")
+	var t0 := app.school().tsec
+	for _i in TalentModule.KEYS.size() + 6:
+		app.ui._next_opening()
+	await _frames()
+	check(not app.ui.opening_on(), "the pages run out")
+	app.ui.show_opening()
+	app.ui._end_opening(true)
+	await _frames()
+	check(not paused and app.player.enabled and app.school().tsec == t0 and app.achievements().unlocked.has("n.opening"), "after the prologue the run begins where it stood: 第四节")
 	if app.session == null:
 		app.queue_free()
 		return
@@ -297,6 +307,7 @@ func _test_app() -> void:
 		await _frames(2)
 		await _tap(random_card)
 		check(app.session != null and TalentModule.KEYS.has(app.talent().id), "touch button hit-testing after resize %s (random talent)" % viewport_size)
+		app.ui._end_opening(true)
 		app.return_to_menu()
 	for _i in 3:
 		app.start_new_game()

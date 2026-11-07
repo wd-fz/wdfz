@@ -37,5 +37,11 @@ func _run() -> void:
 	await _shot("3-talent-pick")
 	root.size = Vector2i(720, 1280)
 	await _shot("4-talent-pick-portrait")
+	root.size = Vector2i(1280, 720)
+	app._choice_made(0)
+	for _i in 4:
+		app.ui._next_opening()
+	await _shot("5-opening-page")
+	app.ui._end_opening(true)
 	DirAccess.remove_absolute(app._profile_path())
 	quit()
