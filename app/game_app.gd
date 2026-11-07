@@ -18,9 +18,17 @@ var _death_wait := 0.0
 var _death_phase := ""
 var _choice_left := 0.0
 var _choice_count := 0
+var audio: AudioFx
+var _seen_anomaly := ""
+var _seen_lock := false
+var _bell_count := 0
+var _seen_phase := 0
 
 
 func _ready() -> void:
+	audio = AudioFx.new()
+	audio.name = "AudioFx"
+	add_child(audio)
 	ui.new_requested.connect(start_new_game)
 	ui.new_hard_requested.connect(start_new_game.bind("hard"))
 	ui.death_menu_requested.connect(return_to_menu)
@@ -229,6 +237,8 @@ func resume_game() -> void:
 
 
 func return_to_menu() -> void:
+	if audio != null:
+		audio.stop_all()
 	ui.hide_ending()
 	ui.show_hiding(false)
 	ui.hide_choice()
@@ -362,6 +372,8 @@ func _campus_interact() -> void:
 func _apply_result(result: Dictionary) -> void:
 	if result.is_empty():
 		return
+	if result.has("door"):
+		audio.cue("creak", -10.0)
 	if result.has("choice"):
 		_open_choice(result["choice"])
 	var text := String(result.get("notice", ""))
@@ -470,6 +482,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	if story().over():
 		return
 	_anomaly_step(delta, day_rules, room, pose)
+	_audio_step(delta, watcher, day_rules, room, p)
 	for text: String in day_rules.take_notices():
 		ui.show_notice(text)
 	var frozen := not router.current.advances_calendar
@@ -665,6 +678,8 @@ func kill(msg: String, fx: String, source: String) -> void:
 		return
 	player.enabled = false
 	player.clear_input()
+	audio.stop_all()
+	audio.cue("scare", -2.0)
 	ui.hide_choice()
 	ui.hide_bag()
 	if bag != null:
@@ -789,6 +804,63 @@ func _patrol_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, 
 				return
 
 
+## Sound layers and cues from the current state (AudioFx never changes a rule).
+func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, room: Variant, p: Array) -> void:
+	if audio == null or story().over():
+		return
+	var weird := anomaly()
+	var an_id := weird.active_id() if weird != null else ""
+	var near := 0.0
+	var patrol_pos: Variant = null
+	if watcher != null and watcher.figure_visible():
+		var dist := watcher.distance()
+		near = clampf(1.0 - dist / 360.0, 0.0, 1.0)
+		var fs := CampusGeometry.to_scene(room, Vector2(float(watcher.pat["x"]), float(watcher.pat["y"])))
+		patrol_pos = Vector3(fs.x, float(watcher.pat["fy"]) + 0.2, fs.y)
+	audio.update(delta, {"moving": player.moving, "running": player.sprinting, "indoors": session.world_id != "out", "san": day_rules.san,
+		"blackout": weird != null and weird.blackout_now(), "rain": an_id in ["rain", "raindots"] and session.world_id == "out", "hiding": player.hiding,
+		"patrol_near": near, "patrol_pos": patrol_pos, "chase": watcher != null and bool(watcher.pat["locked"])})
+	if watcher != null:
+		var locked := bool(watcher.pat["locked"])
+		if locked and not _seen_lock:
+			audio.cue("scare", -6.0)
+		_seen_lock = locked
+	if an_id != _seen_anomaly:
+		_seen_anomaly = an_id
+		_bell_count = 0
+		_seen_phase = 0
+		if an_id != "":
+			match an_id:
+				"broad":
+					audio.cue("static", -8.0)
+				"leak", "raindots":
+					audio.cue("drip", -8.0)
+				"hand":
+					audio.cue("creak", -8.0)
+				_:
+					audio.cue("sting", -10.0)
+	if weird != null and an_id != "":
+		var t := float(weird.an["t"])
+		var data: Dictionary = weird.an["data"]
+		match an_id:
+			"bell13":
+				if _bell_count < 13 and t >= float(_bell_count) * 1.4:
+					_bell_count += 1
+					audio.cue("bell", -6.0)
+			"bells":
+				if _bell_count < 9 and t >= float(_bell_count) * 0.25:
+					_bell_count += 1
+					audio.cue("ding", -10.0, 0.9 + 0.05 * float(_bell_count % 4))
+			"leak":
+				if fmod(t, 0.9) < delta:
+					audio.cue("drip", -14.0, 0.9 + randf() * 0.3)
+			"cup", "cola":
+				var phase := int(data.get("phase", 0))
+				if phase == 2 and _seen_phase != 2:
+					audio.cue("thud", -2.0)
+				_seen_phase = phase
+
+
 ## Escape routes: delayed lines, terminals, gates, the face quiz and endings.
 func _routes_step(delta: float) -> void:
 	var route := routes()
@@ -836,6 +908,8 @@ func _reach_ending(id: String) -> void:
 		return
 	player.enabled = false
 	player.clear_input()
+	audio.stop_all()
+	audio.cue("chime", -4.0)
 	ui.hide_choice()
 	ui.hide_bag()
 	if items() != null:
@@ -900,6 +974,7 @@ func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 			"hurt":
 				day_rules.change_san(-float(e["amount"]), 0.0)
 				ui.flash_hurt(0.4 if e.get("quiet", false) else 0.65)
+				audio.cue("thud", -8.0 if e.get("quiet", false) else -3.0)
 				ui.show_notice(String(e["msg"]))
 			"san":
 				var after := day_rules.san + float(e["amount"])
@@ -1028,6 +1103,14 @@ func _unhandled_input(event: InputEvent) -> void:
 func _notification(what: int) -> void:
 	if what in [NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_PAUSED] and is_node_ready():
 		pause_game()
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	var key := event as InputEventKey
+	if key != null and key.pressed and not key.echo and key.keycode == KEY_M and audio != null:
+		audio.muted = not audio.muted
+		ui.show_notice("声音：关" if audio.muted else "声音：开")
+		get_viewport().set_input_as_handled()
 
 
 func _exit_tree() -> void:

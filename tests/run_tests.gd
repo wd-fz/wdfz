@@ -1231,9 +1231,48 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_elevator_walk(app)
 	await _test_patrol_app(app)
 	await _test_anomaly_fx(app)
+	await _test_audio(app)
 	await _test_whitelist_route(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
+
+
+## Synthesised sound: every cue exists, layers follow the context, mute works, rules are untouched.
+func _test_audio(app: GameApp) -> void:
+	var fx := app.audio
+	for id in ["step", "step_heavy", "heart", "thud", "bell", "ding", "drip", "creak", "static", "sting", "scare", "chime", "hum", "wind", "rain"]:
+		var stream := fx.stream_of(id)
+		check(stream != null and stream.data.size() > 400, "the %s cue is synthesised" % id)
+	check(fx.stream_of("hum").loop_mode == AudioStreamWAV.LOOP_FORWARD and fx.stream_of("step").loop_mode == AudioStreamWAV.LOOP_DISABLED, "ambient cues loop, one-shots do not")
+	check(fx.stream_of("nothing") == null, "an unknown cue is empty, not an error")
+	app.saves.clear()
+	app.start_new_game()
+	await _frames(3)
+	app._stand_up()
+	var t1 := CampusData.layout("teach1")
+	app.travel("teach1", _campus_pose(t1, CampusGeometry.tile_center(t1, 30, 17), PI), false)
+	app.patrol().pat["safety"] = 999.0
+	fx.played.clear()
+	fx.update(0.1, {"moving": true, "running": false, "indoors": true, "san": 100.0})
+	check(fx.played.has("step"), "walking plays a footstep")
+	fx.played.clear()
+	fx.update(0.1, {"moving": false, "indoors": true, "san": 10.0})
+	check(fx.played.has("heart"), "low SAN plays the heartbeat")
+	fx.played.clear()
+	fx.update(0.1, {"moving": false, "indoors": true, "san": 100.0, "patrol_pos": Vector3(3, 0, 3)})
+	check(fx.played.has("step_heavy"), "the patroller's footsteps play in space")
+	await _frames(2)
+	check(fx.looping("hum") and not fx.looping("wind"), "indoors the room tone plays, not the wind")
+	fx.update(0.1, {"indoors": false, "san": 100.0, "rain": true})
+	check(fx.looping("wind") and fx.looping("rain") and not fx.looping("hum"), "outdoors the wind and the rain play")
+	fx.update(0.1, {"indoors": true, "san": 100.0, "blackout": true})
+	check(not fx.looping("hum"), "a blackout kills the hum")
+	app.audio.muted = true
+	check(AudioServer.is_bus_mute(AudioServer.get_bus_index("Master")), "mute silences the master bus")
+	app.audio.muted = false
+	check(not AudioServer.is_bus_mute(AudioServer.get_bus_index("Master")), "unmute restores it")
+	fx.stop_all()
+	check(not fx.looping("wind"), "stop_all stops the loops")
 
 
 ## The placeholder anomaly props follow the module state and vanish when it ends.
