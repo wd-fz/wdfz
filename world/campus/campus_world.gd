@@ -19,6 +19,7 @@ var _lift_bodies: Array[CollisionShape3D] = []
 var _lift_amount := -1.0
 var anomaly_fx: AnomalyFx
 var atmos_fx: AtmosFx
+var duty: DutyRoster
 
 
 func _ready() -> void:
@@ -34,6 +35,11 @@ func _ready() -> void:
 		atmos_fx.name = "AtmosFx"
 		add_child(atmos_fx)
 		atmos_fx.setup(layout)
+		if ClassmatesModule.eligible(layout):
+			duty = DutyRoster.new()
+			duty.name = "DutyRoster"
+			add_child(duty)
+			duty.setup(layout)
 
 
 func is_room() -> bool:

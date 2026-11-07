@@ -1881,6 +1881,8 @@ func _atmos_step(delta: float) -> void:
 	if cw.lighting != null:
 		cw.lighting.atmos_mods = AtmosModule.light_mods(school().day, school().tsec)
 		cw.lighting.lamp_mul = a.lamp_mul()
+	if cw.duty != null:
+		cw.duty.update(DutyRoster.tier_of(school().tt), (school().day - 1) % 5)
 	var fx: AtmosFx = cw.atmos_fx
 	if fx == null or player.camera == null:
 		return

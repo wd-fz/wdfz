@@ -97,6 +97,7 @@ func _run() -> void:
 	_test_camera_rules()
 	_test_snake_rules()
 	_test_run_new_rules()
+	_test_duty_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -2792,6 +2793,19 @@ func _test_run_new_rules() -> void:
 	other.run_new.append("n.snake")
 	other.reset()
 	check(other.run_new.is_empty(), "a new run starts empty")
+
+
+func _test_duty_rules() -> void:
+	check(DutyRoster.tier_of(0.0) == 0 and DutyRoster.tier_of(19.9) == 0 and DutyRoster.tier_of(20.0) == 1 and DutyRoster.tier_of(65.0) == 3 and DutyRoster.tier_of(80.0) == 4 and DutyRoster.tier_of(500.0) == 4, "the roster changes every 20 assimilation, up to tier 4")
+	var mine := func(t: int) -> int:
+		var n := 0
+		for d in 5:
+			for k in 3:
+				n += 1 if DutyRoster.is_mine(t, k, d, 2) else 0
+		return n
+	check(mine.call(0) == 0 and mine.call(1) == 1 and mine.call(2) == 5 and mine.call(3) == 10 and mine.call(4) == 15, "tier 1 one square today, 2 the first square every day, 3 two a day, 4 all fifteen")
+	check(DutyRoster.is_mine(1, 0, 2, 2) and not DutyRoster.is_mine(1, 0, 3, 2) and not DutyRoster.is_mine(1, 1, 2, 2), "tier 1 is today's first square only")
+	check(DutyRoster.NAMES.size() == 16 and DutyRoster.NAMES[0] == "王浩" and DutyRoster.DAYS == ["周一", "周二", "周三", "周四", "周五"], "the names and weekdays are the Web version's")
 
 
 func _test_facility_rules() -> void:
