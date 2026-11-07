@@ -76,7 +76,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(), ClassmatesModule.new(CampusData.rooms()), DreadModule.new(CampusData.rooms()), AtmosModule.new(CampusData.rooms())]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(), ClassmatesModule.new(CampusData.rooms()), DreadModule.new(CampusData.rooms()), AtmosModule.new(CampusData.rooms()), MonoModule.new(CampusData.rooms())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -90,6 +90,10 @@ func campus() -> CampusModule:
 
 func dread() -> DreadModule:
 	return session.modules.get_module(&"story.dread") as DreadModule if session != null else null
+
+
+func mono() -> MonoModule:
+	return session.modules.get_module(&"story.mono") as MonoModule if session != null else null
 
 
 func atmos() -> AtmosModule:
@@ -791,6 +795,10 @@ func _apply_result(result: Dictionary) -> void:
 		return
 	if result.has("door"):
 		audio.play("foley.door")
+		var dk := String(result["door"]["key"]).rsplit(":", true, 2)
+		if atmos() != null and dk.size() == 3:
+			atmos().set_context(_atmos_context())
+			atmos().door_action(dk[0], int(dk[1]), int(dk[2]), bool(result["door"]["open"]))
 	if result.has("choice"):
 		_open_choice(result["choice"])
 	var text := String(result.get("notice", ""))
@@ -998,6 +1006,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	_sensory_step(delta)
 	_dread_step(delta)
 	_atmos_step(delta)
+	_mono_step(delta)
 	_anomaly_step(delta, day_rules, room, pose)
 	_audio_step(delta, watcher, day_rules, room, p)
 	_progress_step(watcher, day_rules, weird_now)
@@ -1735,9 +1744,14 @@ func _atmos_context() -> Dictionary:
 	var ctx := {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])),
 		"day": school().day, "tsec": school().tsec, "viol": school().viol, "busy": bool(dc["busy"]), "an_active": dc["an_active"],
 		"an_next": dc["an_next"], "an_next0": dc["an_next0"], "age": dread().t if dread() != null else 0.0, "dread": dread(),
-		"prop": null, "prop_ok": false, "sees_shifted": false}
+		"prop": null, "prop_ok": false, "sees_shifted": false, "stage": int(school().pressure()["stage"]), "lamps": []}
 	if watcher != null:
 		ctx["pat"] = {"room": String(watcher.pat["room"]), "walk": watcher.pat["state"] == "walk", "x": float(watcher.pat["x"]), "y": float(watcher.pat["y"])}
+	if cw != null and cw.lighting != null and room != null:
+		var lamp_points: Array = []
+		for l: OmniLight3D in cw.lighting.room_lights:
+			lamp_points.append(CampusGeometry.to_world(room, l.position.x, l.position.z))
+		ctx["lamps"] = lamp_points
 	if fx != null and player.camera != null:
 		ctx["prop"] = fx.prop_world()
 		ctx["prop_ok"] = fx.can_shift(player.camera)
@@ -1755,7 +1769,9 @@ func _atmos_step(delta: float) -> void:
 	var cw := _campus_world()
 	if cw == null:
 		return
-	cw.lighting.atmos_mods = AtmosModule.light_mods(school().day, school().tsec) if cw.lighting != null else {}
+	if cw.lighting != null:
+		cw.lighting.atmos_mods = AtmosModule.light_mods(school().day, school().tsec)
+		cw.lighting.lamp_mul = a.lamp_mul()
 	var fx: AtmosFx = cw.atmos_fx
 	if fx == null or player.camera == null:
 		return
@@ -1786,6 +1802,24 @@ func _apply_atmos_events() -> void:
 				audio.play("dread." + String(e["cue"]), {"pan": float(pl["pan"]), "k": float(pl["k"]), "lp": 0.7 if bool(pl["behind"]) else 1.0, "place": pl})
 			"say":
 				ui.show_notice(String(e["text"]))
+
+
+# ---- the protagonist's muttering (features/story/mono_module.gd) ----
+
+func _mono_step(delta: float) -> void:
+	var m := mono()
+	if m == null or story().dead:
+		return
+	var room: Variant = campus().room(session.world_id)
+	var p: Array = player.capture_pose()["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var day_rules := school()
+	m.set_context({"scene": session.world_id, "x": w.x, "y": w.y, "tile": CampusGeometry.tile_at(room, w) if room != null else "", "san": day_rules.san,
+		"night": SchoolClock.is_night(day_rules.tsec), "busy": bool(_dread_context()["busy"]),
+		"seated_class": day_rules.seated and SchoolClock.need_where(day_rules.tsec) == "教室"})
+	m.tick(delta)
+	for e: Dictionary in m.take_events():
+		ui.show_notice(String(e["text"]))
 
 
 # ---- classmates (features/school/classmates_module.gd) ----

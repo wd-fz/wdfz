@@ -17,6 +17,9 @@ extends FeatureModule
 ## · A7 sky and tint: from day 2 dusk comes earlier, everything a little colder and darker.
 ## A3, A4 and A6 pass the scare budget (DreadModule.allow / note); not during inspections, anomalies,
 ## fake-normal or cut scenes.
+## Two small timed scenes (modules/sensory/scenes.js) share the same budget and yield to anything real:
+## a lamp hums and dims, then the hum moves to the nearest door; a door you just closed may be knocked
+## on from the other side 1.4 s later (30 %, a door once per 120 s).
 ## Events out: campus {kind, pan, k, lp}, duck {sec}, dread {cue, place}, say {text}.
 
 const STATE_VERSION := 1
@@ -57,6 +60,10 @@ var _in_cls := ""
 var _shift_new := ""
 var _pat_seen: Dictionary = {}
 var _pat_last: Dictionary = {}
+var _sc_clock := 0.0
+var _sc_next := 85.0
+var _sc_event: Dictionary = {}
+var _sc_doors: Dictionary = {}
 
 
 func _init(rooms: Dictionary = {}) -> void:
@@ -101,6 +108,10 @@ func _reset_run() -> void:
 	_shift_new = ""
 	_pat_seen = {}
 	_pat_last = {}
+	_sc_clock = 0.0
+	_sc_next = 85.0
+	_sc_event = {}
+	_sc_doors = {}
 
 
 func capture() -> Dictionary:
@@ -429,6 +440,7 @@ func tick(dt: float) -> void:
 			window["seen"] = float(window["seen"]) + dt
 		elif float(window["seen"]) >= 0.8:
 			window["gone"] = true
+	_scene_tick(dt)
 	_campus_tick(dt)
 	_hush_tick()
 	_left_tick()
@@ -446,6 +458,94 @@ func enter(room: String) -> void:
 	if not window.is_empty() and window["room"] != room:
 		window = {}
 	stare = {}
+	_sc_event = {}
+
+
+# ---- timed small scenes (sensory/scenes.js) ----
+
+func _place_at(w: Vector2) -> Dictionary:
+	var d := _dread()
+	return d.place(w) if d != null else {"pan": 0.0, "k": 0.5, "muffled": false, "behind": false, "m": 0.0}
+
+
+func _scene_lamp() -> bool:
+	var lamps: Array = _c.get("lamps", [])
+	var r: Dictionary = _rooms.get(String(_c.get("scene", "")), {})
+	if _busy() or float(_c.get("age", 0.0)) < 60.0 or not _allow(1) or r.is_empty() or r.get("flags", {}).get("stairwell", false) or lamps.is_empty():
+		return false
+	var i := _rng.randi() % lamps.size()
+	var lamp: Vector2 = lamps[i]
+	var doors: Array = []
+	var grid: Array = r["grid"]
+	for row in grid.size():
+		for col in String(grid[row]).length():
+			if String(grid[row]).substr(col, 1) == "=":
+				doors.append(CampusGeometry.tile_center(r, col, row))
+	if doors.is_empty():
+		return false
+	doors.sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.distance_to(lamp) < b.distance_to(lamp))
+	_sc_event = {"kind": "lamp", "at": _sc_clock, "room": _c.get("scene"), "index": i, "door": doors[0], "moved": false}
+	_note("lamp-hum", 1)
+	_emit("dread", {"cue": "hum", "place": _place_at(lamp)})
+	return true
+
+
+## A door was opened or closed by the player (key "room:c:r").
+func door_action(room: String, c: int, row: int, open: bool) -> void:
+	var r: Dictionary = _rooms.get(room, {})
+	if r.is_empty():
+		return
+	var pos := CampusGeometry.tile_center(r, c, row)
+	if open:
+		if _sc_event.get("kind", "") == "door" and _sc_event["room"] == room and (_sc_event["pos"] as Vector2).is_equal_approx(pos):
+			_sc_event = {}
+		return
+	if _busy() or float(_c.get("age", 0.0)) < 60.0 or not _allow(1) or not _sc_event.is_empty():
+		return
+	var key := "%s:%d:%d" % [room, c, row]
+	if _sc_doors.has(key) and _sc_clock - float(_sc_doors[key]) < 120.0:
+		return
+	if _rng.randf() > 0.30:
+		return
+	_sc_doors[key] = _sc_clock
+	_sc_event = {"kind": "door", "at": _sc_clock, "room": room, "pos": pos}
+	_note("door-answer", 1)
+
+
+func _scene_tick(dt: float) -> void:
+	if _busy():
+		_sc_event = {}
+		return
+	_sc_clock += minf(0.25, dt)
+	if not _sc_event.is_empty():
+		if _sc_event["room"] != _c.get("scene"):
+			_sc_event = {}
+			return
+		var elapsed := _sc_clock - float(_sc_event["at"])
+		if _sc_event["kind"] == "door" and elapsed >= 1.4:
+			_emit("dread", {"cue": "knock", "place": _place_at(_sc_event["pos"])})
+			_sc_event = {}
+		elif _sc_event["kind"] == "lamp":
+			if elapsed >= 3.0 and not bool(_sc_event["moved"]):
+				_sc_event["moved"] = true
+				_emit("dread", {"cue": "hum", "place": _place_at(_sc_event["door"])})
+			if elapsed >= 7.0:
+				_sc_event = {}
+	elif _sc_clock >= _sc_next:
+		_sc_next = _sc_clock + 85.0 / (1.0 + 0.08 * float(_c.get("stage", 0))) + _rng.randf() * 40.0
+		_scene_lamp()
+
+
+## The lamp scene's multiplier for room light i: dims over 2 s, holds low, comes back after 5 s.
+func lamp_mul() -> Dictionary:
+	if _sc_event.get("kind", "") != "lamp":
+		return {}
+	var t := _sc_clock - float(_sc_event["at"])
+	return {int(_sc_event["index"]): (1.0 - t * 0.44 if t < 2.0 else (0.12 + (t - 5.0) * 0.44 if t > 5.0 else 0.12))}
+
+
+func scene_event() -> Dictionary:
+	return _sc_event
 
 
 # ---- A5: bell ----

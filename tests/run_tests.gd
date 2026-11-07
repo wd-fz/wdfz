@@ -87,6 +87,8 @@ func _run() -> void:
 	_test_caption_rules()
 	_test_dread_rules()
 	_test_atmos_rules()
+	_test_mono_rules()
+	_test_scene_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -2353,6 +2355,109 @@ func _test_atmos_rules() -> void:
 	var back := AtmosModule.new(rooms)
 	back.restore(turned.capture())
 	check(back.stares == turned.stares and back.validate(turned.capture()).is_empty() and not back.validate({"stares": {"1:a": 9}}).is_empty(), "the atmosphere record saves and loads, and a bad one is rejected")
+
+
+func _test_mono_rules() -> void:
+	var rooms := CampusData.rooms()
+	var m := MonoModule.new(rooms)
+	m.reset()
+	var t1 := CampusData.layout("teach1")
+	var hall := CampusGeometry.tile_center(t1, 20, 18)
+	var klass := CampusGeometry.tile_center(t1, 12, 10)
+	m.set_context({"scene": "teach1", "x": hall.x, "y": hall.y, "tile": "", "san": 90.0, "night": false, "busy": false, "seated_class": false})
+	check(m.tier() == "calm" and m.place() == "hall", "a steady mind in the corridor mutters about the corridor")
+	m.set_context({"scene": "teach1", "x": klass.x, "y": klass.y, "tile": "", "san": 60.0, "night": false, "busy": false, "seated_class": false})
+	check(m.tier() == "uneasy" and m.place() == "class", "SAN 50–75 is uneasy, a classroom is a class")
+	var tiers := {}
+	for san in [100.0, 74.0, 49.0, 10.0]:
+		m.set_context({"scene": "out", "x": 0.0, "y": 0.0, "tile": "", "san": san, "night": true, "busy": false, "seated_class": false})
+		tiers[m.tier()] = m.place()
+	check(tiers.size() == 4 and tiers["calm"] == "outNight", "four tiers by SAN (75, 50, 25), and the night outside has its own lines")
+	check(MonoModule.LINES["calm"]["any"].size() == 4 and MonoModule.LINES["breaking"]["any"].size() == 5, "the lines are the Web version's")
+	m.set_context({"scene": "garage1", "x": 0.0, "y": 0.0, "tile": "", "san": 30.0, "night": false, "busy": false, "seated_class": false})
+	check(m.place() == "garage" and MonoModule.LINES["frayed"]["garage"].has(m.pick()) or MonoModule.LINES["frayed"]["any"].has(m.pick()), "the garage has its own lines")
+	# 40–75 s apart, with no repeats among the last eight, nothing while busy.
+	var said: Array = []
+	m.reset()
+	m.set_context({"scene": "out", "x": 0.0, "y": 0.0, "tile": "", "san": 90.0, "night": false, "busy": false, "seated_class": false})
+	for _i in 5000:
+		m.tick(0.1)
+		for e: Dictionary in m.take_events():
+			said.append(e["text"])
+	check(said.size() >= 6 and said.size() <= 13, "about one line a minute (%d in 500 s)" % said.size())
+	var first := said.slice(0, 6)
+	var distinct := {}
+	for l: String in first:
+		distinct[l] = true
+	check(distinct.size() == first.size(), "no line repeats until all of the place's lines have been said")
+	var quiet := MonoModule.new(rooms)
+	quiet.reset()
+	quiet.set_context({"scene": "out", "x": 0.0, "y": 0.0, "tile": "", "san": 90.0, "night": false, "busy": true, "seated_class": false})
+	for _i in 2000:
+		quiet.tick(0.1)
+	check(quiet.take_events().is_empty(), "nothing while something else is going on")
+
+
+func _test_scene_rules() -> void:
+	var rooms := CampusData.rooms()
+	var t1 := CampusData.layout("teach1")
+	var lamps: Array = [CampusGeometry.tile_center(t1, 20, 18), CampusGeometry.tile_center(t1, 40, 18)]
+	var sc := AtmosModule.new(rooms)
+	sc.reset()
+	var d := DreadModule.new(rooms)
+	d.reset()
+	sc.set_context(_atmos_ctx(20, 18, {"day": 1, "dread": d, "lamps": lamps, "tsec": 700.0}))
+	var hum := 0
+	var dimmed := 1.0
+	var returned := false
+	for _i in 2400:
+		sc.tick(0.1)
+		hum += _of_kind(sc.take_events(), "dread").size()
+		var mul := sc.lamp_mul()
+		if not mul.is_empty():
+			dimmed = minf(dimmed, float(mul.values()[0]))
+		elif dimmed < 0.2:
+			returned = true
+	check(hum >= 2 and dimmed < 0.2 and returned, "a corridor lamp hums, dims to 12 %% and comes back, the hum moving to a door (%d sounds)" % hum)
+	var quiet := AtmosModule.new(rooms)
+	quiet.reset()
+	quiet.set_context(_atmos_ctx(20, 18, {"day": 1, "dread": DreadModule.new(rooms), "lamps": lamps, "busy": true}))
+	for _i in 2400:
+		quiet.tick(0.1)
+	check(quiet.scene_event().is_empty() and _of_kind(quiet.take_events(), "dread").is_empty(), "no small scene while something real is going on")
+	var early := AtmosModule.new(rooms)
+	early.reset()
+	early.set_context(_atmos_ctx(20, 18, {"day": 1, "dread": DreadModule.new(rooms), "lamps": lamps, "age": 30.0}))
+	early._sc_clock = 90.0
+	early.tick(0.1)
+	check(early.scene_event().is_empty(), "nothing in the first minute of a run")
+	# A door you just closed is answered 1.4 s later about three times in ten.
+	var knocks := 0
+	for n in 100:
+		var dm := AtmosModule.new(rooms)
+		dm.reset()
+		dm.set_context(_atmos_ctx(20, 18, {"day": 1, "dread": DreadModule.new(rooms)}))
+		dm.door_action("teach1", 30, 15, false)
+		if not dm.scene_event().is_empty():
+			for _i in 13:
+				dm.tick(0.1)
+			check(_of_kind(dm.take_events(), "dread").is_empty(), "no answer before 1.4 s")
+			for _i in 3:
+				dm.tick(0.1)
+			knocks += _of_kind(dm.take_events(), "dread").size()
+	check(knocks > 12 and knocks < 55, "about 30 %% of closed doors are knocked on from the other side (%d of 100)" % knocks)
+	var again := AtmosModule.new(rooms)
+	again.reset()
+	again.set_context(_atmos_ctx(20, 18, {"day": 1, "dread": DreadModule.new(rooms)}))
+	again._sc_doors["teach1:30:15"] = 0.0
+	again.door_action("teach1", 30, 15, false)
+	check(again.scene_event().is_empty(), "the same door is not answered twice within 120 s")
+	var reopened := AtmosModule.new(rooms)
+	reopened.reset()
+	reopened._sc_event = {"kind": "door", "at": 0.0, "room": "teach1", "pos": CampusGeometry.tile_center(t1, 30, 15)}
+	reopened.set_context(_atmos_ctx(20, 18, {"day": 1, "dread": DreadModule.new(rooms)}))
+	reopened.door_action("teach1", 30, 15, true)
+	check(reopened.scene_event().is_empty(), "opening the door again cancels the answer")
 
 
 func _test_facility_rules() -> void:
