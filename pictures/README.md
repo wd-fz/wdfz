@@ -39,3 +39,4 @@
 | [第一人称手部](第一人称手部/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_hands.gd`：右手手电、左手撑开的雨伞加右手手电、手机（旧版 `hands.js` 导出的手与袖口） |
 | [开场CG](开场CG/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_opening.gd`：新局开场的实时分镜各段（后排推向讲台、老师念到一半、粉笔灰停在半空、镜头转向「你」、趴下、醒来）；取的是分镜某一时刻的静帧 |
 | [结局分镜](结局分镜/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_endings.gd`：公开结局《白名单》的实时分镜（闸机灯红、变白、转身、门里站满看着你的人）；分镜某一时刻的静帧 |
+| [校庆横幅](校庆横幅/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_banner.gd`：校庆日教学楼正面二楼的红底黄字横幅（树挡了一部分） |

@@ -111,6 +111,7 @@ func _run() -> void:
 	_test_hands()
 	_test_opening()
 	_test_ending_cut()
+	_test_day_banner()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -3186,6 +3187,12 @@ func _test_records_panel() -> void:
 	check(panel.open_view(a, true) and panel._map.trails[0]["pts"].size() == 4 and not panel._map.here, "the footprint map shows the whole path, no marker")
 	check(not panel.open_view("nope", true), "a missing replay does not open")
 	panel.queue_free()
+
+
+func _test_day_banner() -> void:
+	var at := DayBanner.spot(CampusData.layout("out"))
+	check(at != Vector3.ZERO and is_equal_approx(at.y, 5.55) and is_equal_approx(at.x, (397.0 + 283.5 / 2.0) * 2.0 / 9.0) and is_equal_approx(at.z, (875.5 + 99.0) * 2.0 / 9.0 + 0.82), "the banner hangs on the front of the teaching building, second floor")
+	check(DayBanner.spot({}) == Vector3.ZERO, "no building, no banner")
 
 
 func _test_ending_cut() -> void:

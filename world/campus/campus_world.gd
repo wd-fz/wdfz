@@ -11,6 +11,7 @@ const BOUNDARY := 1.0
 @export var scene_id := "out"
 
 var layout: Dictionary = {}
+var banner: DayBanner
 var lighting: CampusLighting
 var _door_bodies: Dictionary = {}   # key -> CollisionShape3D
 var _door_leaves: Dictionary = {}   # key -> {"closed": Node3D, "open": Node3D}
@@ -30,6 +31,8 @@ func _ready() -> void:
 	anomaly_fx = AnomalyFx.new()
 	anomaly_fx.name = "AnomalyFx"
 	add_child(anomaly_fx)
+	if not is_room():
+		_ready_banner()
 	if is_room():
 		atmos_fx = AtmosFx.new()
 		atmos_fx.name = "AtmosFx"
@@ -40,6 +43,13 @@ func _ready() -> void:
 			duty.name = "DutyRoster"
 			add_child(duty)
 			duty.setup(layout)
+
+
+func _ready_banner() -> void:
+	banner = DayBanner.new()
+	banner.name = "DayBanner"
+	add_child(banner)
+	banner.setup(layout)
 
 
 func is_room() -> bool:
