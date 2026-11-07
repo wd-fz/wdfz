@@ -28,6 +28,7 @@ signal terminal_closed
 signal sound_toggled(on: bool)
 signal settings_requested
 signal results_requested
+signal records_requested
 signal grade_sound(band: String)
 signal fullscreen_requested
 signal map_requested(id: String)
@@ -112,18 +113,27 @@ func _ready() -> void:
 	load_row.add_child(run)
 	touch_toggle.reparent(option_row, false)
 	option_row.add_child(sound)
+	var extra_row := HBoxContainer.new()
+	option_row.add_sibling(extra_row)
+	var recs := Button.new()
+	recs.name = "RecordsMenu"
+	recs.text = "通关记录"
+	recs.custom_minimum_size = Vector2(0, 48)
+	recs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	recs.pressed.connect(func() -> void: records_requested.emit())
+	extra_row.add_child(recs)
 	var gear := Button.new()
 	gear.name = "SettingsMenu"
 	gear.text = "设置"
 	gear.custom_minimum_size = Vector2(0, 48)
 	gear.pressed.connect(func() -> void: settings_requested.emit())
-	option_row.add_child(gear)
+	extra_row.add_child(gear)
 	var full := Button.new()
 	full.name = "FullscreenMenu"
 	full.text = "全屏"
 	full.custom_minimum_size = Vector2(0, 48)
 	full.pressed.connect(func() -> void: fullscreen_requested.emit())
-	option_row.add_child(full)
+	extra_row.add_child(full)
 	var full2 := Button.new()
 	full2.name = "FullscreenPause"
 	full2.text = "全屏"
@@ -1284,6 +1294,20 @@ func show_ending(title: String, tag: String, lines: Array, meta: String, achieve
 var _ending_results: Button
 var _ending_note: Label
 var results_panel: ResultsPanel
+var records_panel: RecordsPanel
+
+
+func ensure_records(store: RunRecords, rooms: Dictionary) -> RecordsPanel:
+	if records_panel == null:
+		records_panel = RecordsPanel.new(store, rooms)
+		$Root.add_child(records_panel)
+	records_panel.records = store
+	return records_panel
+
+
+func show_records(store: RunRecords, rooms: Dictionary) -> RecordsPanel:
+	ensure_records(store, rooms).open()
+	return records_panel
 
 
 func show_results(m: Dictionary, opts: Dictionary = {}) -> void:

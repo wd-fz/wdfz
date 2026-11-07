@@ -44,6 +44,7 @@ func _ready() -> void:
 	ui.fullscreen_requested.connect(func() -> void: _setting_changed("full_screen", 1 - settings.get_int("full_screen")))
 	ui.notes_requested.connect(_show_notes)
 	ui.results_requested.connect(_open_results)
+	ui.records_requested.connect(_open_records)
 	ui.grade_sound.connect(func(b: String) -> void: audio.play("ui.grade." + b))
 	ui.map_requested.connect(_show_map)
 	ui.notes_focus_requested.connect(_notes_focus)
@@ -2617,7 +2618,10 @@ func _score_ending(id: String, title: String) -> Dictionary:
 	ctx["route_name"] = title.replace(" ", "")
 	var res := sm.finish({"id": id, "legit": true}, ctx)
 	if bool(res.get("rated", false)):
-		res["id"] = runs().add(res, _runlog.finish())
+		var pack := _runlog.finish()
+		if exploration() != null:
+			pack["sketch"] = exploration().capture().get("seen", {})
+		res["id"] = runs().add(res, pack)
 		_write_side("runlog_cur.json", null)
 	return res
 
@@ -2639,11 +2643,52 @@ func _open_results() -> void:
 	var rec := runs().get_record(String(m.get("id", ""))) if String(m.get("id", "")) != "" else {}
 	ui.show_results(rec if not rec.is_empty() else m, {"replay": runs().replay(String(m.get("id", ""))) if String(m.get("id", "")) != "" else {},
 		"back_label": "回到主菜单"})
-	if ui.results_panel != null and not ui.results_panel.back_pressed.is_connected(_results_back):
-		ui.results_panel.back_pressed.connect(_results_back)
+	_wire_results(_results_back)
 
 
 var _results_back_to: Callable
+
+
+## The main menu's 通关记录: the list; a row opens the result page, whose 回放 / 足迹图 open the viewer.
+func _open_records() -> void:
+	var panel := ui.show_records(runs(), CampusData.rooms())
+	if not panel.detail_requested.is_connected(_record_detail):
+		panel.detail_requested.connect(_record_detail)
+		panel.sample_requested.connect(func(g: String) -> void:
+			var m := ScoreRules.sample_meta(g, "car")
+			m["source"] = "archive"
+			panel.visible = false
+			ui.show_results(m, {"back_label": "返回记录", "silent": true})
+			_wire_results(func() -> void:
+				ui.hide_results()
+				panel.reopen()))
+
+
+func _record_detail(id: String) -> void:
+	var rec := runs().get_record(id)
+	if rec.is_empty():
+		return
+	ui.records_panel.visible = false
+	ui.show_results(rec, {"replay": runs().replay(id), "back_label": "返回记录", "silent": true})
+	_wire_results(func() -> void:
+		ui.hide_results()
+		ui.records_panel.reopen())
+
+
+## The result page's buttons: back (where to go), and the viewers of the record.
+func _wire_results(back: Callable) -> void:
+	var rp := ui.results_panel
+	for sig: Signal in [rp.back_pressed, rp.footprint_pressed, rp.replay_pressed]:
+		for c in sig.get_connections():
+			sig.disconnect(c["callable"])
+	rp.back_pressed.connect(back)
+	var panel := ui.ensure_records(runs(), CampusData.rooms())
+	rp.footprint_pressed.connect(func(rid: String) -> void:
+		ui.hide_results()
+		panel.open_view(rid, true))
+	rp.replay_pressed.connect(func(rid: String) -> void:
+		ui.hide_results()
+		panel.open_view(rid, false))
 
 
 func _results_back() -> void:

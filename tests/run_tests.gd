@@ -106,6 +106,7 @@ func _run() -> void:
 	_test_score_rules()
 	_test_run_records()
 	_test_results_page()
+	_test_records_panel()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -3147,6 +3148,40 @@ func _test_results_page() -> void:
 	for g: Dictionary in ScoreRules.GRADES:
 		var sm := ScoreRules.sample_meta(String(g["g"]), "car")
 		check(sm["grade"] == g["g"], "the sample for %s grades %s" % [g["g"], sm["grade"]])
+
+
+func _test_records_panel() -> void:
+	var dir := _test_path.get_base_dir() + "/records-ui"
+	for f in DirAccess.get_files_at(dir) if DirAccess.dir_exists_absolute(dir) else PackedStringArray():
+		DirAccess.remove_absolute(dir + "/" + f)
+	var store := RunRecords.new(dir)
+	var samples: Array = [[0, 0, 40, 30, 0], [10, 0, 44, 30, 0], [20, 0, 44, 34, 16], [30, 0, 44, 34, 16]]
+	var pack := {"v": 1, "run": "r", "scenes": ["teach1"], "track": RunTrack.encode(samples), "pat": [[10, 0, 46, 30]], "clock": [], "events": [[10, "anomaly", "遭遇「下不完的雨」", 0, 0, 44, 30]],
+		"start": 1, "partial": 0}
+	var a := store.add(_rec("car", "easy", "B", 860, 1100.0, 2000), pack)
+	var b := store.add(_rec("face", "hard", "A", 1010, 800.0, 3000, {"mode": "speedrun", "time": {"active": 800.0, "rta": 805.0, "par": 1200.0, "used": 805.0}}), pack)
+	var panel := RecordsPanel.new(store, CampusData.rooms())
+	root.add_child(panel)
+	panel.open()
+	check(panel.filtered().size() == 2 and panel.filtered()[0]["id"] == b, "the list starts newest first")
+	panel._diff = "easy"
+	check(panel.filtered().size() == 1 and panel.filtered()[0]["id"] == a, "the difficulty filter narrows the list")
+	panel._diff = ""
+	panel._sort = "used"
+	check(panel.filtered()[0]["id"] == b, "sorted by used time puts the fastest first")
+	panel._mode = "rank"
+	panel._refresh()
+	check(panel.visible, "the ranking tab builds")
+	panel._mode = "grades"
+	panel._refresh()
+	check(store.grades().has("B") and not store.grades().has("SSS"), "the result screens tab lists only grades a real run earned")
+	check(panel.open_view(a, false) and panel._t_max == 30.0 and panel._scene == "teach1", "the replay opens on the first drawable scene")
+	panel._t = 20.0
+	panel._redraw()
+	check(panel._map.here and panel._map.trails[0]["pts"].size() == 3, "the replay shows the path up to the time")
+	check(panel.open_view(a, true) and panel._map.trails[0]["pts"].size() == 4 and not panel._map.here, "the footprint map shows the whole path, no marker")
+	check(not panel.open_view("nope", true), "a missing replay does not open")
+	panel.queue_free()
 
 
 func _test_facility_rules() -> void:

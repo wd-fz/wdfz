@@ -19,6 +19,9 @@ var me := Vector2.ZERO           # world position and facing on this sketch
 var ang := 0.0
 var here := false
 var cell := 12.0
+## Overlays for the replay and the footprint map: {pts: PackedVector2Array (world), col: Color} polylines, {p: Vector2, r: float} dwell circles.
+var trails: Array = []
+var dwells: Array = []
 
 # The campus plan.
 var plan: Dictionary = {}        # {bound, objects, gates, me, ang}
@@ -134,6 +137,16 @@ func _draw() -> void:
 				draw_rect(Rect2(c * cell + 1, r * cell + 1, cell - 2, cell - 2), Color(0.84, 0.69, 0.37, 0.22) if t == "brass" else Color(0.71, 0.2, 0.18, 0.28))
 			var tw := font.get_string_size(mark, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 			draw_string(font, Vector2((c + 0.5) * cell - tw / 2.0, (r + 0.5) * cell + fs * 0.36), mark, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, TONES[t])
+	for tr: Dictionary in trails:
+		var pts := PackedVector2Array()
+		for w: Vector2 in tr["pts"]:
+			pts.append(Vector2((w.x - float(room["ox"])) / float(room["tw"]), (w.y - float(room["oy"])) / float(room["th"])) * cell)
+		if pts.size() >= 2:
+			draw_polyline(pts, tr["col"], 2.0)
+	for dw: Dictionary in dwells:
+		var dwp: Vector2 = dw["p"]
+		var dp := Vector2((dwp.x - float(room["ox"])) / float(room["tw"]), (dwp.y - float(room["oy"])) / float(room["th"])) * cell
+		draw_circle(dp, cell * (0.35 + minf(float(dw["r"]), 4.0) * 0.18), Color(0.85, 0.28, 0.24, 0.28))
 	if here:
 		var px := (me.x - float(room["ox"])) / float(room["tw"]) * cell
 		var py := (me.y - float(room["oy"])) / float(room["th"]) * cell
