@@ -110,6 +110,7 @@ func _run() -> void:
 	_test_dev_tools()
 	_test_hands()
 	_test_opening()
+	_test_ending_cut()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -3185,6 +3186,14 @@ func _test_records_panel() -> void:
 	check(panel.open_view(a, true) and panel._map.trails[0]["pts"].size() == 4 and not panel._map.here, "the footprint map shows the whole path, no marker")
 	check(not panel.open_view("nope", true), "a missing replay does not open")
 	panel.queue_free()
+
+
+func _test_ending_cut() -> void:
+	check(EndingCut.has("face") and not EndingCut.has("dismissal"), "only the ported endings have a live scene")
+	check(EndingCut.face_lamp(0.1) == Color("#d23a2e") and EndingCut.face_lamp(0.2) == Color("#e8e4d2"), "the gate's lamp is red, then white")
+	check(EndingCut.face_fade(0.1) == 0.0 and EndingCut.face_fade(0.3) == 1.0 and is_equal_approx(EndingCut.face_fade(0.33), 0.5) and EndingCut.face_fade(0.6) == 0.0 and is_equal_approx(EndingCut.face_fade(0.95), 0.5), "black after the beep, clear outside, black at the end")
+	var g := EndingCut.gate_scene(CampusData.campus(), "w")
+	check(is_equal_approx(g.x, 200.0 * 2.0 / 9.0) and is_equal_approx(g.z, 624.0 * 2.0 / 9.0), "the gate is placed from the campus plan")
 
 
 func _test_opening() -> void:

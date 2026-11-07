@@ -287,6 +287,7 @@ func elevator() -> ElevatorModule:
 
 ## The prologue: the game waits (paused) until the pages are read or skipped.
 var _opening_cut: OpeningCut
+var _ending_cut: EndingCut
 
 
 ## The opening scene is on (the live cutscene, or the text pages that stand in for it).
@@ -4210,8 +4211,25 @@ func _reach_ending(id: String) -> void:
 		meta += " · " + SchoolClock.fmt_clock(school().tsec)
 	if run_line != "":
 		meta += "\n" + run_line
-	ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta, achievements().run_new_labels() if achievements() != null else PackedStringArray(),
-		"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""))
+	var show_card := func() -> void:
+		ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta, achievements().run_new_labels() if achievements() != null else PackedStringArray(),
+			"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""))
+	var world := _campus_world()
+	if EndingCut.has(id) and world != null and session != null and session.world_id == "out" and DisplayServer.get_name() != "headless":
+		if _ending_cut != null and is_instance_valid(_ending_cut):
+			_ending_cut.queue_free()
+		_ending_cut = EndingCut.new()
+		_ending_cut.name = "EndingCut"
+		add_child(_ending_cut)
+		var was_paused := get_tree().paused
+		get_tree().paused = true
+		_ending_cut.finished.connect(func(_skipped: bool) -> void:
+			get_tree().paused = was_paused
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+			show_card.call())
+		_ending_cut.begin(id, world, CampusData.campus(), player, ui, func() -> void: audio.play("ui.click"))
+		return
+	show_card.call()
 
 
 func _anomaly_context(room: Variant, pose: Dictionary) -> Dictionary:
