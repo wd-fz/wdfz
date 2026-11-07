@@ -26,6 +26,8 @@ const LIST := {
 	"n.inspection": ["n", "按时到场", "黑影围成一圈，又散开。它们没有记下我。"],
 	"n.wake": ["n", "梦里记得", "我猛地抬起头，后背全是汗。"],
 	"n.saved": ["n", "被替了一次", "刚才那一下，像是有人替我挨了。"],
+	"n.broadcast": ["n", "核对", "记录本里没有刚才那一条。喇叭里还在啸叫。"],
+	"e.end_dismissal": ["e", "《放学》", "长铃还在响。我和同学一起走出了北门。"],
 	"n.rest": ["n", "喘口气", "有那么一会儿，我忘了自己在哪儿。"],
 	"n.bell": ["n", "钟声", "钟声一圈一圈荡开，广播里有人慢慢地念。"],
 	"n.exam": ["n", "交卷", "监考的人收走卷子，没有看我。"],
@@ -225,6 +227,10 @@ func _test(id: String, f: Dictionary) -> bool:
 			return kind == "garage" and f["what"] == "torch"
 		"n.rest":
 			return kind == "rest"
+		"n.broadcast":
+			return kind == "broadcast" and f.get("what") == "verified" and f.get("real", true) == false
+		"e.end_dismissal":
+			return kind == "ending" and f["id"] == "dismissal"
 		"e.rest8":
 			return kind == "rest" and sets["rest"].size() >= FacilitiesModule.SAN_ACTS.size()
 		"n.bell":

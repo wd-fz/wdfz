@@ -64,7 +64,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -74,6 +74,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func broadcast() -> BroadcastModule:
+	return session.modules.get_module(&"story.broadcast") as BroadcastModule if session != null else null
 
 
 func facilities() -> FacilitiesModule:
@@ -189,6 +193,9 @@ func start_new_game(difficulty: String = "easy") -> void:
 	var fac := candidate.modules.get_module(&"campus.facilities") as FacilitiesModule
 	if fac != null:
 		fac.set_seed(int((Time.get_ticks_usec() * 7) % 2147483647))
+	var radio := candidate.modules.get_module(&"story.broadcast") as BroadcastModule
+	if radio != null:
+		radio.set_seed(int((Time.get_ticks_usec() * 13) % 2147483647))
 	var rules := candidate.modules.get_module(&"campus.world") as CampusModule
 	var pose := rules.start_pose() if rules != null and initial_world == rules.start_world() else router.current.spawn_pose()
 	# Game.start: the run begins seated on the player's own seat in teach1.
@@ -216,6 +223,8 @@ func _unwire(old: GameSession) -> void:
 	var watcher := old.modules.get_module(&"patrol.world") as PatrolModule
 	if watcher != null:
 		watcher.elevator = null
+		watcher.zone_active = func(_z: Dictionary) -> bool: return false
+		watcher.camouflage = Callable()
 		watcher.nav.door_open = func(_room: String, _c: int, _r: int) -> bool: return false
 	var rules := old.modules.get_module(&"campus.world") as CampusModule
 	if rules != null:
@@ -248,6 +257,10 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	player.seated = day_rules != null and day_rules.seated
 	var lift_rules := elevator()
 	var watcher := patrol()
+	var radio_now := broadcast()
+	if watcher != null and radio_now != null:
+		watcher.zone_active = func(z: Dictionary) -> bool: return z.get("when") == "broadcast" and radio_now.zone_live()
+		watcher.camouflage = radio_now.cover
 	if lift_rules != null and day_rules != null:
 		var weird := anomaly()
 		lift_rules.unsafe_check = func() -> bool: return (weird != null and weird.is_active()) or day_rules.inspection_pending() or (watcher != null and watcher.local_chase())
@@ -333,6 +346,11 @@ func resume_game() -> void:
 
 func return_to_menu() -> void:
 	_leave_drive()
+	_mic_open = false
+	_radio_job = null
+	if is_instance_valid(_crowd_nodes):
+		_crowd_nodes.queue_free()
+	_crowd_nodes = null
 	if audio != null:
 		audio.stop_all()
 	ui.hide_ending()
@@ -430,7 +448,8 @@ func _campus_step(delta: float) -> void:
 	_hint_cooldown -= delta
 	if _hint_cooldown <= 0.0 and not player.has_focus():
 		_hint_cooldown = 0.1
-		ui.show_prompt(rules.hint(session.world_id, player.capture_pose()))
+		var radio_hint := broadcast().hint() if broadcast() != null else ""
+		ui.show_prompt(radio_hint if radio_hint != "" else rules.hint(session.world_id, player.capture_pose()))
 
 
 func _campus_interact() -> void:
@@ -451,6 +470,12 @@ func _campus_interact() -> void:
 	if day_rules != null and day_rules.seated:
 		_stand_up("我站了起来。")
 		return
+	var radio := broadcast()
+	if radio != null:
+		radio.set_context(_broadcast_context())
+		if radio.use_here():
+			_apply_broadcast_events()
+			return
 	var lift := elevator()
 	var result: Dictionary
 	var room: Variant = rules.room(session.world_id)
@@ -621,6 +646,9 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	if story().dead or story().over():
 		return
 	_facility_step()
+	_broadcast_step(delta)
+	if story().dead or story().over():
+		return
 	_anomaly_step(delta, day_rules, room, pose)
 	_audio_step(delta, watcher, day_rules, room, p)
 	_progress_step(watcher, day_rules, weird_now)
@@ -1161,6 +1189,181 @@ func _facility_travel(e: Dictionary) -> void:
 	else:
 		pose = campus().default_spawn(world)
 	travel(world, pose, false)
+
+
+# ---- the broadcast station and 《放学》 (features/story/broadcast_module.gd) ----
+
+var _mic_open := false
+var _radio_job: Variant = null   # {index, t, seconds, x, y, scene}
+var _crowd_nodes: Node3D
+
+
+func _broadcast_context() -> Dictionary:
+	var ctx := _facility_context()
+	var weird := anomaly()
+	var gates: Dictionary = CampusData.campus().get("gates", {})
+	var gn: Dictionary = gates.get("n", {"x": 514, "y": 95})
+	ctx.merge({"day": school().day, "diff": story().diff, "dead": story().dead, "hiding": player.hiding, "night": SchoolClock.is_night(school().tsec),
+		"anomaly_active": weird != null and weird.is_active(), "anomaly_id": weird.active_id() if weird != null else "",
+		"inspection_pending": school().inspection_pending(), "inspection_quiet": school().inspection_pending(),
+		"gate_n": Vector2(float(gn["x"]) * 2.0, float(gn["y"]) * 2.0)}, true)
+	return ctx
+
+
+func _broadcast_step(delta: float) -> void:
+	var radio := broadcast()
+	if radio == null:
+		return
+	radio.set_context(_broadcast_context())
+	if _mic_open:
+		if not radio.near_station() or Input.is_action_just_pressed("pause"):
+			_close_mic()
+		else:
+			var want := Input.is_action_pressed("interact") or Input.is_action_pressed("ui_accept")
+			if want and not radio.held:
+				radio.hold(true)
+			elif not want and radio.held:
+				radio.hold(false)
+			var why := radio.reason()
+			ui.show_search(radio.progress / radio.reading_seconds() if radio.held else 0.0)
+			ui.show_prompt("按住 E 朗读 · %s · 已播完 %d/4 段%s" % [radio.paper_text(String(radio.b["selected"])) if radio.papers().has(radio.b["selected"]) else "手里没有这一页", int(radio.b["completed"]), "" if why == "" else " · " + why])
+	if _radio_job != null:
+		var j: Dictionary = _radio_job
+		var here := Vector2(float(radio._c["x"]), float(radio._c["y"]))
+		if session.world_id != String(j["scene"]) or here.distance_to(Vector2(float(j["x"]), float(j["y"]))) > 5.0:
+			_radio_job = null
+			ui.show_search(0.0)
+			ui.show_notice("我：手一松，没翻完。")
+		else:
+			j["t"] = float(j["t"]) + delta
+			ui.show_search(float(j["t"]) / float(j["seconds"]))
+			if float(j["t"]) >= float(j["seconds"]):
+				_radio_job = null
+				ui.show_search(0.0)
+				radio.job_done(int(j["index"]))
+	radio.tick(delta)
+	_show_crowd(radio)
+	_apply_broadcast_events()
+
+
+func _show_crowd(radio: BroadcastModule) -> void:
+	var p := radio.crowd()
+	var show := not p.is_empty() and session.world_id == "out"
+	if not show:
+		if is_instance_valid(_crowd_nodes):
+			_crowd_nodes.queue_free()
+		_crowd_nodes = null
+		return
+	var world := _campus_world()
+	if world == null:
+		return
+	if not is_instance_valid(_crowd_nodes):
+		_crowd_nodes = Node3D.new()
+		_crowd_nodes.name = "DismissalCrowd"
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.18, 0.2, 0.26)
+		var body := CapsuleMesh.new()
+		body.radius = 0.22
+		body.height = 1.65
+		body.material = mat
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 11
+		for i in 26:
+			var fig := MeshInstance3D.new()
+			fig.mesh = body
+			fig.position = Vector3(rng.randf_range(-2.6, 2.6), 0.825, rng.randf_range(-3.5, 3.5))
+			_crowd_nodes.add_child(fig)
+		world.add_child(_crowd_nodes)
+	var s := CampusGeometry.to_scene(null, Vector2(float(p["x"]), float(p["y"])))
+	_crowd_nodes.position = Vector3(s.x, 0.0, s.y)
+	_crowd_nodes.rotation.y = -float(p["angle"]) - PI * 0.5
+
+
+func _open_mic() -> void:
+	var radio := broadcast()
+	if radio == null:
+		return
+	var papers := radio.papers()
+	if papers.is_empty():
+		ui.show_notice("我：手里没有通知稿。")
+		return
+	_choice_count += 1
+	var mine := _choice_count
+	_choice_handler = func(index: int) -> void:
+		if mine != _choice_count or index < 0 or index >= papers.size():
+			return
+		radio.select(String(papers[index]))
+		_mic_open = true
+		ui.show_notice("话筒：按住 E 朗读，松开会重读当前段；走开或按 Esc 离开。")
+	player.enabled = false
+	player.clear_input()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	var reason := radio.reason()
+	ui.show_choice("广播站 · 话筒%s\n手中的稿纸：" % ("" if reason == "" else "（" + reason + "）"), papers.map(func(id: String) -> String: return radio.paper_text(id)))
+
+
+func _close_mic() -> void:
+	_mic_open = false
+	if broadcast() != null:
+		broadcast().hold(false)
+	ui.show_search(0.0)
+
+
+func _apply_broadcast_events() -> void:
+	var radio := broadcast()
+	if radio == null:
+		return
+	for e: Dictionary in radio.take_events():
+		match e["kind"]:
+			"notice", "toast":
+				ui.show_notice(String(e["text"]))
+			"san":
+				school().san = maxf(school().san + float(e["amount"]), float(e.get("min", -INF)))
+			"save":
+				if not story().dead:
+					save_game()
+			"fact":
+				fact({"kind": "broadcast", "what": e["what"], "real": e.get("real", true)})
+			"job":
+				var w := Vector2(float(radio._c["x"]), float(radio._c["y"]))
+				_radio_job = {"index": int(e["index"]), "t": 0.0, "seconds": float(e["seconds"]), "x": w.x, "y": w.y, "scene": session.world_id}
+			"guard":
+				if facilities() != null:
+					facilities().set_context(_facility_context())
+					facilities()._guard()
+					_apply_facility_events()
+			"note":
+				audio.cue("ding", -12.0, [1.0, 1.0, 1.12, 1.26, 1.0, 0.75][int(e["note"])])
+			"radio":
+				audio.cue("static", -6.0, 1.0 if bool(e["real"]) else 0.87)
+			"bell_start":
+				_close_mic()
+				audio.loop("dismissal", true, -10.0)
+			"bell_stop":
+				audio.loop("dismissal", false)
+			"mic":
+				_open_mic()
+			"choice":
+				_choice_count += 1
+				var mine := _choice_count
+				_choice_handler = func(index: int) -> void:
+					var r := broadcast()
+					if r != null and mine == _choice_count:
+						r.set_context(_broadcast_context())
+						r.choose(index)
+						_apply_broadcast_events()
+				player.enabled = false
+				player.clear_input()
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				ui.show_choice(String(e["text"]), e["labels"])
+			"kill":
+				_close_mic()
+				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
+				return
+			"ending":
+				audio.loop("dismissal", false)
+				_reach_ending(String(e["id"]))
+				return
 
 
 # ---- the garage and the drive (features/garage) ----

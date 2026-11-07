@@ -288,6 +288,12 @@ func _make(id: String) -> AudioStreamWAV:
 				lp += ((rng.randf() * 2.0 - 1.0) - lp) * 0.02
 				d[i] = lp * (3.2 + 1.4 * sin(TAU * t / 3.0))
 			return _wav(_fade_loop(d), true)
+		"dismissal":
+			var d := _buf(2.0)
+			for i in d.size():
+				var t := float(i) / RATE
+				d[i] = (sin(TAU * 880.0 * t) * 0.5 + sin(TAU * 1320.0 * t) * 0.25) * (0.6 + 0.4 * sin(TAU * 28.0 * t)) * 0.5
+			return _wav(d, true)
 		"engine":
 			var d := _buf(2.0)
 			for i in d.size():

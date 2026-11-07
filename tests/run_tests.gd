@@ -69,6 +69,7 @@ func _run() -> void:
 	_test_achievements()
 	_test_garage_rules()
 	_test_facility_rules()
+	_test_broadcast_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -1031,6 +1032,160 @@ func _of_kind(events: Array, kind: String) -> Array:
 	return events.filter(func(e: Dictionary) -> bool: return e["kind"] == kind)
 
 
+func _spot(room_id: String, at: Array) -> Vector2:
+	var r := CampusData.layout(room_id)
+	return Vector2(float(r["ox"]) + (float(at[0]) + 0.5) * float(r["tw"]), float(r["oy"]) + (float(at[1]) + 0.5) * float(r["th"]))
+
+
+func _bctx(scene: String, at: Vector2, bag: Array, extra: Dictionary = {}) -> Dictionary:
+	var c := _fctx(scene, {"bag": bag, "x": at.x, "y": at.y})
+	c.merge({"day": 2, "tsec": 1100.0, "diff": "easy", "dead": false, "hiding": false, "night": false, "anomaly_active": false, "anomaly_id": "",
+		"inspection_pending": false, "inspection_quiet": false, "gate_n": Vector2(1028, 190)}, true)
+	c.merge(extra, true)
+	return c
+
+
+func _test_broadcast_rules() -> void:
+	var rooms := CampusData.rooms()
+	var radio := BroadcastModule.new(rooms, CampusData.patrol_nav())
+	radio.reset()
+	radio.set_seed(42)
+	check(BroadcastModule.hash01(42, "false-notice") == BroadcastModule.hash01(42, "false-notice") and BroadcastModule.hash01(42, "a") != BroadcastModule.hash01(42, "b"), "the route hash is stable per seed")
+	check(BroadcastModule.in_window(2, 1040.0) and not BroadcastModule.in_window(1, 1100.0) and not BroadcastModule.in_window(2, 1339.0 + 1.0), "the reading window: day 2 on, 17:20 to lights out")
+	var bag: Array = []
+	var station := _spot("admin2", BroadcastModule.STATION)
+	# The pieces.
+	radio.set_context(_bctx("admin5", _spot("admin5", [6, 2]), bag))
+	check(radio.use_here() and bag.has("archivekey"), "the archive key is in the fifth-floor office")
+	radio.set_context(_bctx("gear1", _spot("gear1", [3, 1]), bag))
+	check(radio.use_here() and bag.has("broadcastfuse") and bag.has("snack") and bool(radio.b["boxSnack"]), "the spare fuse and a snack are in the gear room")
+	radio.set_context(_bctx("guard1", _spot("guard1", [2, 4]), bag, {"night": true}))
+	check(radio.use_here() and bag.has("broadcastkey"), "at night the guard's register gives the station key")
+	radio.set_context(_bctx("admin2", station, bag))
+	check(radio.use_here() and radio.take_events().any(func(e: Dictionary) -> bool: return e["kind"] == "choice"), "the station opens its menu")
+	radio.choose(0)
+	check(bool(radio.b["book"]), "the log book is read")
+	radio.menu()
+	radio.take_events()
+	radio.choose(1)
+	check(bool(radio.b["fuse"]) and not bag.has("broadcastfuse"), "the fuse is installed")
+	# Page 1: the archive cabinet, opened with the key, a held search, then the page.
+	radio.set_context(_bctx("admin1", _spot("admin1", [46, 2]), bag))
+	radio.use_here()
+	var ev := radio.take_events()
+	check(not bag.has("archivekey") and bool(radio.b["archiveOpen"]) and _of_kind(ev, "job")[0]["seconds"] == 1.4, "the key opens the cabinet and the page takes 1.4 s")
+	radio.job_done(0)
+	var page: Dictionary = _of_kind(radio.take_events(), "choice")[0]
+	check(String(page["text"]).contains("蓝黑墨水 · 第二天"), "the page shows its ink and date")
+	radio.choose(0)
+	check(bag.has("notice1"), "the first page is taken")
+	# Page 2: the piano lock.
+	radio.set_context(_bctx("lab5", _spot("lab5", [5, 1]), bag, {"clock": 900.0}))
+	radio.use_here()
+	radio.take_events()
+	radio.choose(1)
+	check(int(radio.b["pianoFails"]) == 1 and (radio.b["piano"] as Array).is_empty(), "a wrong note resets the tune")
+	for pick: int in [0, 2, 1, 3]:
+		radio.take_events()
+		radio.choose(pick)
+	var piano_ev := radio.take_events()
+	check(_of_kind(piano_ev, "choice").size() >= 1 and String(_of_kind(piano_ev, "choice").back()["text"]).contains("琴凳里夹着通知稿"), "1 · 3 · 2 · 5 opens the piano bench")
+	radio.choose(0)
+	check(bag.has("notice2"), "the second page is taken")
+	# Page 3 at night, page 4 with a coin and the back to the stairs.
+	radio.set_context(_bctx("guard1", _spot("guard1", [2, 4]), bag, {"night": false}))
+	check(not radio.use_here(), "by day the register is behind the night window")
+	radio.set_context(_bctx("guard1", _spot("guard1", [2, 4]), bag, {"night": true}))
+	radio.use_here()
+	radio.take_events()
+	radio.job_done(2)
+	radio.take_events()
+	radio.choose(0)
+	check(bag.has("notice3"), "the third page is taken at night")
+	var roof := _spot("teach6", [20, 2])
+	radio.set_context(_bctx("teach6", roof, bag, {"ang": 0.0}))
+	radio.use_here()
+	check(_notices(radio.take_events()).has("喇叭箱的螺丝槽很宽，需要一枚硬币。"), "the speaker box needs a coin")
+	bag.append("coin")
+	var stairs := Vector2(float(rooms["teach6"]["ox"]) + 12.5 * float(rooms["teach6"]["tw"]), float(rooms["teach6"]["oy"]) + 16.5 * float(rooms["teach6"]["th"]))
+	var toward := atan2(stairs.y - roof.y, stairs.x - roof.x)
+	radio.set_context(_bctx("teach6", roof, bag, {"ang": toward}))
+	radio.use_here()
+	check(_notices(radio.take_events()).has("喇叭箱背面的字：「拧螺丝时，背对楼梯口。」"), "facing the stairs is refused")
+	radio.set_context(_bctx("teach6", roof, bag, {"ang": toward + PI}))
+	radio.use_here()
+	check(_of_kind(radio.take_events(), "job")[0]["seconds"] == 2.0, "with the back to the stairs it takes 2 s")
+	radio.job_done(3)
+	radio.take_events()
+	radio.choose(0)
+	check(bag.has("notice4") and radio.assembled(), "all four pages")
+	# Reading.
+	radio.set_context(_bctx("admin2", station, bag, {"tsec": 1000.0}))
+	check(not radio.hold(true) and radio.reason() == "记录本：第二天起，第八节下课后、熄灯前播出。", "outside the window the microphone stays off")
+	radio.set_context(_bctx("admin2", station, bag))
+	radio.select("notice2")
+	check(radio.hold(true), "in the window reading starts")
+	radio.tick(0.5)
+	check(not radio.held and _notices(radio.take_events()).has("页码不对，得从当前这一段开始。"), "the wrong page stops the reading")
+	for n in 4:
+		radio.select("notice%d" % (n + 1))
+		radio.hold(true)
+		for _i in 16:
+			radio.tick(1.0)
+	check(radio.b["phase"] == "bell" and int(radio.b["completed"]) == 4 and int(radio.b["attemptDay"]) == 2, "four pages of 15 s ring the 60-second bell")
+	var ev2 := radio.take_events()
+	check(not _of_kind(ev2, "bell_start").is_empty(), "the bell starts")
+	radio.set_context(_bctx("out", Vector2(1028, 190), bag))
+	var c0 := radio.crowd()
+	for _i in 20:
+		radio.tick(1.0)
+	var c1 := radio.crowd()
+	check(not c0.is_empty() and Vector2(float(c1["x"]), float(c1["y"])).distance_to(Vector2(1028, 205)) < Vector2(float(c0["x"]), float(c0["y"])).distance_to(Vector2(1028, 205)), "the crowd walks to the north gate")
+	radio.set_context(_bctx("out", Vector2(float(c1["x"]), float(c1["y"])), bag))
+	check(radio.cover(), "next to the crowd the player is covered")
+	for _i in 30:
+		radio.tick(1.0)
+	var c2 := radio.crowd()
+	radio.set_context(_bctx("out", Vector2(float(c2["x"]), float(c2["y"])), bag))
+	radio.tick(0.1)
+	check(_of_kind(radio.take_events(), "ending").size() == 1, "walking out with the crowd is 《放学》")
+	# The red page and the end of the bell.
+	var red := BroadcastModule.new(rooms, CampusData.patrol_nav())
+	red.reset()
+	red.b["book"] = true
+	red.b["fuse"] = true
+	var kit: Array = ["notice1", "notice2", "notice3", "notice4", "notice_fake"]
+	red.set_context(_bctx("admin2", station, kit))
+	red.select("notice_fake")
+	red.hold(true)
+	red.tick(1.0)
+	red.tick(1.1)
+	check(_of_kind(red.take_events(), "kill")[0]["source"] == "misread", "reading the red page is the misread death")
+	red.b["phase"] = "bell"
+	red.b["bell"] = 0.5
+	red.b["completed"] = 4
+	red.tick(1.0)
+	check(red.b["phase"] == "collect" and int(red.b["completed"]) == 0, "when the bell stops the pages wait for tomorrow")
+	# Calls on the speakers.
+	var calls := BroadcastModule.new(rooms, CampusData.patrol_nav())
+	calls.reset()
+	calls.set_context(_bctx("teach1", Vector2.ZERO, []))
+	check(calls.announce(false, 0) and calls.b["current"]["room"] == "lab4", "a false call names a room")
+	calls.set_context(_bctx("admin2", station, []))
+	check(calls.verify() and _of_kind(calls.take_events(), "fact")[0]["real"] == false, "the log book shows it was false")
+	calls.set_context(_bctx("lab4", Vector2.ZERO, []))
+	calls.tick(5.0)
+	calls.tick(5.0)
+	var drained := calls.take_events()
+	check(_notices(drained).has("喇叭里开始念你的名字。啸叫越来越尖——先离开这间屋子。") and not _of_kind(drained, "san").is_empty(), "the false call's room drains SAN after 8 s")
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(radio.capture()))
+	var back := BroadcastModule.new(rooms, CampusData.patrol_nav())
+	back.reset()
+	check(back.validate(saved).is_empty(), "the broadcast state survives JSON")
+	back.restore(saved)
+	check(bool(back.b["book"]) and bool(back.b["fuse"]) and back.seed_value == 42, "and restores")
+
+
 func _test_facility_rules() -> void:
 	var rooms := CampusData.rooms()
 	var fac := FacilitiesModule.new(rooms, CampusData.layout("out"), CampusData.campus())
@@ -1626,6 +1781,7 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_death_scene(app)
 	await _test_car_route(app)
 	await _test_portal_route(app)
+	await _test_dismissal_route(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
 
@@ -1850,7 +2006,10 @@ func _test_achievement_flow(app: GameApp) -> void:
 func _test_archive(app: GameApp) -> void:
 	var rows := DeathArchive.rows({"sources": {"patrol": 3, "an:rain": 1}}, {"face": 1})
 	check(rows.size() == DeathArchive.DEATHS.size() + DeathArchive.ENDS.size() and DeathArchive.known(rows) == 3, "the archive counts two deaths and one ending as recorded")
-	check(rows[0]["on"] and rows[0]["count"] == 3 and not rows[1]["on"], "a repeated death only adds to its counter; unseen ones stay locked")
+	var by_name := {}
+	for r: Dictionary in rows:
+		by_name[r["name"]] = r
+	check(by_name["点名"]["on"] and by_name["点名"]["count"] == 3 and not by_name["那根弦"]["on"], "a repeated death only adds to its counter; unseen ones stay locked")
 	check(rows.filter(func(r: Dictionary) -> bool: return not r["on"] and r["memo"] != "").size() > 0 and DeathArchive.DEATHS.all(func(d: Array) -> bool: return not String(d[0]).begins_with("void")), "locked rows carry the record text for the UI to withhold, and no maze deaths are listed")
 	var ids := {}
 	for k in StoryModule.SOURCES:
@@ -1990,6 +2149,62 @@ func _test_portal_route(app: GameApp) -> void:
 	await _frames(2)
 	check(app.story().ended == "portal" and app.ui.ending_panel.visible, "walking in is the 《门》 ending")
 	check(app.achievements().unlocked.has("e.end_portal"), "with its achievement")
+	app.return_to_menu()
+	DirAccess.remove_absolute(app._profile_path())
+
+
+## 《放学》 through the app: the microphone held with E, the bell, the crowd, the north gate.
+func _test_dismissal_route(app: GameApp) -> void:
+	app.saves.clear()
+	app.start_new_game()
+	await _frames(3)
+	app._stand_up()
+	app.patrol().pat["safety"] = 999.0
+	var day := app.school()
+	day.day = 2
+	day.tsec = 1100.0
+	for k: String in ["notice1", "notice2", "notice3", "notice4"]:
+		app.items().add(k)
+	var radio := app.broadcast()
+	radio.b["book"] = true
+	radio.b["fuse"] = true
+	var a2 := CampusData.layout("admin2")
+	var station := _spot("admin2", BroadcastModule.STATION) + Vector2(0, 9)
+	app.travel("admin2", _campus_pose(a2, station, -PI * 0.5), false)
+	await _frames(2)
+	app._campus_interact()
+	await _frames(2)
+	check(app.ui.choice_open(), "E at the station opens its menu")
+	app._choice_made(3)
+	await _frames(2)
+	check(app.ui.choice_open(), "the microphone asks which paper")
+	app._choice_made(0)
+	await _frames(2)
+	check(app._mic_open, "the microphone is live")
+	Input.action_press("interact")
+	for n in 4:
+		for _i in 32:
+			app._broadcast_step(0.5)
+		if n < 3:
+			check(int(radio.b["completed"]) == n + 1, "page %d is read while E is held" % (n + 1))
+			radio.select("notice%d" % (n + 2))
+	Input.action_release("interact")
+	check(radio.b["phase"] == "bell" and not app._mic_open, "the fourth page rings the bell")
+	app.travel("out", {"position": [0, 0.05, 0], "yaw": 0.0, "pitch": 0.0}, false)
+	await _frames(2)
+	var won := false
+	for _i in 60:
+		var p := radio.crowd()
+		if not p.is_empty():
+			var s := CampusGeometry.to_scene(null, Vector2(float(p["x"]), float(p["y"])))
+			app.player.place({"position": [s.x, 0.05, s.y], "yaw": 0.0, "pitch": 0.0})
+		app._broadcast_step(1.0)
+		await process_frame
+		if app.story().ended != "":
+			won = true
+			break
+	check(won and app.story().ended == "dismissal" and app.ui.ending_panel.visible, "following the crowd out of the north gate is 《放学》")
+	check(app.achievements().unlocked.has("e.end_dismissal"), "with its achievement")
 	app.return_to_menu()
 	DirAccess.remove_absolute(app._profile_path())
 

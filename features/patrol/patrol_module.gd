@@ -268,8 +268,12 @@ func exempt() -> bool:
 		or (bool(_c.get("excused", false)) and not bool(_c.get("night", false)) and region() == null)
 
 
+## patrolCamouflage hook: the dismissal crowd hides the player entirely.
+var camouflage: Callable
+
+
 func camouflaged() -> bool:
-	return false # patrolCamouflage hook (a module may hide the player entirely): none ported.
+	return camouflage.is_valid() and bool(camouflage.call())
 
 
 func hunting() -> bool:
