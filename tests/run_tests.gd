@@ -64,6 +64,7 @@ func _run() -> void:
 	_test_inventory_rules()
 	_test_story_rules()
 	_test_patrol_rules()
+	_test_anomaly_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -812,6 +813,204 @@ func _route_towards(from: String, to: String, pm: PatrolModule) -> int:
 		if pm.route_nodes[i - 1] == from and pm.route_nodes[i] == to:
 			return i
 	return 1
+
+
+func _actx(scene: String, w: Vector2, extra: Dictionary = {}) -> Dictionary:
+	var c := {"scene": scene, "x": w.x, "y": w.y, "ang": 0.0, "tsec": 700.0, "day": 1, "diff": "easy", "san": 100.0, "viol": 0.0, "moving": false,
+		"running": false, "seated": false, "night": false, "need_where": "教室", "tile": ".", "on_field": false, "in_classroom": false, "game_clock": 700.0,
+		"pressure_anomaly": 1.0, "bag": [], "item_names": {}, "dead": false, "hiding": false, "patrol_chase": false, "choice_open": false, "brolly": false,
+		"inspection_quiet": false, "in_lift": false}
+	c.merge(extra, true)
+	return c
+
+
+func _an_run(am: AnomalyModule, ctx: Dictionary, seconds: float, stop_on: String = "") -> Array:
+	var got: Array = []
+	var t := 0.0
+	while t < seconds:
+		am.set_context(ctx)
+		am.tick(0.1)
+		for e: Dictionary in am.take_events():
+			got.append(e)
+			if e["kind"] == stop_on:
+				return got
+		t += 0.1
+	return got
+
+
+func _an_force(am: AnomalyModule, id: String, ctx: Dictionary) -> void:
+	am.set_context(ctx)
+	am.an["id"] = id
+	am.an["active"] = true
+	am.an["t"] = 0.0
+	am.an["acc"] = 0.0
+	am.an["data"] = {}
+	am._on(id)
+	am.take_events()
+
+
+func _kinds(events: Array) -> Array:
+	return events.map(func(e: Dictionary) -> String: return e["kind"])
+
+
+func _test_anomaly_rules() -> void:
+	check(AnomalyModule.IDS.size() == 26 and AnomalyModule.DEFS.size() == 26, "all 26 anomalies are defined")
+	for id: String in AnomalyModule.IDS:
+		check(AnomalyModule.DEFS[id].has("msg") and AnomalyModule.DEFS[id].has("dfx"), "anomaly %s has its message and death scene" % id)
+	var t1 := CampusData.layout("teach1")
+	var seat_w := CampusGeometry.tile_center(t1, 40, 9)
+	var class_ctx := _actx("teach1", seat_w, {"in_classroom": true, "tile": "d"})
+	var am := CampusData.make_anomaly()
+	am.reset()
+	am.set_seed(5)
+	am.begin_run("easy")
+	check(is_equal_approx(float(am.an["next"]), 60.0), "the first anomaly is due after 60 s on 预知梦")
+	var hard := CampusData.make_anomaly()
+	hard.reset()
+	hard.begin_run("hard")
+	check(is_equal_approx(float(hard.an["next"]), 40.0), "and after 40 s on 梦魇")
+	var evs := _an_run(am, class_ctx, 61.0, "notice")
+	check(am.is_active() and am.active_id() == "chalk", "the first anomaly of a run is the blackboard foretelling (%s)" % am.active_id())
+	check(evs.size() > 0 and evs[0]["text"] == AnomalyModule.DEFS["chalk"]["msg"], "its first line is the old message")
+	_an_run(am, class_ctx, 20.0)
+	check(not am.is_active() and float(am.an["next"]) >= 10.0 and am.hist == ["chalk"], "it ends after 16 s and the next one is paced (%.1f s)" % float(am.an["next"]))
+	am.set_context(class_ctx)
+	var iv := am._interval()
+	check(iv >= 10.0 and iv <= 80.0, "intervals stay inside the old 40–64 s band, scaled by SAN, violation and pressure (%.1f)" % iv)
+	# No lethal anomaly in the first-day dream; the same kind never runs twice in a row.
+	var picks := {}
+	var lethal_early := 0
+	for i in 60:
+		var pm := CampusData.make_anomaly()
+		pm.reset()
+		pm.set_seed(100 + i)
+		pm.hist = ["turn"]
+		pm.set_context(_actx("out", Vector2(1068, 1984), {"need_where": "自由"}))
+		var pick := pm._pick()
+		picks[pick] = true
+		if pick != "" and AnomalyModule.DEFS[pick].get("late", false):
+			lethal_early += 1
+		if i == 0:
+			check(pick != "turn", "the previous anomaly is not picked again")
+	check(lethal_early == 0, "late anomalies stay out of the first-day dream")
+	# Lethal ones.
+	var field := Vector2(1068, 1984)
+	var rain := CampusData.make_anomaly()
+	rain.reset()
+	rain.set_seed(1)
+	var out_ctx := _actx("out", field, {"need_where": "自由"})
+	rain.set_context(out_ctx)
+	check(not rain.under_roof(), "the test spot is not under a roof")
+	_an_force(rain, "rain", out_ctx)
+	var got := _an_run(rain, out_ctx, 20.0, "kill")
+	check(_kinds(got).has("kill") and got[got.size() - 1]["fx"] == "drown", "unsheltered in the rain you drown after 14 s")
+	var sheltered := CampusData.make_anomaly()
+	sheltered.reset()
+	_an_force(sheltered, "rain", _actx("teach1", seat_w))
+	check(not _kinds(_an_run(sheltered, _actx("teach1", seat_w), 25.0)).has("kill"), "indoors the rain never kills")
+	var moth := CampusData.make_anomaly()
+	moth.reset()
+	_an_force(moth, "moth", out_ctx)
+	got = _an_run(moth, out_ctx, 10.0, "kill")
+	check(_kinds(got).has("kill") and got[got.size() - 1]["fx"] == "swarm", "staying by the moths kills in 6.5 s")
+	var run_away := _an_run(moth, _actx("out", field + Vector2(400, 0), {"need_where": "自由"}), 3.0)
+	check(not _kinds(run_away).has("kill"), "walking away from the swarm source stops it")
+	var rite := CampusData.make_anomaly()
+	rite.reset()
+	var lab: Dictionary = CampusData.layout("lab2")
+	var lab_ctx := _actx("lab2", CampusGeometry.tile_center(lab, 20, 10))
+	_an_force(rite, "rite", lab_ctx)
+	var circle: Dictionary = rite.an["data"]["c"]
+	var stand := _actx("lab2", Vector2(circle["x"], circle["y"]))
+	got = _an_run(rite, stand, 5.0, "kill")
+	check(_kinds(got).has("kill") and got[got.size() - 1]["fx"] == "ring", "standing in the chalk circle kills in 2.2 s")
+	var necker := CampusData.make_anomaly()
+	necker.reset()
+	var edge := _actx("out", Vector2((830.0 - 20.0) * 2.0, 1500.0), {"need_where": "自由", "day": 2})
+	_an_force(necker, "necker", edge)
+	got = _an_run(necker, edge, 6.0, "kill")
+	check(_kinds(got).has("kill") and got[got.size() - 1]["fx"] == "neck", "next to the east wall the long-necked passer kills")
+	var cup := CampusData.make_anomaly()
+	cup.reset()
+	var tb: Dictionary = {}
+	for o: Dictionary in CampusData.layout("out")["objects"]:
+		if o["id"] == "teach":
+			tb = o
+	var below := Vector2((float(tb["x"]) + float(tb["w"]) / 2.0) * 2.0, float(tb["y"]) * 2.0 - 9.0)
+	var cup_ctx := _actx("out", below, {"need_where": "自由"})
+	cup.set_context(cup_ctx)
+	check(cup._when("cup"), "next to a tall wall on the open side the cup can fall")
+	_an_force(cup, "cup", cup_ctx)
+	got = _an_run(cup, cup_ctx, 6.0, "kill")
+	check(_kinds(got).has("kill") and got[got.size() - 1]["fx"] == "floor", "standing still under the window the cup lands on you")
+	var dodge := CampusData.make_anomaly()
+	dodge.reset()
+	_an_force(dodge, "cup", cup_ctx)
+	dodge._cola_owe() # anStart owes the can when a cup really starts; the forced start skips it
+	var step_away := _actx("out", below + Vector2(60, 0), {"need_where": "自由"})
+	var t_run := 0.0
+	var killed := false
+	while t_run < 6.0:
+		var ctx_now := cup_ctx if t_run < 0.9 else step_away
+		dodge.set_context(ctx_now)
+		dodge.tick(0.1)
+		killed = killed or _kinds(dodge.take_events()).has("kill")
+		t_run += 0.1
+	check(not killed, "moving away once it falls dodges the cup")
+	check(dodge.cola_pending != null, "a cup that started owes one falling can")
+	# Cola: at night, outside, after the settle time.
+	var night_ctx := _actx("out", field, {"need_where": "宿舍", "night": true, "tsec": 1400.0})
+	dodge.an["active"] = false
+	dodge.an["id"] = ""
+	dodge.an["next"] = 99.0
+	_an_run(dodge, night_ctx, 2.0)
+	check(not dodge.is_active(), "the can waits through the settle time")
+	_an_run(dodge, night_ctx, 1.0)
+	check(dodge.is_active() and dodge.active_id() == "cola" and dodge.cola_pending == null, "then the owed can starts")
+	# Non-lethal rules.
+	var broad := CampusData.make_anomaly()
+	broad.reset()
+	_an_force(broad, "broad", _actx("teach1", seat_w, {"moving": true}))
+	got = _an_run(broad, _actx("teach1", seat_w, {"moving": true}), 3.0, "hurt")
+	check(_kinds(got).has("hurt") and absf(float(got[got.size() - 1]["amount"]) - 18.0 * 0.9) < 0.001, "moving during the roll call costs 18 SAN (×0.9 on 预知梦)")
+	var bell := CampusData.make_anomaly()
+	bell.reset()
+	_an_force(bell, "bell13", class_ctx)
+	got = _an_run(bell, _actx("teach1", seat_w, {"seated": true}), 5.0)
+	check(not bell.is_active() and _kinds(got).has("notice"), "sitting in teach1 during the bells ends it kindly")
+	# The roster: ignoring it costs 18 violation when it ends.
+	var roster := CampusData.make_anomaly()
+	roster.reset()
+	_an_force(roster, "roster", class_ctx)
+	got = _an_run(roster, _actx("teach1", seat_w + Vector2(300, 0)), 20.0)
+	check(_kinds(got).has("violation") and not roster.is_active(), "an ignored roster ends with +18 violation")
+	var near_ctx := _actx("teach1", seat_w)
+	roster.reset()
+	_an_force(roster, "roster", near_ctx)
+	check(roster.near_roster(), "standing by the roster allows the interaction")
+	roster.use_roster(true)
+	var written := roster.take_events()
+	check(_kinds(written).has("san") and roster.an["data"]["done"], "writing the name back with a pen restores SAN and settles it")
+	# A timed choice (turn): not turning round for 7.8 s is the good outcome.
+	var turn := CampusData.make_anomaly()
+	turn.reset()
+	turn.set_seed(2)
+	_an_force(turn, "turn", class_ctx)
+	turn.an["data"]["smile"] = false
+	var asked := _an_run(turn, class_ctx, 2.0, "choice")
+	check(_kinds(asked).has("choice") and asked[asked.size() - 1]["labels"] == ["不回头", "回头看"], "the tap on the shoulder asks whether to look back")
+	turn.choose("no")
+	got = _an_run(turn, class_ctx, 9.0)
+	check(_kinds(got).has("san") and not turn.is_active(), "not looking back ends it with +6 SAN")
+	# Save round trip.
+	var data: Dictionary = JSON.parse_string(JSON.stringify(rite.capture()))
+	check(rite.validate(data).is_empty(), "anomaly state survives JSON")
+	var again := CampusData.make_anomaly()
+	again.reset()
+	again.restore(data)
+	check(again.hist == rite.hist and again.an["active"] == rite.an["active"], "anomaly state restores")
+	data["an"]["id"] = "not-an-anomaly"
+	check(not rite.validate(data).is_empty(), "unknown anomaly ids are refused")
 
 
 func _night_hunt(scene: String) -> bool:

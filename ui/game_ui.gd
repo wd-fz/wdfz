@@ -70,6 +70,9 @@ func _input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	if _hurt_rect != null and _hurt_level > 0.0:
+		_hurt_level = maxf(0.0, _hurt_level - delta * 0.5)
+		_hurt_rect.color.a = _hurt_level
 	if _toast_seconds > 0.0:
 		_toast_seconds -= delta
 		%Toast.visible = _toast_seconds > 0.0
@@ -318,7 +321,41 @@ func hide_death() -> void:
 	_death_fade.color.a = 0.0
 
 
-func show_choice(text: String, labels: Array) -> void:
+var _choice_timer_label: Label
+
+
+## Seconds left of a timed choice ("超时随机选择"); 0 hides the line.
+func show_choice_timer(seconds: float) -> void:
+	if _choice_timer_label == null:
+		_choice_timer_label = Label.new()
+		_choice_timer_label.modulate = Color(0.85, 0.8, 0.6)
+		_choice_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_choice_text.get_parent().add_child(_choice_timer_label)
+	_choice_timer_label.visible = seconds > 0.0
+	_choice_timer_label.text = "剩余 %d 秒 · 超时随机选择" % int(ceil(seconds))
+
+
+## The hurt flash (VisualState.hurt / flash): a red-white pulse that fades.
+var _hurt_rect: ColorRect
+var _hurt_level := 0.0
+
+
+func flash_hurt(strength: float) -> void:
+	if _hurt_rect == null:
+		_hurt_rect = ColorRect.new()
+		_hurt_rect.name = "HurtFlash"
+		_hurt_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_hurt_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_hurt_rect.color = Color(0.55, 0.05, 0.05, 0.0)
+		$Root.add_child(_hurt_rect)
+	_hurt_level = maxf(_hurt_level, clampf(strength, 0.0, 0.7))
+
+
+var _choice_cancellable := true
+
+
+func show_choice(text: String, labels: Array, cancellable: bool = true) -> void:
+	_choice_cancellable = cancellable
 	for child in _choice_box.get_children():
 		child.queue_free()
 	_choice_text.text = text
@@ -327,10 +364,11 @@ func show_choice(text: String, labels: Array) -> void:
 		b.text = "%d. %s" % [i + 1, labels[i]]
 		b.pressed.connect(choice_selected.emit.bind(i))
 		_choice_box.add_child(b)
-	var cancel := Button.new()
-	cancel.text = "算了"
-	cancel.pressed.connect(choice_selected.emit.bind(-1))
-	_choice_box.add_child(cancel)
+	if cancellable:
+		var cancel := Button.new()
+		cancel.text = "算了"
+		cancel.pressed.connect(choice_selected.emit.bind(-1))
+		_choice_box.add_child(cancel)
 	choice_panel.visible = true
 
 
@@ -353,10 +391,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	var key := (event as InputEventKey).physical_keycode
 	if key >= KEY_1 and key <= KEY_9:
 		var index := key - KEY_1
-		if index < _choice_box.get_child_count() - 1:
+		if index < _choice_box.get_child_count() - (1 if _choice_cancellable else 0):
 			choice_selected.emit(index)
 			get_viewport().set_input_as_handled()
-	elif key == KEY_ESCAPE:
+	elif key == KEY_ESCAPE and _choice_cancellable:
 		choice_selected.emit(-1)
 		get_viewport().set_input_as_handled()
 

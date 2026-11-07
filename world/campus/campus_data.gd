@@ -87,6 +87,10 @@ static func patrol_nav() -> PatrolNav:
 	return _patrol_nav
 
 
+static func make_anomaly() -> AnomalyModule:
+	return AnomalyModule.new(rooms(), layout("out"), campus())
+
+
 static func make_patrol() -> PatrolModule:
 	return PatrolModule.new(patrol_nav(), rooms(), patrol_data())
 

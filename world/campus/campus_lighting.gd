@@ -32,6 +32,10 @@ var reduce_flash := false
 ## VisualState.patrolFlick / patrolRed: the patroller's approach beat and its threat tint.
 var patrol_flick := 0.0
 var patrol_red := 0.0
+## Anomaly effects on the light: the blackout, and the rains pressing the sky down (overcast eases 0.6 / s).
+var blackout := false
+var overcast_target := 0.0
+var overcast := 0.0
 var _lamp_pick := 0.0
 var _stair_rise := 0.0
 var _stair_levels := 0
@@ -121,6 +125,7 @@ func sky_colors(h: float) -> Array[Color]:
 ## Per frame: hour of day from the game clock (tsec), stair height for stairwell lamps.
 func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	time += dt
+	overcast += (overcast_target - overcast) * minf(1.0, dt * 0.6)
 	if _stair_rise > 0.0 and camera != null:
 		# addRoomLights in a stairwell: the three lamps follow the storey the player is on.
 		var floor_i := mini(_stair_levels - 2, int(floorf(maxf(0.0, camera.global_position.y - 1.65) / _stair_rise)))
@@ -155,6 +160,14 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var hs := Color(0.16, 0.21, 0.30).lerp(Color(0.70, 0.74, 0.78), day).lerp(Color(0.86, 0.62, 0.50), float(sun["gold"]) * 0.5)
 	var hg := Color(0.05, 0.05, 0.06).lerp(Color(0.34, 0.34, 0.31), day)
 	var ac := Color(0.36, 0.40, 0.50).lerp(Color(0.46, 0.48, 0.50), day)
+	if blackout and indoor:
+		amb *= 0.16
+		hemi *= 0.16
+		dirv *= 0.12
+		pt_k = 0.0
+	amb *= 1.0 - 0.25 * overcast
+	hemi *= 1.0 - 0.30 * overcast
+	dirv *= 1.0 - 0.70 * overcast
 	# Godot has no hemisphere light: fold it into the ambient term (sky and ground average).
 	var ambient := ac * amb + (hs + hg) * 0.5 * hemi
 	var strength := maxf(ambient.r, maxf(ambient.g, ambient.b))
@@ -172,6 +185,9 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 		var dens := 0.034 + (0.019 - 0.034) * day
 		if room != null:
 			dens *= 1.4
+		if overcast > 0.0:
+			dens += 0.030 * overcast
+			hz = hz * (1.0 - 0.4 * overcast) + Color(0.09, 0.10, 0.12) * 0.4 * overcast
 		env.fog_light_color = Color(hz.r, hz.g, hz.b)
 		env.fog_density = dens
 	else:
@@ -201,7 +217,7 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var lcfg: Dictionary = campus.get("light_cfg", {})
 	if camera != null:
 		cam_light.global_position = camera.global_position
-	cam_light.light_energy = (float(lcfg.get("camI", 0.9)) + float(lcfg.get("camIk", 0.45)) * day) * ENERGY_POINT * 9.0
+	cam_light.light_energy = (float(lcfg.get("camI", 0.9)) + float(lcfg.get("camIk", 0.45)) * day) * ENERGY_POINT * 9.0 * (0.08 if blackout and indoor else 1.0)
 	_lamps(dt, 1.0 - day if not indoor else 0.0, camera, sky, day)
 
 

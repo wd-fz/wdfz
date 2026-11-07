@@ -492,10 +492,12 @@ func _build_lighting() -> void:
 	lighting.setup(scene_id, layout if is_room() else null, get_node_or_null("Model"), rise)
 
 
-func update_lighting(dt: float, tsec: float, camera: Camera3D, patrol_flick: float = 0.0, patrol_red: float = 0.0) -> void:
+func update_lighting(dt: float, tsec: float, camera: Camera3D, patrol_flick: float = 0.0, patrol_red: float = 0.0, blackout: bool = false, overcast: float = 0.0) -> void:
 	if lighting != null:
 		lighting.patrol_flick = patrol_flick
 		lighting.patrol_red = patrol_red
+		lighting.blackout = blackout
+		lighting.overcast_target = overcast
 		lighting.update(dt, tsec, camera)
 
 

@@ -305,7 +305,7 @@
       if(o.k === 'roof' && !o.open) window.roofSolids(o).forEach(function(q){ boxes.push(toM(q.x0, q.y0, q.x1, q.y1, 'building', {id:o.id})); });
     });
     window.OUT_SOLID.forEach(function(q){ boxes.push(toM(q.x0 * SC, q.y0 * SC, q.x1 * SC, q.y1 * SC, 'solid')); });
-    var objs = window.OBJ.map(function(o){ return {id:o.id, k:o.k, x:o.x, y:o.y, w:o.w, h:o.h, door:o.door || null, name:o.n || null, open:!!o.open, door_world:o.k === 'roof' ? window.doorWorld(o) : null}; });
+    var objs = window.OBJ.map(function(o){ return {id:o.id, k:o.k, x:o.x, y:o.y, w:o.w, h:o.h, door:o.door || null, name:o.n || null, open:!!o.open, open1f:!!o.open1f, door_world:o.k === 'roof' ? window.doorWorld(o) : null}; });
     return {id:'out', SC:SC, U2M:U, TTILE:window.TTILE,
       bound:{x0:(B.x0 + 4) * SC * U, z0:(B.y0 + 4) * SC * U, x1:(B.x1 - 4) * SC * U, z1:(B.y1 - 4) * SC * U},
       boxes:boxes, objects:objs,
@@ -329,7 +329,7 @@
         items:window.ITEMS, item_glyph:window.ITEM_GLYPH, desk_loot:window.DESK_LOOT, lab_loot:window.LAB_LOOT,
         pill:{sec:window.PILL_SEC, rate:window.PILL_RATE}, bag_capacity:window.InventoryRules.capacity,
         own_podium:window.ClassroomLayout.podium(window.ClassroomLayout.ownSeat.classId),
-        room_lights:window.ROOM_LIGHTS, light_cfg:window.LCFG, sun:{rise:window.SUN_RISE, set:window.SUN_SET},
+        room_lights:window.ROOM_LIGHTS, light_cfg:window.LCFG, sun:{rise:window.SUN_RISE, set:window.SUN_SET}, bound_map:window.BOUND, meals:window.MEALS,
         stair_layout:window.STAIR_LAYOUT, stair_geometry:window.StairGeometry.config, spiral:window.SPIRAL,
         campus_link:window.CAMPUS_LINK ? {width:window.CAMPUS_LINK.width, annex:window.CAMPUS_LINK.annex, pairs:window.CAMPUS_LINK.pairs} : null,
         reference:'wd-fz/wd-fz.github.io@0bf508a47eac154c2a7047cdb45d314f61c48fdc'};

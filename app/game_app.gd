@@ -16,6 +16,8 @@ var _death_hold := 0.0
 var _death_wait := 0.0
 ## "" while alive, "fade" while the (not yet ported) death scene plays, "card" on the record card.
 var _death_phase := ""
+var _choice_left := 0.0
+var _choice_count := 0
 
 
 func _ready() -> void:
@@ -45,7 +47,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol()]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly()]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -55,6 +57,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func anomaly() -> AnomalyModule:
+	return session.modules.get_module(&"anomaly.world") as AnomalyModule if session != null else null
 
 
 func patrol() -> PatrolModule:
@@ -89,6 +95,9 @@ func start_new_game(difficulty: String = "easy") -> void:
 	var fate := candidate.modules.get_module(&"story.death") as StoryModule
 	if fate != null:
 		fate.diff = difficulty if difficulty in StoryModule.DIFFICULTIES else "easy"
+	var weirdness := candidate.modules.get_module(&"anomaly.world") as AnomalyModule
+	if weirdness != null:
+		weirdness.begin_run(fate.diff if fate != null else "easy")
 	var rules := candidate.modules.get_module(&"campus.world") as CampusModule
 	var pose := rules.start_pose() if rules != null and initial_world == rules.start_world() else router.current.spawn_pose()
 	# Game.start: the run begins seated on the player's own seat in teach1.
@@ -135,7 +144,8 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	var lift_rules := elevator()
 	var watcher := patrol()
 	if lift_rules != null and day_rules != null:
-		lift_rules.unsafe_check = func() -> bool: return day_rules.inspection_pending() or (watcher != null and watcher.local_chase())
+		var weird := anomaly()
+		lift_rules.unsafe_check = func() -> bool: return (weird != null and weird.is_active()) or day_rules.inspection_pending() or (watcher != null and watcher.local_chase())
 		if watcher != null:
 			lift_rules.closed_hook = watcher.elevator_closed
 	if watcher != null:
@@ -240,6 +250,11 @@ func return_to_menu() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if _choice_left > 0.0 and ui.choice_open():
+		_choice_left -= delta
+		ui.show_choice_timer(maxf(0.0, _choice_left))
+		if _choice_left <= 0.0:
+			ui.choice_selected.emit(-2) # timed out: random pick
 	if session != null and session.running and not get_tree().paused:
 		session.advance(delta, router.current.advances_calendar)
 		if school() == null or campus() == null or not campus().knows(session.world_id):
@@ -313,6 +328,11 @@ func _campus_interact() -> void:
 	var day_rules := school()
 	if patrol() != null and bool(patrol().hide["on"]):
 		_hide_out()
+		return
+	var weird := anomaly()
+	if weird != null and weird.near_roster():
+		var bag_here := items()
+		weird.use_roster(bag_here != null and (bag_here.has("pen") or bag_here.has("chalk")))
 		return
 	# tryInteract: a seated player stands up first.
 	if day_rules != null and day_rules.seated:
@@ -410,7 +430,8 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	player.hiding = hiding_now
 	if watcher != null:
 		watcher.set_context(_patrol_context(room, pose))
-	day_rules.step(delta, {"hiding": hiding_now, "patrol_threat": watcher != null and watcher.local_threat(), "world_id": session.world_id, "w": CampusGeometry.to_world(room, float(p[0]), float(p[2])),
+	var weird_now := anomaly()
+	day_rules.step(delta, {"anomaly_active": weird_now != null and weird_now.is_active(), "hiding": hiding_now, "patrol_threat": watcher != null and watcher.local_threat(), "world_id": session.world_id, "w": CampusGeometry.to_world(room, float(p[0]), float(p[2])),
 		"height": float(p[1]), "moving": player.moving, "running": player.sprinting, "calendar": router.current.advances_calendar,
 		"ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "pitch": float(pose["pitch"]),
 		"can_stand": _can_stand.bind(room, float(p[1])), "line_clear": _line_clear.bind(room), "snack": snack, "pill_san": pill_san})
@@ -419,6 +440,9 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 		world.show_silhouettes(day_rules.inspection_points(), room, float(p[1]))
 	player.can_sprint = day_rules.can_run(snack)
 	_patrol_step(delta, watcher, day_rules, room, pose)
+	if story().dead:
+		return
+	_anomaly_step(delta, day_rules, room, pose)
 	for text: String in day_rules.take_notices():
 		ui.show_notice(text)
 	var frozen := not router.current.advances_calendar
@@ -428,12 +452,16 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	ui.show_status(day_rules.place_name(session.world_id, float(p[1])), period, day_rules.period_class(frozen), day_rules.clock_text(bag != null and bag.has_clock()))
 	if hiding_now:
 		ui.show_prompt("出来")
+	elif weird_now != null and weird_now.near_roster():
+		ui.show_prompt("那张名单")
 	elif day_rules.seated and not player.has_focus():
 		ui.show_prompt("站起来")
 	ui.show_stamina(day_rules.stam, day_rules.stamina_max(), day_rules.tired)
 	var lit := _campus_world()
 	if lit != null:
-		lit.update_lighting(delta, day_rules.tsec, player.camera, watcher.flick if watcher != null else 0.0, watcher.red if watcher != null else 0.0)
+		var weird_light := anomaly()
+		lit.update_lighting(delta, day_rules.tsec, player.camera, watcher.flick if watcher != null else 0.0, watcher.red if watcher != null else 0.0,
+			weird_light != null and weird_light.blackout_now(), weird_light.overcast_target() if weird_light != null else 0.0)
 		if watcher != null:
 			var fig_scene := Vector2.ZERO
 			if watcher.figure_visible():
@@ -598,6 +626,8 @@ func kill(msg: String, fx: String, source: String) -> void:
 		school().survive(source)
 		if patrol() != null:
 			patrol().rescued()
+		if anomaly() != null:
+			anomaly().end_now()
 		_apply_result(result)
 		return
 	if not result.get("dead", false):
@@ -666,6 +696,8 @@ func _finish_death() -> void:
 		campus().close_all_doors()
 		if patrol() != null:
 			patrol().reset()
+		if anomaly() != null:
+			anomaly().dream_wake()
 		player.hiding = false
 		ui.show_hiding(false)
 		if items() != null:
@@ -726,6 +758,92 @@ func _patrol_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, 
 				return
 
 
+func _anomaly_context(room: Variant, pose: Dictionary) -> Dictionary:
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var day_rules := school()
+	var bag := items()
+	var watcher := patrol()
+	var item_names := {}
+	if bag != null:
+		for id: String in bag.bag:
+			item_names[id] = bag.item_name(id)
+	var tile := ""
+	if room != null:
+		tile = CampusGeometry.tile_at(room, w)
+	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "tsec": day_rules.tsec, "day": day_rules.day,
+		"diff": story().diff if story() != null else "easy", "san": day_rules.san, "viol": day_rules.viol, "moving": player.moving, "running": player.sprinting,
+		"seated": day_rules.seated, "night": SchoolClock.is_night(day_rules.tsec), "need_where": SchoolClock.need_where(day_rules.tsec), "tile": tile,
+		"on_field": day_rules.on_field(session.world_id, w), "in_classroom": day_rules.in_classroom_here(session.world_id, w),
+		"game_clock": day_rules.game_clock(), "pressure_anomaly": float(day_rules.pressure()["anomaly"]), "bag": bag.bag if bag != null else [],
+		"item_names": item_names, "dead": story() != null and story().dead, "hiding": watcher != null and bool(watcher.hide["on"]),
+		"patrol_chase": watcher != null and watcher.local_chase(), "choice_open": ui.choice_open(), "brolly": false,
+		"inspection_quiet": day_rules.inspection_pending() or day_rules.inspection_upcoming() or float(day_rules.inspection.get("calm", 0.0)) > 0.0,
+		"in_lift": session.world_id in ElevatorModule.RIDE_ROOMS, "can_stand": _can_stand.bind(room, float(p[1]))}
+
+
+func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: Dictionary) -> void:
+	var weird := anomaly()
+	if weird == null:
+		return
+	var ctx := _anomaly_context(room, pose)
+	weird.set_context(ctx)
+	weird.warning_seen(false)
+	weird.tick(delta)
+	for e: Dictionary in weird.take_events():
+		match e["kind"]:
+			"notice":
+				ui.show_notice(String(e["text"]))
+			"hurt":
+				day_rules.change_san(-float(e["amount"]), 0.0)
+				ui.flash_hurt(0.4 if e.get("quiet", false) else 0.65)
+				ui.show_notice(String(e["msg"]))
+			"san":
+				var after := day_rules.san + float(e["amount"])
+				if e.has("max"):
+					after = minf(after, float(e["max"]))
+				if e.has("min"):
+					after = maxf(after, float(e["min"]))
+				day_rules.san = after
+			"violation":
+				day_rules.add_violation(float(e["amount"]))
+			"remove_item":
+				if items() != null:
+					items().remove(String(e["id"]))
+			"advance_time":
+				day_rules.advance_game_time(float(e["minutes"]))
+			"turn":
+				var cur := player.capture_pose()
+				var turned: Dictionary = cur.duplicate(true)
+				turned["yaw"] = wrapf(float(cur["yaw"]) + float(e["angle"]), -PI, PI)
+				player.place(turned)
+			"choice":
+				_open_anomaly_choice(e)
+			"kill":
+				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
+				return
+
+
+func _open_anomaly_choice(e: Dictionary) -> void:
+	var ids: Array = e["ids"]
+	_choice_count += 1
+	var mine := _choice_count
+	_choice_handler = func(index: int) -> void:
+		var weird := anomaly()
+		if weird == null or mine != _choice_count:
+			return
+		if index < 0:
+			index = randi() % ids.size() # "算了" or the timeout: random like the old timed choice
+		if index < ids.size():
+			weird.choose(String(ids[index]))
+	_choice_left = float(e["timeout"])
+	player.enabled = false
+	player.clear_input()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	ui.show_choice(String(e["text"]), e["labels"], false)
+	ui.show_choice_timer(_choice_left)
+
+
 func _open_choice(choice: Dictionary) -> void:
 	var values: Array = choice["values"]
 	_choice_handler = func(index: int) -> void:
@@ -739,7 +857,10 @@ func _open_choice(choice: Dictionary) -> void:
 
 
 func _choice_made(index: int) -> void:
+	_choice_left = 0.0
 	ui.hide_choice()
+	if index == -2:
+		index = -1
 	var handler := _choice_handler
 	_choice_handler = Callable()
 	if session != null and session.running and not get_tree().paused:

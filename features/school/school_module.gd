@@ -456,7 +456,7 @@ func _san_tick(dt: float, nw: String, world_id: String, w: Vector2, ctx: Diction
 	if san <= 0.0:
 		_settle_san()
 		return
-	if inspection_active() or bool(ctx.get("patrol_threat", false)) or bool(ctx.get("hiding", false)):
+	if inspection_active() or bool(ctx.get("patrol_threat", false)) or bool(ctx.get("hiding", false)) or bool(ctx.get("anomaly_active", false)):
 		return # no daily recovery during an inspection, a patrol threat or while hiding.
 	var gain := dt * float(pressure()["passive"])
 	match nw:
