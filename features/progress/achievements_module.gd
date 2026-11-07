@@ -30,6 +30,8 @@ const LIST := {
 	"p.talents": ["p", "七种活法", "换了好几种活法，每一种都走出了校门。"],
 	"p.routes": ["p", "四条路", "我从这所学校出去过很多次，每一次走的路都不一样。"],
 	"p.five_routes": ["p", "五条路", "最后一次，学校以为我只是放学回家。"],
+	"e.end_international": ["e", "《外国语学生》", "队尾的人回头看了一眼。"],
+	"e.exchange_together": ["e", "一个都没少", "一个都没少。"],
 	"n.vault": ["n", "换一条路", "我摔在地上，腿一阵剧痛，还能走。"],
 	"n.first_aid": ["n", "还能走", "包扎好了，还能走。"],
 	"e.campus_fall": ["e", "楼层之外", "手离开了栏杆。"],
@@ -249,6 +251,10 @@ func _test(id: String, f: Dictionary) -> bool:
 			return kind == "garage" and f["what"] == "torch"
 		"n.rest":
 			return kind == "rest"
+		"e.end_international":
+			return kind == "ending" and f["id"] == "international"
+		"e.exchange_together":
+			return kind == "exchange" and f.get("what") == "arrived" and bool(f.get("together", false))
 		"n.vault":
 			return kind == "vault" and f.get("what") == "landed"
 		"n.first_aid":

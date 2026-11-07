@@ -66,7 +66,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms())]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -76,6 +76,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func exchange() -> ExchangeModule:
+	return session.modules.get_module(&"story.exchange") as ExchangeModule if session != null else null
 
 
 func body() -> BodyModule:
@@ -238,6 +242,9 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 	var radio := candidate.modules.get_module(&"story.broadcast") as BroadcastModule
 	if radio != null:
 		radio.set_seed(int((Time.get_ticks_usec() * 13) % 2147483647))
+	var visit := candidate.modules.get_module(&"story.exchange") as ExchangeModule
+	if visit != null:
+		visit.roll(int((Time.get_ticks_usec() * 23) % 2147483647))
 	var fnm := candidate.modules.get_module(&"story.fake_normal") as FakeNormalModule
 	if fnm != null:
 		fnm.set_seed(int((Time.get_ticks_usec() * 19) % 2147483647))
@@ -411,6 +418,9 @@ func resume_game() -> void:
 
 func return_to_menu() -> void:
 	_leave_drive()
+	if is_instance_valid(_visit_nodes):
+		_visit_nodes.queue_free()
+	_visit_nodes = null
 	ui.hide_terminal()
 	_mic_open = false
 	_radio_job = null
@@ -518,6 +528,9 @@ func _campus_step(delta: float) -> void:
 		if radio_hint == "" and body() != null:
 			body().set_context(_body_context())
 			radio_hint = body().hint()
+		if radio_hint == "" and exchange() != null:
+			exchange().set_context(_exchange_context())
+			radio_hint = exchange().hint()
 		ui.show_prompt(radio_hint if radio_hint != "" else rules.hint(session.world_id, player.capture_pose()))
 
 
@@ -550,6 +563,12 @@ func _campus_interact() -> void:
 		limbs.set_context(_body_context())
 		if limbs.ask_vault() or limbs.use_clinic():
 			_apply_body_events()
+			return
+	var visit := exchange()
+	if visit != null:
+		visit.set_context(_exchange_context())
+		if visit.use_here():
+			_apply_exchange_events()
 			return
 	var lift := elevator()
 	var result: Dictionary
@@ -752,6 +771,9 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	if story().dead or story().over():
 		return
 	_body_step(delta)
+	if story().dead or story().over():
+		return
+	_exchange_step(delta)
 	if story().dead or story().over():
 		return
 	_anomaly_step(delta, day_rules, room, pose)
@@ -1312,6 +1334,106 @@ func _facility_travel(e: Dictionary) -> void:
 	else:
 		pose = campus().default_spawn(world)
 	travel(world, pose, false)
+
+
+# ---- the exchange visit and 《外国语学生》 (features/story/exchange_module.gd) ----
+
+var _visit_nodes: Node3D
+
+
+func _exchange_context() -> Dictionary:
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var nav := CampusData.patrol_nav()
+	return {"scene": session.world_id, "x": w.x, "y": w.y, "day": school().day, "tsec": school().tsec, "dead": story().dead,
+		"busy": (anomaly() != null and anomaly().is_active()) or school().inspection_pending(),
+		"los": func(a: Vector2, b: Vector2) -> bool: return nav.los(PatrolNav.point("out", a.x, a.y), PatrolNav.point("out", b.x, b.y))}
+
+
+func _exchange_step(delta: float) -> void:
+	var visit := exchange()
+	if visit == null:
+		return
+	visit.set_context(_exchange_context())
+	visit.tick(delta)
+	_show_visit(visit)
+	_apply_exchange_events()
+
+
+func _show_visit(visit: ExchangeModule) -> void:
+	var show := visit.visible() and session.world_id == "out"
+	if not show:
+		if is_instance_valid(_visit_nodes):
+			_visit_nodes.queue_free()
+		_visit_nodes = null
+		return
+	var world := _campus_world()
+	if world == null:
+		return
+	if not is_instance_valid(_visit_nodes):
+		_visit_nodes = Node3D.new()
+		_visit_nodes.name = "ExchangeVisit"
+		world.add_child(_visit_nodes)
+		for i in 7:
+			var fig := MeshInstance3D.new()
+			var body_mesh := CapsuleMesh.new()
+			body_mesh.radius = 0.23
+			body_mesh.height = 1.72
+			fig.mesh = body_mesh
+			var mat := StandardMaterial3D.new()
+			mat.albedo_color = Color(0.2, 0.25, 0.4) if i == 0 else (Color(0.7, 0.62, 0.5) if i < 4 else Color(0.03, 0.03, 0.04))
+			if i >= 4:
+				mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			fig.material_override = mat
+			_visit_nodes.add_child(fig)
+	var spots: Array = visit.members()
+	for h: Dictionary in visit.s.get("search", []):
+		spots.append(Vector2(float(h["x"]), float(h["y"])))
+	for i in _visit_nodes.get_child_count():
+		var fig := _visit_nodes.get_child(i) as Node3D
+		fig.visible = i < spots.size()
+		if fig.visible:
+			var sp := CampusGeometry.to_scene(null, spots[i])
+			fig.position = Vector3(sp.x, 0.86, sp.y)
+
+
+func _apply_exchange_events() -> void:
+	var visit := exchange()
+	if visit == null:
+		return
+	for e: Dictionary in visit.take_events():
+		match e["kind"]:
+			"notice":
+				ui.show_notice(String(e["text"]))
+			"san":
+				school().san = maxf(school().san + float(e["amount"]), float(e.get("min", -INF)))
+			"permit":
+				school().leave_until = maxf(school().leave_until, float(e["until"]))
+			"fact":
+				var f: Dictionary = e.duplicate()
+				f["kind"] = "exchange"
+				fact(f)
+			"choice":
+				_choice_count += 1
+				var mine := _choice_count
+				_choice_handler = func(index: int) -> void:
+					var v := exchange()
+					if v != null and mine == _choice_count:
+						v.set_context(_exchange_context())
+						v.choose(index)
+						_apply_exchange_events()
+				player.enabled = false
+				player.clear_input()
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				ui.show_choice(String(e["text"]), e["labels"], not bool(e.get("locked", false)))
+			"kill":
+				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
+				return
+			"ending":
+				_reach_ending(String(e["id"]))
+				return
 
 
 # ---- vaulting, injury and the clinic (features/body) ----

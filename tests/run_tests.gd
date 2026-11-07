@@ -74,6 +74,7 @@ func _run() -> void:
 	_test_talent_rules()
 	_test_fake_normal_rules()
 	_test_body_rules()
+	_test_exchange_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -1481,6 +1482,89 @@ func _test_body_rules() -> void:
 	check(back.validate(saved).is_empty(), "injury survives JSON")
 	back.restore(saved)
 	check(absf(back.injury - l.injury) < 0.001 and back.med_day.has("3"), "and restores")
+
+
+func _xctx(w: Vector2, extra: Dictionary = {}) -> Dictionary:
+	var c := {"scene": "out", "x": w.x, "y": w.y, "day": 2, "tsec": 600.0, "dead": false, "busy": false}
+	c.merge(extra, true)
+	return c
+
+
+func _test_exchange_rules() -> void:
+	var x := ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus())
+	x.reset()
+	x.s["hit"] = 1
+	x.set_context(_xctx(Vector2.ZERO, {"day": 1}))
+	x.tick(1.0)
+	check(x.s["phase"] == "none", "the visit waits for day 2")
+	x.set_context(_xctx(Vector2.ZERO))
+	x.tick(1.0)
+	check(x.s["phase"] == "waiting" and _notices(x.take_events())[0].contains("国际交流团来访"), "on day 2 from 09:00 the speakers announce it")
+	var leader: Vector2 = x.members()[0]
+	x.set_context(_xctx(leader))
+	check(x.hint() == "国际交流接待登记" and x.use_here(), "the leader takes registrations")
+	var menu: Dictionary = x.take_events()[0]
+	check(menu["labels"].size() == 2, "two language checks")
+	x.choose(0)
+	for i in ExchangeModule.QUESTIONS:
+		x.take_events()
+		var right := int(x._order("de")[i])
+		x.choose(right if i < 3 else (right + 1) % 3)
+	var ev := x.take_events()
+	check(int(x.s["passed"]["de"]) == 0 and ev.any(func(e: Dictionary) -> bool: return e["kind"] == "san" and e["amount"] == -6.0), "three of five fails and costs 6 SAN")
+	for lang: String in ["de", "fr"]:
+		x.take_events()
+		x.use_here()
+		var labels: Array = x.take_events()[0]["labels"]
+		var idx := 0
+		for j in labels.size():
+			if String(labels[j]).contains(ExchangeModule.EXAM[lang]["n"]):
+				idx = j
+		x.choose(idx)
+		for i in ExchangeModule.QUESTIONS:
+			x.take_events()
+			x.choose(int(x._order(lang)[i]))
+	ev = x.take_events()
+	check(x.s["phase"] == "qualified" and ev.any(func(e: Dictionary) -> bool: return e["kind"] == "permit"), "both languages passed: qualified with the day's permit")
+	check(x.hint() == "跟带队老师说：出发", "then the leader is ready to go")
+	x.use_here()
+	check(x.s["phase"] == "escort" and (x.s["search"] as Array).size() == 3, "departing starts the walk with three searchers")
+	x.take_events()
+	var arrived := false
+	for _i in 2000:
+		var tail: Vector2 = x.members()[x.members().size() - 1]
+		x.set_context(_xctx(tail + Vector2(4, 0)))
+		x.tick(0.25)
+		if x.take_events().any(func(e: Dictionary) -> bool: return e["kind"] == "ending" and e["id"] == "international"):
+			arrived = true
+			break
+	check(arrived, "staying with the group to the north gate is 《外国语学生》")
+	var lost := ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus())
+	lost.reset()
+	lost.s["hit"] = 1
+	lost.s["phase"] = "qualified"
+	lost.set_context(_xctx(Vector2(5000, 5000)))
+	lost.depart()
+	lost.s["search"] = []
+	for _i in 30:
+		lost.tick(0.2)
+	check(lost.s["phase"] == "over" and _notices(lost.take_events()).has("我：队伍拐过前面的楼角，不见了。我掉队了。"), "falling 9 m behind for 4 s loses the group")
+	var multi := ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus())
+	multi.reset()
+	multi.s["hit"] = 1
+	multi.s["phase"] = "waiting"
+	multi.multilingual = true
+	multi.set_context(_xctx(multi.members()[0]))
+	multi.use_here()
+	check(multi.take_events()[0]["labels"].size() == 3, "with the second languages there is a third option")
+	multi.choose(0)
+	check(multi.s["phase"] == "qualified" and multi.s["how"] == "multilingual", "which qualifies at once")
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(x.capture()))
+	var back := ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus())
+	back.reset()
+	check(back.validate(saved).is_empty(), "the visit survives JSON")
+	back.restore(saved)
+	check(back.s["phase"] == x.s["phase"] and int(back.s["passed"]["fr"]) == 1, "and restores")
 
 
 func _test_facility_rules() -> void:
