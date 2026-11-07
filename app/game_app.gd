@@ -3462,6 +3462,8 @@ func _apply_phone_events() -> void:
 # ---- the broadcast station and 《放学》 (features/story/broadcast_module.gd) ----
 
 var _mic_open := false
+var _mic_panel: MicPanel
+var _mic_hold_button := false
 var _radio_job: Variant = null   # {index, t, seconds, x, y, scene}
 var _crowd_nodes: Node3D
 
@@ -3485,17 +3487,20 @@ func _broadcast_step(delta: float) -> void:
 		return
 	radio.set_context(_broadcast_context())
 	if _mic_open:
-		if not radio.near_station() or Input.is_action_just_pressed("pause"):
+		if not radio.near_station() or story().dead or Input.is_action_just_pressed("pause") or radio.b["phase"] == "bell":
 			_close_mic()
 		else:
-			var want := Input.is_action_pressed("interact") or Input.is_action_pressed("ui_accept")
+			var want := _mic_hold_button or Input.is_key_pressed(KEY_SPACE) or Input.is_action_pressed("interact")
 			if want and not radio.held:
 				radio.hold(true)
 			elif not want and radio.held:
 				radio.hold(false)
 			var why := radio.reason()
+			var names: Array = radio.papers().map(func(id: String) -> Array: return [id, "%s · %s" % [items().item_name(id), "红笔／第 0 天" if id == "notice_fake" else "蓝黑墨水"]])
+			var cur := String(radio.b["selected"])
+			var st := "长铃已响，跟随同学从北门离校。" if radio.b["phase"] == "bell" else (why if why != "" else "已播完 %d/4 段 · %s" % [int(radio.b["completed"]), "正在播音，门禁已报告这个房间。" if radio.held else "从当前这一段开始，松开会重读。"])
+			_mic_panel.paint(names, cur, radio.paper_text(cur) if radio.papers().has(cur) else "手里没有这一页", st, radio.progress, radio.reading_seconds(), radio.held, why == "" and not radio.papers().is_empty())
 			ui.show_search(radio.progress / radio.reading_seconds() if radio.held else 0.0)
-			ui.show_prompt("按住 E 朗读 · %s · 已播完 %d/4 段%s" % [radio.paper_text(String(radio.b["selected"])) if radio.papers().has(radio.b["selected"]) else "手里没有这一页", int(radio.b["completed"]), "" if why == "" else " · " + why])
 	if _radio_job != null:
 		var j: Dictionary = _radio_job
 		var here := Vector2(float(radio._c["x"]), float(radio._c["y"]))
@@ -3552,30 +3557,39 @@ func _open_mic() -> void:
 	var radio := broadcast()
 	if radio == null:
 		return
-	var papers := radio.papers()
-	if papers.is_empty():
+	if radio.papers().is_empty():
 		ui.show_notice("我：手里没有通知稿。")
 		return
-	_choice_count += 1
-	var mine := _choice_count
-	_choice_handler = func(index: int) -> void:
-		if mine != _choice_count or index < 0 or index >= papers.size():
-			return
-		radio.select(String(papers[index]))
-		_mic_open = true
-		ui.show_notice("话筒：按住 E 朗读，松开会重读当前段；走开或按 Esc 离开。")
+	if _mic_panel == null:
+		_mic_panel = MicPanel.new()
+		_mic_panel.paper_selected.connect(func(id: String) -> void:
+			if broadcast() != null:
+				broadcast().select(id))
+		_mic_panel.hold_changed.connect(func(on: bool) -> void: _mic_hold_button = on)
+		_mic_panel.closed.connect(_close_mic)
+		ui.get_node("Root").add_child(_mic_panel)
+	if not radio.papers().has(String(radio.b["selected"])):
+		radio.b["selected"] = radio.papers()[0]
+	_mic_open = true
+	_mic_hold_button = false
 	player.enabled = false
 	player.clear_input()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	var reason := radio.reason()
-	ui.show_choice("广播站 · 话筒%s\n手中的稿纸：" % ("" if reason == "" else "（" + reason + "）"), papers.map(func(id: String) -> String: return radio.paper_text(id)))
+	_mic_panel.visible = true
 
 
 func _close_mic() -> void:
+	var was := _mic_open
 	_mic_open = false
+	_mic_hold_button = false
+	if _mic_panel != null:
+		_mic_panel.visible = false
 	if broadcast() != null:
 		broadcast().hold(false)
 	ui.show_search(0.0)
+	if was and session != null and session.running and not get_tree().paused and not story().dead and not ui.choice_open():
+		player.enabled = true
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
 
 
 func _apply_broadcast_events() -> void:

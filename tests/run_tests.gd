@@ -3820,10 +3820,8 @@ func _test_dismissal_route(app: GameApp) -> void:
 	check(app.ui.choice_open(), "E at the station opens its menu")
 	app._choice_made(3)
 	await _frames(2)
-	check(app.ui.choice_open(), "the microphone asks which paper")
-	app._choice_made(0)
-	await _frames(2)
-	check(app._mic_open, "the microphone is live")
+	check(app._mic_open and not app.ui.choice_open() and app._mic_panel.visible and not app.get_tree().paused, "the microphone panel opens without pausing the world")
+	check(app._mic_panel.chooser.item_count == 4 and app._mic_panel.hold_button.text == "按住朗读 · 空格", "it lists the four papers in hand and offers the hold-to-read button")
 	Input.action_press("interact")
 	for n in 4:
 		for _i in 32:

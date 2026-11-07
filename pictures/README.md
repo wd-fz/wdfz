@@ -17,7 +17,7 @@
 | [死亡演出](死亡演出/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_death.gd` 以固定进度 0.7 直接显示叠层（非真实死亡流程）：收拢暗角、水面上涨、闪烁斑点、两侧压来 |
 | [车库与开车](车库与开车/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_garage.gd` 注入位置与驾驶状态：手电照着车道上的黑影；校外道路上的路障与「出城／回校」路牌（占位几何） |
 | [设施与传送门](设施与传送门/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_portal.gd` 注入位置与门已打开的状态：物理实验室隧道；实验台前撑开的光圈（占位） |
-| [广播与放学](广播与放学/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_broadcast.gd` 注入位置与长铃状态：广播站菜单；离校人群走向北门（占位胶囊体） |
+| [广播与放学](广播与放学/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_broadcast.gd` 注入位置与长铃状态：广播站菜单；离校人群走向北门（占位胶囊体）；`tools/capture_mic.gd`：话筒面板（四页稿在手、正在朗读，进度条、「松开停播」，门禁已上报的提示） |
 | [手机与网安仙人](手机与网安仙人/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_terminal.gd` 注入手机已联网的状态，通过界面信号输入三条命令：机房电脑的模拟 Linux 终端 |
 | [天赋](天赋/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720 与 720×1280，`tools/capture_menu.gd`：新游戏的天赋选择（横屏、竖屏可滚动） |
 | [异象画面](异象画面/)（第二批） | 2026-11-07，同上设置，`tools/capture_anomaly.gd`：走廊里全体回头的脸、盛宴长桌与碗碟热气（占位几何） |
