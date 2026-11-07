@@ -48,5 +48,15 @@ static func rooms() -> Dictionary:
 	return result
 
 
+static var _rules: CampusModule
+
+
+## Shared read-only rules for geometry queries from scene adapters (no per-run state is read).
+static func rules() -> CampusModule:
+	if _rules == null:
+		_rules = make_module()
+	return _rules
+
+
 static func make_module() -> CampusModule:
 	return CampusModule.new(rooms(), layout("out"), campus())

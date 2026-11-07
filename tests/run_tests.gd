@@ -327,6 +327,29 @@ func _test_campus_rules() -> void:
 	check(at_teach["notice"] == "我：门开着，直接走进去就行。", "seamless buildings answer like the Web version")
 	var exit_room: Dictionary = rooms["trash1"]
 	check(exit_room["exit_world"] != null, "rooms know where their host door is outside")
+	# Stairwell threshold (stairwell.js): teach1 west stair cell (6..7, 21) opens to stair_teach_w.
+	var stair_port := CampusPortals.stair_port(CampusPortals.stair_config(CampusData.campus()["stair_layout"], "stair_teach_w"), 0, rooms, CampusData.layout("out"))
+	var before_stair := campus.crossing("teach1", _campus_pose(t1, stair_port["p"] - Vector2(0, 2), PI * 0.5))
+	check(before_stair.is_empty(), "approaching the stair doorway does not switch yet")
+	var into_stair := campus.crossing("teach1", _campus_pose(t1, stair_port["p"] + Vector2(0, 0.3), PI * 0.5))
+	check(into_stair.get("world") == "stair_teach_w" and absf(float(into_stair["pose"]["position"][1]) - 0.05) < 0.001, "walking past the stair doorway enters the shaft at ground level")
+	var level_two := campus.crossing("stair_teach_w", {"position": [0.0, 3.2, -2.9], "yaw": 0.0, "pitch": 0.0})
+	check(level_two.get("world") == "teach2", "leaving the shaft on the 3.2 m landing reaches teach2")
+	var mid_air := campus.crossing("stair_teach_w", {"position": [0.0, 1.6, -2.9], "yaw": 0.0, "pitch": 0.0})
+	check(mid_air.is_empty(), "no exit between landings")
+	var surfaces := CampusPortals.stair_surfaces(6, 3.2)
+	check(surfaces.size() == 6 * 2 + 5 * 3, "stair surfaces match StairGeometry for six levels")
+	check(is_equal_approx(CampusPortals.surface_at(surfaces, -1.25, 3.2, 0.8)["h"], 0.8), "half way up the first flight is 0.8 m")
+	# Corridor bridge teach2 -> link2 (campus-link/link.js, a pure translation).
+	var t2: Dictionary = rooms["teach2"]
+	var link_cfg: Dictionary = CampusData.campus()["campus_link"]
+	var tp := CampusPortals.link_port(rooms, link_cfg["pairs"][3][0], 3)
+	var bridged := campus.crossing("teach2", _campus_pose(t2, (tp["p"] as Vector2) + Vector2(0, -0.5), -PI * 0.5))
+	check(bridged.get("world") == "link2", "walking out of teach2's north opening enters the bridge")
+	var back_t2 := campus.crossing("link2", bridged["pose"])
+	check(back_t2.is_empty(), "arriving on the bridge does not bounce back")
+	var canteen_stair := campus.interact_at("canteen1", _campus_pose(rooms["canteen1"], CampusGeometry.tile_center(rooms["canteen1"], 4, 25), PI * 0.5))
+	check(canteen_stair.get("travel", {}).get("world") == "out", "canteen stair without a shaft leads outside like stairGo")
 
 
 func _test_campus_app() -> void:
@@ -404,8 +427,42 @@ func _test_campus_app() -> void:
 		var err := app.router.switch_to(id)
 		check(err.is_empty(), "world %s registered and instantiable" % id)
 	app.router.clear()
+	await _test_stair_walk(app)
 	app.queue_free()
 	await _frames()
+
+
+## Steer the real CharacterBody3D through scene-metre waypoints (yaw from the heading).
+func _walk(app: GameApp, points: Array, frames_each: int = 120) -> void:
+	for target: Vector2 in points:
+		Input.action_press("move_forward")
+		for _i in frames_each:
+			var p := app.player.position
+			var d := target - Vector2(p.x, p.z)
+			if d.length() < 0.15:
+				break
+			app.player.rotation.y = atan2(-d.x, -d.y)
+			await physics_frame
+		Input.action_release("move_forward")
+	await _frames(2)
+
+
+func _test_stair_walk(app: GameApp) -> void:
+	app.start_new_game()
+	await _frames(3)
+	var t1 := CampusData.layout("teach1")
+	var s := CampusPortals.stair_config(CampusData.campus()["stair_layout"], "stair_teach_w")
+	var port := CampusPortals.stair_port(s, 0, CampusData.rooms(), CampusData.layout("out"))
+	var p: Vector2 = port["p"]
+	app.player.restore_pose(_campus_pose(t1, p - Vector2(0, 14), PI * 0.5))
+	await _frames()
+	await _walk(app, [CampusGeometry.to_scene(t1, p + Vector2(0, 3))])
+	check(app.session.world_id == "stair_teach_w", "walking into the west stair doorway enters the stairwell")
+	# One full storey along StairGeometry's walking line, then out of the corridor.
+	await _walk(app, [Vector2(-1.25, 0.8), Vector2(-1.25, 5.6), Vector2(-1.25, 6.4), Vector2(1.25, 6.4), Vector2(1.25, 5.6), Vector2(1.25, 0.8), Vector2(0.0, -0.3), Vector2(0.0, -3.2)], 240)
+	check(app.session.world_id == "teach2", "climbing one flight pair and walking out reaches teach2 (now %s, y=%.2f)" % [app.session.world_id, app.player.position.y])
+	check(absf(app.player.position.y) < 0.2, "teach2 floor is at the scene's own ground level")
+	app.return_to_menu()
 
 
 func _test_touch(app: GameApp) -> void:

@@ -115,10 +115,18 @@ func _build_collision() -> void:
 	body.collision_mask = 0
 	add_child(body)
 	var extent := _extent()
+	var rules := CampusData.rules()
+	if rules.is_stairwell(scene_id):
+		_build_stairwell(body, rules.stair_surfaces(scene_id))
+		return
 	_add_box(body, Rect2(extent.position - Vector2.ONE * 2, extent.size + Vector2.ONE * 4), -1.0, 0.0, "floor")
 	if is_room():
-		for b: Dictionary in layout["walls"] + layout["boxes"] + layout["stairs"]:
+		for b: Dictionary in layout["walls"] + layout["boxes"]:
 			_add_rect(body, b)
+		var doorways := rules.stair_doorways(scene_id)
+		for b: Dictionary in layout["stairs"]:
+			for part: Rect2 in _cut_doorways(_rect_of(b), doorways):
+				_add_box(body, part, WALL_BOTTOM, WALL_TOP, "stair")
 		_room_boundary(body, extent)
 		var doors := StaticBody3D.new()
 		doors.name = "Doors"
@@ -144,9 +152,78 @@ func _extent() -> Rect2:
 	return Rect2(Vector2(bd["x0"], bd["z0"]), Vector2(float(bd["x1"]) - float(bd["x0"]), float(bd["z1"]) - float(bd["z0"])))
 
 
+func _rect_of(b: Dictionary) -> Rect2:
+	return Rect2(Vector2(b["x0"], b["z0"]), Vector2(float(b["x1"]) - float(b["x0"]), float(b["z1"]) - float(b["z0"])))
+
+
 func _add_rect(parent: Node3D, b: Dictionary) -> CollisionShape3D:
-	var r := Rect2(Vector2(b["x0"], b["z0"]), Vector2(float(b["x1"]) - float(b["x0"]), float(b["z1"]) - float(b["z0"])))
-	return _add_box(parent, r, WALL_BOTTOM, WALL_TOP, String(b["k"]))
+	return _add_box(parent, _rect_of(b), WALL_BOTTOM, WALL_TOP, String(b["k"]))
+
+
+## Old rule (collision.js + StairWorld.doorwayFree): a stair cell is solid except the 1.7 m doorway
+## the body fits through; the shaft threshold is crossed in the middle of that cell.
+func _cut_doorways(r: Rect2, doorways: Array[Dictionary]) -> Array[Rect2]:
+	var parts: Array[Rect2] = [r]
+	for d: Dictionary in doorways:
+		var c: Vector2 = d["center"]
+		var half := float(d["half"])
+		if r.get_center().distance_to(c) > 2.0:
+			continue
+		var lateral_x := absf((d["lateral"] as Vector2).x) > 0.5
+		var next: Array[Rect2] = []
+		for q: Rect2 in parts:
+			var lo := (c.x if lateral_x else c.y) - half
+			var hi := (c.x if lateral_x else c.y) + half
+			var a0 := q.position.x if lateral_x else q.position.y
+			var a1 := q.end.x if lateral_x else q.end.y
+			if hi <= a0 or lo >= a1:
+				next.append(q)
+				continue
+			if lo > a0:
+				next.append(Rect2(q.position, Vector2(lo - a0, q.size.y)) if lateral_x else Rect2(q.position, Vector2(q.size.x, lo - a0)))
+			if hi < a1:
+				next.append(Rect2(Vector2(hi, q.position.y), Vector2(a1 - hi, q.size.y)) if lateral_x else Rect2(Vector2(q.position.x, hi), Vector2(q.size.x, a1 - hi)))
+		parts = next
+	return parts
+
+
+## Stairwell: only StairGeometry.surfaces are walkable (stairwell.js depth). Slabs and ramps carry
+## the body; walls keep it from stepping off where the old rule found no surface.
+func _build_stairwell(body: StaticBody3D, surfaces: Array[Dictionary]) -> void:
+	var top := 0.0
+	for s: Dictionary in surfaces:
+		top = maxf(top, maxf(float(s["h0"]), float(s["h1"])))
+		_add_slab(body, s)
+	var y0 := -1.0
+	var y1 := top + 3.5
+	for r: Rect2 in [
+		Rect2(-3.2, -1.2, 1.0, 8.4), Rect2(2.2, -1.2, 1.0, 8.4),          # outer side walls
+		Rect2(-3.2, 7.2, 6.4, 1.0),                                        # back wall
+		Rect2(-3.2, -2.2, 2.35, 1.0), Rect2(0.85, -2.2, 2.35, 1.0),       # front wall beside the corridor
+		Rect2(-1.85, -4.5, 1.0, 3.3), Rect2(0.85, -4.5, 1.0, 3.3),        # corridor walls
+		Rect2(-1.85, -4.5, 3.7, 1.0),                                      # corridor end
+		Rect2(-0.3, 0.8, 0.6, 4.8),                                        # slot between the two flights
+	]:
+		_add_box(body, r, y0, y1, "stairwell")
+	# Under the first upper flight (level 0, x 0.3..2.2) there is no surface at ground height.
+	_add_box(body, Rect2(0.3, 0.8, 1.9, 4.8), y0, 1.4, "stairwell")
+	# Top landing: the down-going flight side has no flight above it.
+	_add_box(body, Rect2(-2.2, 0.8, 1.9, 0.1), top, top + 2.5, "stairwell")
+
+
+func _add_slab(body: StaticBody3D, s: Dictionary) -> void:
+	var t := 0.12
+	var dz := float(s["z1"]) - float(s["z0"])
+	var dh := float(s["h1"]) - float(s["h0"])
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(float(s["x1"]) - float(s["x0"]), t, sqrt(dz * dz + dh * dh))
+	var basis := Basis(Vector3.RIGHT, -atan2(dh, dz))
+	var mid := Vector3((float(s["x0"]) + float(s["x1"])) * 0.5, (float(s["h0"]) + float(s["h1"])) * 0.5, (float(s["z0"]) + float(s["z1"])) * 0.5)
+	var node := CollisionShape3D.new()
+	node.shape = shape
+	node.transform = Transform3D(basis, mid - basis.y * (t * 0.5))
+	node.set_meta("kind", "stair_surface")
+	body.add_child(node)
 
 
 func _add_box(parent: Node3D, r: Rect2, y0: float, y1: float, kind: String) -> CollisionShape3D:
@@ -174,17 +251,25 @@ func _room_boundary(body: StaticBody3D, extent: Rect2) -> void:
 		var n: Vector2 = port["n"]
 		var half := CampusGeometry.door_half(d, float(cfg.get("width", 3))) * CampusGeometry.U2M
 		var depth := float(cfg.get("annex", 1.5)) * CampusGeometry.TTILE * CampusGeometry.U2M + CampusGeometry.PRAD * CampusGeometry.U2M
-		var lateral := Vector2(-n.y, n.x)
 		gaps.append({"edge": d["edge"], "center": p, "half": half})
-		# Annex side walls and end wall, outside the grid.
-		for side: float in [-1.0, 1.0]:
-			var a := p + lateral * side * half
-			var b := a + n * depth + lateral * side * BOUNDARY
-			_add_box(body, Rect2(a, Vector2.ZERO).expand(b), WALL_BOTTOM, WALL_TOP, "annex")
-		var e0 := p + n * depth - lateral * half
-		var e1 := p + n * (depth + BOUNDARY) + lateral * half
-		_add_box(body, Rect2(e0, Vector2.ZERO).expand(e1), WALL_BOTTOM, WALL_TOP, "annex")
+		_annex(body, p, n, half, depth)
+	# Corridor bridges (campus-link/link.js) open the same kind of gap.
+	for g: Dictionary in CampusData.rules().link_doorways(scene_id):
+		gaps.append(g)
+		_annex(body, g["center"], g["normal"], float(g["half"]), float(g["depth"]) + CampusGeometry.PRAD * CampusGeometry.U2M)
 	_ring(body, extent, gaps)
+
+
+## Annex side walls and end wall outside the grid, beyond a threshold the body centre may cross.
+func _annex(body: StaticBody3D, p: Vector2, n: Vector2, half: float, depth: float) -> void:
+	var lateral := Vector2(-n.y, n.x)
+	for side: float in [-1.0, 1.0]:
+		var a := p + lateral * side * half
+		var b := a + n * depth + lateral * side * BOUNDARY
+		_add_box(body, Rect2(a, Vector2.ZERO).expand(b), WALL_BOTTOM, WALL_TOP, "annex")
+	var e0 := p + n * depth - lateral * half
+	var e1 := p + n * (depth + BOUNDARY) + lateral * half
+	_add_box(body, Rect2(e0, Vector2.ZERO).expand(e1), WALL_BOTTOM, WALL_TOP, "annex")
 
 
 func _ring(body: StaticBody3D, r: Rect2, gaps: Array) -> void:

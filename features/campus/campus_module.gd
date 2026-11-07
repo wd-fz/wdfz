@@ -134,8 +134,93 @@ func default_spawn(room_id: String) -> Dictionary:
 	return _pose(Vector2(s["scene_x"], s["scene_z"]), PI * 0.5 if ang == null else float(ang))
 
 
-func _pose(scene: Vector2, ang: float, pitch: float = 0.0) -> Dictionary:
-	return {"position": [scene.x, 0.05, scene.y], "yaw": CampusGeometry.yaw_from_ang(ang), "pitch": pitch}
+func _pose(scene: Vector2, ang: float, pitch: float = 0.0, height: float = 0.05) -> Dictionary:
+	return {"position": [scene.x, height, scene.y], "yaw": CampusGeometry.yaw_from_ang(ang), "pitch": pitch}
+
+
+func _stair_layout() -> Array:
+	return _campus.get("stair_layout", [])
+
+
+func is_stairwell(world_id: String) -> bool:
+	return not CampusPortals.stair_config(_stair_layout(), world_id).is_empty()
+
+
+## Stairwell metres: the scene coordinates of a stairwell world are its shaft coordinates.
+func stair_surfaces(world_id: String) -> Array[Dictionary]:
+	var s := CampusPortals.stair_config(_stair_layout(), world_id)
+	if s.is_empty():
+		return []
+	return CampusPortals.stair_surfaces((s["rooms"] as Array).size(), float(s["rise"]))
+
+
+## Stair doorways in a floor scene (scene metres): centre, lateral axis and half width.
+func stair_doorways(world_id: String) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for s: Dictionary in _stair_layout():
+		var level := (s["rooms"] as Array).find(world_id)
+		if level < 0 or world_id == "out":
+			continue
+		var port := CampusPortals.stair_port(s, level, _rooms, _outside)
+		var n: Vector2 = port["n"]
+		out.append({"center": CampusGeometry.to_scene(_rooms[world_id], port["p"]), "normal": n, "lateral": Vector2(n.y, -n.x), "half": CampusPortals.DOOR_HALF})
+	return out
+
+
+func link_doorways(world_id: String) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for v: Dictionary in CampusPortals.link_ports(_campus.get("campus_link", {}), _rooms, world_id):
+		var me: Dictionary = v["self"]
+		out.append({"edge": _edge_of(me["n"]), "center": CampusGeometry.to_scene(_rooms[world_id], me["p"]), "half": float(me["half"]) * CampusGeometry.U2M,
+			"depth": float(_campus["campus_link"].get("annex", 1.5)) * CampusGeometry.TTILE * CampusGeometry.U2M, "normal": me["n"]})
+	return out
+
+
+func _edge_of(n: Vector2) -> String:
+	if n.y < 0:
+		return "n"
+	if n.y > 0:
+		return "s"
+	return "w" if n.x < 0 else "e"
+
+
+## Stairwell walk (stairwell.js moved/enter/exit) and corridor bridges (link.js cross).
+func _portal_crossing(world_id: String, pose: Dictionary, ang: float) -> Dictionary:
+	var p: Array = pose["position"]
+	var pitch := float(pose["pitch"])
+	var layout := _stair_layout()
+	var s := CampusPortals.stair_config(layout, world_id)
+	if not s.is_empty():
+		var q := Vector2(float(p[0]), float(p[2]))
+		var y := float(p[1])
+		var rise := float(s["rise"])
+		var level := int(round(y / rise))
+		if q.y < CampusPortals.EXIT_Z and absf(y - level * rise) < CampusPortals.LEVEL_TOLERANCE and level >= 0 and level < (s["rooms"] as Array).size():
+			var port := CampusPortals.stair_port(s, level, _rooms, _outside)
+			var w := CampusPortals.from_shaft(port, q)
+			var target := String(port["scene"])
+			var room_data: Variant = null if target == "out" else _rooms[target]
+			return {"world": target, "pose": _pose(CampusGeometry.to_scene(room_data, w), ang + CampusPortals.stair_turn(port["n"]), pitch), "seamless": true}
+		return {}
+	var room_data2: Variant = null if world_id == "out" else _rooms.get(world_id)
+	var me := CampusGeometry.to_world(room_data2, float(p[0]), float(p[2]))
+	var a := CampusPortals.stair_portal_at(layout, world_id, me, _rooms, _outside)
+	if not a.is_empty() and (a["q"] as Vector2).y > CampusPortals.ENTER_Z:
+		var sp: Dictionary = a["s"]
+		var q2: Vector2 = a["q"]
+		var h := int(a["level"]) * float(sp["rise"])
+		return {"world": sp["id"], "pose": _pose(q2, ang - CampusPortals.stair_turn(a["port"]["n"]), pitch, h + 0.05), "seamless": true}
+	if world_id == "out":
+		return {}
+	for v: Dictionary in CampusPortals.link_ports(_campus.get("campus_link", {}), _rooms, world_id):
+		var me_port: Dictionary = v["self"]
+		var lq := CampusGeometry.door_local(me_port, me)
+		if lq.x > 0.0 and absf(lq.y) < float(me_port["half"]):
+			var t := CampusPortals.link_between(me_port, v["peer"])
+			var dest := CampusPortals.link_apply(t, me)
+			var peer_room: Dictionary = _rooms[v["peer"]["room"]]
+			return {"world": v["peer"]["room"], "pose": _pose(CampusGeometry.to_scene(peer_room, dest), ang + float(t["phi"]), pitch), "seamless": true}
+	return {}
 
 
 ## Seamless door crossing after a movement step (campus-link/doors.js cross()).
@@ -143,6 +228,11 @@ func _pose(scene: Vector2, ang: float, pitch: float = 0.0) -> Dictionary:
 func crossing(world_id: String, pose: Dictionary) -> Dictionary:
 	var p: Array = pose["position"]
 	var ang := CampusGeometry.ang_from_yaw(float(pose["yaw"]))
+	var portal := _portal_crossing(world_id, pose, ang)
+	if not portal.is_empty():
+		return portal
+	if is_stairwell(world_id):
+		return {}
 	var inside := world_id != "out"
 	var list := _campus_doors(world_id) if inside else _campus_doors("")
 	for d: Dictionary in list:
@@ -171,6 +261,8 @@ func hint(world_id: String, pose: Dictionary) -> String:
 		if nb.is_empty() or _continuous_host(nb["obj"]["id"]):
 			return ""
 		return "沿楼梯下到车库" if nb["obj"]["id"] == "garw" else "进入 " + String(nb["obj"]["name"])
+	if is_stairwell(world_id):
+		return ""
 	var r: Dictionary = _rooms[world_id]
 	var hit := CampusGeometry.near_tile(r, CampusGeometry.to_world(r, float(p[0]), float(p[2])), ang, CampusGeometry.NEAR_ROOM, _open_doors)
 	if hit.is_empty():
@@ -210,6 +302,8 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 			var target := String(ENTRY_ROOMS[id])
 			return {"notice": String(_rooms[target]["name"]), "travel": {"world": target, "pose": default_spawn(target)}}
 		return {"notice": ""}
+	if is_stairwell(world_id):
+		return {"notice": ""}
 	var r: Dictionary = _rooms[world_id]
 	var me_in := CampusGeometry.to_world(r, float(p[0]), float(p[2]))
 	var hit := CampusGeometry.near_tile(r, me_in, ang, CampusGeometry.NEAR_ROOM, _open_doors)
@@ -229,6 +323,15 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 				return {"notice": ""}
 			var outside_pos := Vector2(exit["x"], exit["y"])
 			return {"notice": "武大附中 · 校园", "travel": {"world": "out", "pose": _pose(CampusGeometry.to_scene(null, outside_pos), ang, float(pose["pitch"]))}}
+		"S":
+			# interact.js stairGo: shafts are walked; a room without one (canteen) has its stair as a way out.
+			for st: Dictionary in _stair_layout():
+				if (st["rooms"] as Array).has(world_id):
+					return {"notice": "沿台阶走到下一层，门外就是走廊。"}
+			var ex: Variant = r.get("exit_world")
+			if ex == null:
+				return {"notice": ""}
+			return {"notice": "武大附中 · 校园", "travel": {"world": "out", "pose": _pose(CampusGeometry.to_scene(null, Vector2(ex["x"], ex["y"])), ang, float(pose["pitch"]))}}
 	return {"notice": "（Godot 版尚未移植这里的交互：%s）" % hit["ch"]}
 
 
