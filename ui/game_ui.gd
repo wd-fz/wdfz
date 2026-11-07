@@ -19,6 +19,7 @@ signal lift_close_requested
 signal item_use_requested(id: String)
 signal item_hot_requested(index: int, id: String)
 signal achievements_requested
+signal archive_requested
 signal sound_toggled(on: bool)
 
 @onready var menu: Control = %Menu
@@ -81,6 +82,13 @@ func _ready() -> void:
 	load_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	load_button.reparent(load_row, false)
 	load_row.add_child(ach)
+	var arch := Button.new()
+	arch.name = "Archive"
+	arch.text = "档案馆"
+	arch.custom_minimum_size = Vector2(0, 48)
+	arch.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	arch.pressed.connect(func() -> void: archive_requested.emit())
+	load_row.add_child(arch)
 	touch_toggle.reparent(option_row, false)
 	option_row.add_child(sound)
 	load_button.owner = self
@@ -356,6 +364,28 @@ var _ach_head: Label
 
 
 func show_achievements(entries: Array, points: int) -> void:
+	var rows: Array = []
+	var got := 0
+	for e: Dictionary in entries:
+		var text := "%s · %s" % [e["tier"], e["name"]]
+		if e.has("progress"):
+			text += "  （%d / %d）" % [e["progress"]["n"], e["progress"]["of"]]
+		if e["unlocked"]:
+			got += 1
+		rows.append({"text": text, "on": e["unlocked"], "memo": e["memo"]})
+	show_list("成就  %d / %d　·　积分 %d" % [got, entries.size(), points], rows)
+
+
+## The death archive: every real cause of death gets a file the first time it happens.
+func show_archive(rows: Array, known: int, total: int) -> void:
+	var list: Array = []
+	for r: Dictionary in rows:
+		list.append({"text": "%02d · %s%s" % [r["no"], r["name"] if r["on"] else "？？？", "  ×%d" % r["count"] if r["on"] and r["count"] > 1 else ""], "on": r["on"], "memo": r["memo"]})
+	show_list("CG 档案馆 · 死亡与结局  已记录 %d / %d" % [known, total], list)
+
+
+## A scrolling list over the menu: rows of {text, on, memo}; locked rows show their text only.
+func show_list(head: String, rows: Array) -> void:
 	if ach_panel == null:
 		ach_panel = PanelContainer.new()
 		ach_panel.name = "AchievementsPanel"
@@ -386,21 +416,17 @@ func show_achievements(entries: Array, points: int) -> void:
 		$Root.add_child(ach_panel)
 	for child in _ach_list.get_children():
 		child.queue_free()
-	var got := 0
-	for e: Dictionary in entries:
+	for r: Dictionary in rows:
 		var line := Label.new()
 		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		line.custom_minimum_size = Vector2(500, 0)
-		var text := "%s · %s" % [e["tier"], e["name"]]
-		if e["unlocked"]:
-			got += 1
-			text += "\n    " + String(e["memo"])
-		if e.has("progress"):
-			text += "  （%d / %d）" % [e["progress"]["n"], e["progress"]["of"]]
-		line.text = ("✓ " if e["unlocked"] else "· ") + text
-		line.modulate = Color(1, 1, 1, 1) if e["unlocked"] else Color(1, 1, 1, 0.55)
+		var text := String(r["text"])
+		if r["on"] and not String(r["memo"]).is_empty():
+			text += "\n    " + String(r["memo"])
+		line.text = ("✓ " if r["on"] else "· ") + text
+		line.modulate = Color(1, 1, 1, 1) if r["on"] else Color(1, 1, 1, 0.55)
 		_ach_list.add_child(line)
-	_ach_head.text = "成就  %d / %d　·　积分 %d" % [got, entries.size(), points]
+	_ach_head.text = head
 	ach_panel.visible = true
 
 

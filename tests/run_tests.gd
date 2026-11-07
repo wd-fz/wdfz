@@ -1291,6 +1291,7 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_audio(app)
 	await _test_whitelist_route(app)
 	await _test_achievement_flow(app)
+	await _test_archive(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
 
@@ -1509,6 +1510,23 @@ func _test_achievement_flow(app: GameApp) -> void:
 	await _frames(3)
 	check(app.achievements().unlocked.has("n.day2") and not app.ui.ach_panel.visible, "a new run loads the profile and hides the list")
 	DirAccess.remove_absolute(app._profile_path())
+
+
+## The archive lists each real cause once, counts repeats, and keeps unseen ones hidden.
+func _test_archive(app: GameApp) -> void:
+	var rows := DeathArchive.rows({"sources": {"patrol": 3, "an:rain": 1}}, {"face": 1})
+	check(rows.size() == DeathArchive.DEATHS.size() + DeathArchive.ENDS.size() and DeathArchive.known(rows) == 3, "the archive counts two deaths and one ending as recorded")
+	check(rows[0]["on"] and rows[0]["count"] == 3 and not rows[1]["on"], "a repeated death only adds to its counter; unseen ones stay locked")
+	check(rows.filter(func(r: Dictionary) -> bool: return not r["on"] and r["memo"] != "").size() > 0 and DeathArchive.DEATHS.all(func(d: Array) -> bool: return not String(d[0]).begins_with("void")), "locked rows carry the record text for the UI to withhold, and no maze deaths are listed")
+	var ids := {}
+	for k in StoryModule.SOURCES:
+		ids[k] = true
+	for d: Array in DeathArchive.DEATHS:
+		check(ids.has(d[0]) or String(d[0]).begins_with("an:") and AnomalyModule.IDS.has(String(d[0]).substr(3)), "archive entry %s is a real kill source" % d[0])
+	app.saves.clear()
+	app.return_to_menu()
+	app._show_archive()
+	check(app.ui.ach_panel != null and app.ui.ach_panel.visible, "the menu opens the archive")
 
 
 func _test_death_flow(app: GameApp) -> void:

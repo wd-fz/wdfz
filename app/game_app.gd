@@ -36,6 +36,7 @@ func _ready() -> void:
 	ui.new_requested.connect(start_new_game)
 	ui.new_hard_requested.connect(start_new_game.bind("hard"))
 	ui.achievements_requested.connect(_show_achievements)
+	ui.archive_requested.connect(_show_archive)
 	ui.sound_toggled.connect(func(on: bool) -> void: audio.muted = not on)
 	ui.death_menu_requested.connect(return_to_menu)
 	ui.load_requested.connect(load_game)
@@ -116,6 +117,17 @@ func _show_achievements() -> void:
 		view = AchievementsModule.new(AnomalyModule.IDS.size() - 1)
 		_load_profile(view)
 	ui.show_achievements(view.entries(), view.points())
+
+
+func _show_archive() -> void:
+	var ends: Dictionary = {}
+	var path := saves.side_path("ends.json")
+	if FileAccess.file_exists(path):
+		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		if parsed is Dictionary:
+			ends = parsed
+	var rows := DeathArchive.rows(_read_death_log(), ends)
+	ui.show_archive(rows, DeathArchive.known(rows), rows.size())
 
 
 func routes() -> RoutesModule:
