@@ -32,6 +32,8 @@ const LIST := {
 	"p.five_routes": ["p", "五条路", "最后一次，学校以为我只是放学回家。"],
 	"e.end_international": ["e", "《外国语学生》", "队尾的人回头看了一眼。"],
 	"e.exchange_together": ["e", "一个都没少", "一个都没少。"],
+	"e.speedrun": ["e", "计时", "表停下的那一刻，我还在跑。"],
+	"p.fast": ["p", "赶在铃响前", "铃还没响，我已经在外面了。"],
 	"n.opening": ["n", "第四节", "粉笔灰停在半空。我趴到桌上，又抬起了头。"],
 	"n.midnight": ["n", "明天再来", "那一碗是热的。打饭的人一直没有回头。"],
 	"n.desk": ["n", "看课桌", "纸条上那一句，后来救过我。"],
@@ -265,6 +267,10 @@ func _test(id: String, f: Dictionary) -> bool:
 			return kind == "ending" and f["id"] == "international"
 		"e.exchange_together":
 			return kind == "exchange" and f.get("what") == "arrived" and bool(f.get("together", false))
+		"e.speedrun":
+			return kind == "speedrun" and f.get("status") == "finished"
+		"p.fast":
+			return kind == "speedrun" and f.get("status") == "finished" and PUBLIC_ENDS.has(String(f.get("route", ""))) and int(f.get("ms", 0)) > 0 and int(f.get("ms", 0)) <= 900000
 		"n.opening":
 			return kind == "opening"
 		"n.midnight":

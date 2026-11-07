@@ -77,6 +77,7 @@ func _run() -> void:
 	_test_exchange_rules()
 	_test_day_rules()
 	_test_tales_rules()
+	_test_speedrun_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -1696,6 +1697,33 @@ func _test_tales_rules() -> void:
 	check(m.take_events().is_empty(), "looking away is safe")
 
 
+func _test_speedrun_rules() -> void:
+	check(Speedrun.fmt(3723456) == "01:02:03.45", "times read hh:mm:ss.cc")
+	var sr := Speedrun.new()
+	var rec := {}
+	sr.arm("hard")
+	check(sr.active() and sr.elapsed() == 0, "armed, not yet running")
+	check(sr.fail("abandoned", rec).is_empty() and sr.run.is_empty() and rec.is_empty(), "leaving before the first move records nothing")
+	sr.arm("easy")
+	sr.start()
+	sr.run["p0"] = Time.get_ticks_msec() - 61000
+	sr.run["w0"] = Time.get_unix_time_from_system() - 61.0
+	var res := sr.finish("face", rec)
+	check(res["pb"] and res["rec"]["status"] == "finished" and int(res["rec"]["ms"]) >= 61000 and rec["best"].has(Speedrun.key("easy", "face")), "a finished route is a personal best")
+	sr.arm("easy")
+	sr.start()
+	sr.run["p0"] = Time.get_ticks_msec() - 90000
+	sr.run["w0"] = Time.get_unix_time_from_system() - 90.0
+	check(not sr.finish("face", rec)["pb"] and (rec["recent"] as Array).size() == 2, "a slower run is recorded but is no best")
+	sr.arm("easy")
+	sr.start()
+	check(sr.finish("secret", rec).is_empty(), "only the public routes stop the clock")
+	check(Speedrun.rows(rec).size() == 12 + 2 and Speedrun.rows(rec)[4]["on"], "the records list every route per difficulty and the recent runs")
+	var ach := AchievementsModule.new(25)
+	ach.reset()
+	check(ach.fact({"kind": "speedrun", "status": "finished", "route": "face", "ms": 600000}).has("p.fast") and ach.unlocked.has("e.speedrun"), "a 10-minute finish: 计时 and 赶在铃响前")
+
+
 func _test_facility_rules() -> void:
 	var rooms := CampusData.rooms()
 	var fac := FacilitiesModule.new(rooms, CampusData.layout("out"), CampusData.campus())
@@ -2295,6 +2323,7 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_cyber_route(app)
 	await _test_vault_app(app)
 	await _test_lesson_app(app)
+	await _test_speedrun_app(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
 
@@ -2820,6 +2849,39 @@ func _test_lesson_app(app: GameApp) -> void:
 	check(app.days().waiting == null and fast > slow * 3.0, "studying runs the class faster (R stops it)")
 	app.return_to_menu()
 	DirAccess.remove_absolute(app._profile_path())
+
+
+## A speedrun from the menu: it keeps away from the normal save and records its time.
+func _test_speedrun_app(app: GameApp) -> void:
+	app.saves.clear()
+	if FileAccess.file_exists(app._speedrun_path()):
+		DirAccess.remove_absolute(app._speedrun_path())
+	app.start_new_game()
+	await _frames(2)
+	app.save_game()
+	check(app.saves.exists(), "a normal save exists")
+	app.return_to_menu()
+	app._speedrun_menu()
+	app._choice_made(0)
+	app._choice_made(4)
+	await _frames(2)
+	check(app.speedrun.active() and app.ui.opening_on(), "speedrun: talent, prologue")
+	app.ui._end_opening(true)
+	await _frames(2)
+	check(app.speedrun.run["status"] == "running" and app.ui.speedrun_text != "", "the clock starts at the first move and shows")
+	app.save_game()
+	app._reach_ending("face")
+	await _frames(1)
+	check(app.saves.exists() and FileAccess.file_exists(app._speedrun_path()), "the ending records the time and leaves the normal save alone")
+	check(app._read_speedrun()["best"].has(Speedrun.key("easy", "face")), "a personal best for 《白名单》 on 预知梦")
+	app.return_to_menu()
+	app._speedrun_menu()
+	app._choice_made(2)
+	await _frames(1)
+	check(app.ui.ach_panel.visible, "the records list opens")
+	DirAccess.remove_absolute(app._speedrun_path())
+	DirAccess.remove_absolute(app._profile_path())
+	app.saves.clear()
 
 
 func _test_death_flow(app: GameApp) -> void:

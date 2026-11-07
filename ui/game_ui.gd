@@ -20,6 +20,7 @@ signal item_use_requested(id: String)
 signal item_hot_requested(index: int, id: String)
 signal achievements_requested
 signal archive_requested
+signal speedrun_requested
 signal terminal_command(line: String)
 signal opening_finished(skipped: bool)
 signal terminal_closed
@@ -93,6 +94,13 @@ func _ready() -> void:
 	arch.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	arch.pressed.connect(func() -> void: archive_requested.emit())
 	load_row.add_child(arch)
+	var run := Button.new()
+	run.name = "Speedrun"
+	run.text = "速通"
+	run.custom_minimum_size = Vector2(0, 48)
+	run.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	run.pressed.connect(func() -> void: speedrun_requested.emit())
+	load_row.add_child(run)
 	touch_toggle.reparent(option_row, false)
 	option_row.add_child(sound)
 	load_button.owner = self
@@ -885,5 +893,12 @@ func show_location(text: String) -> void:
 	_location = text
 
 
+## The speedrun clock replaces the runtime line while a speedrun is on.
+var speedrun_text := ""
+
+
 func show_runtime(seconds: float) -> void:
+	if speedrun_text != "":
+		%Runtime.text = "%s · 速通 %s" % [_location, speedrun_text]
+		return
 	%Runtime.text = _location if _status_on else "%s · 运行 %ds" % [_location, int(seconds)]

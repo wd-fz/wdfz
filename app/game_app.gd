@@ -18,6 +18,7 @@ var _death_wait := 0.0
 var _death_phase := ""
 var _choice_left := 0.0
 var _choice_count := 0
+var speedrun := Speedrun.new()
 var audio: AudioFx
 var _seen_anomaly := ""
 var _seen_lock := false
@@ -35,8 +36,9 @@ func _ready() -> void:
 	audio = AudioFx.new()
 	audio.name = "AudioFx"
 	add_child(audio)
-	ui.new_requested.connect(_pick_talent.bind("easy"))
-	ui.new_hard_requested.connect(_pick_talent.bind("hard"))
+	ui.new_requested.connect(_pick_talent.bind("easy", false))
+	ui.new_hard_requested.connect(_pick_talent.bind("hard", false))
+	ui.speedrun_requested.connect(_speedrun_menu)
 	ui.achievements_requested.connect(_show_achievements)
 	ui.archive_requested.connect(_show_archive)
 	ui.terminal_command.connect(_terminal_command)
@@ -224,11 +226,58 @@ func _opening_done(_skipped: bool) -> void:
 	player.enabled = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
 	ui.show_notice("我：第四节。我坐在自己的位子上——至少，名牌上写的是我的名字。")
+	speedrun.start()
 	fact({"kind": "opening"})
 
 
 ## TalentPick: the new-game talent screen (seven cards and a random pick).
-func _pick_talent(difficulty: String) -> void:
+func _speedrun_path() -> String:
+	return saves.side_path("speedrun.json")
+
+
+func _read_speedrun() -> Dictionary:
+	var path := _speedrun_path()
+	if FileAccess.file_exists(path):
+		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		if parsed is Dictionary:
+			return parsed
+	return {"version": 1, "recent": [], "best": {}}
+
+
+func _write_speedrun(record: Dictionary) -> void:
+	var path := _speedrun_path()
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(record))
+		file.close()
+
+
+## A speedrun result: stored, reported as a fact; returns the summary line.
+func _speedrun_result(res: Dictionary, record: Dictionary) -> String:
+	if res.is_empty():
+		return ""
+	_write_speedrun(record)
+	var rec: Dictionary = res["rec"]
+	fact({"kind": "speedrun", "status": rec["status"], "route": rec["route"], "ms": rec["ms"], "diff": rec["diff"]})
+	return "速通 %s%s" % [Speedrun.fmt(int(rec["ms"])), "（个人最佳）" if bool(res["pb"]) else ""]
+
+
+func _speedrun_menu() -> void:
+	_choice_count += 1
+	var mine := _choice_count
+	_choice_handler = func(index: int) -> void:
+		if mine != _choice_count:
+			return
+		match index:
+			0, 1:
+				_pick_talent("easy" if index == 0 else "hard", true)
+			2:
+				ui.show_list("速通记录（规则版本 %d · 本机）" % Speedrun.RULES, Speedrun.rows(_read_speedrun()))
+	ui.show_choice("速通：从第一次能操作起计时，到真结局停表；暂停也照常计时。速通不写普通存档，也不能读档接着跑。", ["预知梦 · 速通", "梦魇 · 速通", "速通记录"])
+
+
+func _pick_talent(difficulty: String, speed: bool = false) -> void:
 	var labels: Array = []
 	for k: String in TalentModule.KEYS:
 		var d: Dictionary = TalentModule.DEF[k]
@@ -240,6 +289,10 @@ func _pick_talent(difficulty: String) -> void:
 		if mine != _choice_count or index < 0:
 			return
 		var pick := String(TalentModule.KEYS[index]) if index < TalentModule.KEYS.size() else String(TalentModule.KEYS[randi() % TalentModule.KEYS.size()])
+		if speed:
+			speedrun.arm(difficulty)
+		else:
+			speedrun.disarm()
 		start_new_game(difficulty, pick)
 		_play_opening()
 	ui.show_choice("%s · 选择天赋（每局一个；限制写在卡片上）" % ("梦魇" if difficulty == "hard" else "预知梦"), labels)
@@ -396,7 +449,7 @@ func _dead() -> bool:
 
 
 func save_game() -> void:
-	if session == null or not session.running or _dead():
+	if session == null or not session.running or _dead() or not speedrun.run.is_empty():
 		return
 	var snapshot := session.capture(player.capture_pose())
 	var error := session.validate(snapshot, router.known_ids())
@@ -407,6 +460,8 @@ func save_game() -> void:
 
 
 func load_game() -> void:
+	speedrun.disarm()
+	ui.speedrun_text = ""
 	var result := saves.read()
 	if result.has("error"):
 		ui.show_notice(result["error"])
@@ -456,6 +511,11 @@ func resume_game() -> void:
 
 
 func return_to_menu() -> void:
+	if speedrun.active():
+		var rec_a := _read_speedrun()
+		_speedrun_result(speedrun.fail("abandoned", rec_a), rec_a)
+	speedrun.disarm()
+	ui.speedrun_text = ""
 	_leave_drive()
 	if is_instance_valid(_visit_nodes):
 		_visit_nodes.queue_free()
@@ -503,6 +563,7 @@ func _physics_process(delta: float) -> void:
 		session.advance(delta, router.current.advances_calendar)
 		if school() == null or campus() == null or not campus().knows(session.world_id):
 			ui.show_location(_location_name())
+		ui.speedrun_text = Speedrun.fmt(speedrun.elapsed()) if speedrun.active() and speedrun.run["status"] == "running" else ""
 		ui.show_runtime(session.clock.active_seconds)
 		_campus_step(delta)
 		if days() != null and days().waiting != null:
@@ -1060,8 +1121,12 @@ func kill(msg: String, fx: String, source: String) -> void:
 	var updated := fate.log_death(_read_death_log(), school().day if school() != null else 1, session.world_id)
 	_write_death_log(updated)
 	if not result["wake"]:
-		saves.clear()
-		ui.set_save_available(saves.exists())
+		if speedrun.run.is_empty():
+			saves.clear()
+			ui.set_save_available(saves.exists())
+		else:
+			var rec_d := _read_speedrun()
+			ui.show_notice(msg + "\n" + _speedrun_result(speedrun.fail("failed", rec_d), rec_d))
 
 
 func _death_log_path() -> String:
@@ -2292,8 +2357,14 @@ func _reach_ending(id: String) -> void:
 	if items() != null:
 		items().cancel_search()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	saves.clear()
-	ui.set_save_available(saves.exists())
+	var run_line := ""
+	if speedrun.run.is_empty():
+		saves.clear()
+		ui.set_save_available(saves.exists())
+	else:
+		var rec_e := _read_speedrun()
+		run_line = _speedrun_result(speedrun.finish(id, rec_e), rec_e)
+		ui.speedrun_text = ""
 	var path := saves.side_path("ends.json")
 	var seen_ends: Dictionary = {}
 	if FileAccess.file_exists(path):
@@ -2312,6 +2383,8 @@ func _reach_ending(id: String) -> void:
 	var meta := "第 %d 天" % school().day
 	if (items() != null and items().has_clock()) or (talent() != null and talent().has("watch")):
 		meta += " · " + SchoolClock.fmt_clock(school().tsec)
+	if run_line != "":
+		meta += "\n" + run_line
 	ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta)
 
 
