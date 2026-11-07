@@ -57,6 +57,8 @@ func _run() -> void:
 	_test_modules_and_schema()
 	_test_storage()
 	await _test_app()
+	var first_investigation := preload("res://tests/test_investigation.gd").new()
+	await first_investigation.run(self, check, same_json)
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
 			DirAccess.remove_absolute(_test_path + suffix)
@@ -191,6 +193,7 @@ func _tap(control: Control) -> void:
 
 func _test_app() -> void:
 	var app: GameApp = APP.instantiate()
+	app.initial_world = "migration_lab" # Keep exercising the original framework fixture.
 	app.saves = SaveStore.new(_test_path)
 	root.size = Vector2i(1280, 720)
 	root.add_child(app)

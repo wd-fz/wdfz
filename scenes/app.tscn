@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://app/game_app.gd" id="1"]
 [ext_resource type="Script" path="res://world/world_router.gd" id="2"]
@@ -6,6 +6,8 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/game_ui.tscn" id="4"]
 [ext_resource type="Resource" path="res://content/worlds/migration_lab.tres" id="5"]
 [ext_resource type="Script" path="res://world/world_definition.gd" id="6"]
+[ext_resource type="Resource" path="res://content/worlds/investigation_slice.tres" id="7"]
+[ext_resource type="Script" path="res://features/inventory/ground_item_view.gd" id="8"]
 
 [node name="GameApp" type="Node"]
 process_mode = 3
@@ -17,7 +19,11 @@ process_mode = 1
 [node name="WorldRouter" type="Node3D" parent="World"]
 unique_name_in_owner = true
 script = ExtResource("2")
-worlds = Array[ExtResource("6")]([ExtResource("5")])
+worlds = Array[ExtResource("6")]([ExtResource("5"), ExtResource("7")])
+
+[node name="GroundItems" type="Node3D" parent="World"]
+unique_name_in_owner = true
+script = ExtResource("8")
 
 [node name="Player" parent="World" instance=ExtResource("3")]
 unique_name_in_owner = true
