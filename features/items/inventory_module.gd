@@ -162,6 +162,15 @@ func remove(id: String) -> bool:
 	return true
 
 
+## items.js dropSelected: the item is put down (gone). The unique portal materials can be taken again
+## from where they were found, so a wrong drop cannot cut a route (the app clears the facility flag).
+func drop(id: String) -> bool:
+	if not remove(id):
+		return false
+	_say("我：我把「%s」放下了。" % item_name(id))
+	return true
+
+
 func set_hot(index: int, id: Variant) -> bool:
 	if index < 0 or index > 1 or (id != null and not has(String(id))):
 		return false

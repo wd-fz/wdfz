@@ -18,6 +18,7 @@ signal choice_selected(index: int)
 signal lift_close_requested
 signal item_use_requested(id: String)
 signal item_hot_requested(index: int, id: String)
+signal item_drop_requested(id: String)
 signal achievements_requested
 signal archive_requested
 signal speedrun_requested
@@ -327,11 +328,14 @@ func show_bag(entries: Array) -> void:
 		row.add_child(desc)
 		var buttons := HBoxContainer.new()
 		var id := String(e["id"])
-		for spec: Array in [["使用", -1], ["放到快捷栏 1", 0], ["放到快捷栏 2", 1]]:
+		for spec: Array in [["使用", -1], ["放到快捷栏 1", 0], ["放到快捷栏 2", 1], ["丢弃", -2]]:
 			var b := Button.new()
 			b.text = spec[0]
-			if spec[1] < 0:
+			b.name = "Drop_" + id if spec[1] == -2 else "Item_%s_%d" % [id, int(spec[1])]
+			if spec[1] == -1:
 				b.pressed.connect(item_use_requested.emit.bind(id))
+			elif spec[1] == -2:
+				b.pressed.connect(item_drop_requested.emit.bind(id))
 			else:
 				b.pressed.connect(item_hot_requested.emit.bind(int(spec[1]), id))
 			buttons.add_child(b)

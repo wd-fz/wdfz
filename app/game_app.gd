@@ -77,6 +77,7 @@ func _ready() -> void:
 	ui.lift_close_requested.connect(_lift_close)
 	ui.item_use_requested.connect(_use_item)
 	ui.item_hot_requested.connect(_set_hot)
+	ui.item_drop_requested.connect(_drop_item)
 	return_to_menu()
 
 
@@ -1174,6 +1175,17 @@ func _use_item(id: String) -> void:
 		return
 	_close_bag()
 	_apply_result(bag.use(id, school().tsec if school() != null else 0.0))
+
+
+func _drop_item(id: String) -> void:
+	var bag := items()
+	if bag == null or story().dead or not bag.drop(id):
+		return
+	if id in ["coil", "lens", "vial"] and facilities() != null:
+		facilities().flags[id] = false     # the unique portal materials can be taken again where they were found
+	for line: String in bag.take_notices():
+		ui.show_notice(line)
+	ui.show_bag(_bag_entries())
 
 
 func _set_hot(index: int, id: String) -> void:

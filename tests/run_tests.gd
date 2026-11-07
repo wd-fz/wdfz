@@ -92,6 +92,7 @@ func _run() -> void:
 	_test_settings_rules()
 	_test_investigation_rules()
 	_test_exploration_rules()
+	_test_drop_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -2611,6 +2612,21 @@ func _test_exploration_rules() -> void:
 	check(MapView.tone("留") == "brass" and MapView.tone("锁") == "seal" and MapView.tone("✓") == "done" and MapView.tone("梯") == "route" and MapView.tone("桌") == "prop" and MapView.static_mark("S") == "梯", "the four tones and the furniture letters of the sketch")
 
 
+func _test_drop_rules() -> void:
+	var bag := InventoryModule.new(CampusData.rooms(), CampusData.campus())
+	bag.reset()
+	bag.add("coin")
+	bag.add("torch")
+	bag.set_hot(0, "torch")
+	bag.torch_on = true
+	check(bag.drop("torch") and not bag.has("torch") and bag.hot[0] == null and not bag.torch_on and bag.take_notices().has("我：我把「手电筒」放下了。"), "dropping an item removes it from the bag and the hot slot, and switches the torch off")
+	check(not bag.drop("torch") and bag.has("coin"), "dropping what you do not have does nothing; the rest stays")
+	var fac := FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
+	fac.reset()
+	fac.flags["coil"] = true
+	check(fac.flags["coil"] == true, "(the coil was taken from the server room)")
+
+
 func _test_facility_rules() -> void:
 	var rooms := CampusData.rooms()
 	var fac := FacilitiesModule.new(rooms, CampusData.layout("out"), CampusData.campus())
@@ -3954,6 +3970,10 @@ func _test_settings_app(app: GameApp) -> void:
 	app.ui.setting_changed.emit("captions", 1)
 	app.ui.setting_changed.emit("bright", 100)
 	app.ui.settings_panel.visible = false
+	app.items().add("coil")
+	app.facilities().flags["coil"] = true
+	app._drop_item("coil")
+	check(not app.items().has("coil") and app.facilities().flags["coil"] == false, "a dropped portal material can be taken again from where it was found")
 	app.return_to_menu()
 	await _frames(2)
 
