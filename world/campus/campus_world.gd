@@ -11,6 +11,7 @@ const BOUNDARY := 1.0
 @export var scene_id := "out"
 
 var layout: Dictionary = {}
+var lighting: CampusLighting
 var _door_bodies: Dictionary = {}   # key -> CollisionShape3D
 var _door_leaves: Dictionary = {}   # key -> {"closed": Node3D, "open": Node3D}
 var _lift_leaves: Array[Node3D] = []
@@ -447,9 +448,25 @@ func _edge(body: StaticBody3D, edge: String, a: Vector2, b: Vector2, gaps: Array
 		_add_box(body, rect, WALL_BOTTOM, WALL_TOP, "boundary")
 
 
-# ---- lighting (placeholder until lighting.js is ported) ----
+# ---- lighting (lighting.js port in CampusLighting) ----
 
 func _build_lighting() -> void:
+	lighting = CampusLighting.new()
+	lighting.name = "Lighting"
+	add_child(lighting)
+	var rise := 0.0
+	for s: Dictionary in CampusData.campus().get("stair_layout", []):
+		if s["id"] == scene_id:
+			rise = float(s["rise"])
+	lighting.setup(scene_id, layout if is_room() else null, get_node_or_null("Model"), rise)
+
+
+func update_lighting(dt: float, tsec: float, camera: Camera3D) -> void:
+	if lighting != null:
+		lighting.update(dt, tsec, camera)
+
+
+func _build_placeholder_lighting() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.55, 0.6, 0.65) if not is_room() else Color(0.05, 0.06, 0.07)

@@ -617,6 +617,11 @@ func _test_campus_app() -> void:
 	check(world != null and world.get_node_or_null("Model") != null, "teach1 model loaded from the exported glb")
 	check(world.find_children("*", "MultiMeshInstance3D", true, false).size() > 50, "instanced furniture rebuilt as MultiMesh")
 	check(world.door_keys().size() == 8, "teach1 has its eight classroom doors as bodies")
+	var lit := world.lighting
+	check(lit != null and lit.room_lights.size() == 5, "teach1 lamps: three lit classrooms, the corridor and the lift hall (ROOM_LIGHTS)")
+	check(lit.live_count() > 0, "lamp panel materials are found for flicker")
+	check(lit.sun_at(12.3)["day"] > 0.99 and lit.sun_at(0.0)["day"] < 0.01, "sunAt: full day at noon, night at midnight")
+	check(lit.lamp_health(0) == 1.0, "the first lamp of a room always works")
 	var start: Array = app.player.capture_pose()["position"]
 	check(absf(start[0] - 17.3) < 0.01 and absf(start[2] - 0.39) < 0.01 and app.school().seated, "a run starts seated on the own seat (ClassroomLayout.anchor)")
 	check(app.school().at_my_seat("teach1", CampusGeometry.to_world(CampusData.layout("teach1"), start[0], start[2])), "the start seat counts as the own seat")

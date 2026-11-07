@@ -62,6 +62,11 @@
       emissiveMap:m.emissiveMap||null, transparent:m.transparent, opacity:m.opacity, alphaTest:m.alphaTest,
       side:m.side, roughness:m.isMeshPhongMaterial ? Math.max(0.2, 1 - (m.shininess||30) / 100) : 0.95, metalness:0 }));
     s.vertexColors = !!vc; s.name = (m.name || m.type) + (m.userData && m.userData.matKey ? ':' + m.userData.matKey : '');
+    /* 灯光模块逐帧改色的几种材质：打上固定名字，Godot 里按名字找回来 */
+    var G = window.GLR || {}, M = window.MATS || {};
+    [[G.lampHeadMat, 'lampHead'], [G.winSkyMat, 'winSky'], [G.winLitMat, 'winLit'], [M.emit, 'emit'], [M.emitDying, 'emitDying']].forEach(function(p){
+      if(p[0] && p[0] === m) s.name = 'wdfz_live:' + p[1];
+    });
     return s;
   }
   function b64(f32){
@@ -273,6 +278,7 @@
   }
   function outLayout(){
     window.SpaceLayout.ensureOutside();
+    if(!window.OUT_LAMPS || !window.OUT_LAMPS.length) window.buildOutdoorGeometry();
     var SC = window.SC, B = window.BOUND, boxes = [];
     function toM(x0, y0, x1, y1, kind, extra){ return box(x0 * U, y0 * U, x1 * U, y1 * U, kind, extra); }
     window.OBJ.forEach(function(o){
@@ -282,7 +288,8 @@
     var objs = window.OBJ.map(function(o){ return {id:o.id, k:o.k, x:o.x, y:o.y, w:o.w, h:o.h, door:o.door || null, name:o.n || null, open:!!o.open, door_world:o.k === 'roof' ? window.doorWorld(o) : null}; });
     return {id:'out', SC:SC, U2M:U, TTILE:window.TTILE,
       bound:{x0:(B.x0 + 4) * SC * U, z0:(B.y0 + 4) * SC * U, x1:(B.x1 - 4) * SC * U, z1:(B.y1 - 4) * SC * U},
-      boxes:boxes, objects:objs};
+      boxes:boxes, objects:objs,
+      lamps:(window.OUT_LAMPS || []).map(function(l){ return {x:round(l.x), y:round(l.y), z:round(l.z)}; })};
   }
   function campusDoors(){
     var CD = window.CAMPUS_DOOR;
@@ -302,6 +309,7 @@
         items:window.ITEMS, item_glyph:window.ITEM_GLYPH, desk_loot:window.DESK_LOOT, lab_loot:window.LAB_LOOT,
         pill:{sec:window.PILL_SEC, rate:window.PILL_RATE}, bag_capacity:window.InventoryRules.capacity,
         own_podium:window.ClassroomLayout.podium(window.ClassroomLayout.ownSeat.classId),
+        room_lights:window.ROOM_LIGHTS, light_cfg:window.LCFG, sun:{rise:window.SUN_RISE, set:window.SUN_SET},
         stair_layout:window.STAIR_LAYOUT, stair_geometry:window.StairGeometry.config, spiral:window.SPIRAL,
         campus_link:window.CAMPUS_LINK ? {width:window.CAMPUS_LINK.width, annex:window.CAMPUS_LINK.annex, pairs:window.CAMPUS_LINK.pairs} : null,
         reference:'wd-fz/wd-fz.github.io@0bf508a47eac154c2a7047cdb45d314f61c48fdc'};
