@@ -37,3 +37,4 @@
 | [通关记录](通关记录/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_records.gd`：用示例记录（不是真实通关）拍的通关记录列表（难度／路线筛选、四种排序）、地图回放（脚印、巡察者轨迹、事件列表、播放条）与足迹图 |
 | [人形模型](人形模型/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_figures.gd`、`tools/capture_classroom.gd`：旧版 `figure.js` 导出的六种人形（tall／roam／person／teacher／neck／sit）并排；教室里同学换成坐姿人形（面向黑板），同化高时整班转头 |
 | [第一人称手部](第一人称手部/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_hands.gd`：右手手电、左手撑开的雨伞加右手手电、手机（旧版 `hands.js` 导出的手与袖口） |
+| [开场CG](开场CG/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_opening.gd`：新局开场的实时分镜各段（后排推向讲台、老师念到一半、粉笔灰停在半空、镜头转向「你」、趴下、醒来）；取的是分镜某一时刻的静帧 |

@@ -664,6 +664,44 @@ const OPENING := ["你是这学期转来的。", "高二（二）班。第四节
 	"你把脸埋进胳膊里。袖子上有一股不属于你的味道。", "……", "你睁开眼。\n教室里还是坐满了人。只是没有一个人在呼吸。",
 	"窗外的颜色不见了。走廊里很安静，安静得能听见灯管里的电流。", "下课铃没有响。\n你忽然很确定：这不是你转来的那个学校。\n而它，已经知道你醒了。"]
 const OPENING_PAGE := 3.4
+var _cut_fade: ColorRect
+var _cut_caption: Label
+
+
+## Over the live cutscenes: a black fade (0 clear … 1 black) and a caption line at the bottom.
+func cut_fade(v: float) -> void:
+	if _cut_fade == null:
+		_cut_fade = ColorRect.new()
+		_cut_fade.name = "CutFade"
+		_cut_fade.color = Color.BLACK
+		_cut_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_cut_fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_cut_fade.process_mode = Node.PROCESS_MODE_ALWAYS
+		$Root.add_child(_cut_fade)
+	_cut_fade.modulate.a = clampf(v, 0.0, 1.0)
+	_cut_fade.visible = v > 0.001
+
+
+func cut_caption(text: String) -> void:
+	if _cut_caption == null:
+		_cut_caption = Label.new()
+		_cut_caption.name = "CutCaption"
+		_cut_caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_cut_caption.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+		_cut_caption.offset_top = -150.0
+		_cut_caption.offset_bottom = -60.0
+		_cut_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_cut_caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_cut_caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_cut_caption.add_theme_font_size_override("font_size", 24)
+		_cut_caption.add_theme_color_override("font_outline_color", Color.BLACK)
+		_cut_caption.add_theme_constant_override("outline_size", 6)
+		_cut_caption.process_mode = Node.PROCESS_MODE_ALWAYS
+		$Root.add_child(_cut_caption)
+	_cut_caption.text = text
+	_cut_caption.visible = not text.is_empty()
+
+
 var opening_panel: Control
 var _opening_text: Label
 var _opening_i := -1

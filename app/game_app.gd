@@ -286,11 +286,37 @@ func elevator() -> ElevatorModule:
 
 
 ## The prologue: the game waits (paused) until the pages are read or skipped.
+var _opening_cut: OpeningCut
+
+
+## The opening scene is on (the live cutscene, or the text pages that stand in for it).
+func opening_busy() -> bool:
+	return ui.opening_on() or (_opening_cut != null and _opening_cut.on)
+
+
 func _play_opening() -> void:
 	if session == null:
 		return
 	player.enabled = false
 	get_tree().paused = true
+	var world := _campus_world()
+	var room: Variant = campus().room(session.world_id) if campus() != null else null
+	if world != null and room != null and session.world_id == "teach1" and DisplayServer.get_name() != "headless":
+		var seen := saves.side_path("opening_seen")
+		if _opening_cut != null and is_instance_valid(_opening_cut):
+			_opening_cut.queue_free()
+		_opening_cut = OpeningCut.new()
+		_opening_cut.name = "OpeningCut"
+		add_child(_opening_cut)
+		_opening_cut.finished.connect(func(skipped: bool) -> void:
+			DirAccess.make_dir_recursive_absolute(seen.get_base_dir())
+			var f := FileAccess.open(seen, FileAccess.WRITE)
+			if f != null:
+				f.store_string("1")
+				f.close()
+			_opening_done(skipped))
+		_opening_cut.begin(world, room, player, ui, FileAccess.file_exists(seen))
+		return
 	ui.show_opening()
 
 
@@ -599,7 +625,7 @@ func load_game() -> void:
 
 
 func pause_game() -> void:
-	if ui.opening_on():
+	if opening_busy():
 		return
 	# Game.pause: no pause menu once dead (a death cannot be saved around).
 	if session == null or not session.running or _dead():
@@ -4376,11 +4402,11 @@ func _process(delta: float) -> void:
 			_hands = HandsView.new()
 			_hands.name = "Hands"
 			player.camera.add_child(_hands)
-		var shown := not get_tree().paused and not story().dead and not driving() and not ui.opening_on()
+		var shown := not get_tree().paused and not story().dead and not driving() and not opening_busy()
 		var inv := items()
 		_hands.update(delta, inv != null and inv.torch_on and inv.has("torch"), inv != null and inv.brolly_up, phone_open() and not snake_open(), shown, player.moving, player.sprinting)
 	var m := "menu"
-	if session != null and not get_tree().paused and not ui.opening_on():
+	if session != null and not get_tree().paused and not opening_busy():
 		m = "death" if story().dead else "play"
 	playtest.frame(delta, m)
 
@@ -4426,7 +4452,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		_toggle_debug()
 		get_viewport().set_input_as_handled()
 		return
-	if ui.opening_on():
+	if opening_busy():
+		if _opening_cut != null and _opening_cut.on:
+			return
 		if event.is_action_pressed("pause"):
 			ui._end_opening(true)
 			get_viewport().set_input_as_handled()

@@ -109,6 +109,7 @@ func _run() -> void:
 	_test_records_panel()
 	_test_dev_tools()
 	_test_hands()
+	_test_opening()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -3184,6 +3185,13 @@ func _test_records_panel() -> void:
 	check(panel.open_view(a, true) and panel._map.trails[0]["pts"].size() == 4 and not panel._map.here, "the footprint map shows the whole path, no marker")
 	check(not panel.open_view("nope", true), "a missing replay does not open")
 	panel.queue_free()
+
+
+func _test_opening() -> void:
+	check(OpeningCut.duration(false) == 26.0 and OpeningCut.duration(true) == 11.0 and OpeningCut.story_time(0.0, true) == OpeningCut.SHORT_FROM and OpeningCut.story_time(1.0, true) == 1.0 and OpeningCut.story_time(0.5, false) == 0.5,
+		"the opening is 26 s, the short version 11 s starting at the fourth part")
+	check(OpeningCut.line_at(0.1).begins_with("你是这学期转来的") and OpeningCut.line_at(0.22) == "" and OpeningCut.line_at(0.95).begins_with("下课铃没有响"), "the captions follow the storyboard")
+	check(OpeningCut.ease_k(-1.0) == 0.0 and OpeningCut.ease_k(2.0) == 1.0 and is_equal_approx(OpeningCut.ease_k(0.5), 0.5), "the easing is clamped")
 
 
 func _test_hands() -> void:
