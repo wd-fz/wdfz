@@ -27,6 +27,7 @@ signal opening_finished(skipped: bool)
 signal terminal_closed
 signal sound_toggled(on: bool)
 signal settings_requested
+signal fullscreen_requested
 signal map_requested(id: String)
 signal notes_requested(query: String)
 signal notes_focus_requested(route: String)
@@ -115,6 +116,18 @@ func _ready() -> void:
 	gear.custom_minimum_size = Vector2(0, 48)
 	gear.pressed.connect(func() -> void: settings_requested.emit())
 	option_row.add_child(gear)
+	var full := Button.new()
+	full.name = "FullscreenMenu"
+	full.text = "全屏"
+	full.custom_minimum_size = Vector2(0, 48)
+	full.pressed.connect(func() -> void: fullscreen_requested.emit())
+	option_row.add_child(full)
+	var full2 := Button.new()
+	full2.name = "FullscreenPause"
+	full2.text = "全屏"
+	full2.custom_minimum_size = Vector2(0, 48)
+	full2.pressed.connect(func() -> void: fullscreen_requested.emit())
+	%Save.add_sibling(full2)
 	var gear2 := Button.new()
 	gear2.name = "SettingsPause"
 	gear2.text = "设置"
@@ -164,14 +177,36 @@ func _process(delta: float) -> void:
 		%Toast.visible = _toast_seconds > 0.0
 
 
+## A phone held upright: the controls are roomier sideways (mobile.js asks for landscape).
+var _orient_hint: Label
+
+
 func _resize() -> void:
 	var window := get_tree().root
 	var reference := Vector2i(480, 800) if window.size.x < window.size.y else Vector2i(960, 540)
 	if window.content_scale_size != reference:
 		window.content_scale_size = reference
 	clear_touch()
+	_update_orient_hint()
 	if choice_panel != null and choice_panel.visible:
 		_fit_choice.call_deferred()
+
+
+func _update_orient_hint() -> void:
+	var upright := get_tree().root.size.x < get_tree().root.size.y
+	if _orient_hint == null:
+		_orient_hint = Label.new()
+		_orient_hint.name = "OrientationHint"
+		_orient_hint.text = "横屏玩更舒服：触屏按钮在横屏下更宽松。设置里的「自动横屏」会在手机上替你锁定横屏。"
+		_orient_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_orient_hint.custom_minimum_size = Vector2(320, 0)
+		_orient_hint.modulate = Color(1, 1, 1, 0.6)
+		_orient_hint.add_theme_font_size_override("font_size", 12)
+		menu.add_child(_orient_hint)
+		_orient_hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+		_orient_hint.position.y -= 24.0
+		_orient_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_orient_hint.visible = upright and _touch_enabled
 
 
 ## Old UI.choice: a short prompt with buttons; keys 1–9 pick, Esc / 算了 closes.
@@ -1391,6 +1426,8 @@ func set_touch_enabled(value: bool) -> void:
 	%TouchToggle.set_pressed_no_signal(value)
 	touch_controls.visible = value and _mode == "play"
 	clear_touch()
+	if is_inside_tree():
+		_update_orient_hint()
 
 
 func touch_enabled() -> bool:

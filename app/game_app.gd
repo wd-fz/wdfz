@@ -41,6 +41,7 @@ func _ready() -> void:
 	settings.load_file(DisplayServer.is_touchscreen_available())
 	ui.settings_requested.connect(func() -> void: ui.show_settings(settings.values))
 	ui.setting_changed.connect(_setting_changed)
+	ui.fullscreen_requested.connect(func() -> void: _setting_changed("full_screen", 1 - settings.get_int("full_screen")))
 	ui.notes_requested.connect(_show_notes)
 	ui.map_requested.connect(_show_map)
 	ui.notes_focus_requested.connect(_notes_focus)
