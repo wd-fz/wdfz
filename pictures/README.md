@@ -28,3 +28,4 @@
 | [声音字幕](声音字幕/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_captions.gd`：教学楼 1F，下课铃与左侧隔墙的敲门声的字幕 |
 | [氛围](氛围/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_dread.gd`：同一天第二次回到教学楼 1F 时地上的纸条（回访变化）；`tools/capture_atmos.gd`（第三天傍晚）：走廊暗区与墙边拖把水桶、拖把转过来对着我、教室窗外远处的人影、楼梯口上方的应急指示牌（占位几何；同学一起转头在占位胶囊上看不出来，由规则测试覆盖） |
 | [设置](设置/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_settings.gd`：主菜单上打开的设置面板（声音、画面与舒适、操作与文字三组，滚动查看） |
+| [调查笔记](调查笔记/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_notes.gd`：读过停车单与移交单、保安岗登记之后的笔记页（当前调查、最近发现、按类型分组的记录） |

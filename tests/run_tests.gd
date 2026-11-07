@@ -90,6 +90,7 @@ func _run() -> void:
 	_test_mono_rules()
 	_test_scene_rules()
 	_test_settings_rules()
+	_test_investigation_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -999,7 +1000,7 @@ func _test_garage_rules() -> void:
 	var wc := wrong.split(":")
 	drive.inspect_car(int(wc[0]), int(wc[1]))
 	var asked := drive.take_events()
-	check(asked[0]["kind"] == "choice" and String(asked[0]["text"]).begins_with(GarageModule.car_name(int(wc[0]), int(wc[1]))), "looking at a car offers to try the key")
+	check(asked.back()["kind"] == "choice" and String(asked.back()["text"]).begins_with(GarageModule.car_name(int(wc[0]), int(wc[1]))), "looking at a car offers to try the key")
 	drive.choose(0)
 	check(drive.job != null and _notices(drive.take_events()).has("我：我把钥匙插进锁孔，慢慢地拧……"), "trying the key is a 1.6 s hold")
 	drive.set_context(_gctx(east.x + 8.0, east.y))
@@ -2492,6 +2493,74 @@ func _test_settings_rules() -> void:
 			DirAccess.remove_absolute(p2)
 
 
+func _test_investigation_rules() -> void:
+	var inv := InvestigationModule.new()
+	inv.reset()
+	inv.set_context({"day": 1, "place": "教学楼 1F", "desk_ok": true})
+	check(inv.goal().begins_with("先看看自己课桌上的停车单"), "day 1 starts at the desk: look at the parking ticket")
+	check(inv.open_desk() and inv.visible("desk") and _of_kind(inv.take_events(), "save").size() == 1, "R at the own seat reads the ticket and records it")
+	check(not inv.open_desk() and inv.goal().begins_with("停车单提到了教室前方的讲台"), "the ticket is read once; the goal moves on to the podium")
+	inv.notice()
+	var ev := inv.take_events()
+	check(inv.visible("notice") and inv.visible("carTheory") and inv.visible("timePressure") and inv.visible("supply") and not _of_kind(ev, "spots").is_empty(), "the handover note records four entries and marks the guard post and the garage on the map")
+	check(inv.entries["carTheory"]["kind"] == "推测" and inv.entries["notice"]["kind"] == "事实" and inv.entries["notice"]["source"].contains("讲台"), "kinds and sources follow the Web version")
+	var ch: Dictionary = _of_kind(ev, "choice")[0]
+	check(ch["labels"][0] == "阅读登记规定（次日起开放）" and ch["labels"].size() == 2, "on day 1 the outing registration is read, not made")
+	inv.choose(0)
+	check(inv.visible("outing") and not _of_kind(inv.take_events(), "outing").is_empty(), "the outing rule is recorded and registration is offered")
+	check(inv.entries["notice"]["day"] == 1 and inv.recent.back() == "outing", "an entry remembers its day; the latest find is last")
+	# Supply box: only at its place, only after the note, once.
+	var site := String(inv.supply["site"])
+	var other := "canteen1" if site == "guard1" else "guard1"
+	inv.set_context({"day": 1, "place": "x", "has_coin": true, "has_pill": false, "bag_full": false})
+	check(not inv.supply_offer(other) and inv.supply_offer(site) and _of_kind(inv.take_events(), "choice").size() == 1, "the supply offer appears only at its own place")
+	inv.choose(1)
+	var took := inv.take_events()
+	check(not _of_kind(took, "supply").is_empty() and _of_kind(took, "supply")[0]["pay"] and inv.visible("supplyTaken") and bool(inv.supply["taken"]), "paying a coin takes the pill and records it")
+	check(not inv.supply_offer(site), "the box is empty afterwards")
+	var full := InvestigationModule.new()
+	full.reset()
+	full.set_context({"day": 1, "bag_full": true})
+	full.record("notice", "n", "事实")
+	full.supply_offer(String(full.supply_site()["site"]))
+	full.take_events()
+	full.choose(0)
+	check(_of_kind(full.take_events(), "supply").is_empty() and not bool(full.supply["taken"]), "a full bag leaves the pill in the box")
+	var again := InvestigationModule.new()
+	again.reset()
+	again.record("notice", "n", "事实")
+	again.supply_offer(String(again.supply_site()["site"]))
+	again.take_events()
+	again.choose(2)
+	check(not _of_kind(again.take_events(), "continue").is_empty(), "declining goes on with the facility")
+	# Focus, goal and progress.
+	var f := InvestigationModule.new()
+	f.reset()
+	f.set_context({"day": 2, "has_key": true, "car": {"ok": true, "via": "key"}, "car_tried": 2, "portal": {"diary": true, "sketch": false, "open": false, "count": 1, "floors_left": [2, 5], "need": ""}, "hacked": true, "spot_comp": true})
+	f.record("portalDiary", "d", "事实")
+	check(f.focus == "portal" and f.current_focus() == "portal" and f.routes().size() == 3 and f.goal().contains("已得到 1/3 张图纸"), "reading the diary moves the focus to the portal route")
+	check(f.set_focus("car") and f.goal().begins_with("已经有车钥匙") and not f.set_focus("cyber"), "the player can focus a route that exists, not one that does not")
+	var prog := f.progress()
+	check(prog.size() == 3 and String(prog[0][1]).contains("有钥匙，能够试车门；已试 2 辆") and String(prog[2][1]).contains("还需调查实验楼 2、5 楼教师台"), "the route progress block reads like the Web version")
+	# Listing and search.
+	f.record("notice", "钥匙移交：行政楼五楼校长办公室。", "事实", "教学楼一楼 · 讲台移交单")
+	f.record("parking", "停车登记：第 3 排。", "事实", "保安岗")
+	var all := f.list()
+	var hits := f.list("保安")
+	check(all["found"] == 3 and hits["found"] == 1 and hits["recent"].is_empty() and all["recent"].size() == 3 and all["recent"][0]["id"] == "parking", "search filters by text or place; recent shows the latest three, newest first")
+	check(InvestigationModule.new().car_name(4, 3) == "鄂A·H3227" and GarageModule.new(CampusData.layout("garage1")).car_name(4, 3) == InvestigationModule.new().car_name(4, 3), "plates match the garage's")
+	# Records survive a save; a bad one is rejected.
+	var back := InvestigationModule.new()
+	back.restore(f.capture())
+	check(back.entries == f.entries and back.recent == f.recent and back.focus == f.focus and back.validate(f.capture()).is_empty(), "the notebook saves and loads")
+	check(not back.validate({"entries": {"a": {"text": 3, "kind": "事实"}}, "recent": [], "supply": {}}).is_empty(), "a broken notebook is rejected")
+	var many := InvestigationModule.new()
+	many.reset()
+	for i in 12:
+		many.record("r%d" % i, "t", "线索")
+	check(many.recent.size() == 8 and many.recent[0] == "r4", "only the last eight finds are remembered")
+
+
 func _test_facility_rules() -> void:
 	var rooms := CampusData.rooms()
 	var fac := FacilitiesModule.new(rooms, CampusData.layout("out"), CampusData.campus())
@@ -2707,7 +2776,7 @@ func _test_routes_rules() -> void:
 	rt.choose(wrong, "easy")
 	var after_wrong := rt.take_events()
 	check(after_wrong[0]["kind"] == "san" and absf(float(after_wrong[0]["amount"]) + 4.0 * 0.82) < 0.001, "a wrong answer costs 4 SAN (×0.82 on 预知梦)")
-	check(after_wrong[1]["kind"] == "choice" and String(after_wrong[1]["text"]).contains(RoutesModule.EXPLANATIONS[order[0]]), "and shows the explanation")
+	check(after_wrong.back()["kind"] == "choice" and String(after_wrong.back()["text"]).contains(RoutesModule.EXPLANATIONS[order[0]]), "and shows the explanation")
 	check(rt.face_quiz["order"][0] != order[0] and rt.face_quiz["used"].size() == 4, "the question is swapped for one not asked yet")
 	rt.choose(0, "easy")
 	var again := rt.take_events()
@@ -3646,6 +3715,9 @@ func _test_lesson_app(app: GameApp) -> void:
 	app.patrol().pat["safety"] = 999.0
 	check(app.school().seated, "the run starts seated in class")
 	var before := app.school().san
+	app._lesson_press()
+	await _frames(1)
+	check(app.investigation().visible("desk") and not app.ui.choice_open(), "the first R at the own seat reads the parking ticket (the investigation starts there)")
 	app._lesson_press()
 	await _frames(1)
 	check(app.ui.choice_open() and app._choice_left > 11.0, "R opens the desk question with its timer")

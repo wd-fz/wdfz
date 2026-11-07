@@ -318,6 +318,7 @@ func _submit() -> bool:
 		return false
 	var id := "%s:%d:shutdown" % [run_seed, attempt_id]
 	termination = {"status": "accepted", "requestId": id, "remaining": SURVIVE}
+	_emit("record", {"id": "cyberRequest", "text": "停机请求已经被服务器接受。接下来必须存活十分钟，手机可以断开。", "kind": "验证", "source": "机房维护终端"})
 	puzzle["acceptedRequestId"] = id
 	return true
 

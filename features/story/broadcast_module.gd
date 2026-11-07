@@ -271,6 +271,7 @@ func hold(on: bool) -> bool:
 
 func book() -> void:
 	b["book"] = true
+	_emit("record", {"id": "broadcastBook", "text": "行政楼二楼广播站：放学通知被撕成四页，蓝黑墨水、日期「第二天」。第二天起，第八节下课后至熄灯前播出。教导处文件柜、琴凳、保安岗登记簿、天台喇叭箱各有一页。", "kind": "线索", "source": "播音记录本"})
 	_say("播音记录本：「未播出：放学通知。第二天，第八节下课以后，熄灯以前。四页，蓝黑墨水。功放保险丝已烧，备用件和一份补给在器材室。长铃只响六十秒，提前确认北门路线，准备疾跑。」")
 	_emit("save")
 
@@ -448,7 +449,9 @@ func choose(index: int) -> void:
 			var what := String(p["ids"][index])
 			var i := int(p["index"])
 			if what == "take":
-				_collect("notice%d" % (i + 1))
+				if _collect("notice%d" % (i + 1)):
+					var pp := paper(i, false)
+					_emit("record", {"id": "notice%d" % (i + 1), "text": String(pp["text"]), "kind": "线索", "source": String(SOURCES[i]["title"])})
 			elif what == "fake":
 				_collect("notice_fake")
 			elif what == "guard":
@@ -577,6 +580,7 @@ func tick(dt: float) -> void:
 			_say("老师没有抬头：「广播站的残页，拿硬币去天台喇叭箱找。拧的时候背对楼梯口。」" if bool(call["real"]) else "喇叭里开始念你的名字。啸叫越来越尖——先离开这间屋子。")
 		if bool(call["real"]):
 			call["done"] = true
+			_emit("record", {"id": "broadcastTeacher", "text": "广播叫来的老师提到：天台喇叭箱要用硬币拧开，背对楼梯口。", "kind": "线索", "source": String(call["room"])})
 		else:
 			call["age"] = float(call["age"]) + dt
 			if float(call["age"]) >= 8.0:

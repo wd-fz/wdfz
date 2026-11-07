@@ -360,12 +360,12 @@ func do_search(room_id: String, c: int, r: int) -> void:
 		_say(EMPTY_LINES[_rng.randi() % EMPTY_LINES.size()])
 
 
-## interact.js 'T': the own classroom's podium holds the handover note (Investigation, not ported);
+## interact.js 'T': the own classroom's podium holds the handover note (InvestigationModule.notice, handled by the app);
 ## other podiums in teach1 have a piece of chalk.
 func podium(room_id: String, c: int, r: int) -> Dictionary:
 	var own: Array = _campus.get("own_podium", [])
 	if room_id == "teach1" and own.size() == 2 and int(own[0]) == c and int(own[1]) == r:
-		return {"notice": "（Godot 版尚未移植调查笔记：讲台上压着的移交单）"}
+		return {"notice": ""}
 	if room_id == "teach1":
 		if has("chalk"):
 			return {"notice": "我：讲台上有一支粉笔，我已经带了一支。"}

@@ -26,6 +26,8 @@ signal opening_finished(skipped: bool)
 signal terminal_closed
 signal sound_toggled(on: bool)
 signal settings_requested
+signal notes_requested(query: String)
+signal notes_focus_requested(route: String)
 signal setting_changed(key: String, value: int)
 
 @onready var menu: Control = %Menu
@@ -117,6 +119,12 @@ func _ready() -> void:
 	gear2.custom_minimum_size = Vector2(0, 48)
 	gear2.pressed.connect(func() -> void: settings_requested.emit())
 	%Save.add_sibling(gear2)
+	var notes_btn := Button.new()
+	notes_btn.name = "NotesPause"
+	notes_btn.text = "笔记"
+	notes_btn.custom_minimum_size = Vector2(0, 48)
+	notes_btn.pressed.connect(func() -> void: notes_requested.emit(""))
+	%Save.add_sibling(notes_btn)
 	load_button.owner = self
 	touch_toggle.owner = self
 	set_touch_enabled(DisplayServer.is_touchscreen_available())
@@ -893,6 +901,112 @@ void fragment() {
 		$Root.move_child(_grain_rect, 1)
 	_grain_rect.visible = on
 	set_process(true)
+
+
+# ---- the notes page (investigation.js render): the case card, recent finds, the records, route progress ----
+
+var notes_panel: PanelContainer
+var _notes_box: VBoxContainer
+var _notes_search: LineEdit
+const NOTE_COLORS := {"事实": Color(0.78, 0.86, 0.95), "推测": Color(0.95, 0.85, 0.6), "验证": Color(0.65, 0.9, 0.7), "线索": Color(0.88, 0.75, 0.95)}
+
+
+## data: {goal, focus, routes [[id, name]], recent [rows], groups {kind: rows}, progress [[name, text, done]], found, query}
+func show_notes(data: Dictionary) -> void:
+	if notes_panel == null:
+		notes_panel = PanelContainer.new()
+		notes_panel.name = "NotesPanel"
+		notes_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		notes_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		notes_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+		notes_panel.custom_minimum_size = Vector2(520, 0)
+		var back := StyleBoxFlat.new()
+		back.bg_color = Color(0.03, 0.05, 0.07, 0.99)
+		back.set_content_margin_all(14)
+		back.set_corner_radius_all(6)
+		notes_panel.add_theme_stylebox_override("panel", back)
+		var outer := VBoxContainer.new()
+		outer.add_theme_constant_override("separation", 8)
+		var head := Label.new()
+		head.text = "手册 · 笔记"
+		outer.add_child(head)
+		_notes_search = LineEdit.new()
+		_notes_search.name = "NotesSearch"
+		_notes_search.placeholder_text = "搜索记录（事实、地点）"
+		_notes_search.text_changed.connect(func(t: String) -> void: notes_requested.emit(t))
+		outer.add_child(_notes_search)
+		var scroll := ScrollContainer.new()
+		scroll.custom_minimum_size = Vector2(490, 380)
+		_notes_box = VBoxContainer.new()
+		_notes_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_notes_box.add_theme_constant_override("separation", 6)
+		scroll.add_child(_notes_box)
+		outer.add_child(scroll)
+		var close := Button.new()
+		close.text = "关闭"
+		close.pressed.connect(func() -> void: notes_panel.visible = false)
+		outer.add_child(close)
+		notes_panel.add_child(outer)
+		$Root.add_child(notes_panel)
+	for child in _notes_box.get_children():
+		child.queue_free()
+	var query := String(data.get("query", ""))
+	if _notes_search.text != query:
+		_notes_search.text = query
+	_note_label("当前调查" + ("  ·  %s路线" % _route_name(data) if not String(data.get("focus", "")).is_empty() else ""), Color(1, 0.9, 0.55))
+	_note_label(String(data["goal"]), Color.WHITE)
+	var routes: Array = data["routes"]
+	if routes.size() > 1:
+		var row := HBoxContainer.new()
+		var tag := Label.new()
+		tag.text = "关注"
+		row.add_child(tag)
+		for r: Array in routes:
+			var b := Button.new()
+			b.name = "Focus_" + String(r[0])
+			b.text = String(r[1])
+			b.toggle_mode = true
+			b.button_pressed = r[0] == data.get("focus", "")
+			b.pressed.connect(func() -> void: notes_focus_requested.emit(String(r[0])))
+			row.add_child(b)
+		_notes_box.add_child(row)
+	if not query.is_empty():
+		_note_label(("找到 %d 条" % int(data["found"])) if int(data["found"]) > 0 else "没有找到仍能回忆的对应记录。", Color(1, 1, 1, 0.7))
+	var recent: Array = data["recent"]
+	if not recent.is_empty():
+		_note_label("最近发现", Color(1, 0.9, 0.55))
+		for e: Dictionary in recent:
+			_note_label("[%s] %s" % [e["kind"], e["text"]], NOTE_COLORS[e["kind"]])
+	for kind: String in InvestigationModule.KINDS:
+		var rows: Array = (data["groups"] as Dictionary).get(kind, [])
+		if rows.is_empty():
+			continue
+		_note_label("%s  %d" % [kind, rows.size()], NOTE_COLORS[kind])
+		for e: Dictionary in rows:
+			_note_label("  第 %d 天 · %s" % [int(e.get("day", 1)), e["source"]], Color(1, 1, 1, 0.5))
+			_note_label("  " + String(e["text"]), Color(1, 1, 1, 0.92))
+	var progress: Array = data["progress"]
+	if not progress.is_empty():
+		_note_label("路线进度", Color(1, 0.9, 0.55))
+		for p: Array in progress:
+			_note_label("%s %s：%s" % ["✓" if bool(p[2]) else "·", p[0], p[1]], Color(0.65, 0.9, 0.7) if bool(p[2]) else Color.WHITE)
+	notes_panel.visible = true
+
+
+func _route_name(data: Dictionary) -> String:
+	for r: Array in data["routes"]:
+		if r[0] == data["focus"]:
+			return String(r[1])
+	return {"car": "车辆", "face": "白名单", "portal": "造门", "cyber": "网安仙人"}.get(String(data["focus"]), "")
+
+
+func _note_label(text: String, color: Color) -> void:
+	var l := Label.new()
+	l.text = text
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(480, 0)
+	l.modulate = color
+	_notes_box.add_child(l)
 
 
 func sensory_on() -> bool:

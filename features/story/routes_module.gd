@@ -188,6 +188,7 @@ func use_terminal(scene: String, has_usb: bool, day: int) -> void:
 		_clue("usb", day)
 		return
 	hacked = true
+	_emit("record", {"id": "whitelistWritten", "text": "网络中心已经写入我的学号。后台记录里，同一个名字对应着不同时期的照片。下一步要到行政楼三楼同步数据。", "kind": "验证", "source": "实验楼三楼 · 网络中心"})
 	_clue("comp", day)
 	_say("我：U 盘插进去，屏幕自己跳出一个窗口，光标在最后一行闪。我输了自己的学号。机柜同时闪了一下。")
 	_delayed.append({"t": 5.2, "text": "我：还得去行政楼三楼，把数据同步过去。"})
@@ -216,6 +217,7 @@ func sync(source: String) -> bool:
 		return true
 	data_synced = true
 	data_source = source
+	_emit("record", {"id": "whitelistSynced", "text": "白名单同步完成：门禁认的是学号与照片。西小门现在认得我了。", "kind": "验证", "source": "手机 · 门禁同步" if source == "phone" else "行政楼三楼 · 门禁机"})
 	_say("我：同步完成。照片底下写着：已登记。西小门现在认得我了。")
 	return true
 
@@ -323,6 +325,7 @@ func choose(index: int, diff: String) -> void:
 			var loss := 0.0 if face_remedy.is_valid() and bool(face_remedy.call()) else FACE_WRONG_SAN * (1.15 if diff == "hard" else 0.82)
 			_emit("san", {"amount": -loss, "min": 0.0})
 			var feedback: String = EXPLANATIONS[qid]
+			_emit("record", {"id": "face:" + str(qid), "text": feedback, "kind": "验证", "source": "西小门 · 验证反馈"})
 			_swap(q)
 			_pending = {"handler": "face_retry"}
 			_emit("choice", {"text": "验证未通过。耳边猛地响了一下。" + feedback + " 已通过的题目仍然保留。", "labels": ["继续验证", "先离开"]})

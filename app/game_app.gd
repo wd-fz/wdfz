@@ -41,6 +41,8 @@ func _ready() -> void:
 	settings.load_file(DisplayServer.is_touchscreen_available())
 	ui.settings_requested.connect(func() -> void: ui.show_settings(settings.values))
 	ui.setting_changed.connect(_setting_changed)
+	ui.notes_requested.connect(_show_notes)
+	ui.notes_focus_requested.connect(_notes_focus)
 	_apply_settings()
 	# ui.click on every button press (audio.js click), including buttons made later (choices).
 	get_tree().node_added.connect(func(n: Node) -> void:
@@ -81,7 +83,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(), ClassmatesModule.new(CampusData.rooms()), DreadModule.new(CampusData.rooms()), AtmosModule.new(CampusData.rooms()), MonoModule.new(CampusData.rooms())]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(), ClassmatesModule.new(CampusData.rooms()), DreadModule.new(CampusData.rooms()), AtmosModule.new(CampusData.rooms()), MonoModule.new(CampusData.rooms()), InvestigationModule.new()]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -95,6 +97,10 @@ func campus() -> CampusModule:
 
 func dread() -> DreadModule:
 	return session.modules.get_module(&"story.dread") as DreadModule if session != null else null
+
+
+func investigation() -> InvestigationModule:
+	return session.modules.get_module(&"story.investigation") as InvestigationModule if session != null else null
 
 
 func mono() -> MonoModule:
@@ -813,6 +819,9 @@ func _apply_result(result: Dictionary) -> void:
 		var room: Variant = campus().room(session.world_id)
 		var p: Array = player.capture_pose()["position"]
 		items().start_search(session.world_id, int(result["search"][0]), int(result["search"][1]), CampusGeometry.to_world(room, float(p[0]), float(p[2])))
+	if result.has("podium") and investigation() != null and CampusData.campus().get("own_podium", []) == [int(result["podium"][0]), int(result["podium"][1])] and session.world_id == "teach1":
+		_invest_do(func(inv: InvestigationModule) -> void: inv.notice())
+		return
 	if result.has("podium") and items() != null:
 		var said := items().podium(session.world_id, int(result["podium"][0]), int(result["podium"][1]))
 		text = String(said.get("notice", text))
@@ -843,9 +852,23 @@ func _apply_result(result: Dictionary) -> void:
 		return
 	if result.has("facility") and facilities() != null:
 		var fac := facilities()
-		fac.set_context(_facility_context())
-		fac.use(campus().room(session.world_id), String(result["facility"][0]), int(result["facility"][1]), int(result["facility"][2]))
-		_apply_facility_events()
+		var use_here := func() -> void:
+			fac.set_context(_facility_context())
+			fac.use(campus().room(session.world_id), String(result["facility"][0]), int(result["facility"][1]), int(result["facility"][2]))
+			_apply_facility_events()
+		var ch := String(result["facility"][0])
+		var inv2 := investigation()
+		if inv2 != null and ch == "M":
+			inv2.set_context(_invest_context())
+			if inv2.supply_offer(session.world_id):
+				_supply_after = use_here
+				_apply_invest_events()
+				return
+		use_here.call()
+		if inv2 != null and ch == "k" and session.world_id == "guard1":
+			inv2.set_context(_invest_context())
+			if inv2.supply_offer(session.world_id):
+				_apply_invest_events()
 		return
 	if result.has("rest") and facilities() != null:
 		facilities().set_context(_facility_context())
@@ -880,6 +903,7 @@ func _apply_result(result: Dictionary) -> void:
 		_apply_garage_events()
 		return
 	if result.has("car_key") and garage() != null:
+		_record({"id": "carKey", "text": "钥匙环刻着车牌「%s」。在车位前看车牌，再试钥匙。" % garage().key_label(), "kind": "事实", "source": "车钥匙"})
 		ui.show_notice("我：钥匙环刻着「%s」。要去车位前核对。" % garage().key_label())
 		return
 	if result.has("coin") and garage() != null:
@@ -1251,6 +1275,8 @@ func kill(msg: String, fx: String, source: String) -> void:
 	ui.show_notice(msg)
 	var updated := fate.log_death(_read_death_log(), school().day if school() != null else 1, session.world_id)
 	_write_death_log(updated)
+	if not fate.cause().is_empty():
+		_record({"id": "failure:" + fate.death_source, "text": fate.cause(), "kind": "验证", "source": "刚才的经历"})
 	if not result["wake"]:
 		if speedrun.run.is_empty():
 			saves.clear()
@@ -1485,6 +1511,13 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 # ---- facilities, rest and the portal (features/campus/facilities_module.gd) ----
 
 func _facility_context() -> Dictionary:
+	var ctx := _facility_context_base()
+	var cars := garage()
+	ctx["car_row"] = int(cars.car_right.split(":")[1]) + 1 if cars != null and not cars.car_right.is_empty() else 1
+	return ctx
+
+
+func _facility_context_base() -> Dictionary:
 	var room: Variant = campus().room(session.world_id)
 	var pose := player.capture_pose()
 	var p: Array = pose["position"]
@@ -1539,6 +1572,8 @@ func _apply_facility_events() -> void:
 		return
 	for e: Dictionary in fac.take_events():
 		match e["kind"]:
+			"record":
+				_record(e)
 			"notice", "toast":
 				ui.show_notice(String(e["text"]))
 			"san":
@@ -1851,6 +1886,137 @@ func _apply_atmos_events() -> void:
 				audio.play("dread." + String(e["cue"]), {"pan": float(pl["pan"]), "k": float(pl["k"]), "lp": 0.7 if bool(pl["behind"]) else 1.0, "place": pl})
 			"say":
 				ui.show_notice(String(e["text"]))
+
+
+# ---- the investigation notebook (features/story/investigation_module.gd) ----
+
+var _supply_after: Callable
+
+
+func _invest_context() -> Dictionary:
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var bag := items()
+	var fac := facilities()
+	var rt := routes()
+	var ph := phone()
+	var cars := garage()
+	var has_key := bag != null and bag.has("key")
+	var portal: Dictionary = {}
+	if fac != null:
+		var floors_left: Array = []
+		for f: int in FacilitiesModule.BLUEPRINT_FLOORS:
+			if not (fac.portal["blueprints"] as Dictionary).has(f):
+				floors_left.append(f)
+		portal = {"diary": fac.portal["diary"], "sketch": fac.portal["sketch"], "open": fac.portal["open"], "count": fac.blueprint_count(), "floors_left": floors_left, "need": fac.portal_need_text()}
+	var cy: Dictionary = {}
+	if ph != null:
+		cy = {"initialized": ph.device["initialized"], "network": ph.device["network"], "download": ph.device["download"]["status"], "term": ph.termination["status"]}
+	var seat: Dictionary = CampusData.campus().get("own_seat", {})
+	var near_seat := false
+	if session.world_id == "teach1" and not seat.is_empty() and room != null:
+		near_seat = CampusGeometry.tile_center(room, int(seat["col"]), int(seat["row"])).distance_to(w) < 24.0
+	var weird_now := anomaly()
+	var watcher := patrol()
+	var idle := not (story().dead or get_tree().paused or ui.choice_open() or ui.terminal_open() or driving() or player.hiding \
+		or (weird_now != null and bool(weird_now.an["active"])) or (watcher != null and watcher.local_chase()) or school().inspection_active())
+	var row := 1
+	if cars != null and not cars.car_right.is_empty():
+		row = int(cars.car_right.split(":")[1]) + 1
+	return {"day": school().day, "place": school().place_name(session.world_id, float(p[1])), "has_key": has_key, "has_phone": bag != null and bag.has("phone"),
+		"has_coin": bag != null and bag.has("coin"), "has_pill": bag != null and bag.has("pill"), "bag_full": bag != null and bag.bag.size() >= 8,
+		"car": talent().car(has_key) if talent() != null else {"ok": has_key, "via": "key" if has_key else ""}, "car_tried": cars.car_tried.size() if cars != null else 0,
+		"car_used": cars != null and cars.car_used, "hacked": rt != null and rt.hacked, "data": rt != null and rt.data_synced,
+		"face_done": int(rt.face_quiz.get("done", -1)) if rt != null and not rt.face_quiz.is_empty() else -1,
+		"spot_comp": fac != null and fac.spots.has("comp"), "spot_data": fac != null and fac.spots.has("data"), "portal": portal, "cyber": cy,
+		"desk_ok": idle and near_seat, "car_row": row}
+
+
+func _record(e: Dictionary) -> void:
+	var inv := investigation()
+	if inv == null:
+		return
+	inv.set_context(_invest_context())
+	inv.record(String(e["id"]), String(e["text"]), String(e.get("kind", "事实")), String(e.get("source", "")))
+
+
+func _invest_do(action: Callable) -> void:
+	var inv := investigation()
+	if inv == null:
+		return
+	inv.set_context(_invest_context())
+	action.call(inv)
+	_apply_invest_events()
+
+
+func _apply_invest_events() -> void:
+	var inv := investigation()
+	if inv == null:
+		return
+	for e: Dictionary in inv.take_events():
+		match e["kind"]:
+			"say":
+				ui.show_notice(String(e["text"]))
+			"save":
+				save_game()
+			"spots":
+				if facilities() != null:
+					for n: String in e["names"]:
+						facilities().spots[n] = true
+			"outing":
+				school().grant_outing(false)
+				for line: String in school().take_notices():
+					ui.show_notice(line)
+			"chalk":
+				if items() != null and not items().has("chalk"):
+					items().add("chalk")
+			"supply":
+				if items() != null and items().add("pill"):
+					if bool(e["pay"]):
+						items().remove("coin")
+					else:
+						school().advance_game_time(6.0)
+			"continue":
+				if _supply_after.is_valid():
+					var after := _supply_after
+					_supply_after = Callable()
+					after.call()
+			"choice":
+				_choice_count += 1
+				var mine := _choice_count
+				_choice_handler = func(index: int) -> void:
+					var i2 := investigation()
+					if i2 != null and mine == _choice_count:
+						i2.set_context(_invest_context())
+						i2.choose(index)
+						_apply_invest_events()
+				player.enabled = false
+				player.clear_input()
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				ui.show_choice(String(e["text"]), e["labels"], false)
+
+
+func _show_notes(query: String = "") -> void:
+	var inv := investigation()
+	if inv == null:
+		return
+	inv.set_context(_invest_context())
+	var routes := inv.routes()
+	var focus := inv.current_focus()
+	if not routes.any(func(r: Array) -> bool: return r[0] == focus):
+		focus = "car" if routes.any(func(r: Array) -> bool: return r[0] == "car") else ""
+	var listing := inv.list(query)
+	ui.show_notes({"goal": inv.goal(), "focus": focus, "routes": routes, "recent": listing["recent"], "groups": listing["groups"],
+		"progress": inv.progress(), "found": listing["found"], "query": query})
+
+
+func _notes_focus(route: String) -> void:
+	var inv := investigation()
+	if inv != null and inv.set_focus(route):
+		save_game()
+		_show_notes(ui._notes_search.text if ui._notes_search != null else "")
 
 
 # ---- the protagonist's muttering (features/story/mono_module.gd) ----
@@ -2175,6 +2341,8 @@ func _apply_paper_events() -> void:
 		return
 	for e: Dictionary in plane.take_events():
 		match e["kind"]:
+			"record":
+				_record(e)
 			"notice":
 				ui.show_notice(String(e["text"]))
 			"fact":
@@ -2340,6 +2508,11 @@ func _apply_tales_events() -> void:
 		return
 	for e: Dictionary in tale.take_events():
 		match e["kind"]:
+			"clue":
+				if e.has("text"):
+					_record({"id": e["id"], "text": e["text"], "kind": "线索", "source": String(e.get("source", ""))})
+			"record":
+				_record(e)
 			"notice", "toast":
 				ui.show_notice(String(e["text"]))
 			"advance":
@@ -2406,6 +2579,12 @@ func _lesson_press() -> void:
 	var dm := days()
 	if dm == null or ui.choice_open():
 		return
+	var inv := investigation()
+	if inv != null:
+		inv.set_context(_invest_context())
+		if inv.open_desk():
+			_apply_invest_events()
+			return
 	dm.press(_lesson_context())
 	_apply_day_events()
 
@@ -2429,6 +2608,8 @@ func _apply_day_events() -> void:
 		return
 	for e: Dictionary in dm.take_events():
 		match e["kind"]:
+			"record":
+				_record(e)
 			"notice":
 				ui.show_notice(String(e["text"]))
 			"san":
@@ -2798,6 +2979,8 @@ func _apply_phone_events() -> void:
 		return
 	for e: Dictionary in net.take_events():
 		match e["kind"]:
+			"record":
+				_record(e)
 			"toast", "notice":
 				ui.show_notice(String(e["text"]))
 			"save":
@@ -2974,6 +3157,8 @@ func _apply_broadcast_events() -> void:
 		return
 	for e: Dictionary in radio.take_events():
 		match e["kind"]:
+			"record":
+				_record(e)
 			"notice", "toast":
 				ui.show_notice(String(e["text"]))
 			"san":
@@ -3065,6 +3250,8 @@ func _apply_garage_events() -> void:
 		return
 	for e: Dictionary in cars.take_events():
 		match e["kind"]:
+			"record":
+				_record(e)
 			"notice", "toast":
 				ui.show_notice(String(e["text"]))
 			"san":
@@ -3177,6 +3364,8 @@ func _routes_step(delta: float) -> void:
 func _apply_route_events(route: RoutesModule) -> void:
 	for e: Dictionary in route.take_events():
 		match e["kind"]:
+			"record":
+				_record(e)
 			"notice":
 				ui.show_notice(String(e["text"]))
 			"toast":
@@ -3448,6 +3637,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo and key.keycode == KEY_R and days() != null and session != null and not story().over():
 		_lesson_press()
+		get_viewport().set_input_as_handled()
+		return
+	if key != null and key.pressed and not key.echo and key.keycode == KEY_N and investigation() != null and player.enabled and not story().over():
+		_show_notes("")
 		get_viewport().set_input_as_handled()
 		return
 	if key != null and key.pressed and not key.echo and key.keycode == KEY_H and facilities() != null and player.enabled and not story().over():
