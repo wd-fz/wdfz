@@ -508,7 +508,7 @@ func _start() -> void:
 	an["t"] = 0.0
 	an["acc"] = 0.0
 	an["active"] = true
-	an["data"] = {}
+	an["data"] = {"scene": String(_c.get("scene", ""))}
 	an["sub"] = 0
 	if id == "cup":
 		_cola_owe()

@@ -1230,9 +1230,72 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_spiral_walk(app)
 	await _test_elevator_walk(app)
 	await _test_patrol_app(app)
+	await _test_anomaly_fx(app)
 	await _test_whitelist_route(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
+
+
+## The placeholder anomaly props follow the module state and vanish when it ends.
+func _test_anomaly_fx(app: GameApp) -> void:
+	app.saves.clear()
+	app.start_new_game()
+	await _frames(3)
+	app._stand_up()
+	var t1 := CampusData.layout("teach1")
+	var spot := CampusGeometry.tile_center(t1, 30, 17)
+	app.travel("teach1", _campus_pose(t1, spot, PI), false)
+	app.patrol().pat["safety"] = 999.0
+	await _frames(3)
+	var fx: AnomalyFx = app._campus_world().anomaly_fx
+	check(fx != null and fx.current() == "" and fx.shown_count() == 0, "no anomaly, no props")
+	var weird := app.anomaly()
+	var me := Vector2(spot.x, spot.y)
+	var datas := {
+		"moth": {"src": {"x": me.x + 40.0, "y": me.y}}, "exercise": {"src": {"x": me.x + 40.0, "y": me.y}}, "hand": {"chosen": null},
+		"chalk": {"until": 800.0}, "roster": {"rx": me.x, "ry": me.y, "done": false}, "leak": {"pts": [{"x": me.x + 20.0, "y": me.y}, {"x": me.x + 30.0, "y": me.y + 9.0}]},
+		"rite": {"c": {"x": me.x + 30.0, "y": me.y}}, "twin": {"x": me.x + 40.0, "y": me.y, "room": "teach1"},
+	}
+	for id: String in datas:
+		weird.an["id"] = id
+		weird.an["active"] = true
+		weird.an["t"] = 0.0
+		weird.an["next"] = 999.0
+		weird.an["data"] = (datas[id] as Dictionary).duplicate(true)
+		weird.an["data"]["scene"] = "teach1"
+		await _frames(2)
+		check(fx.current() == id and fx.shown_count() > 0, "%s draws its props" % id)
+		weird.end_now()
+		await _frames(2)
+		check(fx.current() == "" and fx.shown_count() == 0, "%s props go away with it" % id)
+	weird.an["id"] = "turn"
+	weird.an["active"] = true
+	weird.an["data"] = {"scene": "teach1", "chosen": null, "smile": false}
+	await _frames(2)
+	check(fx.shown_count() == 0, "an anomaly without a place in the world draws nothing")
+	weird.an["data"]["scene"] = "out"
+	weird.an["id"] = "moth"
+	weird.an["data"]["src"] = {"x": 0.0, "y": 0.0}
+	await _frames(2)
+	check(fx.shown_count() == 0, "props only show in the scene the anomaly started in")
+	weird.end_now()
+	# The cup and the cola are outdoor anomalies: indoors the rules end them at once.
+	var out := CampusGeometry.to_scene(null, Vector2(1000, 1000))
+	app.travel("out", {"position": [out.x, 0.05, out.y], "yaw": 0.0, "pitch": 0.0}, false)
+	app.patrol().pat["safety"] = 999.0
+	await _frames(3)
+	fx = app._campus_world().anomaly_fx
+	for id: String in ["cup", "cola"]:
+		weird.an["id"] = id
+		weird.an["active"] = true
+		weird.an["t"] = 0.0
+		weird.an["next"] = 999.0
+		weird.an["data"] = {"scene": "out", "phase": 0, "wob": 30.0, "warn": 30.0, "wall": {"x": 520.0, "y": 480.0, "d": 40.0, "id": "teach", "m": 5.0}}
+		await _frames(2)
+		check(fx.current() == id and fx.shown_count() > 0, "%s draws its prop outdoors" % id)
+		weird.end_now()
+		await _frames(2)
+		check(fx.shown_count() == 0, "%s prop goes away" % id)
 
 
 func _test_patrol_app(app: GameApp) -> void:

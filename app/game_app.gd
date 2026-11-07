@@ -494,6 +494,10 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 			if watcher.figure_visible():
 				fig_scene = CampusGeometry.to_scene(room, Vector2(float(watcher.pat["x"]), float(watcher.pat["y"])))
 			lit.show_patrol(watcher.figure_visible(), fig_scene, float(watcher.pat["fy"]), player.camera.global_position)
+		if weird_light != null and lit.anomaly_fx != null:
+			var cam_pos := player.camera.global_position
+			var fwd := -player.camera.global_transform.basis.z
+			lit.anomaly_fx.update(delta, weird_light.an, room, session.world_id, Vector3(cam_pos.x, float(p[1]), cam_pos.z), Vector2(fwd.x, fwd.z))
 
 
 ## canStand (world.js): is there room for the body (radius 3 units) at this old world point?

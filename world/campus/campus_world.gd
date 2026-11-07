@@ -17,6 +17,7 @@ var _door_leaves: Dictionary = {}   # key -> {"closed": Node3D, "open": Node3D}
 var _lift_leaves: Array[Node3D] = []
 var _lift_bodies: Array[CollisionShape3D] = []
 var _lift_amount := -1.0
+var anomaly_fx: AnomalyFx
 
 
 func _ready() -> void:
@@ -24,6 +25,9 @@ func _ready() -> void:
 	_build_model()
 	_build_collision()
 	_build_lighting()
+	anomaly_fx = AnomalyFx.new()
+	anomaly_fx.name = "AnomalyFx"
+	add_child(anomaly_fx)
 
 
 func is_room() -> bool:
