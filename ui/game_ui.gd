@@ -104,7 +104,7 @@ func _build_status() -> void:
 	_status_line = Label.new()
 	_status_line.name = "Status"
 	_status_line.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	_status_line.position = Vector2(16, 44)
+	_status_line.position = Vector2(16, 58)
 	_status_line.add_theme_font_size_override("font_size", 15)
 	_status_line.visible = false
 	hud.add_child(_status_line)

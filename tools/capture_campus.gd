@@ -17,6 +17,9 @@ const SHOTS := [
 	["08-北宿舍1F.png", "dorm1", "spawn", 0, 0, -0.05],
 	["09-地下车库.png", "garage1", "spawn", 0, 0, 0.0],
 	["10-钟楼.png", "bell1", "spawn", 0, 0, 0.0],
+	["11-西楼梯井-一楼平台.png", "stair_teach_w", "xyz", -0.2, -0.6, 0.25],
+	["12-连廊二.png", "link2", "spawn", 0, 0, 0.0],
+	["13-教学楼1F-电梯厅.png", "teach1", 1023, 1925, PI * 0.5, -0.05],
 ]
 
 
@@ -36,12 +39,15 @@ func _capture() -> void:
 	root.add_child(app)
 	await process_frame
 	app.start_new_game()
+	app._stand_up()
 	for shot: Array in SHOTS:
 		var world := String(shot[1])
 		var rules := app.campus()
 		var pose: Dictionary
 		if shot[2] is String and shot[2] == "start":
 			pose = rules.start_pose()
+		elif shot[2] is String and shot[2] == "xyz":
+			pose = {"position": [float(shot[3]), 0.05, float(shot[4])], "yaw": PI, "pitch": 0.0}
 		elif shot[2] is String:
 			pose = rules.default_spawn(world)
 		else:
