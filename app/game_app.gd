@@ -66,7 +66,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new()]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -76,6 +76,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func tales() -> TalesModule:
+	return session.modules.get_module(&"campus.tales") as TalesModule if session != null else null
 
 
 func days() -> DayModule:
@@ -542,6 +546,9 @@ func _campus_step(delta: float) -> void:
 		if radio_hint == "" and body() != null:
 			body().set_context(_body_context())
 			radio_hint = body().hint()
+		if radio_hint == "" and tales() != null:
+			tales().set_context(_tales_context())
+			radio_hint = tales().hint()
 		if radio_hint == "" and exchange() != null:
 			exchange().set_context(_exchange_context())
 			radio_hint = exchange().hint()
@@ -577,6 +584,12 @@ func _campus_interact() -> void:
 		limbs.set_context(_body_context())
 		if limbs.ask_vault() or limbs.use_clinic():
 			_apply_body_events()
+			return
+	var tale := tales()
+	if tale != null:
+		tale.set_context(_tales_context())
+		if tale.use_here():
+			_apply_tales_events()
 			return
 	var visit := exchange()
 	if visit != null:
@@ -791,6 +804,9 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	if story().dead or story().over():
 		return
 	_day_step(delta)
+	if story().dead or story().over():
+		return
+	_tales_step(delta)
 	_anomaly_step(delta, day_rules, room, pose)
 	_audio_step(delta, watcher, day_rules, room, p)
 	_progress_step(watcher, day_rules, weird_now)
@@ -1350,6 +1366,65 @@ func _facility_travel(e: Dictionary) -> void:
 	else:
 		pose = campus().default_spawn(world)
 	travel(world, pose, false)
+
+
+# ---- campus tales: the midnight canteen and the late mirror ----
+
+func _tales_context() -> Dictionary:
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "tsec": school().tsec,
+		"clock": school().game_clock(), "san": school().san, "tt": school().tt, "dead": story().dead}
+
+
+func _tales_step(delta: float) -> void:
+	var tale := tales()
+	if tale == null:
+		return
+	tale.set_context(_tales_context())
+	tale.tick(delta)
+	_apply_tales_events()
+
+
+func _apply_tales_events() -> void:
+	var tale := tales()
+	if tale == null:
+		return
+	for e: Dictionary in tale.take_events():
+		match e["kind"]:
+			"notice", "toast":
+				ui.show_notice(String(e["text"]))
+			"advance":
+				school().advance_game_time(float(e["minutes"]))
+			"san":
+				school().san = minf(float(e.get("max", 100.0)), school().san + float(e["amount"]))
+			"tt":
+				school().tt = minf(float(e["cap"]), school().tt + float(e["amount"]))
+			"hold":
+				school().tt_hold_until = float(e["until"])
+			"stamina":
+				school().stam = minf(school().stamina_max(), school().stam + float(e["amount"]))
+			"fact":
+				fact({"kind": "midnightMeal", "n": int(e["n"])})
+				save_game()
+			"choice":
+				_choice_count += 1
+				var mine := _choice_count
+				_choice_handler = func(index: int) -> void:
+					var t := tales()
+					if t != null and mine == _choice_count:
+						t.set_context(_tales_context())
+						t.choose(index)
+						_apply_tales_events()
+				player.enabled = false
+				player.clear_input()
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				ui.show_choice(String(e["text"]), e["labels"], false)
+			"kill":
+				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
+				return
 
 
 # ---- special days and desk lessons (features/school/day_module.gd) ----

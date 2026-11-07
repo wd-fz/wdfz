@@ -76,6 +76,7 @@ func _run() -> void:
 	_test_body_rules()
 	_test_exchange_rules()
 	_test_day_rules()
+	_test_tales_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -1627,6 +1628,61 @@ func _test_day_rules() -> void:
 	for i in DayModule.TASKS.size():
 		ach.fact({"kind": "lesson", "task": i, "correct": true})
 	check(ach.unlocked.has("n.desk") and ach.unlocked.has("e.notes"), "the desk notes: 看课桌 and 十张纸条")
+
+
+func _test_tales_rules() -> void:
+	var rooms := CampusData.rooms()
+	var t := TalesModule.new(rooms)
+	t.reset()
+	var cr: Dictionary = rooms["canteen1"]
+	var window := Vector2.ZERO
+	var grid: Array = cr["grid"]
+	for row in grid.size():
+		for col in String(grid[row]).length():
+			if String(grid[row]).substr(col, 1) == "k" and window == Vector2.ZERO:
+				window = CampusGeometry.tile_center(cr, col, row)
+	t.set_context({"scene": "canteen1", "x": window.x, "y": window.y + 12.0, "tsec": 1200.0, "clock": 1200.0, "tt": 10.0})
+	check(t.hint() == "" and not t.use_here(), "before lights out the window is dark")
+	t.set_context({"scene": "canteen1", "x": window.x, "y": window.y + 12.0, "tsec": 1345.0, "clock": 1345.0, "tt": 10.0})
+	check(t.hint() == "亮着的窗口" and t.use_here(), "after lights out one window is lit")
+	t.take_events()
+	t.choose(0)
+	var ev := t.take_events()
+	check(ev.any(func(e: Dictionary) -> bool: return e["kind"] == "san" and e["amount"] == 40.0) and ev.any(func(e: Dictionary) -> bool: return e["kind"] == "tt" and e["amount"] == 25.0 and e["cap"] == 95.0)
+		and ev.any(func(e: Dictionary) -> bool: return e["kind"] == "hold" and e["until"] == 1880.0), "a bowl: +40 SAN, +25 assimilation up to 95, held until 07:20")
+	t.set_context({"scene": "canteen1", "x": window.x, "y": window.y + 12.0, "tsec": 1350.0, "clock": 1350.0, "tt": 35.0})
+	t.use_here()
+	check(_notices(t.take_events()).has("我：窗口里的人没有回头。「明天再来。」"), "one bowl a night")
+	var day := SchoolModule.new(rooms, CampusData.layout("out"), CampusData.campus())
+	day.reset()
+	day.tt = 30.0
+	day.tt_hold_until = day.game_clock() + 100.0
+	day.step(1.0, {"world_id": "out", "w": Vector2(1000, 1000), "calendar": false})
+	check(day.tt == 30.0, "assimilation does not fall back until morning")
+	# The mirror.
+	var m := TalesModule.new(rooms)
+	m.reset()
+	var spots := m.mirrors("teach1")
+	check(not spots.is_empty(), "the basins in the teaching building have mirrors")
+	var mirror: Dictionary = spots[0]
+	var n: Vector2 = mirror["n"]
+	var stand: Vector2 = mirror["w"] + n * 12.0
+	var look := atan2(-n.y, -n.x)
+	m.set_context({"scene": "teach1", "x": stand.x, "y": stand.y, "ang": look, "san": 50.0})
+	for _i in 60:
+		m.tick(0.1)
+	check(m.raise == 0.0 and m.take_events().is_empty(), "with SAN 50 the reflection only lags")
+	m.set_context({"scene": "teach1", "x": stand.x, "y": stand.y, "ang": look, "san": 10.0})
+	for _i in 20:
+		m.tick(0.1)
+	check(m.raise > 0.9 and m.take_events().is_empty(), "below 20 it raises a hand first")
+	for _i in 32:
+		m.tick(0.1)
+	check(m.take_events().any(func(e: Dictionary) -> bool: return e["kind"] == "kill" and e["source"] == "mirror"), "staring 3 s more is the mirror death")
+	m.set_context({"scene": "teach1", "x": stand.x, "y": stand.y, "ang": look + PI, "san": 10.0})
+	for _i in 60:
+		m.tick(0.1)
+	check(m.take_events().is_empty(), "looking away is safe")
 
 
 func _test_facility_rules() -> void:

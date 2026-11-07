@@ -75,6 +75,7 @@ func state_version() -> int:
 
 func reset() -> void:
 	danger_seen = {}
+	tt_hold_until = 0.0
 	exam = false
 	exam_cur = null
 	exam_seat = 0.0
@@ -107,7 +108,7 @@ func capture() -> Dictionary:
 	return {"tsec": tsec, "day": day, "san": san, "viol": viol, "tt": tt, "stam": stam, "tired": tired,
 		"seated": seated, "seat_id": seat_id, "tt_tier": tt_tier, "pressure_clock": pressure_clock,
 		"pressure_seen": pressure_seen, "viol_full": viol_full,
-		"danger_seen": danger_seen.duplicate(), "exam": exam, "exam_cur": exam_cur, "exam_seat": exam_seat, "exam_tot": exam_tot, "leave_until": leave_until, "inspection": inspection.duplicate(true), "outing": outing.duplicate(true), "duties": duties.duplicate(true), "active_seconds": active_seconds}
+		"danger_seen": danger_seen.duplicate(), "tt_hold_until": tt_hold_until, "exam": exam, "exam_cur": exam_cur, "exam_seat": exam_seat, "exam_tot": exam_tot, "leave_until": leave_until, "inspection": inspection.duplicate(true), "outing": outing.duplicate(true), "duties": duties.duplicate(true), "active_seconds": active_seconds}
 
 
 func validate(data: Dictionary) -> String:
@@ -139,6 +140,7 @@ func validate(data: Dictionary) -> String:
 func restore(data: Dictionary) -> void:
 	danger_seen = (data.get("danger_seen", {}) as Dictionary).duplicate() if data.get("danger_seen") is Dictionary else {}
 	exam = bool(data.get("exam", false))
+	tt_hold_until = maxf(0.0, float(data.get("tt_hold_until", 0.0)))
 	exam_cur = data.get("exam_cur") if data.get("exam_cur") is String else null
 	exam_seat = maxf(0.0, float(data.get("exam_seat", 0.0)))
 	exam_tot = maxf(0.0, float(data.get("exam_tot", 0.0)))
@@ -478,6 +480,8 @@ const DANGER_LINE := {
 	"tunnel": "我：不想靠近。脚下的黑色黏液像是在呼吸。",
 	"night": "我：熄灯了。外面的路灯还亮着，可是它们照不到地面。这种时候还在外面走，是要被记下来的。"}
 var danger_seen: Dictionary = {}
+## The midnight meal: assimilation does not fall back until this game minute (07:20).
+var tt_hold_until := 0.0
 ## Talent.modifier('danger.garage' / 'danger.night') (the talent module).
 var danger_mul: Callable
 ## Exam mode (systems.js examStart / examTick): the bell rung on the bell tower turns the rest of the day into exams.
@@ -651,7 +655,7 @@ func _tt_tick(dt: float, nw: String, world_id: String) -> void:
 		tt += TT_CFG["seat"] * dt
 	elif in_dorm(world_id) and tsec >= SchoolClock.EVENING:
 		tt += TT_CFG["dorm"] * dt
-	else:
+	elif game_clock() >= tt_hold_until:
 		tt = maxf(0.0, tt - TT_CFG["decay"] * dt)
 	tt = clampf(tt, 0.0, 100.0)
 	if tt >= 100.0:
