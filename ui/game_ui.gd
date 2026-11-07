@@ -18,6 +18,8 @@ signal choice_selected(index: int)
 signal lift_close_requested
 signal item_use_requested(id: String)
 signal item_hot_requested(index: int, id: String)
+signal achievements_requested
+signal sound_toggled(on: bool)
 
 @onready var menu: Control = %Menu
 @onready var pause_panel: Control = %PausePanel
@@ -58,6 +60,31 @@ func _ready() -> void:
 	hard.custom_minimum_size = Vector2(0, 48)
 	hard.pressed.connect(func() -> void: new_hard_requested.emit())
 	%NewGame.add_sibling(hard)
+	var ach := Button.new()
+	ach.name = "Achievements"
+	ach.text = "成就"
+	ach.custom_minimum_size = Vector2(0, 48)
+	ach.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ach.pressed.connect(func() -> void: achievements_requested.emit())
+	var sound := CheckButton.new()
+	sound.name = "SoundToggle"
+	sound.text = "声音"
+	sound.button_pressed = true
+	sound.toggled.connect(func(on: bool) -> void: sound_toggled.emit(on))
+	# Same menu height as before: the load button shares a row with the list, the touch toggle with the sound toggle.
+	var load_row := HBoxContainer.new()
+	var option_row := HBoxContainer.new()
+	var load_button: Button = %LoadGame
+	var touch_toggle: CheckButton = %TouchToggle
+	load_button.add_sibling(load_row)
+	touch_toggle.add_sibling(option_row)
+	load_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	load_button.reparent(load_row, false)
+	load_row.add_child(ach)
+	touch_toggle.reparent(option_row, false)
+	option_row.add_child(sound)
+	load_button.owner = self
+	touch_toggle.owner = self
 	set_touch_enabled(DisplayServer.is_touchscreen_available())
 	get_tree().root.size_changed.connect(_resize)
 	_resize()
@@ -322,6 +349,61 @@ func show_hiding(on: bool) -> void:
 	_hide_overlay.visible = on
 
 
+## Achievements list: unlocked entries show their memory line, locked ones only the name.
+var ach_panel: PanelContainer
+var _ach_list: VBoxContainer
+var _ach_head: Label
+
+
+func show_achievements(entries: Array, points: int) -> void:
+	if ach_panel == null:
+		ach_panel = PanelContainer.new()
+		ach_panel.name = "AchievementsPanel"
+		ach_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		ach_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		ach_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+		ach_panel.custom_minimum_size = Vector2(560, 0)
+		var back := StyleBoxFlat.new()
+		back.bg_color = Color(0.03, 0.05, 0.07, 0.98)
+		back.set_content_margin_all(16)
+		back.set_corner_radius_all(6)
+		ach_panel.add_theme_stylebox_override("panel", back)
+		var box := VBoxContainer.new()
+		box.add_theme_constant_override("separation", 8)
+		_ach_head = Label.new()
+		box.add_child(_ach_head)
+		var scroll := ScrollContainer.new()
+		scroll.custom_minimum_size = Vector2(520, 360)
+		_ach_list = VBoxContainer.new()
+		_ach_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		scroll.add_child(_ach_list)
+		box.add_child(scroll)
+		var close := Button.new()
+		close.text = "关闭"
+		close.pressed.connect(func() -> void: ach_panel.visible = false)
+		box.add_child(close)
+		ach_panel.add_child(box)
+		$Root.add_child(ach_panel)
+	for child in _ach_list.get_children():
+		child.queue_free()
+	var got := 0
+	for e: Dictionary in entries:
+		var line := Label.new()
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		line.custom_minimum_size = Vector2(500, 0)
+		var text := "%s · %s" % [e["tier"], e["name"]]
+		if e["unlocked"]:
+			got += 1
+			text += "\n    " + String(e["memo"])
+		if e.has("progress"):
+			text += "  （%d / %d）" % [e["progress"]["n"], e["progress"]["of"]]
+		line.text = ("✓ " if e["unlocked"] else "· ") + text
+		line.modulate = Color(1, 1, 1, 1) if e["unlocked"] else Color(1, 1, 1, 0.55)
+		_ach_list.add_child(line)
+	_ach_head.text = "成就  %d / %d　·　积分 %d" % [got, entries.size(), points]
+	ach_panel.visible = true
+
+
 ## Ending card (story.js showEndingCard): tag, title, lines, day/time, back to the menu.
 var ending_panel: PanelContainer
 var _ending_text: Label
@@ -463,6 +545,8 @@ func set_mode(mode: String) -> void:
 	if _mode != mode:
 		show_notice("")
 	_mode = mode
+	if ach_panel != null:
+		ach_panel.visible = false
 	menu.visible = mode == "menu"
 	pause_panel.visible = mode == "pause"
 	hud.visible = mode == "play"

@@ -769,6 +769,7 @@ func _inspection_finish(c: Dictionary, world_id: String, w: Vector2) -> void:
 	inspection["settled"][key] = "present" if good else "absent"
 	inspection["calm"] = 8.0
 	inspection["calm_room"] = String(c["room"])
+	_events.append({"kind": "inspection", "day": int(c["day"]), "slot": int(c["slot"]), "compliant": good})
 	_duty_settle(c, false, good)
 	san = maxf(0.0, san - (INSPECT["good_san"] if good else INSPECT["bad_san"]))
 	_add_violation(-INSPECT["good_violation"] if good else INSPECT["bad_violation"], false)

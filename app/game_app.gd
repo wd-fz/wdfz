@@ -23,6 +23,10 @@ var _seen_anomaly := ""
 var _seen_lock := false
 var _bell_count := 0
 var _seen_phase := 0
+var _seen_day := 1
+var _seen_hide := false
+var _seen_lock_ach := false
+var _ach_started := ""
 
 
 func _ready() -> void:
@@ -31,6 +35,8 @@ func _ready() -> void:
 	add_child(audio)
 	ui.new_requested.connect(start_new_game)
 	ui.new_hard_requested.connect(start_new_game.bind("hard"))
+	ui.achievements_requested.connect(_show_achievements)
+	ui.sound_toggled.connect(func(on: bool) -> void: audio.muted = not on)
 	ui.death_menu_requested.connect(return_to_menu)
 	ui.load_requested.connect(load_game)
 	ui.save_requested.connect(save_game)
@@ -55,7 +61,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus())]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1)]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -65,6 +71,51 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func achievements() -> AchievementsModule:
+	return session.modules.get_module(&"profile.achievements") as AchievementsModule if session != null else null
+
+
+func _profile_path() -> String:
+	return saves.side_path("achievements.json")
+
+
+func _load_profile(into: AchievementsModule) -> void:
+	var path := _profile_path()
+	if into != null and FileAccess.file_exists(path):
+		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		if parsed is Dictionary and SaveSchema.is_json_value(parsed):
+			into.load_profile(parsed)
+
+
+func _save_profile(from: AchievementsModule) -> void:
+	var path := _profile_path()
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(from.profile()))
+		file.close()
+
+
+## Report one fact; unlocked entries are announced and the profile is stored.
+func fact(f: Dictionary) -> void:
+	var ach := achievements()
+	if ach == null:
+		return
+	ach.fact(f)
+	for e: Dictionary in ach.take_events():
+		ui.show_notice("成就：%s" % e["name"])
+		audio.cue("chime", -10.0)
+		_save_profile(ach)
+
+
+func _show_achievements() -> void:
+	var view := achievements()
+	if view == null:
+		view = AchievementsModule.new(AnomalyModule.IDS.size() - 1)
+		_load_profile(view)
+	ui.show_achievements(view.entries(), view.points())
 
 
 func routes() -> RoutesModule:
@@ -150,6 +201,11 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 		_unwire(session)
 		session.stop()
 	session = candidate
+	_load_profile(achievements())
+	_seen_day = school().day if school() != null else 1
+	_seen_hide = false
+	_seen_lock_ach = false
+	_ach_started = ""
 	session.notice_requested.connect(ui.show_notice)
 	var day_rules := school()
 	player.seated = day_rules != null and day_rules.seated
@@ -483,6 +539,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 		return
 	_anomaly_step(delta, day_rules, room, pose)
 	_audio_step(delta, watcher, day_rules, room, p)
+	_progress_step(watcher, day_rules, weird_now)
 	for text: String in day_rules.take_notices():
 		ui.show_notice(text)
 	var frozen := not router.current.advances_calendar
@@ -667,6 +724,7 @@ func kill(msg: String, fx: String, source: String) -> void:
 	var result := fate.kill(msg, fx, source, {"day": school().day if school() != null else 1, "has_elixir": bag != null and bag.has("elixir")})
 	if result.has("protected"):
 		bag.remove("elixir")
+		fact({"kind": "protect"})
 		school().survive(source)
 		if patrol() != null:
 			patrol().rescued()
@@ -737,6 +795,7 @@ func _finish_death() -> void:
 	var fate := story()
 	if fate.wake_pending:
 		var left := fate.finish_wake()
+		fact({"kind": "wake"})
 		_death_phase = ""
 		school().dream_wake_reset()
 		campus().close_all_doors()
@@ -786,6 +845,8 @@ func _patrol_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, 
 	for e: Dictionary in day_rules.take_events():
 		if e["kind"] == "absence":
 			watcher.registered_absence(String(e["id"]))
+		elif e["kind"] == "inspection":
+			fact({"kind": "inspection", "day": e["day"], "slot": e["slot"], "compliant": e["compliant"]})
 	watcher.set_context(_patrol_context(room, pose))
 	watcher.tick(delta)
 	for e: Dictionary in watcher.take_events():
@@ -802,6 +863,34 @@ func _patrol_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, 
 			"kill":
 				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
 				return
+
+
+## Facts for the achievements: transitions of the run, never the rules themselves.
+func _progress_step(watcher: PatrolModule, day_rules: SchoolModule, weird: AnomalyModule) -> void:
+	if achievements() == null or story().over():
+		return
+	if day_rules.day != _seen_day:
+		_seen_day = day_rules.day
+		fact({"kind": "day", "day": _seen_day})
+	if not achievements().rooms.has(session.world_id):
+		fact({"kind": "room", "id": session.world_id})
+	if weird != null:
+		var id := weird.active_id()
+		if id != _ach_started:
+			if id != "":
+				fact({"kind": "anomaly", "phase": "start", "id": id, "public": id != "cola"})
+			elif _ach_started != "":
+				fact({"kind": "anomaly", "phase": "end", "id": _ach_started, "survived": not story().dead, "lethal": bool(AnomalyModule.DEFS[_ach_started].get("lethal", false))})
+			_ach_started = id
+	if watcher != null:
+		var locked := bool(watcher.pat["locked"])
+		var hid := bool(watcher.hide["on"])
+		if _seen_lock_ach and not locked and not hid and not story().dead:
+			fact({"kind": "patrol", "what": "lost"})
+		if _seen_hide and not hid and _seen_lock_ach and not story().dead:
+			fact({"kind": "patrol", "what": "locker"})
+		_seen_lock_ach = locked
+		_seen_hide = hid
 
 
 ## Sound layers and cues from the current state (AudioFx never changes a rule).
@@ -929,6 +1018,9 @@ func _reach_ending(id: String) -> void:
 	if file != null:
 		file.store_string(JSON.stringify(seen_ends))
 		file.close()
+	if achievements() != null and routes() != null:
+		achievements().face_wrong = maxi(0, routes().wrong_answers())
+	fact({"kind": "ending", "id": id, "day": school().day, "diff": story().diff})
 	var meta := "第 %d 天" % school().day
 	if items() != null and items().has_clock():
 		meta += " · " + SchoolClock.fmt_clock(school().tsec)

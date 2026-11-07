@@ -44,6 +44,11 @@ const ENDINGS := {
 	"portal": {"t": "《门》", "true": true, "l": ["光圈合上之前，你回头看了一眼。", "实验台、显微镜、离心机，还有教室里那一排排低着的头——都在原地，一动不动。", "你没有再回头。", "门的那一边是一个普通的下午。铃响了，有人在走廊里叫你的名字，你答应了一声。"]},
 }
 
+## Wrong quiz answers of this run: every swap replaced a question that was answered wrong.
+func wrong_answers() -> int:
+	return maxi(0, int(face_quiz.get("used", []).size()) - 3) if not face_quiz.is_empty() else 0
+
+
 var hacked := false
 var data_synced := false
 var data_source := ""

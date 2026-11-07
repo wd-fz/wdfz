@@ -13,3 +13,4 @@
 | [异象](异象/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_anomaly.gd` 强制开启异象：教学楼走廊平常与停电；操场平常与大暴雨（天色压暗、浓雾） |
 | [结局路线](结局路线/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_routes.gd` 注入状态与机位：西小门闸机与交互提示、白名单验证第 1 题、三题答完闸机亮绿灯、《白名单》真结局卡 |
 | [异象画面](异象画面/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_anomaly.gd` 强制开启异象并注入数据：操场的大暴雨雨线、做操的人群、仪式圈与蜡烛、黑板字（占位几何，无声音） |
+| [成就](成就/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_menu.gd` 注入解锁：主菜单（成就与声音按钮），成就列表（解锁显示回忆句、未解锁只显示名称） |

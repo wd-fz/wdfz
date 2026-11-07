@@ -66,6 +66,7 @@ func _run() -> void:
 	_test_patrol_rules()
 	_test_anomaly_rules()
 	_test_routes_rules()
+	_test_achievements()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -816,6 +817,62 @@ func _route_towards(from: String, to: String, pm: PatrolModule) -> int:
 	return 1
 
 
+func _test_achievements() -> void:
+	var ach := AchievementsModule.new(25)
+	ach.reset()
+	check(ach.fact({"kind": "day", "day": 2}) == ["n.day2"] and ach.unlocked.has("n.day2"), "reaching day 2 unlocks 熬过第一天")
+	check(ach.fact({"kind": "day", "day": 2}).is_empty(), "an entry unlocks once")
+	check(ach.fact({"kind": "anomaly", "phase": "start", "id": "rain", "public": true}).has("n.anomaly"), "the first anomaly unlocks 看见了")
+	check(ach.fact({"kind": "anomaly", "phase": "end", "id": "rain", "survived": true, "lethal": true}).has("n.survive") and ach.sets["lethal"].has("rain"), "surviving a lethal anomaly unlocks 还活着 and collects it")
+	check(not ach.fact({"kind": "anomaly", "phase": "end", "id": "moth", "survived": true, "lethal": true}).has("n.survive") and not ach.sets["lethal"].has("moth"), "an anomaly that never started is not counted")
+	for id: String in ["moth", "exercise", "rite"]:
+		ach.fact({"kind": "anomaly", "phase": "start", "id": id, "public": true})
+		ach.fact({"kind": "anomaly", "phase": "end", "id": id, "survived": true, "lethal": true})
+	check(ach.unlocked.has("e.lethal4") and ach.progress("e.lethal4")["n"] == 4, "four lethal anomalies survived unlock 见识")
+	ach.fact({"kind": "anomaly", "phase": "start", "id": "cola", "public": false})
+	check(not ach.sets["anomalies"].has("cola") and ach.sets["anomalies"].size() == 4, "non-public anomalies are not collected in the public book")
+	check(ach.fact({"kind": "inspection", "day": 1, "slot": 0, "compliant": true}).has("n.inspection"), "a compliant inspection unlocks 按时到场")
+	check(not ach.fact({"kind": "inspection", "day": 1, "slot": 1, "compliant": false}).has("e.attendance"), "a missed inspection is no full attendance")
+	ach.fact({"kind": "inspection", "day": 2, "slot": 0, "compliant": true})
+	check(ach.fact({"kind": "inspection", "day": 2, "slot": 1, "compliant": true}).has("e.attendance"), "both inspections of a day unlock 全勤")
+	check(ach.fact({"kind": "patrol", "what": "lost"}) == ["n.lost"] and ach.fact({"kind": "patrol", "what": "locker"}) == ["n.locker"], "the patrol entries unlock")
+	check(ach.fact({"kind": "wake"}) == ["n.wake"] and ach.fact({"kind": "protect"}) == ["n.saved"] and ach.saved, "wake and rescue unlock, the rescue is remembered")
+	var ends := ach.fact({"kind": "ending", "id": "face", "day": 1, "diff": "hard"})
+	check(ends.has("e.end_face") and ends.has("e.day1") and ends.has("e.hard") and ends.has("p.hard_day1") and ends.has("e.whitelist") and not ends.has("p.oneshot"), "a hard day-1 whitelist ending unlocks its entries but not 一命 after a rescue")
+	var clean := AchievementsModule.new(25)
+	clean.reset()
+	check(clean.fact({"kind": "ending", "id": "face", "day": 3, "diff": "hard"}).has("p.oneshot"), "a hard ending without any rescue unlocks 一命")
+	clean.face_wrong = 1
+	var wrong := AchievementsModule.new(25)
+	wrong.reset()
+	wrong.face_wrong = 1
+	check(not wrong.fact({"kind": "ending", "id": "face", "day": 2, "diff": "easy"}).has("e.whitelist"), "a wrong answer spoils 三道全对")
+	check(not wrong.fact({"kind": "ending", "id": "unknown", "day": 1, "diff": "easy"}).has("e.day1"), "only public endings count")
+	var walk := AchievementsModule.new(25)
+	walk.reset()
+	for id: String in AchievementsModule.EXPLORE:
+		walk.fact({"kind": "room", "id": id})
+	check(not walk.unlocked.has("e.explore"), "the dorms are still missing")
+	walk.fact({"kind": "room", "id": "dorm2"})
+	check(not walk.unlocked.has("e.explore"), "one of the two dorm groups is not enough")
+	check(walk.fact({"kind": "room", "id": "dorm5"}).has("e.explore"), "every floor plus both dorm groups unlocks 踏遍校园")
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(walk.capture()))
+	var back := AchievementsModule.new(25)
+	back.reset()
+	check(back.validate(saved).is_empty(), "run facts survive JSON")
+	back.restore(saved)
+	check(back.rooms.has("dorm5") and back.rooms.size() == walk.rooms.size(), "run facts restore")
+	var prof: Dictionary = JSON.parse_string(JSON.stringify(ach.profile()))
+	var again := AchievementsModule.new(25)
+	again.load_profile(prof)
+	check(again.unlocked.size() == ach.unlocked.size() and again.sets["lethal"].size() == 4, "the profile survives JSON")
+	again.load_profile({"unlocked": {"h.secret": true, "n.day2": true}})
+	check(again.unlocked.size() == 1 and again.unlocked.has("n.day2"), "unknown or non-public ids in a profile are dropped")
+	check(ach.points() > 0 and not AchievementsModule.LIST.keys().any(func(k: String) -> bool: return k.begins_with("h.")), "the points count and the public table has no hidden entries")
+	var rows := ach.entries()
+	check(rows.size() == AchievementsModule.LIST.size() and rows.filter(func(r: Dictionary) -> bool: return not r["unlocked"] and r["memo"] != "").is_empty(), "locked entries show no memory line")
+
+
 func _notices(events: Array) -> Array:
 	return events.filter(func(e: Dictionary) -> bool: return e["kind"] == "notice").map(func(e: Dictionary) -> String: return e["text"])
 
@@ -1233,6 +1290,7 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_anomaly_fx(app)
 	await _test_audio(app)
 	await _test_whitelist_route(app)
+	await _test_achievement_flow(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
 
@@ -1429,6 +1487,28 @@ func _press_terminal(app: GameApp, scene: String) -> bool:
 					await _frames(2)
 					return true
 	return false
+
+
+## Facts flow from the run into the profile file; the menu shows the list.
+func _test_achievement_flow(app: GameApp) -> void:
+	app.saves.clear()
+	var profile := FileAccess.file_exists(app._profile_path())
+	if profile:
+		DirAccess.remove_absolute(app._profile_path())
+	app.start_new_game()
+	await _frames(3)
+	app.fact({"kind": "day", "day": 2})
+	check(app.achievements().unlocked.has("n.day2") and FileAccess.file_exists(app._profile_path()), "an unlock is stored in the profile file")
+	app.return_to_menu()
+	app._show_achievements()
+	check(app.ui.ach_panel != null and app.ui.ach_panel.visible, "the menu opens the list")
+	var back := AchievementsModule.new(25)
+	app._load_profile(back)
+	check(back.unlocked.has("n.day2"), "the next run starts from the stored profile")
+	app.start_new_game()
+	await _frames(3)
+	check(app.achievements().unlocked.has("n.day2") and not app.ui.ach_panel.visible, "a new run loads the profile and hides the list")
+	DirAccess.remove_absolute(app._profile_path())
 
 
 func _test_death_flow(app: GameApp) -> void:
