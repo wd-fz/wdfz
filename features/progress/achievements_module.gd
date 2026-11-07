@@ -32,6 +32,7 @@ const LIST := {
 	"p.five_routes": ["p", "五条路", "最后一次，学校以为我只是放学回家。"],
 	"e.end_international": ["e", "《外国语学生》", "队尾的人回头看了一眼。"],
 	"e.exchange_together": ["e", "一个都没少", "一个都没少。"],
+	"n.chalk": ["n", "记号", "墙上的记号是我画的。至少，我记得是我画的。"],
 	"n.paper_received": ["n", "窗口来信", "纸飞机里写着一行字。"],
 	"e.paper_return": ["e", "原路寄回", "窗后那只手接住了它。"],
 	"e.paper_clean": ["e", "没有第二道折痕", "纸飞机钻进窗缝，一路没有碰到墙。"],
@@ -271,6 +272,8 @@ func _test(id: String, f: Dictionary) -> bool:
 			return kind == "ending" and f["id"] == "international"
 		"e.exchange_together":
 			return kind == "exchange" and f.get("what") == "arrived" and bool(f.get("together", false))
+		"n.chalk":
+			return kind == "chalk"
 		"n.paper_received":
 			return kind == "paper" and f.get("what") == "received"
 		"e.paper_return":

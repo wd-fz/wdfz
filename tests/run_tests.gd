@@ -80,6 +80,7 @@ func _run() -> void:
 	_test_speedrun_rules()
 	_test_gaze_rules()
 	_test_paper_rules()
+	_test_marks_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -1927,6 +1928,46 @@ func _test_paper_rules() -> void:
 	check(crash.phase() == "hunt", "flying the wrong way fails")
 
 
+## A floor tile next to the west wall of teach1.
+func _wall_spot(room: Dictionary) -> Vector2:
+	var grid: Array = room["grid"]
+	for r in grid.size():
+		if String(grid[r]).substr(0, 1) == "#" and String(grid[r]).substr(1, 1) == "." and String(grid[r]).substr(2, 1) == ".":
+			return CampusGeometry.tile_center(room, 1, r)
+	return Vector2.ZERO
+
+
+func _test_marks_rules() -> void:
+	var t1 := CampusData.layout("teach1")
+	var m := MarksModule.new()
+	m.reset()
+	var solid := func(q: Vector2) -> bool: return CampusGeometry.SOLID_CH.contains(CampusGeometry.tile_at(t1, q))
+	var near_wall := _wall_spot(t1)
+	m.set_context({"scene": "teach1", "x": near_wall.x, "y": near_wall.y, "ang": PI, "pitch": 0.0, "solid": solid, "has_chalk": true})
+	var t := m.target()
+	check(t["face"] == "wall" and float(t["h"]) > 1.0, "looking level at a wall targets the wall")
+	m.set_context({"scene": "teach1", "x": near_wall.x + 40.0, "y": near_wall.y, "ang": 0.0, "pitch": -0.8, "solid": solid, "has_chalk": true})
+	check(m.target()["face"] == "floor", "looking down targets the floor")
+	check(m.use_chalk() and m.take_events()[0]["labels"].size() == 8, "the chalk offers eight symbols")
+	m.choose(0)
+	var ev := m.take_events()
+	check(m.marks.size() == 1 and ev.any(func(e: Dictionary) -> bool: return e["kind"] == "fact"), "a mark is drawn")
+	m.use_chalk()
+	check(m.take_events()[0]["labels"].size() == 9, "on a mark the chalk can also erase it")
+	m.choose(8)
+	check(m.marks.is_empty(), "erased")
+	for i in 85:
+		m.place("x", {"room": "teach1", "x": float(i), "y": 0.0, "h": 0.0, "face": "floor", "a": 0.0})
+	check(m.visible("teach1").size() == MarksModule.PER_ROOM, "at most 80 marks a room")
+	m.set_context({"scene": "teach1", "has_chalk": false})
+	check(not m.use_chalk(), "no chalk, no marks")
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(m.capture()))
+	var back := MarksModule.new()
+	back.reset()
+	back.restore(saved)
+	check(back.marks.size() == MarksModule.PER_ROOM, "marks survive the save")
+
+
 func _test_facility_rules() -> void:
 	var rooms := CampusData.rooms()
 	var fac := FacilitiesModule.new(rooms, CampusData.layout("out"), CampusData.campus())
@@ -2527,6 +2568,7 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_vault_app(app)
 	await _test_lesson_app(app)
 	await _test_speedrun_app(app)
+	await _test_marks_app(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
 
@@ -3085,6 +3127,42 @@ func _test_speedrun_app(app: GameApp) -> void:
 	DirAccess.remove_absolute(app._speedrun_path())
 	DirAccess.remove_absolute(app._profile_path())
 	app.saves.clear()
+
+
+## Chalk through the app, and last run's × in the next run.
+func _test_marks_app(app: GameApp) -> void:
+	app.saves.clear()
+	if FileAccess.file_exists(app.saves.side_path("last_life.json")):
+		DirAccess.remove_absolute(app.saves.side_path("last_life.json"))
+	app.start_new_game()
+	await _frames(2)
+	app._stand_up()
+	app.patrol().pat["safety"] = 999.0
+	app.items().add("chalk")
+	var t1 := CampusData.layout("teach1")
+	app.travel("teach1", _campus_pose(t1, _wall_spot(t1), PI), false)
+	await _frames(2)
+	app._use_item("chalk")
+	await _frames(1)
+	check(app.ui.choice_open(), "using the chalk asks what to draw")
+	app._choice_made(0)
+	await _frames(2)
+	check(app.marks().marks.size() == 1 and app._marks_nodes != null and app._marks_nodes.get_child_count() == 1, "the mark is drawn on the wall")
+	app.story().diff = "hard"
+	app.kill("test", "vignette", "patrol")
+	await _frames(1)
+	var ll: Variant = app._read_side("last_life.json")
+	check(ll is Dictionary and ll["scene"] == "teach1", "the death place is kept for the next run")
+	app.return_to_menu()
+	app.start_new_game()
+	await _frames(2)
+	app._stand_up()
+	app.travel("teach1", _campus_pose(t1, CampusGeometry.tile_center(t1, 30, 17), PI), false)
+	await _frames(3)
+	check(app.marks().last_life is Dictionary and app._marks_nodes.get_child_count() == 1, "the next run shows the last life's × there")
+	app.return_to_menu()
+	DirAccess.remove_absolute(app.saves.side_path("last_life.json"))
+	DirAccess.remove_absolute(app._profile_path())
 
 
 func _test_death_flow(app: GameApp) -> void:

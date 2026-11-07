@@ -69,7 +69,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms()), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms())]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms()), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new()]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -79,6 +79,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func marks() -> MarksModule:
+	return session.modules.get_module(&"campus.marks") as MarksModule if session != null else null
 
 
 func paper() -> PaperPlaneModule:
@@ -337,6 +341,9 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 	var radio := candidate.modules.get_module(&"story.broadcast") as BroadcastModule
 	if radio != null:
 		radio.set_seed(int((Time.get_ticks_usec() * 13) % 2147483647))
+	var mk := candidate.modules.get_module(&"campus.marks") as MarksModule
+	if mk != null:
+		mk.last_life = _read_side("last_life.json")
 	var pp := candidate.modules.get_module(&"story.paper_plane") as PaperPlaneModule
 	if pp != null:
 		pp.roll(int((Time.get_ticks_usec() * 37) % 2147483647))
@@ -525,6 +532,10 @@ func resume_game() -> void:
 
 
 func return_to_menu() -> void:
+	if is_instance_valid(_marks_nodes):
+		_marks_nodes.queue_free()
+	_marks_nodes = null
+	_marks_key = ""
 	if is_instance_valid(_plane_nodes):
 		_plane_nodes.queue_free()
 	_plane_nodes = null
@@ -783,6 +794,11 @@ func _apply_result(result: Dictionary) -> void:
 		facilities().use_item(String(result["facility_item"]))
 		_apply_facility_events()
 		return
+	if result.has("chalk") and marks() != null:
+		marks().set_context(_marks_context())
+		marks().use_chalk()
+		_apply_marks_events()
+		return
 	if result.has("medkit") and body() != null:
 		body().set_context(_body_context())
 		body().use_medkit()
@@ -927,6 +943,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	if story().dead or story().over():
 		return
 	_paper_step(delta)
+	_show_marks()
 	_anomaly_step(delta, day_rules, room, pose)
 	_audio_step(delta, watcher, day_rules, room, p)
 	_progress_step(watcher, day_rules, weird_now)
@@ -1135,6 +1152,10 @@ func kill(msg: String, fx: String, source: String) -> void:
 	if not result.get("dead", false):
 		return
 	fact({"kind": "death", "source": source, "fx": fx})
+	if not result["wake"] and not (session.world_id in ["lift_dream", "portal_tunnel"]):
+		var lp: Array = player.capture_pose()["position"]
+		var lw := CampusGeometry.to_world(campus().room(session.world_id), float(lp[0]), float(lp[2]))
+		_write_side("last_life.json", {"v": 1, "scene": session.world_id, "x": lw.x, "y": lw.y, "tsec": roundi(school().tsec), "day": school().day})
 	player.enabled = false
 	player.clear_input()
 	audio.stop_all()
@@ -1490,6 +1511,112 @@ func _facility_travel(e: Dictionary) -> void:
 	else:
 		pose = campus().default_spawn(world)
 	travel(world, pose, false)
+
+
+# ---- chalk marks and the last life (features/campus/marks_module.gd) ----
+
+var _marks_nodes: Node3D
+var _marks_key := ""
+
+
+func _read_side(name: String) -> Variant:
+	var path := saves.side_path(name)
+	if FileAccess.file_exists(path):
+		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		if parsed is Dictionary:
+			return parsed
+	return null
+
+
+func _write_side(name: String, data: Variant) -> void:
+	var path := saves.side_path(name)
+	if data == null:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(path)
+		return
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(data))
+		file.close()
+
+
+func _marks_context() -> Dictionary:
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var solid := func(q: Vector2) -> bool:
+		if room != null:
+			return CampusGeometry.SOLID_CH.contains(CampusGeometry.tile_at(room, q))
+		return not _can_stand(q, null, 0.0)
+	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "pitch": float(pose["pitch"]),
+		"solid": solid, "has_chalk": items() != null and items().has("chalk")}
+
+
+func _apply_marks_events() -> void:
+	var mk := marks()
+	if mk == null:
+		return
+	for e: Dictionary in mk.take_events():
+		match e["kind"]:
+			"notice", "toast":
+				ui.show_notice(String(e["text"]))
+			"save":
+				save_game()
+			"changed":
+				_marks_key = ""
+			"fact":
+				fact({"kind": "chalk", "sym": e["sym"]})
+			"choice":
+				_choice_count += 1
+				var mine := _choice_count
+				_choice_handler = func(index: int) -> void:
+					var m := marks()
+					if m != null and mine == _choice_count:
+						m.choose(index)
+						_apply_marks_events()
+				player.enabled = false
+				player.clear_input()
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				ui.show_choice(String(e["text"]), e["labels"])
+
+
+## Chalk marks of this scene (and last run's ×) as flat labels on the wall or the floor.
+func _show_marks() -> void:
+	var mk := marks()
+	var world := _campus_world()
+	if mk == null or world == null:
+		return
+	var key := "%s:%d:%d" % [session.world_id, mk.serial, mk.marks.size()]
+	if key == _marks_key and is_instance_valid(_marks_nodes) and _marks_nodes.get_parent() == world:
+		return
+	_marks_key = key
+	if is_instance_valid(_marks_nodes):
+		_marks_nodes.queue_free()
+	_marks_nodes = Node3D.new()
+	_marks_nodes.name = "ChalkMarks"
+	world.add_child(_marks_nodes)
+	var room: Variant = campus().room(session.world_id)
+	var list: Array = mk.visible(session.world_id).duplicate()
+	if mk.last_life is Dictionary and String(mk.last_life.get("scene", "")) == session.world_id:
+		list.append({"x": mk.last_life["x"], "y": mk.last_life["y"], "h": 0.0, "face": "floor", "a": 0.0, "text": "× " + SchoolClock.fmt_clock(float(mk.last_life.get("tsec", 700))), "old": true})
+	for m: Dictionary in list:
+		var label := Label3D.new()
+		label.text = String(m.get("text", MarksModule._sym(String(m.get("s", "x")))))
+		label.font_size = 96
+		label.pixel_size = 0.004
+		label.modulate = Color(0.92, 0.91, 0.86, 0.55 if m.get("old", false) else 0.9)
+		label.shaded = false
+		label.double_sided = true
+		var sp := CampusGeometry.to_scene(room, Vector2(float(m["x"]), float(m["y"])))
+		if m["face"] == "floor":
+			label.position = Vector3(sp.x, float(m["h"]) + 0.012, sp.y)
+			label.rotation = Vector3(-PI * 0.5, -float(m["a"]) - PI * 0.5, 0.0)
+		else:
+			label.position = Vector3(sp.x, float(m["h"]), sp.y)
+			label.rotation.y = -float(m["a"]) + PI * 0.5
+		_marks_nodes.add_child(label)
 
 
 # ---- paper planes (features/story/paper_plane_module.gd) ----
@@ -2652,6 +2779,7 @@ func _reach_ending(id: String) -> void:
 		file.close()
 	if achievements() != null and routes() != null:
 		achievements().face_wrong = maxi(0, routes().wrong_answers())
+	_write_side("last_life.json", null)
 	fact({"kind": "ending", "id": id, "day": school().day, "diff": story().diff, "talent": talent().id if talent() != null else "none"})
 	var meta := "第 %d 天" % school().day
 	if (items() != null and items().has_clock()) or (talent() != null and talent().has("watch")):
