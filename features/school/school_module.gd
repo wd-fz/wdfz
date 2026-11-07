@@ -6,7 +6,7 @@ extends FeatureModule
 ## world.js leaveSeat (stand positions exported per seat), ui/hud.js place/period text.
 ##
 ## Deaths (SAN 0, assimilation 100) are requested through `take_deaths()` and resolved by the
-## story module (story.js kill). Not ported yet: leave slips, exams, danger zones, anomalies,
+## story module (story.js kill). Not ported yet: leave slips, exams, anomalies,
 ## patrol threats and talents.
 
 const STATE_VERSION := 1
@@ -74,6 +74,7 @@ func state_version() -> int:
 
 
 func reset() -> void:
+	danger_seen = {}
 	tsec = START_TSEC
 	day = 1
 	san = 100.0
@@ -101,7 +102,7 @@ func capture() -> Dictionary:
 	return {"tsec": tsec, "day": day, "san": san, "viol": viol, "tt": tt, "stam": stam, "tired": tired,
 		"seated": seated, "seat_id": seat_id, "tt_tier": tt_tier, "pressure_clock": pressure_clock,
 		"pressure_seen": pressure_seen, "viol_full": viol_full,
-		"inspection": inspection.duplicate(true), "outing": outing.duplicate(true), "duties": duties.duplicate(true), "active_seconds": active_seconds}
+		"danger_seen": danger_seen.duplicate(), "inspection": inspection.duplicate(true), "outing": outing.duplicate(true), "duties": duties.duplicate(true), "active_seconds": active_seconds}
 
 
 func validate(data: Dictionary) -> String:
@@ -131,6 +132,7 @@ func validate(data: Dictionary) -> String:
 
 
 func restore(data: Dictionary) -> void:
+	danger_seen = (data.get("danger_seen", {}) as Dictionary).duplicate() if data.get("danger_seen") is Dictionary else {}
 	tsec = float(data["tsec"])
 	day = int(data["day"])
 	san = float(data["san"])
@@ -408,6 +410,7 @@ func step(dt: float, ctx: Dictionary) -> void:
 	_inspection_tick(dt, ctx)
 	var nw := SchoolClock.need_where(tsec)
 	_san_tick(dt, nw, world_id, w, ctx)
+	_danger_tick(dt, world_id)
 	_viol_tick(dt, nw, world_id, w, ctx)
 	_tt_tick(dt, nw, world_id)
 	_settle_san()
@@ -449,6 +452,36 @@ func _rule_there(nw: String, world_id: String, w: Vector2) -> bool:
 		"操场":
 			return on_field(world_id, w)
 	return true
+
+
+## systems.js dangerTick: the garage, the trash room and the night outdoors drain SAN, scaled by the
+## campus pressure; each is described once (the first time). The portal tunnel is not ported.
+const DANGER_RATE := {"garage": 0.55, "trash": 0.40, "night": 0.30}
+const DANGER_LINE := {
+	"garage": "我：车库里没有灯。只有最里面那盏在闪——闪的节奏，像有人在开关。",
+	"trash": "我：垃圾房的味道不对。太干净了。像刚刚被人舔过一遍。",
+	"night": "我：熄灯了。外面的路灯还亮着，可是它们照不到地面。这种时候还在外面走，是要被记下来的。"}
+var danger_seen: Dictionary = {}
+
+
+func danger_at(world_id: String) -> String:
+	if world_id == "garage1":
+		return "garage"
+	if world_id == "trash1":
+		return "trash"
+	if world_id == "out" and SchoolClock.is_night(tsec):
+		return "night"
+	return ""
+
+
+func _danger_tick(dt: float, world_id: String) -> void:
+	var dg := danger_at(world_id)
+	if dg == "":
+		return
+	change_san(-float(DANGER_RATE[dg]) * float(pressure()["danger"]) * dt, 0.0)
+	if not danger_seen.has(dg):
+		danger_seen[dg] = true
+		_say(String(DANGER_LINE[dg]))
 
 
 func _san_tick(dt: float, nw: String, world_id: String, w: Vector2, ctx: Dictionary) -> void:

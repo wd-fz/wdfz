@@ -26,6 +26,9 @@ const LIST := {
 	"n.inspection": ["n", "按时到场", "黑影围成一圈，又散开。它们没有记下我。"],
 	"n.wake": ["n", "梦里记得", "我猛地抬起头，后背全是汗。"],
 	"n.saved": ["n", "被替了一次", "刚才那一下，像是有人替我挨了。"],
+	"n.torch": ["n", "照亮", "光打过去的时候，它往后退了一步。"],
+	"e.end_car": ["e", "《闸门》", "车灯照亮了北门。后视镜里，教学楼一层层暗下去。"],
+	"e.firstcar": ["e", "一次就对", "引擎一下就着了。"],
 	"e.end_face": ["e", "《白名单》", "闸机亮了一下。我的名字留在了最后一行。"],
 	"e.day1": ["e", "当天离校", "那一天还没结束，我就已经不在学校里了。"],
 	"e.hard": ["e", "梦魇", "没有惊醒，也没有第二次。我还是出来了。"],
@@ -149,7 +152,8 @@ func points() -> int:
 
 ## One fact from the run. Returns the ids unlocked by it.
 ## day {day}, anomaly {phase: start|end, id, survived, lethal, public}, patrol {what: lost|locker},
-## inspection {day, slot, compliant}, room {id}, wake, protect, ending {id, day, diff, permanent}.
+## inspection {day, slot, compliant}, room {id}, wake, protect, ending {id, day, diff, permanent},
+## garage {what: torch|drive, tried}.
 func fact(f: Dictionary) -> Array[String]:
 	var got: Array[String] = []
 	match String(f["kind"]):
@@ -199,6 +203,12 @@ func _test(id: String, f: Dictionary) -> bool:
 			return kind == "wake"
 		"n.saved":
 			return kind == "protect"
+		"n.torch":
+			return kind == "garage" and f["what"] == "torch"
+		"e.end_car":
+			return kind == "ending" and f["id"] == "car"
+		"e.firstcar":
+			return kind == "garage" and f["what"] == "drive" and int(f.get("tried", 0)) == 0
 		"e.end_face":
 			return kind == "ending" and f["id"] == "face"
 		"e.day1":

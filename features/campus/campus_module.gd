@@ -30,6 +30,8 @@ var _outside: Dictionary = {}
 var _campus: Dictionary = {}
 var _open_doors: Dictionary = {}
 var _line := 0
+## Plate and tried state for the 'V' hint (the garage module).
+var car_hint: Callable
 ## Inventory query (items.js hasItem), wired by the app to the bag module.
 var has_item := func(_id: String) -> bool: return false
 
@@ -321,6 +323,8 @@ func hint(world_id: String, pose: Dictionary) -> String:
 			return "查看值班台" if r.get("host") == "guard" else "看柜台"
 		"O":
 			return "" if _exit_is_open(r, hit["w"]) else "出去"
+		"V":
+			return car_hint.call(int(hit["c"]), int(hit["r"])) if car_hint.is_valid() else "看车牌"
 	if SEARCHABLE.contains(ch) or not TILE_HINT.has(ch):
 		return "翻找"
 	return String(TILE_HINT[ch])
@@ -385,6 +389,8 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 			return {"notice": "", "terminal": true}
 		"X":
 			return {"notice": "", "trash": true}
+		"V":
+			return {"notice": "", "car": [hit["c"], hit["r"]]}
 		"H":
 			return {"notice": "", "hide": [hit["c"], hit["r"]]}
 		"T":

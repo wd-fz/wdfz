@@ -27,6 +27,8 @@ var _seen_day := 1
 var _seen_hide := false
 var _seen_lock_ach := false
 var _ach_started := ""
+var _enter_cool := 0.0
+var _drive_view: CarChaseView
 
 
 func _ready() -> void:
@@ -62,7 +64,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1)]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1"))]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -72,6 +74,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func garage() -> GarageModule:
+	return session.modules.get_module(&"garage.world") as GarageModule if session != null else null
 
 
 func achievements() -> AchievementsModule:
@@ -173,6 +179,9 @@ func start_new_game(difficulty: String = "easy") -> void:
 	var weirdness := candidate.modules.get_module(&"anomaly.world") as AnomalyModule
 	if weirdness != null:
 		weirdness.begin_run(fate.diff if fate != null else "easy")
+	var cars := candidate.modules.get_module(&"garage.world") as GarageModule
+	if cars != null:
+		cars.set_seed(int(Time.get_ticks_usec() % 2147483647))
 	var rules := candidate.modules.get_module(&"campus.world") as CampusModule
 	var pose := rules.start_pose() if rules != null and initial_world == rules.start_world() else router.current.spawn_pose()
 	# Game.start: the run begins seated on the player's own seat in teach1.
@@ -203,6 +212,7 @@ func _unwire(old: GameSession) -> void:
 		watcher.nav.door_open = func(_room: String, _c: int, _r: int) -> bool: return false
 	var rules := old.modules.get_module(&"campus.world") as CampusModule
 	if rules != null:
+		rules.car_hint = Callable()
 		rules.has_item = func(_id: String) -> bool: return false
 		for connection: Dictionary in rules.door_changed.get_connections():
 			rules.door_changed.disconnect(connection["callable"])
@@ -214,6 +224,9 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 		session.stop()
 	session = candidate
 	_load_profile(achievements())
+	_leave_drive()
+	if campus() != null and garage() != null:
+		campus().car_hint = garage().car_hint
 	_seen_day = school().day if school() != null else 1
 	_seen_hide = false
 	_seen_lock_ach = false
@@ -280,6 +293,8 @@ func load_game() -> void:
 		return
 	candidate.restore(data)
 	_install_session(candidate, data["player"])
+	if garage() != null and garage().driving():
+		_enter_drive()
 	ui.show_notice("已恢复测试进度；读档不会再次触发交互奖励。")
 
 
@@ -305,6 +320,7 @@ func resume_game() -> void:
 
 
 func return_to_menu() -> void:
+	_leave_drive()
 	if audio != null:
 		audio.stop_all()
 	ui.hide_ending()
@@ -467,6 +483,20 @@ func _apply_result(result: Dictionary) -> void:
 		routes().use_gate(String(result["gate"]), school().day)
 		_apply_route_events(routes())
 		return
+	if result.has("car") and garage() != null:
+		garage().set_context(_garage_context())
+		garage().inspect_car(int(result["car"][0]), int(result["car"][1]))
+		_apply_garage_events()
+		return
+	if result.has("car_key") and garage() != null:
+		ui.show_notice("我：钥匙环刻着「%s」。要去车位前核对。" % garage().key_label())
+		return
+	if result.has("coin") and garage() != null:
+		garage().set_context(_garage_context())
+		if garage().throw_coin() and items() != null:
+			items().remove("coin")
+		_apply_garage_events()
+		return
 	if result.has("trash") and routes() != null:
 		routes().use_trash(session.world_id, school().day)
 		_apply_route_events(routes())
@@ -508,6 +538,9 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	var day_rules := school()
 	if day_rules == null:
 		return
+	if driving():
+		_drive_step(delta)
+		return
 	if day_rules.seated and player.wants_move():
 		_stand_up()
 	var watcher := patrol()
@@ -548,6 +581,9 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 		return
 	_routes_step(delta)
 	if story().over():
+		return
+	_garage_step(delta, room, pose)
+	if story().dead or story().over():
 		return
 	_anomaly_step(delta, day_rules, room, pose)
 	_audio_step(delta, watcher, day_rules, room, p)
@@ -737,6 +773,8 @@ func kill(msg: String, fx: String, source: String) -> void:
 	if result.has("protected"):
 		bag.remove("elixir")
 		fact({"kind": "protect"})
+		if garage() != null:
+			garage().rescued()
 		school().survive(source)
 		if patrol() != null:
 			patrol().rescued()
@@ -808,6 +846,9 @@ func _finish_death() -> void:
 	if fate.wake_pending:
 		var left := fate.finish_wake()
 		fact({"kind": "wake"})
+		if garage() != null:
+			garage().cancel_chase()
+		_leave_drive()
 		_death_phase = ""
 		school().dream_wake_reset()
 		campus().close_all_doors()
@@ -960,6 +1001,146 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 				if phase == 2 and _seen_phase != 2:
 					audio.cue("thud", -2.0)
 				_seen_phase = phase
+
+
+# ---- the garage and the drive (features/garage) ----
+
+func _garage_context() -> Dictionary:
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var weird := anomaly()
+	var bag := items()
+	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "run": player.sprinting,
+		"torch": bag != null and bag.torch_on, "has_key": bag != null and bag.has("key"), "dead": story().dead, "enter_cool": _enter_cool,
+		"busy": (weird != null and weird.is_active()) or (school() != null and school().inspection_pending()),
+		"can_stand": _can_stand.bind(room, float(p[1]))}
+
+
+func _garage_step(delta: float, room: Variant, pose: Dictionary) -> void:
+	var cars := garage()
+	if cars == null:
+		return
+	_enter_cool = maxf(0.0, _enter_cool - delta)
+	cars.set_context(_garage_context())
+	cars.tick(delta)
+	if cars.job != null:
+		ui.show_search(cars.job_progress())
+	var world := _campus_world()
+	if world != null:
+		var shown := session.world_id == GarageModule.ROOM and cars.roam_visible()
+		var at := Vector2.ZERO
+		if shown:
+			at = CampusGeometry.to_scene(room, Vector2(float(cars.roam["x"]), float(cars.roam["y"])))
+		world.show_garage_shadow(shown, at, float(pose["position"][1]))
+	_apply_garage_events()
+
+
+func _apply_garage_events() -> void:
+	var cars := garage()
+	if cars == null:
+		return
+	for e: Dictionary in cars.take_events():
+		match e["kind"]:
+			"notice", "toast":
+				ui.show_notice(String(e["text"]))
+			"san":
+				school().san = maxf(school().san + float(e["amount"]), float(e.get("min", -INF)))
+			"step":
+				var room: Variant = campus().room(session.world_id)
+				var s := CampusGeometry.to_scene(room, Vector2(float(e["x"]), float(e["y"])))
+				audio.cue_at("step_heavy", Vector3(s.x, float(player.capture_pose()["position"][1]) + 0.2, s.y), -2.0)
+			"fact":
+				fact({"kind": "garage", "what": e["what"], "tried": int(e.get("tried", 0))})
+			"save":
+				save_game()
+			"choice":
+				_choice_count += 1
+				var mine := _choice_count
+				_choice_handler = func(index: int) -> void:
+					var g := garage()
+					if g != null and mine == _choice_count:
+						g.set_context(_garage_context())
+						g.choose(index)
+						_apply_garage_events()
+				player.enabled = false
+				player.clear_input()
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				ui.show_choice(String(e["text"]), e["labels"])
+			"drive":
+				_enter_drive()
+			"kill":
+				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
+				return
+			"ending":
+				_leave_drive()
+				_reach_ending(String(e["id"]))
+				return
+
+
+## CarChase.start: out on the road north of the north gate, the campus hidden behind the drive.
+func _enter_drive() -> void:
+	var gates: Dictionary = CampusData.campus().get("gates", {})
+	var gn: Dictionary = gates.get("n", {"x": 514, "y": 95})
+	var at := CampusGeometry.to_scene(null, Vector2(float(gn["x"]) * 2.0, (float(gn["y"]) + 40.0) * 2.0))
+	if session.world_id != "out":
+		travel("out", {"position": [at.x, 0.05, at.y], "yaw": CampusGeometry.yaw_from_ang(-PI * 0.5), "pitch": 0.0}, false)
+	if _drive_view == null:
+		_drive_view = CarChaseView.new()
+		_drive_view.name = "CarChaseView"
+		_drive_view.position = Vector3(0, 400.0, 0)
+		add_child(_drive_view)
+	var world := _campus_world()
+	if world != null:
+		world.visible = false
+	player.enabled = false
+	player.clear_input()
+	var night := Environment.new()
+	night.background_mode = Environment.BG_COLOR
+	night.background_color = Color(0.03, 0.035, 0.05)
+	night.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	night.ambient_light_color = Color(0.25, 0.27, 0.3)
+	night.fog_enabled = true
+	night.fog_light_color = Color(0.04, 0.045, 0.06)
+	night.fog_density = 0.02
+	player.camera.environment = night
+	audio.loop("engine", true, -14.0)
+
+
+func _leave_drive() -> void:
+	if _drive_view != null:
+		_drive_view.queue_free()
+		_drive_view = null
+	var world := _campus_world()
+	if world != null:
+		world.visible = true
+	if player != null and player.camera != null:
+		player.camera.environment = null
+	if audio != null:
+		audio.loop("engine", false)
+
+
+func driving() -> bool:
+	return _drive_view != null and garage() != null and garage().driving()
+
+
+func _drive_step(delta: float) -> void:
+	var cars := garage()
+	cars.set_context(_garage_context())
+	var steer := Input.get_axis("move_left", "move_right")
+	cars.chase_step(delta, {"throttle": Input.is_action_pressed("move_forward"), "braking": Input.is_action_pressed("move_back"), "steering": steer})
+	if cars.chase != null:
+		var d: Dictionary = cars.chase
+		_drive_view.update(d)
+		var eye := _drive_view.position + CarChaseView.eye(d)
+		player.global_position = eye - Vector3(0, player.camera.position.y, 0)
+		player.rotation.y = 0.0
+		player.camera.rotation.x = -0.04
+		ui.show_status("校外道路", "速度 %d · 车况 %d/3 · %d%%" % [roundi(float(d["speed"]) * 3.6), int(d["hp"]), roundi(float(d["distance"]) / CarChaseRules.DISTANCE * 100.0)], "warn" if float(d["pursuit"]) > 40.0 else "", "")
+		if not story().dead:
+			ui.show_death_scene("vignette", float(d["pursuit"]) / CarChaseRules.PURSUIT_LIMIT * 0.6)
+	_apply_garage_events()
 
 
 ## Escape routes: delayed lines, terminals, gates, the face quiz and endings.
@@ -1174,6 +1355,7 @@ func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
 		patrol().set_context(_patrol_context(from_room, player.capture_pose()))
 		patrol().left_scene(from_world, world_id)
 	session.world_id = world_id
+	_enter_cool = 0.0 if seamless else 0.9
 	if seamless:
 		player.place(pose)
 	else:

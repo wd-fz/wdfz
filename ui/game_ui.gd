@@ -663,6 +663,10 @@ func show_notice(text: String) -> void:
 	_toast_seconds = 6.0
 
 
+func toast_text() -> String:
+	return %Toast.text
+
+
 func show_prompt(text: String) -> void:
 	%Prompt.text = ("交互 · " if _touch_enabled else "E · ") + text if not text.is_empty() else ""
 

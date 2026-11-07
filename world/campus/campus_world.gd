@@ -189,6 +189,35 @@ func show_patrol(visible_now: bool, scene_pos: Vector2, height: float, toward: V
 	_patrol_figure.rotation.y = atan2(toward.x - scene_pos.x, toward.z - scene_pos.y)
 
 
+## The thing in the garage driveway (systems.js ROAM): a tall dark figure, placeholder.
+var _garage_shadow: MeshInstance3D
+
+
+func show_garage_shadow(visible_now: bool, scene_pos: Vector2, height: float) -> void:
+	if not visible_now:
+		if is_instance_valid(_garage_shadow):
+			_garage_shadow.visible = false
+		return
+	if not is_instance_valid(_garage_shadow):
+		_garage_shadow = MeshInstance3D.new()
+		_garage_shadow.name = "GarageShadow"
+		var body := CapsuleMesh.new()
+		body.radius = 0.26
+		body.height = 2.35
+		_garage_shadow.mesh = body
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.01, 0.01, 0.012)
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_garage_shadow.material_override = mat
+		add_child(_garage_shadow)
+	_garage_shadow.visible = true
+	_garage_shadow.position = Vector3(scene_pos.x, height + 1.175, scene_pos.y)
+
+
+func garage_shadow_shown() -> bool:
+	return is_instance_valid(_garage_shadow) and _garage_shadow.visible
+
+
 func patrol_figure_shown() -> bool:
 	return is_instance_valid(_patrol_figure) and _patrol_figure.visible
 

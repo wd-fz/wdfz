@@ -67,6 +67,7 @@ func _run() -> void:
 	_test_anomaly_rules()
 	_test_routes_rules()
 	_test_achievements()
+	_test_garage_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -873,6 +874,142 @@ func _test_achievements() -> void:
 	check(rows.size() == AchievementsModule.LIST.size() and rows.filter(func(r: Dictionary) -> bool: return not r["unlocked"] and r["memo"] != "").is_empty(), "locked entries show no memory line")
 
 
+func _gctx(x: float, y: float, extra: Dictionary = {}) -> Dictionary:
+	var g := CampusData.layout("garage1")
+	var c := {"scene": "garage1", "x": x, "y": y, "ang": 0.0, "run": false, "torch": false, "has_key": true, "dead": false, "enter_cool": 0.0, "busy": false,
+		"can_stand": func(p: Vector2) -> bool: return CampusGeometry.tile_at(g, p) != "#" and CampusGeometry.tile_at(g, p) != "V"}
+	c.merge(extra, true)
+	return c
+
+
+func _test_garage_rules() -> void:
+	var g := CampusData.layout("garage1")
+	var cars := GarageModule.new(g)
+	cars.reset()
+	cars.set_seed(5)
+	var right := cars.car_right_cell()
+	var all: Array = cars._cars()
+	check(all.size() == 16 and all.has(right) and int(right.split(":")[0]) <= 24, "the right car is one of the 8 cars farthest from the entrance")
+	check(cars.car_right_cell() == right, "the right car stays the same for the run")
+	check(GarageModule.car_name(12, 4) == "鄂A·F" + str(3100 + 12 * 31 + 4), "plates follow carName")
+	# The thing appears in the driveway and walks to you in the dark.
+	var east := Vector2(float(g["ox"]) + 55.5 * 9.0, float(g["oy"]) + 13.5 * 9.0)
+	cars.set_context(_gctx(east.x, east.y))
+	cars.tick(0.1)
+	check(bool(cars.roam["on"]) and cars.roam_visible(), "entering the garage puts the thing in the driveway")
+	var start := Vector2(float(cars.roam["x"]), float(cars.roam["y"]))
+	for _i in 120:
+		cars.tick(0.1)
+	check(Vector2(float(cars.roam["x"]), float(cars.roam["y"])).distance_to(east) < start.distance_to(east), "in the dark it comes closer")
+	var e := cars.take_events()
+	check(e.any(func(x: Dictionary) -> bool: return x["kind"] == "step"), "its steps are heard")
+	# The torch held on it for 1.6 s sends it away.
+	cars.roam["x"] = east.x - 120.0
+	cars.roam["y"] = east.y
+	cars.roam["stage"] = "approach"
+	cars.set_context(_gctx(east.x, east.y, {"torch": true, "ang": PI}))
+	for _i in 17:
+		cars.tick(0.1)
+	e = cars.take_events()
+	check(cars.roam["stage"] == "wait" and not cars.roam_visible() and e.any(func(x: Dictionary) -> bool: return x["kind"] == "fact" and x["what"] == "torch"), "the torch held on it makes it vanish")
+	check(_notices(e).has("我：光扫过去，它就没了。"), "and says so once")
+	cars.roam["waitT"] = 0.05
+	cars.set_context(_gctx(east.x, east.y))
+	cars.tick(0.1)
+	check(cars.roam["stage"] == "approach" and Vector2(float(cars.roam["x"]), float(cars.roam["y"])).distance_to(east) > 250.0, "it comes back far away")
+	# Touching it in the dark kills.
+	cars.roam["x"] = east.x - 10.0
+	cars.roam["y"] = east.y
+	cars.roam["litAcc"] = 0.0
+	cars.take_events()
+	cars.tick(0.05)
+	e = cars.take_events()
+	check(e.any(func(x: Dictionary) -> bool: return x["kind"] == "kill" and x["source"] == "garage"), "walking into it in the dark is the garage death")
+	cars.set_context(_gctx(east.x, east.y, {"enter_cool": 0.5}))
+	cars.tick(0.05)
+	check(not cars.take_events().any(func(x: Dictionary) -> bool: return x["kind"] == "kill"), "not right after entering the room")
+	# The coin lures it.
+	var coin := GarageModule.new(g)
+	coin.reset()
+	coin.set_context(_gctx(east.x, east.y, {"ang": PI}))
+	coin.tick(0.1)
+	check(coin.throw_coin() and coin.lure != null and float(coin.lure["x"]) < east.x - 50.0, "the coin rolls ahead and lies there for 8 s")
+	coin.set_context(_gctx(0, 0, {"scene": "canteen1"}))
+	check(not coin.throw_coin() and _notices(coin.take_events()).has("我：要买饭就去打饭窗口，要买东西就去售货机。"), "outside the garage the coin is kept")
+	# Trying cars: the thing nearby kills, a wrong car is remembered, the right one starts the drive.
+	var drive := GarageModule.new(g)
+	drive.reset()
+	drive.set_seed(5)
+	var rc := drive.car_right_cell().split(":")
+	var wrong: String = all.filter(func(x: String) -> bool: return x != drive.car_right_cell())[0]
+	drive.set_context(_gctx(east.x, east.y, {"has_key": false}))
+	drive.use_car(int(rc[0]), int(rc[1]))
+	check(_notices(drive.take_events()).has("我：车门锁着。"), "without the key the doors are locked")
+	drive.roam["on"] = true
+	drive.roam["stage"] = "approach"
+	drive.roam["x"] = east.x - 50.0
+	drive.roam["y"] = east.y
+	drive.set_context(_gctx(east.x, east.y))
+	drive.use_car(int(rc[0]), int(rc[1]))
+	check(drive.take_events().any(func(x: Dictionary) -> bool: return x["kind"] == "kill" and x["source"] == "car_entry"), "opening a door with it close by is the back-seat death")
+	drive.roam["stage"] = "wait"
+	drive.roam["x"] = -1e6
+	var wc := wrong.split(":")
+	drive.inspect_car(int(wc[0]), int(wc[1]))
+	var asked := drive.take_events()
+	check(asked[0]["kind"] == "choice" and String(asked[0]["text"]).begins_with(GarageModule.car_name(int(wc[0]), int(wc[1]))), "looking at a car offers to try the key")
+	drive.choose(0)
+	check(drive.job != null and _notices(drive.take_events()).has("我：我把钥匙插进锁孔，慢慢地拧……"), "trying the key is a 1.6 s hold")
+	drive.set_context(_gctx(east.x + 8.0, east.y))
+	drive.tick(0.1)
+	check(drive.job == null and _notices(drive.take_events()).has("我：手一松，钥匙从锁孔里滑了出来。"), "stepping away drops the key")
+	drive.set_context(_gctx(east.x, east.y))
+	drive.use_car(int(wc[0]), int(wc[1]))
+	for _i in 17:
+		drive.tick(0.1)
+	check(drive.car_tried.has(wrong) and not drive.driving(), "the wrong car is remembered")
+	drive.take_events()
+	drive.use_car(int(wc[0]), int(wc[1]))
+	check(_notices(drive.take_events()).has("我：这辆试过了。不是它。"), "a tried car is not tried again")
+	drive.use_car(int(rc[0]), int(rc[1]))
+	for _i in 17:
+		drive.tick(0.1)
+	var go := drive.take_events()
+	check(drive.driving() and drive.car_used and go.any(func(x: Dictionary) -> bool: return x["kind"] == "drive") and go.any(func(x: Dictionary) -> bool: return x["kind"] == "fact" and x["what"] == "drive" and x["tried"] == 1), "the right car starts the drive")
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(drive.capture()))
+	var back := GarageModule.new(g)
+	back.reset()
+	check(back.validate(saved).is_empty(), "garage state survives JSON")
+	back.restore(saved)
+	check(back.driving() and back.car_tried.has(wrong) and back.car_right_cell() == drive.car_right_cell(), "and restores")
+	saved["car_right"] = "1:1"
+	check(not back.validate(saved).is_empty(), "a right car that is not a car is refused")
+	# The drive itself (domain/car-chase.js).
+	var d := CarChaseRules.new_state()
+	var r := CarChaseRules.step(d, {"throttle": false}, 1.0)
+	check(float(d["pursuit"]) == 3.0 and not r.has("failure"), "standing still lets the pursuit close in")
+	d = CarChaseRules.new_state()
+	d["distance"] = 44.0
+	d["speed"] = 10.0
+	r = CarChaseRules.step(d, {"throttle": true}, 0.2)
+	check(int(d["hp"]) == 2 and r["events"][0]["type"] == "hit", "a barrier in the lane costs a life")
+	d = CarChaseRules.new_state()
+	d["distance"] = 149.0
+	d["speed"] = 10.0
+	d["nextObstacle"] = 3
+	r = CarChaseRules.step(d, {"throttle": true}, 0.2)
+	check(r.has("failure") and float(r["failure"]["checkpoint"]) == 120.0, "the wrong side at a fork leads back to school")
+	CarChaseRules.reset_to(d, 120.0)
+	check(int(d["hp"]) == 3 and int(d["nextObstacle"]) == 3 and int(d["nextFork"]) == 0, "a failure goes back to the checkpoint")
+	d = CarChaseRules.new_state()
+	d["distance"] = 319.0
+	d["speed"] = 10.0
+	d["x"] = -2.0
+	d["nextObstacle"] = 6
+	d["nextFork"] = 2
+	check(CarChaseRules.step(d, {"throttle": true}, 0.2).get("won", false), "past 320 m with both forks right is out")
+
+
 func _notices(events: Array) -> Array:
 	return events.filter(func(e: Dictionary) -> bool: return e["kind"] == "notice").map(func(e: Dictionary) -> String: return e["text"])
 
@@ -1293,6 +1430,7 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_achievement_flow(app)
 	await _test_archive(app)
 	await _test_death_scene(app)
+	await _test_car_route(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
 
@@ -1538,6 +1676,58 @@ func _test_death_scene(app: GameApp) -> void:
 	check(not app.ui._death_fade.visible, "no progress, no scene")
 	app.ui.hide_death()
 	check(not app.ui._death_fade.visible, "hiding the death card hides the scene")
+
+
+## The car route through the app: the plate, the key, the drive and the 《闸门》 card.
+func _test_car_route(app: GameApp) -> void:
+	app.saves.clear()
+	app.start_new_game()
+	await _frames(3)
+	app._stand_up()
+	var cars := app.garage()
+	var right := cars.car_right_cell().split(":")
+	var g := CampusData.layout("garage1")
+	var c := int(right[0])
+	var r := int(right[1])
+	var stand := CampusGeometry.tile_center(g, c, r + 1)
+	app.travel("garage1", _campus_pose(g, stand, -PI * 0.5), false)
+	app.patrol().pat["safety"] = 999.0
+	await _frames(3)
+	cars.roam["stage"] = "wait"
+	cars.roam["waitT"] = 999.0
+	cars.roam["x"] = -1e6
+	cars.roam["on"] = true
+	check(app.campus().hint("garage1", app.player.capture_pose()).begins_with(GarageModule.car_name(c, r)), "the car hint shows its plate")
+	app.items().add("key")
+	app._use_item("key")
+	check(app.ui.toast_text().contains(cars.key_label()), "the key names the plate of the right car")
+	app._campus_interact()
+	await _frames(2)
+	check(app.ui.choice_open(), "E at a car offers to try the key")
+	app._choice_made(0)
+	for _i in 30:
+		await process_frame
+		if app.driving():
+			break
+	var waited := 0
+	while not app.driving() and waited < 200:
+		await process_frame
+		waited += 1
+	check(app.driving() and app._drive_view != null and app.session.world_id == "out", "the right car starts the drive on the road out")
+	check(not app._campus_world().visible, "the campus is hidden behind the road")
+	var d: Dictionary = cars.chase
+	d["distance"] = 319.0
+	d["speed"] = 20.0
+	d["x"] = -2.0
+	d["nextObstacle"] = 6
+	d["nextFork"] = 2
+	Input.action_press("move_forward")
+	await _frames(4)
+	Input.action_release("move_forward")
+	check(app.story().ended == "car" and app.ui.ending_panel.visible and not app.driving(), "driving out is the 《闸门》 ending")
+	check(app.achievements().unlocked.has("e.end_car") and app.achievements().unlocked.has("e.firstcar"), "with its achievements")
+	app.return_to_menu()
+	DirAccess.remove_absolute(app._profile_path())
 
 
 func _test_death_flow(app: GameApp) -> void:
