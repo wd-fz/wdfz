@@ -30,6 +30,8 @@ var _notices: PackedStringArray = []
 ## Elevator.unsafe(): anomaly active, local patrol chase or a pending inspection. The app wires
 ## the ported parts in (inspection); anomalies and patrol join when they are ported.
 var unsafe_check := Callable()
+## Called when a floor's doors finish closing (PatrolWorld.elevatorClosed): (host, floor).
+var closed_hook := Callable()
 
 
 func _init(rooms: Dictionary = {}) -> void:
@@ -469,6 +471,8 @@ func step(delta: float, room_id: String, pose: Dictionary) -> Dictionary:
 				lift["door"] = maxf(0.0, float(lift["door"]) - delta / CFG["close"])
 				if float(lift["door"]) <= 0.0:
 					lift["dir"] = 0
+					if closed_hook.is_valid():
+						closed_hook.call(host, int(lift["floor"]))
 					if not ride.is_empty() and ride["host"] == host and ride["phase"] == "cabin" and ride.get("pending") != null and here_w != Vector2.INF and in_cabin(room_id, here_w):
 						result = _depart(room_id, pose)
 		elif float(lift["door"]) >= 1.0:

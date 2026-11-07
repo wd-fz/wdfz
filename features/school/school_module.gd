@@ -51,6 +51,10 @@ var _deaths: Array = []
 ## Inspection state (RT.inspection) and the outing permit it grants (RT.outing).
 var inspection := {}
 var outing := {}
+## Attendance duties (attendance.js): a registered outing promises attendance at the next check.
+var duties := {"seq": 0, "list": [], "processed": {}}
+var _events: Array = []
+var active_seconds := 0.0
 var _warn_times: Array = []
 var _notices: PackedStringArray = []
 
@@ -86,15 +90,18 @@ func reset() -> void:
 	viol_full = false
 	_deaths = []
 	_notices = PackedStringArray()
-	inspection = {"seen": {}, "warned": {}, "queue": [], "current": {}, "settled": {}, "calm": 0.0}
+	inspection = {"seen": {}, "warned": {}, "queue": [], "current": {}, "settled": {}, "calm": 0.0, "calm_room": ""}
 	outing = {}
+	duties = {"seq": 0, "list": [], "processed": {}}
+	_events = []
+	active_seconds = 0.0
 
 
 func capture() -> Dictionary:
 	return {"tsec": tsec, "day": day, "san": san, "viol": viol, "tt": tt, "stam": stam, "tired": tired,
 		"seated": seated, "seat_id": seat_id, "tt_tier": tt_tier, "pressure_clock": pressure_clock,
 		"pressure_seen": pressure_seen, "viol_full": viol_full,
-		"inspection": inspection.duplicate(true), "outing": outing.duplicate(true)}
+		"inspection": inspection.duplicate(true), "outing": outing.duplicate(true), "duties": duties.duplicate(true), "active_seconds": active_seconds}
 
 
 func validate(data: Dictionary) -> String:
@@ -114,6 +121,12 @@ func validate(data: Dictionary) -> String:
 		return "检查状态无效"
 	if not data.get("outing", {}) is Dictionary:
 		return "外出登记无效"
+	var d: Variant = data.get("duties", {"seq": 0, "list": [], "processed": {}})
+	if not d is Dictionary or not d.get("list", []) is Array or not d.get("processed", {}) is Dictionary or not SaveSchema.is_integer(d.get("seq", 0), 0, 1000000000):
+		return "到场责任无效"
+	for duty: Variant in d.get("list", []):
+		if not duty is Dictionary or not String(duty.get("targetCheckId", "")).contains(":") or not String(duty.get("status", "")) in ["pending", "fulfilled", "absent", "excused"]:
+			return "到场责任条目无效"
 	return ""
 
 
@@ -142,6 +155,24 @@ func restore(data: Dictionary) -> void:
 		cur["day"] = int(cur["day"])
 		cur["slot"] = int(cur["slot"])
 	outing = data.get("outing", {}).duplicate(true)
+	duties = {"seq": 0, "list": [], "processed": {}}
+	duties.merge(data.get("duties", {}).duplicate(true), true)
+	duties["seq"] = int(duties["seq"])
+	active_seconds = float(data.get("active_seconds", 0.0))
+	_events = []
+	inspection["calm_room"] = String(inspection.get("calm_room", ""))
+	# attendance.js restore: pending duties whose check never ran and is long past roll forward.
+	for duty: Dictionary in duties["list"]:
+		if duty["status"] != "pending":
+			continue
+		var parts := String(duty["targetCheckId"]).split(":")
+		var item := {"day": int(parts[0]), "slot": int(parts[1])}
+		var running: Dictionary = inspection["current"]
+		var exists: bool = (not running.is_empty() and int(running["day"]) == item["day"] and int(running["slot"]) == item["slot"])
+		for q: Dictionary in inspection["queue"]:
+			exists = exists or (int(q["day"]) == item["day"] and int(q["slot"]) == item["slot"])
+		if not exists and _check_clock(item["day"], item["slot"]) < game_clock():
+			_duty_cancel(item)
 
 
 func take_notices() -> PackedStringArray:
@@ -367,7 +398,8 @@ func clock_tick(dt: float) -> void:
 func step(dt: float, ctx: Dictionary) -> void:
 	if dt <= 0.0 or not is_finite(dt):
 		return
-	_stamina(dt, bool(ctx.get("moving", false)), bool(ctx.get("running", false)), bool(ctx.get("snack", false)))
+	active_seconds += dt
+	_stamina(dt, bool(ctx.get("moving", false)), bool(ctx.get("running", false)), bool(ctx.get("snack", false)), bool(ctx.get("hiding", false)))
 	change_san(float(ctx.get("pill_san", 0.0)))
 	if bool(ctx.get("calendar", true)):
 		clock_tick(dt)
@@ -375,7 +407,7 @@ func step(dt: float, ctx: Dictionary) -> void:
 	var w: Vector2 = ctx.get("w", Vector2.ZERO)
 	_inspection_tick(dt, ctx)
 	var nw := SchoolClock.need_where(tsec)
-	_san_tick(dt, nw, world_id, w)
+	_san_tick(dt, nw, world_id, w, ctx)
 	_viol_tick(dt, nw, world_id, w, ctx)
 	_tt_tick(dt, nw, world_id)
 	_settle_san()
@@ -388,13 +420,16 @@ func can_run(snack: bool = false) -> bool:
 
 
 ## input.js: the snack lets you run while out of breath and running costs nothing.
-func _stamina(dt: float, moving: bool, running: bool, snack: bool = false) -> void:
+func _stamina(dt: float, moving: bool, running: bool, snack: bool = false, hiding: bool = false) -> void:
 	var cfg: Dictionary = _campus.get("stamina", {"back": 30, "run": 8, "rest": 12})
 	stam = clampf(stam, 0.0, stamina_max())
 	if stam <= 6.0:
 		tired = true
 	elif stam >= float(cfg["back"]):
 		tired = false
+	if hiding:
+		stam = minf(stamina_max(), stam + 11.0 * dt) # updatePlayer: hidden in a locker you recover 11 per second
+		return
 	if snack:
 		if not (running and moving):
 			stam = minf(stamina_max(), stam + float(cfg["rest"]) * dt)
@@ -416,13 +451,13 @@ func _rule_there(nw: String, world_id: String, w: Vector2) -> bool:
 	return true
 
 
-func _san_tick(dt: float, nw: String, world_id: String, w: Vector2) -> void:
+func _san_tick(dt: float, nw: String, world_id: String, w: Vector2, ctx: Dictionary) -> void:
 	# systems.js sanTick: SAN <= 0 is judged first, before any recovery of this step.
 	if san <= 0.0:
 		_settle_san()
 		return
-	if inspection_active():
-		return # sanTick: no daily recovery during an inspection.
+	if inspection_active() or bool(ctx.get("patrol_threat", false)) or bool(ctx.get("hiding", false)):
+		return # no daily recovery during an inspection, a patrol threat or while hiding.
 	var gain := dt * float(pressure()["passive"])
 	match nw:
 		"教室":
@@ -501,8 +536,16 @@ func _requested(source: String) -> bool:
 	return false
 
 
+## addViolation(amount, source): exempt while on leave or at the evening activity.
+func add_violation(amount: float) -> void:
+	_add_violation(amount, SchoolClock.evening_activity(tsec))
+
+
 ## Inspection.cancel (story.js kill): a running check is dropped without settling.
 func cancel_inspection() -> void:
+	var cur: Dictionary = inspection["current"]
+	if not cur.is_empty():
+		_duty_cancel(cur)
 	inspection["current"] = {}
 
 
@@ -525,6 +568,8 @@ func survive(source: String) -> void:
 
 ## story.js dreamWake: back to 11:40 on the own seat; the day, bag and found things stay.
 func dream_wake_reset() -> void:
+	outing = {}
+	duties = {"seq": 0, "list": [], "processed": {}}
 	tsec = START_TSEC
 	san = 78.0
 	viol = 0.0
@@ -574,6 +619,9 @@ func grant_outing(quiet: bool) -> bool:
 			_say("熄灯后不能登记外出 · 请回宿舍")
 		return false
 	outing = {"day": day, "from": tsec, "until": _deadline()}
+	_duty_grant("inspection" if quiet else "manual")
+	if not quiet:
+		_say("外出登记已记下 · %s；到场责任：%s" % [return_label(), duty_summary()])
 	return true
 
 
@@ -664,7 +712,7 @@ func _inspection_tick(dt: float, ctx: Dictionary) -> void:
 	if c.is_empty():
 		var queue: Array = inspection["queue"]
 		while not queue.is_empty() and _stale(queue[0]):
-			queue.pop_front()
+			_duty_cancel(queue.pop_front())
 		if not queue.is_empty():
 			var item: Dictionary = queue.pop_front()
 			var present := at_my_seat(world_id, w)
@@ -720,6 +768,8 @@ func _inspection_finish(c: Dictionary, world_id: String, w: Vector2) -> void:
 	var good := bool(c["compliant"])
 	inspection["settled"][key] = "present" if good else "absent"
 	inspection["calm"] = 8.0
+	inspection["calm_room"] = String(c["room"])
+	_duty_settle(c, false, good)
 	san = maxf(0.0, san - (INSPECT["good_san"] if good else INSPECT["bad_san"]))
 	_add_violation(-INSPECT["good_violation"] if good else INSPECT["bad_violation"], false)
 	tt = clampf(tt + (INSPECT["assimilation"] if good else -INSPECT["assimilation"]), 0.0, 100.0)
@@ -729,3 +779,99 @@ func _inspection_finish(c: Dictionary, world_id: String, w: Vector2) -> void:
 		_resolve_assimilation()
 	if good and at_my_seat(world_id, w):
 		grant_outing(true)
+
+
+
+# ---- attendance duties (modules/patrol-world/attendance.js) ----
+
+func _check_clock(d: int, slot: int) -> float:
+	return (d - 1) * 1440.0 + float(INSPECT["times"][slot])
+
+
+func duty_summary() -> String:
+	var ids: Array = []
+	for duty: Dictionary in duties["list"]:
+		if duty["status"] == "pending" and not ids.has(duty["targetCheckId"]):
+			ids.append(duty["targetCheckId"])
+	ids.sort_custom(func(a: String, b: String) -> bool:
+		var x := a.split(":")
+		var y := b.split(":")
+		return int(x[0]) < int(y[0]) or (int(x[0]) == int(y[0]) and int(x[1]) < int(y[1])))
+	var parts: PackedStringArray = []
+	for id: String in ids:
+		var p := id.split(":")
+		parts.append("第 %s 天 %s" % [p[0], SchoolClock.fmt_clock(float(INSPECT["times"][int(p[1])]))])
+	return "、".join(parts)
+
+
+## The next check that has not been seen (after `after` when given).
+func _next_check(after: Variant = null) -> Dictionary:
+	var now := game_clock()
+	var d: int = int(after["day"]) if after != null else maxi(1, int(floor(now / 1440.0)) + 1)
+	var slot := 0
+	if after != null:
+		slot = int(after["slot"]) + 1
+		if slot > 1:
+			d += 1
+			slot = 0
+	var guard := 0
+	while ((after == null and _check_clock(d, slot) <= now) or inspection["seen"].has("%d:%d" % [d, slot])) and guard < 1000:
+		guard += 1
+		slot += 1
+		if slot > 1:
+			d += 1
+			slot = 0
+	return {"day": d, "slot": slot, "id": "%d:%d" % [d, slot]}
+
+
+func _duty_prune() -> void:
+	var pending: Array = []
+	var done: Array = []
+	for duty: Dictionary in duties["list"]:
+		(pending if duty["status"] == "pending" else done).append(duty)
+	duties["list"] = pending + done.slice(maxi(0, done.size() - 20))
+
+
+func _duty_grant(source: String) -> void:
+	var target := _next_check()
+	for duty: Dictionary in duties["list"]:
+		if duty["status"] == "pending" and duty["targetCheckId"] == target["id"]:
+			return
+	duties["seq"] = int(duties["seq"]) + 1
+	duties["list"].append({"dutyId": "duty-%d" % duties["seq"], "source": source, "issuedAt": active_seconds, "targetCheckId": target["id"], "status": "pending"})
+	_duty_prune()
+
+
+func _duty_settle(c: Dictionary, excused: bool, compliant: bool) -> void:
+	var key := "%d:%d" % [int(c["day"]), int(c["slot"])]
+	var matching: Array = []
+	for duty: Dictionary in duties["list"]:
+		if duty["status"] == "pending" and duty["targetCheckId"] == key:
+			matching.append(duty)
+	if matching.is_empty() or duties["processed"].has(key):
+		return
+	var status := "excused" if excused else ("fulfilled" if compliant else "absent")
+	duties["processed"][key] = status
+	for duty: Dictionary in matching:
+		duty["status"] = status
+		duty["settledAt"] = active_seconds
+	if not compliant and not excused:
+		_events.append({"kind": "absence", "id": key})
+	_duty_prune()
+
+
+func _duty_cancel(c: Dictionary) -> void:
+	var old := "%d:%d" % [int(c["day"]), int(c["slot"])]
+	var next := _next_check(c)
+	if _check_clock(next["day"], next["slot"]) <= game_clock():
+		next = _next_check()
+	for duty: Dictionary in duties["list"]:
+		if duty["status"] == "pending" and duty["targetCheckId"] == old:
+			duty["targetCheckId"] = next["id"]
+
+
+## Events for other modules (an absence after a registered outing makes the patrol permanent).
+func take_events() -> Array:
+	var out := _events
+	_events = []
+	return out

@@ -29,6 +29,9 @@ var lamp_pool: Array[OmniLight3D] = []
 var live_mats: Dictionary = {}     # name -> Array[BaseMaterial3D]
 var time := 0.0
 var reduce_flash := false
+## VisualState.patrolFlick / patrolRed: the patroller's approach beat and its threat tint.
+var patrol_flick := 0.0
+var patrol_red := 0.0
 var _lamp_pick := 0.0
 var _stair_rise := 0.0
 var _stair_levels := 0
@@ -182,10 +185,15 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var sum := 0.0
 	for i in room_lights.size():
 		var flick := 0.94 if reduce_flash else room_flicker(i, time, day) * lamp_health(i)
+		if patrol_flick > 0.0:
+			flick *= 1.0 - patrol_flick * (1.0 - patrol_beat(time))
 		sum += flick
-		room_lights[i].light_energy = room_base[i] * pt_k * maxf(0.05, flick) * ENERGY_POINT
+		room_lights[i].light_energy = room_base[i] * pt_k * maxf(0.05, flick) * (1.0 + 0.3 * patrol_red) * ENERGY_POINT
 		var bc := room_col[i]
-		room_lights[i].light_color = Color(bc.r * 0.86, bc.g * 0.98, bc.b * 0.84)
+		var lr := bc.r * 0.86
+		var lg := bc.g * 0.98
+		var lb := bc.b * 0.84
+		room_lights[i].light_color = Color(lr + (1.0 - lr) * patrol_red, lg * (1.0 - 0.92 * patrol_red), lb * (1.0 - 0.95 * patrol_red))
 	var k := clampf(sum / room_lights.size(), 0.2, 1.0) if not room_lights.is_empty() else 1.0
 	_set_live("emit", Color(k, k, k))
 	var dk := 0.3 if reduce_flash else dying_tube(time)
@@ -289,6 +297,14 @@ func lamp_health(i: int) -> float:
 	if r < 0.55:
 		return 0.45
 	return 1.0
+
+
+## Two short flickers and a long dark, like a heartbeat (patrolBeat).
+func patrol_beat(tt: float) -> float:
+	if reduce_flash:
+		return 0.65 + 0.15 * sin(tt * 1.5)
+	var u := fposmod(tt * 0.9, 1.0)
+	return 0.1 if (u < 0.08 or (u > 0.16 and u < 0.24)) else (0.25 if (u > 0.5 and u < 0.7) else 1.0)
 
 
 static func dying_tube(tt: float) -> float:

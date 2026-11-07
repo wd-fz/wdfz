@@ -53,9 +53,10 @@ def main():
     run(ENGINE, "--headless", "--path", str(ROOT), "--fixed-fps", "60",
         "--script", "res://tests/run_tests.gd")
     if options.windowed:
+        # The window run renders every scene in software and runs the long walking tests.
         run(ENGINE, "--path", str(ROOT), "--rendering-method", "gl_compatibility",
             "--audio-driver", "Dummy", "--fixed-fps", "60",
-            "--script", "res://tests/run_tests.gd")
+            "--script", "res://tests/run_tests.gd", timeout=600)
 
 
 if __name__ == "__main__":

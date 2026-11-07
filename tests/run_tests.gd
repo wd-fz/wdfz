@@ -63,6 +63,7 @@ func _run() -> void:
 	_test_school_rules()
 	_test_inventory_rules()
 	_test_story_rules()
+	_test_patrol_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -71,6 +72,7 @@ func _run() -> void:
 	if FileAccess.file_exists(death_log):
 		DirAccess.remove_absolute(death_log)
 	DirAccess.remove_absolute(_test_path.get_base_dir())
+	CampusData.clear_caches()
 	print("FRAMEWORK TESTS: %d checks, %d failures" % [_checks, _failures.size()])
 	quit(0 if _failures.is_empty() else 1)
 
@@ -661,6 +663,166 @@ func _test_story_rules() -> void:
 	check(is_equal_approx(school.tsec, 700.0) and is_equal_approx(school.san, 78.0) and school.viol == 0.0 and school.tt == 0.0, "the dream wake returns to 11:40 with SAN 78")
 
 
+func _pctx(scene: String, w: Vector2, extra: Dictionary = {}) -> Dictionary:
+	var c := {"scene": scene, "x": w.x, "y": w.y, "fy": 0.0, "seated": false, "at_seat": false, "excused": false, "on_leave": false,
+		"night": false, "need_where": "教室", "dead": false, "playing": true, "inspection_room": "", "calm": 0.0, "calm_room": "",
+		"has_seal": false, "active_seconds": 0.0, "car_chase": false}
+	c.merge(extra, true)
+	return c
+
+
+func _patrol_run(pm: PatrolModule, ctx: Dictionary, seconds: float, stop_on: String = "") -> Array:
+	var got: Array = []
+	var t := 0.0
+	while t < seconds:
+		pm.set_context(ctx)
+		pm.tick(0.05)
+		for e: Dictionary in pm.take_events():
+			got.append(e)
+			if e["kind"] == stop_on:
+				return got
+		t += 0.05
+	return got
+
+
+func _test_patrol_rules() -> void:
+	var nav := CampusData.patrol_nav()
+	var data := CampusData.patrol_data()
+	check(not nav.grid("teach1").is_empty() and nav.nodes.size() == 121 and nav.edges.size() == 128, "patrol grids and the 121-node connection graph are exported")
+	check(data["route"]["nodes"].size() == 128 and data["zones"].size() == 9, "route of 128 nodes and nine report zones")
+	var a: Dictionary = nav.nodes["teach1:stairs"]
+	var b: Dictionary = nav.nodes["teach1:east"]
+	var way := nav.path(a, b)
+	check(way.size() > 10 and nav.length(way) > 400.0, "A* connects the west stairs and the east end of teach1 (%d cells, %.0f units)" % [way.size(), nav.length(way)])
+	var blocked := PatrolNav.point("teach1", 1000.0, 1760.0)
+	var wall_edge := CampusGeometry.tile_center(CampusData.layout("teach1"), 31, 15)
+	check(not nav.snap("teach1", PatrolNav.point("teach1", wall_edge.x, wall_edge.y)).is_empty(), "snap finds a free cell next to a wall point")
+	check(nav.segment(a, way[2]) and not nav.segment(a, PatrolNav.point("teach1", 1000.0, 1760.0)), "a segment is clear along the corridor and blocked through walls")
+	var hop := nav.shortest("admin1:stairs", "admin2:stairs")
+	check(not hop.is_empty() and hop["nodes"].size() >= 2 and float(hop["weight"]) > 0.0, "RouteGraph finds admin1 -> admin2 through the stairs")
+	# A patrol with nobody around walks the route and changes scenes.
+	var pm := CampusData.make_patrol()
+	pm.reset()
+	pm.elevator = ElevatorModule.new(CampusData.rooms())
+	check(pm.pat["room"] == "admin1" and pm.pat["state"] == "walk", "the patroller starts at the admin1 stairs")
+	var far := _pctx("dorm1", CampusGeometry.tile_center(CampusData.layout("dorm1"), 10, 5), {"need_where": "自由"})
+	_patrol_run(pm, far, 120.0)
+	check(int(pm.pat["routeIndex"]) > 1 or pm.pat["room"] != "admin1", "after two minutes the patroller has walked on (node %d in %s)" % [pm.pat["routeIndex"], pm.pat["room"]])
+	var moved := {}
+	for _i in 6:
+		_patrol_run(pm, far, 60.0)
+		moved[pm.pat["room"]] = true
+	check(moved.size() >= 2, "it crosses between scenes (%s)" % ", ".join(PackedStringArray(moved.keys())))
+	# Chase: out of place in a classroom building during class.
+	var t1: Dictionary = CampusData.layout("teach1")
+	var me := CampusGeometry.tile_center(t1, 30, 17)
+	var chaser := CampusData.make_patrol()
+	chaser.reset()
+	chaser.pat["room"] = "teach1"
+	chaser.pat["x"] = me.x + 80.0
+	chaser.pat["y"] = me.y
+	chaser.pat["behavior"] = "patrol"
+	chaser.pat["routeIndex"] = _route_towards("teach1:east", "teach1:stairs", chaser)
+	chaser.pat["safety"] = 0.0
+	chaser.elevator = pm.elevator
+	var ctx := _pctx("teach1", me)
+	check(chaser.eligible() == false or true, "context-free eligibility does not crash")
+	chaser.set_context(ctx)
+	check(chaser.eligible() and not chaser.exempt() and chaser.hunting(), "out of the seat in class inside a teaching building makes the player a target")
+	var events := _patrol_run(chaser, ctx, 20.0, "kill")
+	var kinds := events.map(func(e: Dictionary) -> String: return e["kind"])
+	check(kinds.has("violation") and kinds.has("kill"), "it locks on (+8 violation once), chases and catches")
+	check(events.size() > 0 and events[events.size() - 1].get("source") == "patrol" and events[events.size() - 1].get("fx") == "grip", "the catch is the patrol grip death")
+	check(kinds.count("violation") == 1, "the citation is issued once")
+	# Seated at the own seat: exempt.
+	var calm := CampusData.make_patrol()
+	calm.reset()
+	calm.pat["room"] = "teach1"
+	calm.pat["x"] = me.x + 80.0
+	calm.pat["y"] = me.y
+	calm.pat["safety"] = 0.0
+	calm.pat["behavior"] = "patrol"
+	calm.pat["routeIndex"] = _route_towards("teach1:east", "teach1:stairs", calm)
+	calm.elevator = pm.elevator
+	var seated_ctx := _pctx("teach1", me, {"seated": true, "at_seat": true})
+	var quiet := _patrol_run(calm, seated_ctx, 15.0)
+	check(quiet.is_empty() and not bool(calm.pat["locked"]), "sitting at the own seat in class is never hunted")
+	# A seal burns instead of the lock.
+	var sealed := CampusData.make_patrol()
+	sealed.reset()
+	sealed.pat["room"] = "teach1"
+	sealed.pat["x"] = me.x + 80.0
+	sealed.pat["y"] = me.y
+	sealed.pat["safety"] = 0.0
+	sealed.pat["behavior"] = "patrol"
+	sealed.pat["routeIndex"] = _route_towards("teach1:east", "teach1:stairs", sealed)
+	sealed.elevator = pm.elevator
+	var sealed_events := _patrol_run(sealed, _pctx("teach1", me, {"has_seal": true}), 12.0, "remove_item")
+	check(sealed_events.size() > 0 and sealed_events[sealed_events.size() - 1]["kind"] == "remove_item" and sealed.pat["state"] == "idle" and is_equal_approx(float(sealed.pat["respawn"]), 30.0),
+		"the talisman burns at the lock and the patroller is banished for 30 s")
+	# Night outside: hunted on the campus, left alone indoors.
+	check(not _night_hunt("dorm1"), "at night inside a dorm the player is not eligible")
+	check(_night_hunt("out"), "at night outside the player is eligible")
+	# Hiding.
+	var hider := CampusData.make_patrol()
+	hider.reset()
+	hider.elevator = pm.elevator
+	hider.pat["room"] = "teach1"
+	hider.pat["safety"] = 0.0
+	var locker: Vector2i = Vector2i(12, 16)
+	check(String(t1["grid"][16]).substr(12, 1) == "H", "teach1 has the exported locker cell (12, 16)")
+	var near_locker := CampusGeometry.tile_center(t1, 12, 17)
+	hider.pat["x"] = near_locker.x + 200.0
+	hider.pat["y"] = near_locker.y
+	hider.set_context(_pctx("teach1", near_locker))
+	var spot := hider.hide_in(locker.x, locker.y)
+	check(hider.hide["on"] and not hider.hide["seen"] and absf(spot["ang"] - PI * 0.5) < 0.001, "hiding in a locker unseen")
+	var hide_events := _patrol_run(hider, _pctx("teach1", Vector2(spot["x"], spot["y"])), 10.0)
+	check(not bool(hider.pat["locked"]), "an unseen locker is not searched")
+	var out_spot := hider.hide_out()
+	check(not hider.hide["on"] and out_spot.has("x"), "stepping out puts the body in front of the locker")
+	# Registered absence makes the chase permanent.
+	var abs_pm := CampusData.make_patrol()
+	abs_pm.reset()
+	abs_pm.registered_absence("1:0")
+	check(abs_pm.pat["permanent"] and abs_pm.pat["behavior"] == "chase", "an unhonoured registration starts the permanent chase")
+	abs_pm.rescued()
+	check(not abs_pm.pat["permanent"] and is_equal_approx(float(abs_pm.pat["safety"]), 3.6), "rescue clears the permanent chase and grants 3.6 s")
+	# Region report: standing in the network core queues an investigation.
+	var zone_pm := CampusData.make_patrol()
+	zone_pm.reset()
+	zone_pm.elevator = pm.elevator
+	var l3: Dictionary = CampusData.layout("lab3")
+	_patrol_run(zone_pm, _pctx("lab3", CampusGeometry.tile_center(l3, 41, 5), {"need_where": "自由"}), 0.2)
+	check(zone_pm.pat["lastRegion"] == "lab3:servers" and (zone_pm.pat["queue"] as Array).size() + (1 if zone_pm.pat["investigation"] != null else 0) == 1, "entering the server room is reported once")
+	# Save round trip.
+	var snap_data: Dictionary = JSON.parse_string(JSON.stringify(chaser.capture()))
+	check(chaser.validate(snap_data).is_empty(), "patrol state survives JSON")
+	var again := CampusData.make_patrol()
+	again.reset()
+	again.restore(snap_data)
+	check(again.pat["room"] == chaser.pat["room"] and absf(float(again.pat["x"]) - float(chaser.pat["x"])) < 0.001, "patrol position restores")
+	snap_data["pat"]["x"] = "far"
+	check(not chaser.validate(snap_data).is_empty(), "garbage patrol numbers are refused")
+
+
+## Route index whose previous node is `from` and next node is `to` (the patroller walks from -> to).
+func _route_towards(from: String, to: String, pm: PatrolModule) -> int:
+	for i in range(1, pm.route_nodes.size()):
+		if pm.route_nodes[i - 1] == from and pm.route_nodes[i] == to:
+			return i
+	return 1
+
+
+func _night_hunt(scene: String) -> bool:
+	var pm := CampusData.make_patrol()
+	pm.reset()
+	var room: Variant = CampusData.layout(scene) if scene != "out" else null
+	var w := Vector2(1000, 1000) if room == null else CampusGeometry.tile_center(room, 10, 5)
+	pm.set_context(_pctx(scene, w, {"night": true, "need_where": "宿舍"}))
+	return pm.eligible()
+
+
 func _test_campus_app() -> void:
 	var app: GameApp = APP.instantiate()
 	app.saves = SaveStore.new(_test_path)
@@ -786,7 +948,46 @@ func _test_stair_walk(app: GameApp) -> void:
 	check(absf(app.player.position.y) < 0.2, "teach2 floor is at the scene's own ground level")
 	await _test_spiral_walk(app)
 	await _test_elevator_walk(app)
+	await _test_patrol_app(app)
 	await _test_death_flow(app)
+	app.return_to_menu()
+
+
+func _test_patrol_app(app: GameApp) -> void:
+	app.start_new_game()
+	await _frames(3)
+	app._stand_up()
+	var t1 := CampusData.layout("teach1")
+	var spot := CampusGeometry.tile_center(t1, 12, 17)
+	app.travel("teach1", _campus_pose(t1, spot, -PI * 0.5), false)
+	await _frames(3)
+	var watcher := app.patrol()
+	check(app.campus().hint("teach1", app.player.capture_pose()) == "躲进柜子", "the locker cell offers to hide")
+	app._campus_interact()
+	await _frames(2)
+	check(bool(watcher.hide["on"]) and app.player.hiding, "E on the locker hides the player")
+	var inside: Array = app.player.capture_pose()["position"]
+	var cell_center := CampusGeometry.to_scene(t1, CampusGeometry.tile_center(t1, 12, 16))
+	check(absf(inside[0] - cell_center.x) < 0.05 and absf(inside[2] - (cell_center.y + 0.12 * 1.0)) < 0.4, "the body sits inside the locker cell")
+	Input.action_press("move_forward")
+	await _frames(20)
+	Input.action_release("move_forward")
+	var still: Array = app.player.capture_pose()["position"]
+	check(Vector2(still[0] - inside[0], still[2] - inside[2]).length() < 0.01, "a hidden player cannot walk")
+	app._campus_interact()
+	await _frames(2)
+	check(not bool(watcher.hide["on"]) and not app.player.hiding, "E again steps out")
+	# The figure appears when the patroller is in the player's scene.
+	watcher.pat["room"] = "teach1"
+	watcher.pat["x"] = CampusGeometry.tile_center(t1, 30, 17).x
+	watcher.pat["y"] = CampusGeometry.tile_center(t1, 30, 17).y
+	watcher.pat["safety"] = 3.6
+	await _frames(4)
+	var world := app.router.get_child(0) as CampusWorld
+	check(watcher.figure_visible() and world.patrol_figure_shown(), "the patroller figure is drawn in the scene it walks in")
+	watcher.pat["room"] = "admin1"
+	await _frames(3)
+	check(not world.patrol_figure_shown(), "and disappears when it is elsewhere")
 	app.return_to_menu()
 
 

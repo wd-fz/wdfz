@@ -45,7 +45,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new()]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol()]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -55,6 +55,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func patrol() -> PatrolModule:
+	return session.modules.get_module(&"patrol.world") as PatrolModule if session != null else null
 
 
 func story() -> StoryModule:
@@ -100,16 +104,45 @@ func start_new_game(difficulty: String = "easy") -> void:
 		ui.show_notice("走到前方告示牌，按 E 或触屏交互。这里用于验证移植接口。")
 
 
+## Break the callback links between the rule modules of a finished session (they reference
+## each other through Callables; leaving them would keep the whole session alive).
+func _unwire(old: GameSession) -> void:
+	if old == null:
+		return
+	var lift := old.modules.get_module(&"campus.elevator") as ElevatorModule
+	if lift != null:
+		lift.unsafe_check = Callable()
+		lift.closed_hook = Callable()
+	var watcher := old.modules.get_module(&"patrol.world") as PatrolModule
+	if watcher != null:
+		watcher.elevator = null
+		watcher.nav.door_open = func(_room: String, _c: int, _r: int) -> bool: return false
+	var rules := old.modules.get_module(&"campus.world") as CampusModule
+	if rules != null:
+		rules.has_item = func(_id: String) -> bool: return false
+		for connection: Dictionary in rules.door_changed.get_connections():
+			rules.door_changed.disconnect(connection["callable"])
+
+
 func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	if session != null:
+		_unwire(session)
 		session.stop()
 	session = candidate
 	session.notice_requested.connect(ui.show_notice)
 	var day_rules := school()
 	player.seated = day_rules != null and day_rules.seated
 	var lift_rules := elevator()
+	var watcher := patrol()
 	if lift_rules != null and day_rules != null:
-		lift_rules.unsafe_check = day_rules.inspection_pending
+		lift_rules.unsafe_check = func() -> bool: return day_rules.inspection_pending() or (watcher != null and watcher.local_chase())
+		if watcher != null:
+			lift_rules.closed_hook = watcher.elevator_closed
+	if watcher != null:
+		watcher.elevator = lift_rules
+		var campus_rules := campus()
+		watcher.nav.door_open = func(room_id: String, c: int, r: int) -> bool: return campus_rules != null and campus_rules.is_open("%s:%d:%d" % [room_id, c, r])
+	player.hiding = watcher != null and bool(watcher.hide["on"])
 	var rules := campus()
 	if rules != null:
 		rules.door_changed.connect(_door_changed)
@@ -182,6 +215,7 @@ func resume_game() -> void:
 
 
 func return_to_menu() -> void:
+	ui.show_hiding(false)
 	ui.hide_choice()
 	ui.hide_death()
 	_death_hold = 0.0
@@ -191,6 +225,7 @@ func return_to_menu() -> void:
 	player.seated = false
 	_choice_handler = Callable()
 	if session != null:
+		_unwire(session)
 		session.stop()
 	session = null
 	player.enabled = false
@@ -276,6 +311,9 @@ func _campus_interact() -> void:
 		return
 	var pose := player.capture_pose()
 	var day_rules := school()
+	if patrol() != null and bool(patrol().hide["on"]):
+		_hide_out()
+		return
 	# tryInteract: a seated player stands up first.
 	if day_rules != null and day_rules.seated:
 		_stand_up("我站了起来。")
@@ -309,6 +347,9 @@ func _apply_result(result: Dictionary) -> void:
 	if result.has("podium") and items() != null:
 		var said := items().podium(session.world_id, int(result["podium"][0]), int(result["podium"][1]))
 		text = String(said.get("notice", text))
+	if result.has("hide") and patrol() != null:
+		_hide_in(int(result["hide"][0]), int(result["hide"][1]))
+		return
 	if result.has("seat") and school() != null:
 		var sat := school().sit(session.world_id, int(result["seat"][0]), int(result["seat"][1]))
 		if not sat.is_empty():
@@ -345,6 +386,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 		return
 	if day_rules.seated and player.wants_move():
 		_stand_up()
+	var watcher := patrol()
 	var bag := items()
 	var pill_san := 0.0
 	var snack := false
@@ -364,7 +406,11 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	var pose := player.capture_pose()
 	var room: Variant = rules.room(session.world_id)
 	var p: Array = pose["position"]
-	day_rules.step(delta, {"world_id": session.world_id, "w": CampusGeometry.to_world(room, float(p[0]), float(p[2])),
+	var hiding_now: bool = watcher != null and bool(watcher.hide["on"])
+	player.hiding = hiding_now
+	if watcher != null:
+		watcher.set_context(_patrol_context(room, pose))
+	day_rules.step(delta, {"hiding": hiding_now, "patrol_threat": watcher != null and watcher.local_threat(), "world_id": session.world_id, "w": CampusGeometry.to_world(room, float(p[0]), float(p[2])),
 		"height": float(p[1]), "moving": player.moving, "running": player.sprinting, "calendar": router.current.advances_calendar,
 		"ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "pitch": float(pose["pitch"]),
 		"can_stand": _can_stand.bind(room, float(p[1])), "line_clear": _line_clear.bind(room), "snack": snack, "pill_san": pill_san})
@@ -372,16 +418,27 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	if world != null:
 		world.show_silhouettes(day_rules.inspection_points(), room, float(p[1]))
 	player.can_sprint = day_rules.can_run(snack)
+	_patrol_step(delta, watcher, day_rules, room, pose)
 	for text: String in day_rules.take_notices():
 		ui.show_notice(text)
 	var frozen := not router.current.advances_calendar
-	ui.show_status(day_rules.place_name(session.world_id, float(p[1])), day_rules.period_text(frozen), day_rules.period_class(frozen), day_rules.clock_text(bag != null and bag.has_clock()))
-	if day_rules.seated and not player.has_focus():
+	var period := day_rules.period_text(frozen)
+	if watcher != null and bool(watcher.pat["permanent"]) and not frozen:
+		period += " · 持续追踪"
+	ui.show_status(day_rules.place_name(session.world_id, float(p[1])), period, day_rules.period_class(frozen), day_rules.clock_text(bag != null and bag.has_clock()))
+	if hiding_now:
+		ui.show_prompt("出来")
+	elif day_rules.seated and not player.has_focus():
 		ui.show_prompt("站起来")
 	ui.show_stamina(day_rules.stam, day_rules.stamina_max(), day_rules.tired)
 	var lit := _campus_world()
 	if lit != null:
-		lit.update_lighting(delta, day_rules.tsec, player.camera)
+		lit.update_lighting(delta, day_rules.tsec, player.camera, watcher.flick if watcher != null else 0.0, watcher.red if watcher != null else 0.0)
+		if watcher != null:
+			var fig_scene := Vector2.ZERO
+			if watcher.figure_visible():
+				fig_scene = CampusGeometry.to_scene(room, Vector2(float(watcher.pat["x"]), float(watcher.pat["y"])))
+			lit.show_patrol(watcher.figure_visible(), fig_scene, float(watcher.pat["fy"]), player.camera.global_position)
 
 
 ## canStand (world.js): is there room for the body (radius 3 units) at this old world point?
@@ -486,6 +543,37 @@ func _set_hot(index: int, id: String) -> void:
 		ui.show_bag(_bag_entries())
 
 
+# ---- locker hiding (patrol.js hideIn / hideOut) ----
+
+func _hide_in(c: int, r: int) -> void:
+	var watcher := patrol()
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	watcher.set_context(_patrol_context(room, pose))
+	var spot := watcher.hide_in(c, r)
+	for e: Dictionary in watcher.take_events():
+		ui.show_notice(String(e["text"]))
+	var s := CampusGeometry.to_scene(room, Vector2(spot["x"], spot["y"]))
+	player.restore_pose({"position": [s.x, float(pose["position"][1]), s.y], "yaw": CampusGeometry.yaw_from_ang(float(spot["ang"])), "pitch": 0.0})
+	player.hiding = true
+	ui.show_hiding(true)
+
+
+func _hide_out() -> void:
+	var watcher := patrol()
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	watcher.set_context(_patrol_context(room, pose))
+	var spot := watcher.hide_out()
+	for e: Dictionary in watcher.take_events():
+		ui.show_notice(String(e["text"]))
+	if spot.has("x"):
+		var s := CampusGeometry.to_scene(room, Vector2(spot["x"], spot["y"]))
+		player.place({"position": [s.x, float(pose["position"][1]), s.y], "yaw": pose["yaw"], "pitch": pose["pitch"]})
+	player.hiding = false
+	ui.show_hiding(false)
+
+
 # ---- deaths (story.js kill / dreamWake) ----
 
 func _handle_deaths() -> void:
@@ -508,6 +596,8 @@ func kill(msg: String, fx: String, source: String) -> void:
 	if result.has("protected"):
 		bag.remove("elixir")
 		school().survive(source)
+		if patrol() != null:
+			patrol().rescued()
 		_apply_result(result)
 		return
 	if not result.get("dead", false):
@@ -574,6 +664,10 @@ func _finish_death() -> void:
 		_death_phase = ""
 		school().dream_wake_reset()
 		campus().close_all_doors()
+		if patrol() != null:
+			patrol().reset()
+		player.hiding = false
+		ui.show_hiding(false)
 		if items() != null:
 			items().snack_t = 0.0
 		var seated := school().start_seated("teach1")
@@ -587,6 +681,49 @@ func _finish_death() -> void:
 	_death_phase = "card"
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	ui.show_death_card(fate.death_msg, fate.epitaph(), fate.cause(), StoryModule.hints(_read_death_log()))
+
+
+## Player state the patroller reads (old S / HIDE / Inspection state).
+func _patrol_context(room: Variant, pose: Dictionary) -> Dictionary:
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var day_rules := school()
+	var bag := items()
+	var tsec := day_rules.tsec if day_rules != null else 700.0
+	var cur: Dictionary = day_rules.inspection.get("current", {}) if day_rules != null else {}
+	var height := float(p[1])
+	if room != null and campus() != null and not campus().is_stairwell(session.world_id) and session.world_id != "bell1":
+		height = 0.0
+	return {"scene": session.world_id, "x": w.x, "y": w.y, "fy": height, "seated": day_rules != null and day_rules.seated,
+		"at_seat": day_rules != null and day_rules.at_my_seat(session.world_id, w), "excused": day_rules != null and day_rules.permit(),
+		"on_leave": false, "night": SchoolClock.is_night(tsec), "need_where": SchoolClock.need_where(tsec), "dead": story() != null and story().dead,
+		"playing": true, "inspection_room": String(cur.get("room", "")) if not cur.is_empty() else "",
+		"calm": float(day_rules.inspection.get("calm", 0.0)) if day_rules != null else 0.0, "calm_room": String(day_rules.inspection.get("calm_room", "")) if day_rules != null else "",
+		"has_seal": bag != null and bag.has("seal"), "active_seconds": day_rules.active_seconds if day_rules != null else 0.0, "car_chase": false}
+
+
+func _patrol_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, room: Variant, pose: Dictionary) -> void:
+	if watcher == null:
+		return
+	for e: Dictionary in day_rules.take_events():
+		if e["kind"] == "absence":
+			watcher.registered_absence(String(e["id"]))
+	watcher.set_context(_patrol_context(room, pose))
+	watcher.tick(delta)
+	for e: Dictionary in watcher.take_events():
+		match e["kind"]:
+			"violation":
+				day_rules.add_violation(float(e["amount"]))
+			"remove_item":
+				if items() != null:
+					items().remove(String(e["id"]))
+			"notice":
+				ui.show_notice(String(e["text"]))
+			"toast":
+				ui.show_notice(String(e["text"]))
+			"kill":
+				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
+				return
 
 
 func _open_choice(choice: Dictionary) -> void:
@@ -627,6 +764,12 @@ func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
 	if not error.is_empty():
 		ui.show_notice(error)
 		return error
+	var from_world := session.world_id
+	if patrol() != null and from_world != world_id and school() != null:
+		var pp: Array = player.capture_pose()["position"]
+		var from_room: Variant = campus().room(from_world)
+		patrol().set_context(_patrol_context(from_room, player.capture_pose()))
+		patrol().left_scene(from_world, world_id)
 	session.world_id = world_id
 	if seamless:
 		player.place(pose)
@@ -665,7 +808,9 @@ func _notification(what: int) -> void:
 
 func _exit_tree() -> void:
 	if session != null:
+		_unwire(session)
 		session.stop()
+	CampusData.clear_caches()
 	if get_tree() != null:
 		get_tree().paused = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

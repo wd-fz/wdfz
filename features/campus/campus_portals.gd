@@ -149,3 +149,104 @@ static func link_ports(cfg: Dictionary, rooms: Dictionary, room_id: String) -> A
 				if not me.is_empty() and not peer.is_empty():
 					out.append({"self": me, "peer": peer})
 	return out
+
+
+# ---- StairGeometry path / line of sight (domain/stairwell-geometry.js), shaft metres ----
+
+## StairGeometry.depth: how much of the body circle hangs over no surface.
+static func stair_depth(list: Array[Dictionary], x: float, z: float, r: float, h: float) -> float:
+	if r <= 0.0:
+		return 0.0 if not surface_at(list, x, z, h).is_empty() else 1.0
+	var bad := 0.0 if not surface_at(list, x, z, h).is_empty() else r
+	for i in 12:
+		if surface_at(list, x + cos(i * PI / 6.0) * r, z + sin(i * PI / 6.0) * r, h, 0.4).is_empty():
+			bad += r / 12.0
+	return bad
+
+
+static func stair_segment(list: Array[Dictionary], a: Dictionary, b: Dictionary, radius: float = 0.30) -> bool:
+	var n := maxi(1, int(ceil(Vector3(a["x"] - b["x"], a["z"] - b["z"], a["h"] - b["h"]).length() / 0.12)))
+	for i in n + 1:
+		var t := float(i) / n
+		if stair_depth(list, a["x"] + (b["x"] - a["x"]) * t, a["z"] + (b["z"] - a["z"]) * t, radius, a["h"] + (b["h"] - a["h"]) * t) > 1e-7:
+			return false
+	return true
+
+
+## The walking line up the shaft: ground -> west flight -> turn -> east flight -> next level.
+static func stair_line(levels: int, rise: float) -> Array[Dictionary]:
+	var p: Array[Dictionary] = []
+	for f in levels:
+		p.append({"x": 0.0, "z": -0.3, "h": f * rise})
+		if f < levels - 1:
+			p.append({"x": -1.25, "z": 0.8, "h": f * rise})
+			p.append({"x": -1.25, "z": 5.6, "h": (f + 0.5) * rise})
+			p.append({"x": -1.25, "z": 6.3, "h": (f + 0.5) * rise})
+			p.append({"x": 1.25, "z": 6.3, "h": (f + 0.5) * rise})
+			p.append({"x": 1.25, "z": 5.6, "h": (f + 0.5) * rise})
+			p.append({"x": 1.25, "z": 0.8, "h": (f + 1) * rise})
+	return p
+
+
+static func stair_project(p: Dictionary, line: Array[Dictionary]) -> Dictionary:
+	var best := {}
+	var dist := INF
+	for i in range(1, line.size()):
+		var a := line[i - 1]
+		var b := line[i]
+		var dx: float = b["x"] - a["x"]
+		var dz: float = b["z"] - a["z"]
+		var dh: float = b["h"] - a["h"]
+		var n := dx * dx + dz * dz + dh * dh
+		var t := clampf(((p["x"] - a["x"]) * dx + (p["z"] - a["z"]) * dz + (p["h"] - a["h"]) * dh) / n, 0.0, 1.0)
+		var q := {"x": a["x"] + t * dx, "z": a["z"] + t * dz, "h": a["h"] + t * dh}
+		var d := Vector3(q["x"] - p["x"], q["z"] - p["z"], (q["h"] - p["h"]) * 3.0).length()
+		if d < dist:
+			dist = d
+			best = {"q": q, "index": i - 1 + t}
+	return best
+
+
+## Waypoints from a to b inside the shaft; empty when unreachable.
+static func stair_path(a: Dictionary, b: Dictionary, levels: int, rise: float) -> Array[Dictionary]:
+	var list := stair_surfaces(levels, rise)
+	var out: Array[Dictionary] = []
+	if stair_segment(list, a, b):
+		out.append(a)
+		out.append(b)
+		return out
+	var line := stair_line(levels, rise)
+	var aa := stair_project(a, line)
+	var bb := stair_project(b, line)
+	if aa.is_empty() or bb.is_empty():
+		return out
+	out.append(a)
+	out.append(aa["q"])
+	var mid: Array[Dictionary] = []
+	for i in line.size():
+		if i > minf(aa["index"], bb["index"]) and i < maxf(aa["index"], bb["index"]):
+			mid.append(line[i])
+	if aa["index"] > bb["index"]:
+		mid.reverse()
+	out.append_array(mid)
+	out.append(bb["q"])
+	out.append(b)
+	return out
+
+
+## Opaque slabs and stair soffits occlude vision between floors (StairGeometry.los).
+static func stair_los(list: Array[Dictionary], a: Dictionary, b: Dictionary) -> bool:
+	if absf(a["h"] - b["h"]) > 1.3:
+		return false
+	for i in range(1, 20):
+		var t := i / 20.0
+		var x: float = a["x"] + (b["x"] - a["x"]) * t
+		var z: float = a["z"] + (b["z"] - a["z"]) * t
+		var h: float = a["h"] + (b["h"] - a["h"]) * t + 1.4
+		if absf(x) > 2.2 or z < -3.5 or z > 7.2:
+			return false
+		for s: Dictionary in list:
+			var y := surface_height(s, z)
+			if x > s["x0"] and x < s["x1"] and z > s["z0"] and z < s["z1"] and h > y - 0.22 and h < y:
+				return false
+	return true

@@ -170,7 +170,27 @@
     });
     list.forEach(function(x){ g.add(x); });
   }
+  /* 巡察者人形：旧版 patAddFig 的 teacher 人形（纯黑，不受光）加装备几何（夹板等，顶点色） */
+  function patrolFigure(){
+    var T2 = window.THREE, g = new T2.Group();
+    var body = window.figMesh('teacher', new T2.MeshBasicMaterial({color:0x040506}), 1.12); g.add(body);
+    var gear = new T2.Mesh(window.patGearGeo(), new T2.MeshBasicMaterial({vertexColors:true, color:0x555555}));
+    gear.scale.setScalar(1.12); g.add(gear);
+    return g;
+  }
+  /* 巡察世界的数据：栅格位图、导航图（边不带折线）、路线、区域与速度常数——全部取旧版运行时的值 */
+  function patrolData(){
+    var graph = window.PatrolNav.graph(), edges = graph.edges.map(function(e){ return {a:e.a, b:e.b, kind:e.kind, weight:e.weight}; });
+    var nodes = {}; Object.keys(graph.nodes).forEach(function(k){ var n = graph.nodes[k]; nodes[k] = {scene:n.scene, x:Math.round(n.x * 10000) / 10000, y:Math.round(n.y * 10000) / 10000, fy:Math.round((n.fy || 0) * 10000) / 10000}; });
+    return {geometry:window.PATROL_GEOMETRY, route:window.PATROL_ROUTE, zones:window.PATROL_ZONES,
+      graph:{nodes:nodes, edges:edges, patrolEdges:graph.patrolEdges},
+      consts:{speed:window.PAT_SPEED, chase:window.PAT_CHASE, see:window.PAT_SEE, catch:window.PAT_CATCH, body:window.PAT_BODY, nav_n:window.PAT_NAV_N, cfg:window.PAT_CFG,
+        lockers:window.LOCKER_CELLS},
+      stair_geometry:window.StairGeometry.config};
+  }
+  window.__wdfzPatrolData = patrolData;
   window.__wdfzExport = function(kind, id){
+    if(kind === 'patrol') return exportScene(patrolFigure(), 'patrol_figure');
     if(kind === 'out') return exportScene(window.buildOutdoorGeometry(), 'outdoor');
     var R = window.INTERIORS[id], g = window.buildRoomGeometry(R);
     doorVariants(R, g);

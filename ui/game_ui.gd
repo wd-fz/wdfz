@@ -283,6 +283,36 @@ func show_death_card(message: String, epitaph: String, cause: String, hints: Pac
 	death_panel.visible = true
 
 
+## The locker slits (old #hideslits): a dark screen with thin lit lines.
+var _hide_overlay: Control
+
+
+func show_hiding(on: bool) -> void:
+	if _hide_overlay == null:
+		_hide_overlay = Control.new()
+		_hide_overlay.name = "HideSlits"
+		_hide_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_hide_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		var dark := ColorRect.new()
+		dark.color = Color(0.02, 0.025, 0.03, 0.96)
+		dark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		dark.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_hide_overlay.add_child(dark)
+		for i in 6:
+			var slit := ColorRect.new()
+			slit.color = Color(0.45, 0.5, 0.52, 0.35)
+			slit.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			slit.anchor_left = 0.2
+			slit.anchor_right = 0.8
+			slit.anchor_top = 0.25 + i * 0.075
+			slit.anchor_bottom = 0.25 + i * 0.075
+			slit.offset_bottom = 6
+			_hide_overlay.add_child(slit)
+		$Root.add_child(_hide_overlay)
+		$Root.move_child(_hide_overlay, 0)
+	_hide_overlay.visible = on
+
+
 func hide_death() -> void:
 	death_panel.visible = false
 	_death_fade.color.a = 0.0

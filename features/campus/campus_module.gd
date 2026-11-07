@@ -365,6 +365,8 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 			return {"notice": "", "elevator": true}
 		"P":
 			return {"notice": "", "seat": [hit["c"], hit["r"]]}
+		"H":
+			return {"notice": "", "hide": [hit["c"], hit["r"]]}
 		"T":
 			return {"notice": "", "podium": [hit["c"], hit["r"]]}
 		"d", "f", "R":

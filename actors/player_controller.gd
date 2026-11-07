@@ -18,6 +18,8 @@ signal focus_changed(prompt: String)
 var enabled := false
 ## Seated (old S.seated): the body stays on the chair, the view still turns.
 var seated := false
+## Hidden in a locker (old HIDE.on): no movement, the view still turns.
+var hiding := false
 ## Sprint allowed by the stamina rules (input.js tired / STAM_BACK).
 var can_sprint := true
 var moving := false
@@ -50,7 +52,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if not enabled:
 		return
-	if seated:
+	if seated or hiding:
 		# The seated body overlaps its chair (old S.seated skips moveBy entirely).
 		velocity = Vector3.ZERO
 		moving = false

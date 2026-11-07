@@ -106,6 +106,18 @@ def main():
         if a.only:
             want = set(a.only.split(','))
             todo = [t for t in todo if t in want]
+            if a.only == 'patrol':
+                todo = []
+        patrol_dir = Path(a.out) / 'patrol'
+        patrol_dir.mkdir(parents=True, exist_ok=True)
+        if not a.only or 'patrol' in a.only.split(','):
+            data = pg.evaluate('window.__wdfzPatrolData()')
+            (patrol_dir / 'patrol_data.json').write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')))
+            fig = pg.evaluate("window.__wdfzExport('patrol', 'patrol_figure')")
+            (patrol_dir / 'patrol_figure.glb').write_bytes(externalize_images(base64.b64decode(fig['glb']), tex, '../textures/'))
+            print(f"patrol: data {(patrol_dir / 'patrol_data.json').stat().st_size/1e3:.0f} kB, figure {(patrol_dir / 'patrol_figure.glb').stat().st_size/1e3:.0f} kB", flush=True)
+            if a.only == 'patrol':
+                todo = []
         index_path = out / 'index.json'
         index = json.loads(index_path.read_text()) if index_path.exists() else {}
         layout_dir = Path(a.out) / 'layout'

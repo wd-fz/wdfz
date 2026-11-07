@@ -158,6 +158,37 @@ func show_silhouettes(points: Array, room: Variant, height: float) -> void:
 		_silhouettes.add_child(fig)
 
 
+## The patroller's figure (patEnsureFig / patRender): the exported teacher figure scaled 1.12,
+## black and unlit, turned to face the player. Position in scene metres, height in metres.
+var _patrol_figure: Node3D
+
+
+func show_patrol(visible_now: bool, scene_pos: Vector2, height: float, toward: Vector3) -> void:
+	if not visible_now:
+		if is_instance_valid(_patrol_figure):
+			_patrol_figure.visible = false
+		return
+	if not is_instance_valid(_patrol_figure):
+		var packed := load("res://assets/campus/patrol/patrol_figure.glb") as PackedScene
+		if packed == null:
+			return
+		_patrol_figure = packed.instantiate() as Node3D
+		_patrol_figure.name = "Patroller"
+		add_child(_patrol_figure)
+		for mi: MeshInstance3D in _patrol_figure.find_children("*", "MeshInstance3D", true, false):
+			for s in mi.mesh.get_surface_count():
+				var mat := mi.mesh.surface_get_material(s) as BaseMaterial3D
+				if mat != null:
+					mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_patrol_figure.visible = true
+	_patrol_figure.position = Vector3(scene_pos.x, height, scene_pos.y)
+	_patrol_figure.rotation.y = atan2(toward.x - scene_pos.x, toward.z - scene_pos.y)
+
+
+func patrol_figure_shown() -> bool:
+	return is_instance_valid(_patrol_figure) and _patrol_figure.visible
+
+
 func silhouette_count() -> int:
 	return _silhouettes.get_child_count() if is_instance_valid(_silhouettes) else 0
 
@@ -461,8 +492,10 @@ func _build_lighting() -> void:
 	lighting.setup(scene_id, layout if is_room() else null, get_node_or_null("Model"), rise)
 
 
-func update_lighting(dt: float, tsec: float, camera: Camera3D) -> void:
+func update_lighting(dt: float, tsec: float, camera: Camera3D, patrol_flick: float = 0.0, patrol_red: float = 0.0) -> void:
 	if lighting != null:
+		lighting.patrol_flick = patrol_flick
+		lighting.patrol_red = patrol_red
 		lighting.update(dt, tsec, camera)
 
 
