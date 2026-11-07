@@ -96,6 +96,7 @@ func _run() -> void:
 	_test_plane_rules()
 	_test_camera_rules()
 	_test_snake_rules()
+	_test_run_new_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -2767,6 +2768,30 @@ func _test_snake_rules() -> void:
 	var ach := AchievementsModule.new(25)
 	ach.reset()
 	check(ach.fact({"kind": "snake", "score": 6}).is_empty() and ach.fact({"kind": "snake", "score": 7}).has("n.snake"), "seven bites unlock 一口一口")
+
+
+func _test_run_new_rules() -> void:
+	var ach := AchievementsModule.new(25)
+	ach.reset()
+	check(ach.run_new.is_empty() and ach.run_new_labels().is_empty(), "a fresh run has no new achievements")
+	ach.fact({"kind": "snake", "score": 7})
+	ach.fact({"kind": "day", "day": 2})
+	check(ach.run_new == ["n.snake", "n.day2"] and ach.run_new_labels() == PackedStringArray(["普通 · 一口一口", "普通 · 熬过第一天"]), "what the run unlocks is listed in order with its tier")
+	ach.fact({"kind": "snake", "score": 9})
+	check(ach.run_new.size() == 2, "an achievement is listed once")
+	var back := AchievementsModule.new(25)
+	back.restore(ach.capture())
+	check(back.run_new == ach.run_new, "the list is saved with the run")
+	var prior := AchievementsModule.new(25)
+	prior.reset()
+	prior.load_profile({"unlocked": {"n.snake": true}, "sets": {}})
+	prior.fact({"kind": "snake", "score": 8})
+	check(prior.run_new.is_empty(), "something unlocked in an earlier run is not new")
+	var other := AchievementsModule.new(25)
+	other.reset()
+	other.run_new.append("n.snake")
+	other.reset()
+	check(other.run_new.is_empty(), "a new run starts empty")
 
 
 func _test_facility_rules() -> void:

@@ -466,7 +466,7 @@ func death_scene_style() -> int:
 	return int((_death_fade.material as ShaderMaterial).get_shader_parameter("style"))
 
 
-func show_death_card(message: String, epitaph: String, cause: String, hints: PackedStringArray) -> void:
+func show_death_card(message: String, epitaph: String, cause: String, hints: PackedStringArray, achieved: PackedStringArray = PackedStringArray()) -> void:
 	var lines := [message]
 	if not epitaph.is_empty():
 		lines.append("「%s」" % epitaph)
@@ -474,6 +474,8 @@ func show_death_card(message: String, epitaph: String, cause: String, hints: Pac
 		lines.append(cause)
 	for h: String in hints:
 		lines.append("· " + h)
+	if not achieved.is_empty():
+		lines.append("本局新达成\n" + "\n".join(achieved))
 	_death_text.text = "\n\n".join(lines)
 	death_panel.visible = true
 
@@ -514,7 +516,14 @@ var _ach_list: VBoxContainer
 var _ach_head: Label
 
 
-func show_achievements(entries: Array, points: int) -> void:
+var _ach_tab := "全部"
+var _ach_tabs: HBoxContainer
+
+
+## Tabs 全部 / 普通 / 精英 / 史诗 (achievements-ui.js); the head always counts all of them.
+func show_achievements(entries: Array, points: int, tab: String = "") -> void:
+	if tab != "":
+		_ach_tab = tab
 	var rows: Array = []
 	var got := 0
 	for e: Dictionary in entries:
@@ -523,8 +532,25 @@ func show_achievements(entries: Array, points: int) -> void:
 			text += "  （%d / %d）" % [e["progress"]["n"], e["progress"]["of"]]
 		if e["unlocked"]:
 			got += 1
-		rows.append({"text": text, "on": e["unlocked"], "memo": e["memo"]})
+		if _ach_tab == "全部" or e["tier"] == _ach_tab:
+			rows.append({"text": text, "on": e["unlocked"], "memo": e["memo"]})
 	show_list("成就  %d / %d　·　积分 %d" % [got, entries.size(), points], rows)
+	if _ach_tabs == null:
+		_ach_tabs = HBoxContainer.new()
+		_ach_tabs.name = "AchievementTabs"
+		var box: Node = _ach_head.get_parent()
+		box.add_child(_ach_tabs)
+		box.move_child(_ach_tabs, 1)
+	for c in _ach_tabs.get_children():
+		c.queue_free()
+	for name: String in ["全部", "普通", "精英", "史诗"]:
+		var b := Button.new()
+		b.name = "Tab_" + name
+		b.text = name
+		b.toggle_mode = true
+		b.button_pressed = name == _ach_tab
+		b.pressed.connect(func() -> void: show_achievements(entries, points, name))
+		_ach_tabs.add_child(b)
 
 
 ## The death archive: every real cause of death gets a file the first time it happens.
@@ -1172,7 +1198,7 @@ var ending_panel: PanelContainer
 var _ending_text: Label
 
 
-func show_ending(title: String, tag: String, lines: Array, meta: String) -> void:
+func show_ending(title: String, tag: String, lines: Array, meta: String, achieved: PackedStringArray = PackedStringArray()) -> void:
 	if ending_panel == null:
 		ending_panel = PanelContainer.new()
 		ending_panel.name = "EndingPanel"
@@ -1195,6 +1221,8 @@ func show_ending(title: String, tag: String, lines: Array, meta: String) -> void
 		$Root.add_child(ending_panel)
 	var head := "%s\n%s" % [tag, title] if not tag.is_empty() else title
 	_ending_text.text = "%s\n\n%s\n\n%s" % [head, "\n".join(PackedStringArray(lines)), meta]
+	if not achieved.is_empty():
+		_ending_text.text += "\n\n本局新达成\n" + "\n".join(achieved)
 	ending_panel.visible = true
 
 

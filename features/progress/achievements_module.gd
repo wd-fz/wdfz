@@ -83,6 +83,7 @@ var face_wrong := 0               # run
 var saved := false                # run: rescued by the pill
 var started := ""                 # run: the anomaly that started
 var exams: Dictionary = {}        # run: "day" -> {pass, fail}
+var run_new: Array = []           # run: ids unlocked in this run (shown on the ending card and the death screen)
 var events: Array = []
 var _anomaly_total := 25
 
@@ -106,11 +107,12 @@ func reset() -> void:
 	saved = false
 	started = ""
 	exams = {}
+	run_new = []
 	events = []
 
 
 func capture() -> Dictionary:
-	return {"rooms": rooms.keys(), "insp": insp, "face_wrong": face_wrong, "saved": saved, "exams": exams.duplicate(true)}
+	return {"rooms": rooms.keys(), "insp": insp, "face_wrong": face_wrong, "saved": saved, "exams": exams.duplicate(true), "run_new": run_new.duplicate()}
 
 
 func validate(data: Dictionary) -> String:
@@ -130,6 +132,8 @@ func restore(data: Dictionary) -> void:
 	face_wrong = int(data["face_wrong"])
 	saved = bool(data["saved"])
 	exams = (data.get("exams", {}) as Dictionary).duplicate(true) if data.get("exams") is Dictionary else {}
+	if data.get("run_new") is Array:
+		run_new = (data["run_new"] as Array).filter(func(id: Variant) -> bool: return id is String and LIST.has(id))
 
 
 func profile() -> Dictionary:
@@ -150,6 +154,15 @@ func load_profile(data: Dictionary) -> void:
 func take_events() -> Array:
 	var out := events
 	events = []
+	return out
+
+
+## "tier · name" of what this run unlocked, in order (the ending card and the death screen).
+func run_new_labels() -> PackedStringArray:
+	var out := PackedStringArray()
+	for id: String in run_new:
+		if LIST.has(id):
+			out.append("%s · %s" % [TIERS[LIST[id][0]]["name"], LIST[id][1]])
 	return out
 
 
@@ -232,6 +245,7 @@ func fact(f: Dictionary) -> Array[String]:
 		for id: String in LIST:
 			if not unlocked.has(id) and _test(id, f):
 				unlocked[id] = true
+				run_new.append(id)
 				got.append(id)
 				events.append({"kind": "unlock", "id": id, "name": LIST[id][1], "tier": LIST[id][0]})
 				again = true

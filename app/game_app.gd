@@ -1372,7 +1372,7 @@ func _finish_death() -> void:
 		return
 	_death_phase = "card"
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	ui.show_death_card(fate.death_msg, fate.epitaph(), fate.cause(), StoryModule.hints(_read_death_log()))
+	ui.show_death_card(fate.death_msg, fate.epitaph(), fate.cause(), StoryModule.hints(_read_death_log()), achievements().run_new_labels() if achievements() != null else PackedStringArray())
 
 
 ## Player state the patroller reads (old S / HIDE / Inspection state).
@@ -3878,7 +3878,7 @@ func _reach_ending(id: String) -> void:
 		meta += " · " + SchoolClock.fmt_clock(school().tsec)
 	if run_line != "":
 		meta += "\n" + run_line
-	ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta)
+	ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta, achievements().run_new_labels() if achievements() != null else PackedStringArray())
 
 
 func _anomaly_context(room: Variant, pose: Dictionary) -> Dictionary:
