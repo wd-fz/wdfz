@@ -631,25 +631,69 @@ func show_sensory(v: Dictionary, blink: float, t: float) -> void:
 		_sense.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_sense.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		var shader := Shader.new()
+		# engine/three.js: warp (drift, rotation, breathing in), blur and focus, ghost, halo, drain,
+		# tunnel (narrowing with the heartbeat, a crawling edge) and black-out, in the old order.
 		shader.code = """shader_type canvas_item;
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 uniform float tunnel = 0.0;
 uniform float blur = 0.0;
+uniform float focus = 0.0;
 uniform float drain = 0.0;
 uniform float warp = 0.0;
+uniform float breath = 0.0;
+uniform float pulse = 0.0;
+uniform float ghost = 0.0;
+uniform vec2 ghost_dir = vec2(1.0, 0.0);
+uniform float halo = 0.0;
 uniform float blink = 0.0;
 uniform float t = 0.0;
 void fragment() {
+	vec2 res = 1.0 / SCREEN_PIXEL_SIZE;
 	vec2 uv = SCREEN_UV;
 	vec2 c = uv - 0.5;
-	uv += warp * 0.006 * vec2(sin(uv.y * 14.0 + t * 1.7), cos(uv.x * 11.0 + t * 1.3));
-	float edge = length(c) * 1.4142;
-	float lod = blur * (1.0 + 2.5 * edge);
-	vec3 col = textureLod(screen_tex, uv, lod).rgb;
-	float g = dot(col, vec3(0.299, 0.587, 0.114));
-	col = mix(col, vec3(g), drain * 0.85);
-	float v = smoothstep(1.05 - tunnel * 0.55, 0.45 - tunnel * 0.3, edge);
-	col *= mix(1.0, v, tunnel);
+	vec2 q = c * 2.0;
+	float e = length(q);
+	if (warp > 0.001) {
+		vec2 asp = vec2(res.x / res.y, 1.0);
+		vec2 p = c * asp;
+		float r = length(p);
+		float a = 0.045 * warp * sin(t * 0.31) * cos(t * 0.13 + 1.7);
+		p = vec2(p.x * cos(a) - p.y * sin(a), p.x * sin(a) + p.y * cos(a));
+		p *= 1.0 - 0.04 * warp * breath;
+		vec2 w = vec2(sin(p.y * 6.0 + t * 0.9) + 0.6 * sin((p.x + p.y) * 4.1 - t * 0.7), sin(p.x * 5.2 - t * 0.8) + 0.6 * sin((p.x - p.y) * 3.7 + t * 1.1));
+		p += w * 0.0125 * warp * smoothstep(0.03, 0.22, r);
+		uv = p / asp + 0.5;
+	}
+	uv = clamp(uv, vec2(0.001), vec2(0.999));
+	float bpx = mix(3.2 * blur * blur, 13.0 * blur, smoothstep(0.15, 0.85, e)) + 4.5 * focus;
+	float lod = log2(max(1.0, bpx * min(res.x, res.y) / 720.0 * 0.45));
+	vec3 col = textureLod(screen_tex, uv, bpx >= 0.3 ? lod : 0.0).rgb;
+	if (ghost > 0.001) {
+		vec2 go = ghost_dir * (10.0 * min(res.x, res.y) / 720.0) / res;
+		col = mix(col, texture(screen_tex, clamp(uv + go, vec2(0.001), vec2(0.999))).rgb, 0.5 * ghost * smoothstep(0.05, 0.3, e));
+	}
+	if (halo > 0.001) {
+		vec2 asp2 = vec2(res.y / res.x, 1.0);
+		vec3 hl = vec3(0.0);
+		for (int i = 0; i < 6; i++) {
+			float ang = float(i) * 1.0472 + 0.5;
+			vec2 o = vec2(cos(ang), sin(ang)) * asp2;
+			hl += max(texture(screen_tex, uv + o * 0.012).rgb - 0.62, 0.0);
+			hl += max(texture(screen_tex, uv + o * 0.026).rgb - 0.62, 0.0) * 0.6;
+		}
+		col += min(hl / 6.0 * halo * 0.9, vec3(0.5));
+	}
+	float g = dot(col, vec3(0.2126, 0.7152, 0.0722));
+	col = mix(col, vec3(g), 0.7 * drain);
+	if (tunnel > 0.001) {
+		float crawl = 0.0;
+		if (warp > 0.001) {
+			float th = atan(q.y, q.x + 0.000001);
+			crawl = (0.05 * sin(th * 3.0 + t * 0.6) + 0.035 * sin(th * 5.0 - t * 0.9)) * warp;
+		}
+		float rr = 1.6 - 1.15 * tunnel - 0.09 * pulse;
+		col *= 1.0 - smoothstep(rr - 0.12, rr + 0.42, e + crawl) * min(1.0, tunnel * 2.2) * 0.96;
+	}
 	col *= 1.0 - blink;
 	COLOR = vec4(col, 1.0);
 }"""
@@ -658,15 +702,22 @@ void fragment() {
 		_sense.material = mat
 		$Root.add_child(_sense)
 		$Root.move_child(_sense, 0)
-	var on := float(v.get("tunnel", 0.0)) > 0.01 or blink > 0.0
+	var on := float(v.get("tunnel", 0.0)) > 0.01 or blink > 0.0 or float(v.get("halo", 0.0)) > 0.01 or float(v.get("ghost_env", 0.0)) > 0.01
 	_sense.visible = on
 	if not on:
 		return
 	var m := _sense.material as ShaderMaterial
 	m.set_shader_parameter("tunnel", float(v["tunnel"]))
 	m.set_shader_parameter("blur", float(v["blur"]))
+	m.set_shader_parameter("focus", float(v.get("focus", 0.0)))
 	m.set_shader_parameter("drain", float(v["drain"]))
 	m.set_shader_parameter("warp", float(v["warp"]))
+	m.set_shader_parameter("breath", float(v.get("inhale", 0.0)))
+	m.set_shader_parameter("pulse", float(v.get("pulse_env", 0.0)))
+	m.set_shader_parameter("ghost", float(v.get("ghost_env", 0.0)))
+	var gd: Array = v.get("ghost_dir", [1.0, 0.0])
+	m.set_shader_parameter("ghost_dir", Vector2(float(gd[0]), float(gd[1])))
+	m.set_shader_parameter("halo", float(v.get("halo", 0.0)))
 	m.set_shader_parameter("blink", blink)
 	m.set_shader_parameter("t", t)
 

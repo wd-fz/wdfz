@@ -3631,6 +3631,25 @@ func _test_sensory_app(app: GameApp) -> void:
 	app.school().san = 10.0
 	await _frames(40)
 	check(app.ui.sensory_on() and float(app._sense_view["tunnel"]) > 0.5 and float(app._sense_view["bpm"]) > 100.0, "low SAN narrows the picture and quickens the heart, with no number on the HUD")
+	check(float(app._sense_view["halo"]) > 0.5 and float(app._sense_view["warp"]) > 0.0, "low SAN also blooms the lamps and warps the picture")
+	app.audio.pulse_t = 0.0
+	app.audio.inhale_t = 0.3
+	await _frames(1)
+	var fresh := float(app._sense_view["pulse_env"])
+	var pressed := float(app._sense_view["inhale"])
+	app.audio.pulse_t = 1.0
+	app.audio.inhale_t = 2.0
+	await _frames(1)
+	check(fresh > 0.5 * float(app._sense_view["pulse"]) and float(app._sense_view["pulse_env"]) < 0.05 * float(app._sense_view["pulse"]), "the view tightens on the heartbeat and relaxes within a second")
+	check(pressed > 0.3 and float(app._sense_view["inhale"]) == 0.0, "the picture presses in as the breath is taken and is back after 1.6 s")
+	var ghosted := 0.0
+	for _i in 600:
+		app._sense_view = {}
+		await _frames(1)
+		ghosted = maxf(ghosted, float(app._sense_view.get("ghost_env", 0.0)))
+		if ghosted > 0.0:
+			break
+	check(ghosted > 0.0 and ghosted <= float(app._sense_view["ghost"]) + 0.0001, "at very low SAN faint ghost copies drift now and then")
 	app.return_to_menu()
 	await _frames(2)
 	check(not app.ui.sensory_on(), "back at the menu the picture is clear")

@@ -1605,6 +1605,11 @@ var _blink_plan: Array = []
 var _blink_t := 0.0
 var _blink_next := 0.0
 var _sense_rng := RandomNumberGenerator.new()
+var _ghost_t := 9.0
+var _ghost_dur := 1.0
+var _ghost_next := 8.0
+var _ghost_a := 0.0
+var _ghost_spin := 0.0
 
 
 func _sensory_step(delta: float) -> void:
@@ -1614,6 +1619,26 @@ func _sensory_step(delta: float) -> void:
 	var v := SensoryRules.view(_sense_body, {"time": _sense_t, "threat": watcher != null and watcher.local_threat(),
 		"takeover": driving() or ui.terminal_open(), "chase": watcher != null and bool(watcher.pat["locked"])})
 	_sense_view = v
+	# The picture follows the body's sounds (modules/sensory): the view tightens as the heart beats and
+	# presses in as the breath is taken, from the moment the sound starts (muted or not).
+	v["pulse_env"] = float(v["pulse"]) * exp(-audio.pulse_t / 0.18)
+	var it := audio.inhale_t
+	v["inhale"] = sin(PI / 2.0 * it / 0.55) if it < 0.55 else (cos(PI / 2.0 * (it - 0.55) / 1.05) if it < 1.6 else 0.0)
+	# Ghosting: now and then a faint offset copy drifts for 0.8–1.6 s; the lower the SAN, the oftener.
+	_ghost_t += delta
+	if float(v["ghost"]) > 0.0:
+		_ghost_next -= delta
+		if _ghost_next <= 0.0 and _ghost_t >= _ghost_dur:
+			_ghost_t = 0.0
+			_ghost_dur = 0.8 + 0.8 * _sense_rng.randf()
+			_ghost_a = _sense_rng.randf() * TAU
+			_ghost_spin = (_sense_rng.randf() - 0.5) * 1.6
+			_ghost_next = (11.0 - 7.0 * minf(1.0, (_sense_body - 0.45) / 0.45)) * (0.75 + 0.5 * _sense_rng.randf())
+	else:
+		_ghost_next = maxf(_ghost_next, 2.0)
+	v["ghost_env"] = float(v["ghost"]) * sin(PI * _ghost_t / _ghost_dur) if _ghost_t < _ghost_dur else 0.0
+	var ga := _ghost_a + _ghost_spin * minf(_ghost_t, _ghost_dur)
+	v["ghost_dir"] = [cos(ga), sin(ga)]
 	var blink := 0.0
 	if float(v["flicker"]) > 0.0:
 		if _blink_plan.is_empty():

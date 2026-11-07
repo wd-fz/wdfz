@@ -56,6 +56,9 @@ var _foot := 0
 var _step_t := 0.0
 var _beat_t := 0.0
 var _breath_t := 0.0
+## Seconds since the last heartbeat and breath sound started (the picture follows the same beat, muted or not).
+var pulse_t := 9.0
+var inhale_t := 9.0
 var _patrol_t := 0.0
 var _next_mel := 4.0
 var _next_cricket := 1.0
@@ -505,16 +508,20 @@ func _menu(delta: float, duck_k: float) -> void:
 func _body(delta: float, ctx: Dictionary) -> void:
 	var body := float(ctx.get("body", 0.0))
 	var bpm := float(ctx.get("bpm", 0.0))
+	pulse_t += delta
+	inhale_t += delta
 	if bpm > 0.0:
 		_beat_t -= delta
 		if _beat_t <= 0.0:
 			_beat_t = 60.0 / bpm
+			pulse_t = 0.0
 			play("threat.heartPat" if bool(ctx.get("chase", false)) else "threat.heartLow", {"k": 0.35 + body * 0.35})
 	else:
 		_beat_t = 0.0
 	_breath_t -= delta
 	if body > 0.08 and _breath_t <= 0.0:
 		_breath_t = 6.0 - body * 2.0
+		inhale_t = 0.0
 		play("threat.breath", {"k": 0.25 if bool(ctx.get("threat", false)) else 0.45 + body * 0.25})
 
 
