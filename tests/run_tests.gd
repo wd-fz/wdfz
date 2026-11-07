@@ -107,6 +107,7 @@ func _run() -> void:
 	_test_run_records()
 	_test_results_page()
 	_test_records_panel()
+	_test_dev_tools()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -3182,6 +3183,33 @@ func _test_records_panel() -> void:
 	check(panel.open_view(a, true) and panel._map.trails[0]["pts"].size() == 4 and not panel._map.here, "the footprint map shows the whole path, no marker")
 	check(not panel.open_view("nope", true), "a missing replay does not open")
 	panel.queue_free()
+
+
+func _test_dev_tools() -> void:
+	var pt := Playtest.new(_test_path.get_base_dir() + "/playtest-test.json")
+	pt.event("无效", "没开始不记")
+	check(pt.export().is_empty(), "nothing is recorded before it starts")
+	pt.start({"vol": 70}, Vector2i(1280, 720))
+	pt.frame(0.016, "play")
+	pt.frame(0.2, "play")
+	pt.frame(1.0, "menu")
+	pt.event("事实", "lesson", {"day": 2})
+	check(pt.note("  回头看了一眼  ", {}) and not pt.note("   ", {}), "an observer's note is kept, a blank one is not")
+	var ex := pt.export()
+	check(is_equal_approx(float(ex["seconds"]["play"]), 0.216) and is_equal_approx(float(ex["seconds"]["menu"]), 1.0) and ex["frameIntervals"]["under25ms"] == 1 and ex["frameIntervals"]["over100ms"] == 1,
+		"seconds by mode and the frame bins (play only)")
+	for i in 520:
+		pt.event("x", str(i))
+	check((pt.data["events"] as Array).size() == Playtest.MAX_EVENTS and int(pt.data["discardedEvents"]) > 0, "at most 500 events, the oldest dropped")
+	pt.stop()
+	check(FileAccess.file_exists(pt.path) and not pt.recording, "stopping writes the log")
+	var idx: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/audio/index.json"))
+	var dp := DebugPanel.new(idx as Dictionary)
+	var total := 0
+	for c: Variant in dp._cats:
+		total += dp.ids_of(String(c)).size()
+	check(total == dp.sfx().size() and total > 100, "the sound audition lists the whole bank by category (%d)" % total)
+	dp.free()
 
 
 func _test_facility_rules() -> void:

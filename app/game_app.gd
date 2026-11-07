@@ -32,6 +32,8 @@ var _enter_cool := 0.0
 var _audio_period := ""
 var _bolt_next := 6.0
 var _drive_view: CarChaseView
+var playtest := Playtest.new()
+var debug_panel: DebugPanel
 
 
 func _ready() -> void:
@@ -228,6 +230,7 @@ func fact(f: Dictionary) -> void:
 	if ach == null:
 		return
 	_score_fact(f)
+	playtest.event("事实", String(f.get("kind", "")), _playtest_state())
 	ach.fact(f)
 	for e: Dictionary in ach.take_events():
 		ui.show_notice("成就：%s" % e["name"])
@@ -4402,7 +4405,54 @@ func _interact(id: StringName) -> void:
 		session.interact(id)
 
 
+func _process(delta: float) -> void:
+	var m := "menu"
+	if session != null and not get_tree().paused and not ui.opening_on():
+		m = "death" if story().dead else "play"
+	playtest.frame(delta, m)
+
+
+## F9 (debug build or --dev): the developer tools.
+func _toggle_debug() -> void:
+	if not DebugPanel.enabled():
+		return
+	if debug_panel == null:
+		debug_panel = DebugPanel.new(audio._index)
+		ui.get_node("Root").add_child(debug_panel)
+		debug_panel.sound_play.connect(func(id: String) -> void: audio.play(id, {"k": 1.0}))
+		debug_panel.sound_stop.connect(func() -> void: audio.stop_all())
+		debug_panel.playtest_toggled.connect(func() -> void:
+			if playtest.recording:
+				playtest.stop()
+			else:
+				playtest.start(settings.values, get_viewport().get_visible_rect().size)
+			debug_panel.set_playtest(playtest.recording, playtest.data.get("events", []).size(), not playtest.data.is_empty()))
+		debug_panel.playtest_note.connect(func(t: String) -> void:
+			debug_panel.say("已记入" if playtest.note(t, _playtest_state()) else "先开始记录，并写一句话")
+			debug_panel.set_playtest(playtest.recording, playtest.data.get("events", []).size(), not playtest.data.is_empty()))
+		debug_panel.clear_debug_records.connect(func() -> void: debug_panel.say("已清除 %d 条调试记录" % runs().remove_debug()))
+		debug_panel.mark_untrusted.connect(func() -> void:
+			if runscore() != null:
+				runscore().trusted = false
+				debug_panel.say("本局已标为调试局：不计分，不进真实评级")
+			else:
+				debug_panel.say("没有进行中的一局"))
+	debug_panel.visible = not debug_panel.visible
+	if debug_panel.visible:
+		debug_panel.set_playtest(playtest.recording, playtest.data.get("events", []).size(), not playtest.data.is_empty())
+
+
+func _playtest_state() -> Dictionary:
+	if session == null:
+		return {}
+	return {"day": school().day, "gameMinutes": school().tsec, "room": session.world_id, "san": school().san}
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F9:
+		_toggle_debug()
+		get_viewport().set_input_as_handled()
+		return
 	if ui.opening_on():
 		if event.is_action_pressed("pause"):
 			ui._end_opening(true)
