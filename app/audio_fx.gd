@@ -514,6 +514,9 @@ func _steps(delta: float, ctx: Dictionary) -> void:
 			_step_t = 0.33 if run else 0.52
 			var wet := bool(ctx.get("out", false)) and String(ctx.get("anomaly", "")) in ["rain", "raindots"]
 			step_on(String(ctx.get("surface", "tile")), 1.35 if run else 1.0, {"wet": wet, "self_step": true})
+			# A revisit's echo: the same step again, quiet, behind and late (dread.js DREAD.echo).
+			if bool(ctx.get("echo", false)):
+				step_on(String(ctx.get("surface", "tile")), 0.32, {"pan": 0.25, "lp": 0.55, "at": 0.19, "self_step": true})
 	else:
 		_step_t = 0.0
 

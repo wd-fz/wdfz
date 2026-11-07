@@ -76,7 +76,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(), ClassmatesModule.new(CampusData.rooms())]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(), ClassmatesModule.new(CampusData.rooms()), DreadModule.new(CampusData.rooms())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -86,6 +86,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func dread() -> DreadModule:
+	return session.modules.get_module(&"story.dread") as DreadModule if session != null else null
 
 
 func classmates() -> ClassmatesModule:
@@ -385,6 +389,9 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 		if not seated.is_empty():
 			pose = seated
 	_install_session(candidate, pose)
+	if dread() != null:
+		dread().set_context(_dread_context())
+		dread().enter(session.world_id)
 	if rules != null and rules.knows(initial_world):
 		ui.show_notice(String(rules.room(initial_world)["name"]) if rules.room(initial_world) != null else "武大附中 · 校园")
 	else:
@@ -520,6 +527,10 @@ func load_game() -> void:
 		return
 	candidate.restore(data)
 	_install_session(candidate, data["player"])
+	if dread() != null:
+		dread().set_context(_dread_context())
+		dread().enter(session.world_id, true)
+		_apply_dread_events()
 	if garage() != null and garage().driving():
 		_enter_drive()
 	ui.show_notice("已恢复测试进度；读档不会再次触发交互奖励。")
@@ -974,6 +985,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	_show_marks()
 	_classmates_step(delta)
 	_sensory_step(delta)
+	_dread_step(delta)
 	_anomaly_step(delta, day_rules, room, pose)
 	_audio_step(delta, watcher, day_rules, room, p)
 	_progress_step(watcher, day_rules, weird_now)
@@ -1393,7 +1405,7 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 		"san": day_rules.san, "viol": day_rules.viol, "anomaly": an_id, "shelter": false, "moving": player.moving, "running": player.sprinting,
 		"hiding": player.hiding, "body": maxf(0.0, _sense_body), "bpm": float(_sense_view.get("bpm", 0.0)),
 		"chase": watcher != null and bool(watcher.pat["locked"]), "threat": watcher != null and watcher.local_threat(),
-		"patrol_pos": patrol_pos, "patrol_behind": behind, "big": big, "blackout": weird != null and weird.blackout_now(), "moth_near": 0.5 if an_id == "moth" else 0.0, "busy": ui.terminal_open() or (days() != null and days().waiting != null)})
+		"patrol_pos": patrol_pos, "patrol_behind": behind, "big": big, "blackout": weird != null and weird.blackout_now(), "moth_near": 0.5 if an_id == "moth" else 0.0, "busy": ui.terminal_open() or (days() != null and days().waiting != null), "echo": dread() != null and dread().echo})
 	ui.show_captions(audio.captions.lines() if audio.captions.enabled(audio.volume, audio.muted) else PackedStringArray())
 	# fx/weather.js: in the rain a bolt every 6–14 s, the screen whitens twice and the thunder comes late.
 	if an_id in ["rain", "raindots"]:
@@ -1605,6 +1617,69 @@ func _sensory_step(delta: float) -> void:
 	else:
 		_blink_plan = []
 	ui.show_sensory(v, blink, _sense_t)
+
+
+# ---- atmosphere (features/story/dread_module.gd) ----
+
+func _dread_context() -> Dictionary:
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var weird := anomaly()
+	var watcher := patrol()
+	var day_rules := school()
+	var cw := _campus_world()
+	var night := 0.0
+	if cw != null and cw.lighting != null:
+		night = 1.0 - float(cw.lighting.sun_at(day_rules.tsec / 60.0)["day"])
+	var busy := story().dead or get_tree().paused or ui.choice_open() or ui.terminal_open() or driving() \
+		or (weird != null and bool(weird.an["active"])) or (watcher != null and watcher.local_chase()) or day_rules.inspection_active() \
+		or (days() != null and days().waiting != null) or session.world_id in ElevatorModule.RIDE_ROOMS or session.world_id == "portal_tunnel" \
+		or (fake_normal() != null and fake_normal().active())
+	var rid := session.world_id
+	return {"scene": rid, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "san": day_rules.san, "viol": day_rules.viol,
+		"night": night, "day": day_rules.day, "busy": busy, "an_active": weird != null and bool(weird.an["active"]),
+		"an_next": float(weird.an["next"]) if weird != null else -1.0, "an_next0": int(weird.an["next0"]) if weird != null else 0,
+		"ear": talent() != null and talent().has("ear"),
+		"door_open": func(c: int, r: int) -> bool: return campus().is_open(CampusGeometry.door_key(campus().room(rid), c, r))}
+
+
+func _dread_step(delta: float) -> void:
+	var d := dread()
+	if d == null:
+		return
+	d.set_context(_dread_context())
+	d.tick(delta)
+	_apply_dread_events()
+
+
+func _apply_dread_events() -> void:
+	var d := dread()
+	if d == null:
+		return
+	var cw := _campus_world()
+	for e: Dictionary in d.take_events():
+		match e["kind"]:
+			"dread":
+				var pl: Dictionary = e["place"]
+				audio.play("dread." + String(e["cue"]), {"pan": float(pl["pan"]), "k": float(pl["k"]),
+					"lp": (0.35 if bool(pl["muffled"]) else 1.0) * (0.7 if bool(pl["behind"]) else 1.0), "place": pl})
+			"duck":
+				audio.duck(float(e["sec"]))
+			"precursor":
+				audio.play("threat.precursor", {"k": clampf(float(e["k"]), 0.2, 1.0)})
+			"visit":
+				if cw != null:
+					if e["fx"] == "lamp" and cw.lighting != null:
+						cw.lighting.dread_lamp = int(e["i"])
+					elif e["fx"] == "note":
+						cw.show_dread_note(String(e["text"]), float(e["seed"]), player.capture_pose())
+			"clear":
+				if cw != null:
+					cw.show_dread_note("", 0.0, {})
+					if cw.lighting != null:
+						cw.lighting.dread_lamp = -1
 
 
 # ---- classmates (features/school/classmates_module.gd) ----
@@ -3102,6 +3177,10 @@ func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
 	if from_world != world_id and campus() != null and (campus().is_stairwell(world_id) or campus().is_stairwell(from_world)) and not seamless:
 		audio.play("foley.stairs")
 	session.world_id = world_id
+	if dread() != null and from_world != world_id:
+		dread().set_context(_dread_context())
+		dread().enter(world_id)
+		_apply_dread_events()
 	_enter_cool = 0.0 if seamless else 0.9
 	if seamless:
 		player.place(pose)

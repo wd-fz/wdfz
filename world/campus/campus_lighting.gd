@@ -33,6 +33,8 @@ var reduce_flash := false
 var patrol_flick := 0.0
 ## Lamp crackles since the last take (k, pan), heard from crackle_from (the camera).
 var crackles: Array = []
+## A revisit's broken lamp (index, modulo the room's lamps), −1 for none.
+var dread_lamp := -1
 var crackle_from: Node3D
 var _flick_prev: Dictionary = {}
 var _crackle_last := 0.0
@@ -206,6 +208,9 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var sum := 0.0
 	for i in room_lights.size():
 		var flick := 0.94 if reduce_flash else room_flicker(i, time, day) * lamp_health(i)
+		# A revisit's broken lamp (fx/dread-fx.js lampMul): a glimmer, now and then a twitch.
+		if dread_lamp >= 0 and i == dread_lamp % room_lights.size():
+			flick *= 0.85 if not reduce_flash and (sin(time * 7.3 + 1.1) > 0.985 or sin(time * 2.9) > 0.996) else 0.06
 		if patrol_flick > 0.0:
 			flick *= 1.0 - patrol_flick * (1.0 - patrol_beat(time))
 		sum += flick

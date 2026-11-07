@@ -323,6 +323,56 @@ func checkup_queue_blocks() -> bool:
 	return is_instance_valid(_checkup_queue) and _checkup_queue.collision_layer == 1
 
 
+## A revisit's note on the floor (fx/dread-fx.js note): a sheet of exercise paper 1.3–2.1 m ahead,
+## one handwritten line, faintly lit so it can be read in the dark. Empty text removes it.
+var _dread_note: Node3D
+
+
+func show_dread_note(text: String, seed: float, pose: Dictionary) -> void:
+	if is_instance_valid(_dread_note):
+		_dread_note.queue_free()
+	_dread_note = null
+	if text == "" or not is_room():
+		return
+	var p: Array = pose["position"]
+	var yaw := float(pose["yaw"])
+	var fwd := Vector3(-sin(yaw), 0.0, -cos(yaw))
+	_dread_note = Node3D.new()
+	_dread_note.name = "DreadNote"
+	var paper := MeshInstance3D.new()
+	var q := PlaneMesh.new()
+	q.size = Vector2(0.34, 0.234)
+	paper.mesh = q
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.85, 0.82, 0.74)
+	mat.emission_enabled = true
+	mat.emission = Color(0.54, 0.52, 0.47) * 0.6
+	paper.material_override = mat
+	_dread_note.add_child(paper)
+	var label := Label3D.new()
+	label.text = text
+	label.font_size = 44
+	label.pixel_size = 0.0006
+	label.modulate = Color(0.17, 0.15, 0.13)
+	label.outline_size = 0
+	label.width = 520.0
+	label.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
+	label.rotation.x = -PI * 0.5
+	label.position.y = 0.006
+	label.alpha_cut = Label3D.ALPHA_CUT_DISCARD
+	label.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_dread_note.add_child(label)
+	_dread_note.position = Vector3(float(p[0]), float(p[1]) + 0.006, float(p[2])) + fwd * (1.3 + fmod(seed * 7.0, 1.0) * 0.8)
+	_dread_note.rotation.y = seed * TAU
+	add_child(_dread_note)
+
+
+func dread_note_text() -> String:
+	if not is_instance_valid(_dread_note):
+		return ""
+	return (_dread_note.get_child(1) as Label3D).text
+
+
 func show_portal(visible_now: bool) -> void:
 	if not visible_now or scene_id != "lab1":
 		if is_instance_valid(_portal_ring):

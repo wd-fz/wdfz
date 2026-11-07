@@ -85,6 +85,7 @@ func _run() -> void:
 	_test_classmates_rules()
 	_test_sensory_rules()
 	_test_caption_rules()
+	_test_dread_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -2111,6 +2112,59 @@ func _test_caption_rules() -> void:
 	check(c.visible().is_empty(), "captions expire (the clock steps at most 0.25 s a frame)")
 	c.mode = 0
 	check(not c.enabled(0.7, false) and c.enabled(0.03, false) and c.enabled(0.7, true), "auto mode captions only when the sound is off or nearly")
+
+
+func _test_dread_rules() -> void:
+	check(absf(DreadModule.lhash("1:teach1:2") - 0.09446) < 0.000001 and absf(DreadModule.lhash("2:lab1:3") - 0.32188) < 0.000001, "the revisit hash is the Web version's lhashStr")
+	var d := DreadModule.new(CampusData.rooms())
+	d.reset()
+	var t1 := CampusData.layout("teach1")
+	var at := CampusGeometry.tile_center(t1, 30, 17)
+	var ctx := {"scene": "teach1", "x": at.x, "y": at.y, "ang": 0.0, "san": 100.0, "viol": 0.0, "night": 0.0, "day": 1}
+	d.set_context(ctx)
+	for _i in 590:
+		d.tick(0.1)
+	check(d.take_events().is_empty(), "nothing in the first minute of a run")
+	check(d.allow(1) and d.false_threat("knock"), "a false threat when the budget allows")
+	var ev := d.take_events()
+	var pl: Dictionary = ev[0]["place"] if not ev.is_empty() else {}
+	check(not ev.is_empty() and ev[0]["kind"] == "dread" and ev[0]["cue"] == "knock" and float(pl["m"]) >= 4.0 and float(pl["m"]) <= 16.0, "a knock at a door or wall 4–16 m away, placed")
+	check(not d.allow(1) and not d.false_threat("steps"), "mild scares are at least 9 s apart")
+	d.t += 30.0
+	check(d.allow(1) and d.allow(2), "after the gaps both are allowed again")
+	d.false_threat("run", 2)
+	d.t += 50.0
+	check(not d.allow(2), "strong scares in the same area wait 120 s")
+	d.t += 100.0
+	d.take_events()
+	d.false_threat("silence")
+	check(d.take_events()[0]["kind"] == "duck", "a hush drops the ambience")
+	var pre := ctx.duplicate()
+	pre["an_next"] = 2.0
+	pre["an_next0"] = 7
+	d.set_context(pre)
+	d.tick(0.1)
+	d.tick(0.1)
+	check(_of_kind(d.take_events(), "precursor").size() == 1, "one precursor 3.2 s before the next anomaly")
+	var busy := ctx.duplicate()
+	busy["busy"] = true
+	d.set_context(busy)
+	d.next_amb = 0.0
+	d.tick(0.1)
+	check(_of_kind(d.take_events(), "dread").is_empty(), "nothing while something real is going on")
+	var v := DreadModule.new(CampusData.rooms())
+	v.reset()
+	v.set_context(ctx)
+	v.enter("teach1")
+	check(v.visit_fx.is_empty(), "the first visit of the day is as usual")
+	v.enter("teach1")
+	var vev := v.take_events()
+	check(v.visit_fx.get("kind", "") == "lamp" and _of_kind(vev, "visit").size() == 1 and _of_kind(vev, "visit")[0]["fx"] == "lamp", "the second visit to teach1 on day 1 breaks a lamp (as the Web version)")
+	var back := DreadModule.new(CampusData.rooms())
+	back.restore(v.capture())
+	back.set_context(ctx)
+	back.enter("teach1", true)
+	check(back.visit_fx.get("kind", "") == "lamp" and back.visits["1:teach1"] == 2, "a load replays the same change without counting a visit")
 
 
 func _test_facility_rules() -> void:

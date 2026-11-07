@@ -26,3 +26,4 @@
 | [感官反馈](感官反馈/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_sensory.gd`：教学楼 1F 同一走廊在 SAN 100、35、8 时的画面（收窄、褪色） |
 | [体检日](体检日/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_checkup.gd` 注入第三天为体检日、10:25：行政楼一楼走廊排队的人与门牌、身高尺与体重秤、视力表（占位几何） |
 | [声音字幕](声音字幕/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_captions.gd`：教学楼 1F，下课铃与左侧隔墙的敲门声的字幕 |
+| [氛围](氛围/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_dread.gd`：同一天第二次回到教学楼 1F 时地上的纸条（回访变化） |
