@@ -25,30 +25,12 @@ func _capture() -> void:
 	root.add_child(app)
 	await _save_frame("menu.png")
 	app.start_new_game()
-	await _save_frame("first-investigation.png")
-	# Presentation fixtures use the same commands as play; no fabricated save data.
-	for id: StringName in [&"investigation.desk", &"investigation.notice", &"investigation.cabinet", &"investigation.door"]:
-		app.session.interact(id)
-	app.open_inventory()
-	app.inventory().select(app.inventory().items().find("roomkey"))
-	await _save_frame("inventory-desktop.png")
-	app.close_inventory()
+	await _save_frame("migration-lab.png")
 	app.ui.set_touch_enabled(true)
 	root.size = Vector2i(390, 844)
 	await _save_frame("touch-portrait.png")
-	app.open_inventory()
-	await _save_frame("inventory-portrait.png")
-	var scroll: ScrollContainer = app.ui.inventory_panel.get_node("Margin/Page/Scroll")
-	scroll.ensure_control_visible(app.ui.inventory_panel.get_node("%Notes"))
-	await _save_frame("inventory-notes-portrait.png")
-	app.close_inventory()
 	app.pause_game()
 	await _save_frame("pause-portrait.png")
-	app.return_to_menu()
-	root.size = Vector2i(1280, 720)
-	app.initial_world = "migration_lab"
-	app.start_new_game()
-	await _save_frame("migration-lab.png")
 	app.queue_free()
 	paused = false
 	await process_frame

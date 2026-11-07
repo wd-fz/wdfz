@@ -1,10 +1,9 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://ui/game_ui.gd" id="1"]
 [ext_resource type="Script" path="res://ui/touch_stick.gd" id="2"]
 [ext_resource type="Script" path="res://ui/touch_look.gd" id="3"]
 [ext_resource type="Theme" path="res://content/ui/theme.tres" id="4"]
-[ext_resource type="PackedScene" path="res://ui/inventory_panel.tscn" id="5"]
 
 [node name="UI" type="CanvasLayer"]
 layer = 10
@@ -73,20 +72,20 @@ horizontal_alignment = 1
 
 [node name="Description" type="Label" parent="Root/Menu/Margin/Center/Content"]
 layout_mode = 2
-text = "首条移植流程 · 调查、钥匙与机房\n完整校园与生存压力正在迁移"
+text = "移植工作台 · 框架演示\n正式校园、异象与结局尚待移植"
 horizontal_alignment = 1
 autowrap_mode = 2
 [node name="NewGame" type="Button" parent="Root/Menu/Margin/Center/Content"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-text = "开始调查"
+text = "预知梦 · 新游戏"
 
 [node name="LoadGame" type="Button" parent="Root/Menu/Margin/Center/Content"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-text = "继续进度"
+text = "继续测试进度"
 
 [node name="TouchToggle" type="CheckButton" parent="Root/Menu/Margin/Center/Content"]
 unique_name_in_owner = true
@@ -97,7 +96,7 @@ text = "显示触屏控件（触屏设备自动启用）"
 [node name="Help" type="Label" parent="Root/Menu/Margin/Center/Content"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
-text = "WASD / 方向键移动 · 鼠标环视\nShift 奔跑 · E 交互 · Tab 背包 · Esc 暂停"
+text = "WASD / 方向键移动 · 鼠标环视\nShift 奔跑 · E 交互 · Esc 暂停"
 horizontal_alignment = 1
 
 [node name="PausePanel" type="Control" parent="Root"]
@@ -153,7 +152,7 @@ horizontal_alignment = 1
 
 [node name="Description" type="Label" parent="Root/PausePanel/Margin/Center/Content"]
 layout_mode = 2
-text = "世界模拟与输入已暂停\n进度保存在本机 user://saves/"
+text = "世界模拟与输入已暂停\n测试进度保存在本机 user://saves/"
 horizontal_alignment = 1
 autowrap_mode = 2
 
@@ -167,19 +166,13 @@ text = "继续"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-text = "保存进度"
+text = "保存测试进度"
 
 [node name="Reload" type="Button" parent="Root/PausePanel/Margin/Center/Content"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-text = "读取进度"
-
-[node name="PauseInventory" type="Button" parent="Root/PausePanel/Margin/Center/Content"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 48)
-layout_mode = 2
-text = "背包与调查记录"
+text = "读取测试进度"
 
 [node name="BackToMenu" type="Button" parent="Root/PausePanel/Margin/Center/Content"]
 unique_name_in_owner = true
@@ -215,12 +208,6 @@ mouse_filter = 2
 theme_override_font_sizes/font_size = 14
 text = "移植测试场景"
 
-[node name="InventoryButton" type="Button" parent="Root/HUD/Top"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(80, 48)
-layout_mode = 2
-text = "背包"
-
 [node name="PauseButton" type="Button" parent="Root/HUD/Top"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(80, 48)
@@ -253,22 +240,6 @@ theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
 theme_override_constants/shadow_outline_size = 5
 horizontal_alignment = 1
 autowrap_mode = 2
-
-[node name="Objective" type="Label" parent="Root/HUD"]
-unique_name_in_owner = true
-layout_mode = 1
-anchor_left = 0.08
-anchor_right = 0.92
-anchor_top = 1.0
-anchor_bottom = 1.0
-offset_top = -225.0
-offset_bottom = -185.0
-mouse_filter = 2
-horizontal_alignment = 1
-autowrap_mode = 2
-theme_override_font_sizes/font_size = 16
-theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
-theme_override_constants/shadow_outline_size = 5
 
 [node name="TouchControls" type="Control" parent="Root"]
 unique_name_in_owner = true
@@ -333,9 +304,6 @@ grow_horizontal = 0
 grow_vertical = 0
 toggle_mode = true
 text = "奔跑"
-
-[node name="InventoryPanel" parent="Root" instance=ExtResource("5")]
-unique_name_in_owner = true
 
 [node name="Toast" type="Label" parent="Root"]
 unique_name_in_owner = true
