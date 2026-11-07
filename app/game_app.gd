@@ -86,7 +86,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(), ClassmatesModule.new(CampusData.rooms()), DreadModule.new(CampusData.rooms()), AtmosModule.new(CampusData.rooms()), MonoModule.new(CampusData.rooms()), InvestigationModule.new(), ExplorationModule.new(CampusData.rooms()), CameraModule.new()]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(CampusData.rooms()), ClassmatesModule.new(CampusData.rooms()), DreadModule.new(CampusData.rooms()), AtmosModule.new(CampusData.rooms()), MonoModule.new(CampusData.rooms()), InvestigationModule.new(), ExplorationModule.new(CampusData.rooms()), CameraModule.new()]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -737,6 +737,9 @@ func _campus_step(delta: float) -> void:
 	if _hint_cooldown <= 0.0 and not player.has_focus():
 		_hint_cooldown = 0.1
 		var radio_hint := broadcast().hint() if broadcast() != null else ""
+		if radio_hint == "" and marks() != null:
+			marks().set_context(_marks_context())
+			radio_hint = marks().box_hint()
 		if radio_hint == "" and body() != null:
 			body().set_context(_body_context())
 			radio_hint = body().hint()
@@ -775,6 +778,12 @@ func _campus_interact() -> void:
 		radio.set_context(_broadcast_context())
 		if radio.use_here():
 			_apply_broadcast_events()
+			return
+	var keepsakes := marks()
+	if keepsakes != null:
+		keepsakes.set_context(_marks_context())
+		if keepsakes.use_box():
+			_apply_marks_events()
 			return
 	var limbs := body()
 	if limbs != null:
@@ -1800,6 +1809,13 @@ func _apply_dread_events() -> void:
 # ---- settings (app/game_settings.gd) ----
 
 func _setting_changed(key: String, value: int) -> void:
+	if key == "clear_last_life":
+		_write_side("last_life.json", null)
+		if marks() != null:
+			marks().last_life = null
+		_marks_key = ""
+		ui.show_notice("已清除上一局的痕迹")
+		return
 	if key == "reset_comfort":
 		settings.reset_comfort()
 		ui.show_settings(settings.values)
@@ -2606,6 +2622,8 @@ func _apply_marks_events() -> void:
 		return
 	for e: Dictionary in mk.take_events():
 		match e["kind"]:
+			"record":
+				_record(e)
 			"notice", "toast":
 				ui.show_notice(String(e["text"]))
 			"save":

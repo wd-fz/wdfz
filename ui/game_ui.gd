@@ -874,6 +874,11 @@ func show_settings(values: Dictionary) -> void:
 		scroll.add_child(_settings_box)
 		outer.add_child(scroll)
 		var buttons := HBoxContainer.new()
+		var wipe := Button.new()
+		wipe.name = "ClearLastLife"
+		wipe.text = "清除上一局的痕迹"
+		wipe.pressed.connect(func() -> void: setting_changed.emit("clear_last_life", 0))
+		buttons.add_child(wipe)
 		var reset := Button.new()
 		reset.text = "恢复操作与文字默认"
 		reset.pressed.connect(func() -> void: setting_changed.emit("reset_comfort", 0))

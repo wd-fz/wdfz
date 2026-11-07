@@ -21,6 +21,11 @@ var serial := 0
 var last_life: Variant = null   # {scene, x, y, tsec, day} copied in at the start of the run
 var events: Array = []
 var _c: Dictionary = {}
+var _rooms: Dictionary = {}
+
+
+func _init(rooms: Dictionary = {}) -> void:
+	_rooms = rooms
 var _pending: Dictionary = {}
 
 
@@ -72,6 +77,34 @@ func _emit(kind: String, payload: Dictionary = {}) -> void:
 	var e := payload.duplicate()
 	e["kind"] = kind
 	events.append(e)
+
+
+## The lost-and-found box at the guard post (last-life.js): holds last run's student card, the photo
+## blank, the day and time pencilled on the back. Only when the last run's death left a trace.
+const BOX := {"room": "guard1", "c": 4, "r": 6}
+
+
+func near_box() -> bool:
+	if last_life == null or String(_c.get("scene", "")) != BOX["room"] or not _rooms.has(BOX["room"]):
+		return false
+	var r: Dictionary = _rooms[BOX["room"]]
+	var p := Vector2(float(r["ox"]) + (int(BOX["c"]) + 0.5) * float(r["tw"]), float(r["oy"]) + (int(BOX["r"]) + 0.5) * float(r["th"]))
+	return Vector2(float(_c.get("x", 0.0)), float(_c.get("y", 0.0))).distance_to(p) < 1.4 * float(r["tw"])
+
+
+func box_hint() -> String:
+	return "失物招领箱" if near_box() else ""
+
+
+## E at the box. True when it was handled.
+func use_box() -> bool:
+	if not near_box():
+		return false
+	var d: Dictionary = last_life
+	var when := "第 %d 天 %s" % [int(d.get("day", 1)), SchoolClock.fmt_clock(float(d.get("tsec", 700)))]
+	_say("我：失物招领箱里有一张学生证。班号是我们班，照片那一栏是空的。\n背面用铅笔写着：" + when + "。")
+	_emit("record", {"id": "lastLife", "text": "保安岗失物招领箱里的学生证：照片是空的，背面写着「%s」。" % when, "kind": "线索", "source": "保安岗"})
+	return true
 
 
 func _say(text: String) -> void:

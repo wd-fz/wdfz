@@ -98,6 +98,7 @@ func _run() -> void:
 	_test_snake_rules()
 	_test_run_new_rules()
 	_test_duty_rules()
+	_test_last_life_box()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -2806,6 +2807,25 @@ func _test_duty_rules() -> void:
 	check(mine.call(0) == 0 and mine.call(1) == 1 and mine.call(2) == 5 and mine.call(3) == 10 and mine.call(4) == 15, "tier 1 one square today, 2 the first square every day, 3 two a day, 4 all fifteen")
 	check(DutyRoster.is_mine(1, 0, 2, 2) and not DutyRoster.is_mine(1, 0, 3, 2) and not DutyRoster.is_mine(1, 1, 2, 2), "tier 1 is today's first square only")
 	check(DutyRoster.NAMES.size() == 16 and DutyRoster.NAMES[0] == "王浩" and DutyRoster.DAYS == ["周一", "周二", "周三", "周四", "周五"], "the names and weekdays are the Web version's")
+
+
+func _test_last_life_box() -> void:
+	var rooms := CampusData.rooms()
+	var g := CampusData.layout("guard1")
+	var at := Vector2(float(g["ox"]) + 4.5 * float(g["tw"]), float(g["oy"]) + 6.5 * float(g["th"]))
+	var m := MarksModule.new(rooms)
+	m.reset()
+	m.set_context({"scene": "guard1", "x": at.x, "y": at.y})
+	check(not m.near_box() and m.box_hint() == "" and not m.use_box(), "no box without a trace of the last run")
+	m.last_life = {"scene": "teach1", "x": 10.0, "y": 10.0, "tsec": 745, "day": 2}
+	check(m.near_box() and m.box_hint() == "失物招领箱", "with a trace, the lost-and-found box by the guard counter is offered")
+	check(m.use_box(), "E at the box reads the card")
+	var ev := m.take_events()
+	check(String(ev[0]["text"]).contains("照片那一栏是空的") and String(ev[0]["text"]).contains("第 2 天 12:25") and ev[1]["kind"] == "record" and ev[1]["id"] == "lastLife" and ev[1]["source"] == "保安岗", "the card is blank, the day and time are pencilled on the back, and it is noted")
+	m.set_context({"scene": "guard1", "x": at.x + 100.0, "y": at.y})
+	check(not m.near_box(), "only close to the box")
+	m.set_context({"scene": "teach1", "x": at.x, "y": at.y})
+	check(not m.near_box(), "only at the guard post")
 
 
 func _test_facility_rules() -> void:
