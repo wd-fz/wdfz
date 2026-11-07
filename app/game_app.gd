@@ -12,10 +12,16 @@ var session: GameSession
 var saves := SaveStore.new()
 var _hint_cooldown := 0.0
 var _choice_handler: Callable
+var _death_hold := 0.0
+var _death_wait := 0.0
+## "" while alive, "fade" while the (not yet ported) death scene plays, "card" on the record card.
+var _death_phase := ""
 
 
 func _ready() -> void:
 	ui.new_requested.connect(start_new_game)
+	ui.new_hard_requested.connect(start_new_game.bind("hard"))
+	ui.death_menu_requested.connect(return_to_menu)
 	ui.load_requested.connect(load_game)
 	ui.save_requested.connect(save_game)
 	ui.menu_requested.connect(return_to_menu)
@@ -39,7 +45,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus())]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new()]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -49,6 +55,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func story() -> StoryModule:
+	return session.modules.get_module(&"story.death") as StoryModule if session != null else null
 
 
 func items() -> InventoryModule:
@@ -63,7 +73,7 @@ func elevator() -> ElevatorModule:
 	return session.modules.get_module(&"campus.elevator") as ElevatorModule if session != null else null
 
 
-func start_new_game() -> void:
+func start_new_game(difficulty: String = "easy") -> void:
 	var candidate := _make_session()
 	if candidate == null:
 		return
@@ -72,6 +82,9 @@ func start_new_game() -> void:
 		ui.show_notice(error)
 		return
 	candidate.start(initial_world)
+	var fate := candidate.modules.get_module(&"story.death") as StoryModule
+	if fate != null:
+		fate.diff = difficulty if difficulty in StoryModule.DIFFICULTIES else "easy"
 	var rules := candidate.modules.get_module(&"campus.world") as CampusModule
 	var pose := rules.start_pose() if rules != null and initial_world == rules.start_world() else router.current.spawn_pose()
 	# Game.start: the run begins seated on the player's own seat in teach1.
@@ -110,8 +123,12 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	resume_game()
 
 
+func _dead() -> bool:
+	return story() != null and story().dead
+
+
 func save_game() -> void:
-	if session == null or not session.running:
+	if session == null or not session.running or _dead():
 		return
 	var snapshot := session.capture(player.capture_pose())
 	var error := session.validate(snapshot, router.known_ids())
@@ -144,7 +161,8 @@ func load_game() -> void:
 
 
 func pause_game() -> void:
-	if session == null or not session.running:
+	# Game.pause: no pause menu once dead (a death cannot be saved around).
+	if session == null or not session.running or _dead():
 		return
 	player.enabled = false
 	player.clear_input()
@@ -154,7 +172,7 @@ func pause_game() -> void:
 
 
 func resume_game() -> void:
-	if session == null or not session.running:
+	if session == null or not session.running or _dead():
 		return
 	get_tree().paused = false
 	player.enabled = true
@@ -165,6 +183,9 @@ func resume_game() -> void:
 
 func return_to_menu() -> void:
 	ui.hide_choice()
+	ui.hide_death()
+	_death_hold = 0.0
+	_death_phase = ""
 	ui.hide_bag()
 	ui.reset_status()
 	player.seated = false
@@ -218,7 +239,14 @@ func _campus_step(delta: float) -> void:
 	var rules := campus()
 	if rules == null or not rules.knows(session.world_id):
 		return
+	var fate := story()
+	if fate != null and fate.dead:
+		_death_step(delta)
+		return
 	_school_step(delta, rules)
+	_handle_deaths()
+	if fate != null and fate.dead:
+		return
 	var lift := elevator()
 	if lift != null:
 		var stepped := lift.step(delta, session.world_id, player.capture_pose())
@@ -351,6 +379,9 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	if day_rules.seated and not player.has_focus():
 		ui.show_prompt("站起来")
 	ui.show_stamina(day_rules.stam, day_rules.stamina_max(), day_rules.tired)
+	var lit := _campus_world()
+	if lit != null:
+		lit.update_lighting(delta, day_rules.tsec, player.camera)
 
 
 ## canStand (world.js): is there room for the body (radius 3 units) at this old world point?
@@ -453,6 +484,109 @@ func _set_hot(index: int, id: String) -> void:
 	if bag != null and bag.set_hot(index, id):
 		ui.show_notice("「%s」放到快捷栏 %d" % [bag.item_name(id), index + 1])
 		ui.show_bag(_bag_entries())
+
+
+# ---- deaths (story.js kill / dreamWake) ----
+
+func _handle_deaths() -> void:
+	var day_rules := school()
+	var fate := story()
+	if day_rules == null or fate == null:
+		return
+	for req: Dictionary in day_rules.take_deaths():
+		kill(String(req["msg"]), String(req["fx"]), String(req["source"]))
+		if fate.dead:
+			return
+
+
+func kill(msg: String, fx: String, source: String) -> void:
+	var fate := story()
+	if fate == null or fate.dead:
+		return
+	var bag := items()
+	var result := fate.kill(msg, fx, source, {"day": school().day if school() != null else 1, "has_elixir": bag != null and bag.has("elixir")})
+	if result.has("protected"):
+		bag.remove("elixir")
+		school().survive(source)
+		_apply_result(result)
+		return
+	if not result.get("dead", false):
+		return
+	player.enabled = false
+	player.clear_input()
+	ui.hide_choice()
+	ui.hide_bag()
+	if bag != null:
+		bag.cancel_search()
+	if school() != null:
+		school().cancel_inspection()
+	if elevator() != null:
+		elevator().cancel()
+	ui.set_lift_close(false)
+	ui.show_search(0.0)
+	get_tree().paused = false
+	_death_hold = float(result["hold"])
+	_death_wait = 0.0
+	_death_phase = "fade"
+	ui.show_notice(msg)
+	var updated := fate.log_death(_read_death_log(), school().day if school() != null else 1, session.world_id)
+	_write_death_log(updated)
+	if not result["wake"]:
+		saves.clear()
+		ui.set_save_available(saves.exists())
+
+
+func _death_log_path() -> String:
+	return saves.side_path("death_log.json")
+
+
+func _read_death_log() -> Dictionary:
+	var path := _death_log_path()
+	if not FileAccess.file_exists(path):
+		return {}
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	return parsed if parsed is Dictionary and SaveSchema.is_json_value(parsed) else {}
+
+
+func _write_death_log(record: Dictionary) -> void:
+	DirAccess.make_dir_recursive_absolute(_death_log_path().get_base_dir())
+	var file := FileAccess.open(_death_log_path(), FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(record))
+		file.close()
+
+
+func _death_step(delta: float) -> void:
+	if _death_phase != "fade":
+		return
+	_death_wait += delta
+	ui.show_death_fade(minf(1.0, _death_wait / maxf(0.2, _death_hold)) * 0.9)
+	# story.js deathSkip: at least 0.6 s of the scene, then a key skips to the result.
+	var skip := _death_wait >= 0.6 and (Input.is_action_just_pressed("interact") or Input.is_action_just_pressed("ui_accept"))
+	if _death_wait >= _death_hold or skip:
+		_finish_death()
+
+
+func _finish_death() -> void:
+	var fate := story()
+	if fate.wake_pending:
+		var left := fate.finish_wake()
+		_death_phase = ""
+		school().dream_wake_reset()
+		campus().close_all_doors()
+		if items() != null:
+			items().snack_t = 0.0
+		var seated := school().start_seated("teach1")
+		travel("teach1", seated, false)
+		player.seated = true
+		player.enabled = true
+		ui.hide_death()
+		ui.show_notice("……我猛地抬起头，后背全是汗。我还坐在自己的位子上。\n刚才那些——是梦吗？可我记得每一条走廊。\n" +
+			("预知梦 · 还能再醒 %d 次" % left if left > 0 else "预知梦 · 下一次，不会再醒了"))
+		return
+	_death_phase = "card"
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	ui.show_death_card(fate.death_msg, fate.epitaph(), fate.cause(), StoryModule.hints(_read_death_log()))
 
 
 func _open_choice(choice: Dictionary) -> void:

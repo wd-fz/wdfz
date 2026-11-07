@@ -87,6 +87,13 @@ func is_open(key: String) -> bool:
 	return _open_doors.has(key)
 
 
+## dreamWake: back at 11:40 every opened door is closed again (OPENDOORS = {}).
+func close_all_doors() -> void:
+	for key: String in _open_doors.keys():
+		door_changed.emit(key, false)
+	_open_doors.clear()
+
+
 func open_doors() -> Dictionary:
 	return _open_doors.duplicate()
 

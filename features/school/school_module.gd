@@ -5,9 +5,9 @@ extends FeatureModule
 ## domain/player-stats.js (StatRules), input.js stamina, campus-pressure.js, interact.js sitDown,
 ## world.js leaveSeat (stand positions exported per seat), ui/hud.js place/period text.
 ##
-## Not ported yet (each says where it plugs in): death on SAN 0 and the assimilation ending
-## (story.js kill / resolveAssimilation) — reported through `pending_story`; inspections, leave
-## slips, outing permits, exams, danger zones, anomalies, patrol threats and talents.
+## Deaths (SAN 0, assimilation 100) are requested through `take_deaths()` and resolved by the
+## story module (story.js kill). Not ported yet: leave slips, exams, danger zones, anomalies,
+## patrol threats and talents.
 
 const STATE_VERSION := 1
 const TT_CFG := {"seat": 0.26, "dorm": 0.22, "decay": 0.6}
@@ -47,7 +47,7 @@ var tt_tier := 0
 var pressure_clock := START_TSEC
 var pressure_seen := 0
 var viol_full := false
-var pending_story := ""          # "san" | "assimilation" once the story port takes over
+var _deaths: Array = []
 ## Inspection state (RT.inspection) and the outing permit it grants (RT.outing).
 var inspection := {}
 var outing := {}
@@ -84,7 +84,7 @@ func reset() -> void:
 	pressure_clock = START_TSEC
 	pressure_seen = 0
 	viol_full = false
-	pending_story = ""
+	_deaths = []
 	_notices = PackedStringArray()
 	inspection = {"seen": {}, "warned": {}, "queue": [], "current": {}, "settled": {}, "calm": 0.0}
 	outing = {}
@@ -93,7 +93,7 @@ func reset() -> void:
 func capture() -> Dictionary:
 	return {"tsec": tsec, "day": day, "san": san, "viol": viol, "tt": tt, "stam": stam, "tired": tired,
 		"seated": seated, "seat_id": seat_id, "tt_tier": tt_tier, "pressure_clock": pressure_clock,
-		"pressure_seen": pressure_seen, "viol_full": viol_full, "pending_story": pending_story,
+		"pressure_seen": pressure_seen, "viol_full": viol_full,
 		"inspection": inspection.duplicate(true), "outing": outing.duplicate(true)}
 
 
@@ -109,8 +109,6 @@ func validate(data: Dictionary) -> String:
 		return "座位无效"
 	if not SaveSchema.number_in(data.get("pressure_clock"), 0, 1e9) or not SaveSchema.is_integer(data.get("pressure_seen"), 0, 5):
 		return "校园压力无效"
-	if not data.get("pending_story") is String:
-		return "剧情状态无效"
 	var ins: Variant = data.get("inspection", {})
 	if not ins is Dictionary or not ins.get("queue", []) is Array or not ins.get("seen", {}) is Dictionary:
 		return "检查状态无效"
@@ -133,7 +131,7 @@ func restore(data: Dictionary) -> void:
 	pressure_clock = float(data["pressure_clock"])
 	pressure_seen = int(data["pressure_seen"])
 	viol_full = bool(data.get("viol_full", false))
-	pending_story = String(data["pending_story"])
+	_deaths = []
 	inspection = {"seen": {}, "warned": {}, "queue": [], "current": {}, "settled": {}, "calm": 0.0}
 	inspection.merge(data.get("inspection", {}).duplicate(true), true)
 	for item: Dictionary in inspection["queue"]:
@@ -177,12 +175,8 @@ func change_san(amount: float, minimum: float = -INF) -> void:
 func _settle_san() -> void:
 	san = clampf(san, 0.0, 100.0)
 	stam = clampf(stam, 0.0, stamina_max())
-	if san <= 0.0:
-		# systems.js settleSan -> kill(..., 'san'). Story/death is not ported: hold at 1 and flag it.
-		if pending_story.is_empty():
-			pending_story = "san"
-			_say("（死亡与结局尚未移植：SAN 已耗尽）")
-		san = 1.0
+	if san <= 0.0 and not _requested("san"):
+		_deaths.append({"msg": "你一直撑着的那根弦，断了。", "fx": "vignette", "source": "san"})
 
 
 func _add_violation(amount: float, exempt: bool) -> void:
@@ -423,6 +417,10 @@ func _rule_there(nw: String, world_id: String, w: Vector2) -> bool:
 
 
 func _san_tick(dt: float, nw: String, world_id: String, w: Vector2) -> void:
+	# systems.js sanTick: SAN <= 0 is judged first, before any recovery of this step.
+	if san <= 0.0:
+		_settle_san()
+		return
 	if inspection_active():
 		return # sanTick: no daily recovery during an inspection.
 	var gain := dt * float(pressure()["passive"])
@@ -492,10 +490,51 @@ func _tt_tick(dt: float, nw: String, world_id: String) -> void:
 
 
 func _resolve_assimilation() -> void:
-	# systems.js resolveAssimilation leads into the assimilation ending; the story port takes over here.
-	if pending_story.is_empty():
-		pending_story = "assimilation"
-		_say("（结局尚未移植：同化已满）")
+	if not _requested("assimilation"):
+		_deaths.append({"msg": "你在自己的位子上坐好了。椅子很合身，像是照着你做的。这一次，不用再起来了。", "fx": "names", "source": "assimilation"})
+
+
+func _requested(source: String) -> bool:
+	for d: Dictionary in _deaths:
+		if d["source"] == source:
+			return true
+	return false
+
+
+## Inspection.cancel (story.js kill): a running check is dropped without settling.
+func cancel_inspection() -> void:
+	inspection["current"] = {}
+
+
+## Deaths the rules ran into this step (systems.js settleSan / resolveAssimilation -> kill).
+func take_deaths() -> Array:
+	var out := _deaths
+	_deaths = []
+	return out
+
+
+## story.js survivalReset after a protected death; the assimilation case falls back to 86.
+func survive(source: String) -> void:
+	san = maxf(san, 45.0)
+	viol = minf(viol, 40.0)
+	if source == "assimilation":
+		tt = 86.0
+		tt_tier = 4
+	_settle_san()
+
+
+## story.js dreamWake: back to 11:40 on the own seat; the day, bag and found things stay.
+func dream_wake_reset() -> void:
+	tsec = START_TSEC
+	san = 78.0
+	viol = 0.0
+	stam = 100.0
+	tired = false
+	tt = 0.0
+	tt_tier = 0
+	wrong = false
+	inspection["current"] = {}
+	inspection["queue"] = []
 
 
 func _pressure_tick() -> void:

@@ -99,6 +99,16 @@ func restore(data: Dictionary) -> void:
 	_rng.state = int(String(data["rng_state"]))
 
 
+## Elevator.cancel (story.js kill): the ride ends, the car returns to its origin floor.
+func cancel() -> void:
+	if not ride.is_empty() and ride.get("host") in HOSTS:
+		var lift: Dictionary = lifts[ride["host"]]
+		lift["floor"] = int(ride["origin"])
+		lift["phase"] = "idle"
+		lift["remaining"] = 0.0
+	ride = {}
+
+
 func take_notices() -> PackedStringArray:
 	var out := _notices
 	_notices = PackedStringArray()

@@ -14,6 +14,17 @@ func exists() -> bool:
 	return FileAccess.file_exists(path)
 
 
+## story.js clearSave on a final death: the run cannot be loaded again (the .bak stays for recovery).
+func clear() -> void:
+	if exists():
+		DirAccess.remove_absolute(path)
+
+
+## Small JSON side files next to the save (e.g. the cross-run death log).
+func side_path(name: String) -> String:
+	return path.get_base_dir().path_join(name)
+
+
 func write(data: Dictionary) -> String:
 	if not SaveSchema.is_json_value(data):
 		return "存档包含无法保存的临时对象或非有限数值"

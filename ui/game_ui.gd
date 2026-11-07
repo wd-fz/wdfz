@@ -2,6 +2,8 @@ class_name GameUI
 extends CanvasLayer
 
 signal new_requested
+signal new_hard_requested
+signal death_menu_requested
 signal load_requested
 signal save_requested
 signal menu_requested
@@ -49,6 +51,13 @@ func _ready() -> void:
 	_build_choice()
 	_build_status()
 	_build_bag()
+	_build_death()
+	var hard := Button.new()
+	hard.name = "HardGame"
+	hard.text = "梦魇 · 新游戏"
+	hard.custom_minimum_size = Vector2(0, 48)
+	hard.pressed.connect(func() -> void: new_hard_requested.emit())
+	%NewGame.add_sibling(hard)
 	set_touch_enabled(DisplayServer.is_touchscreen_available())
 	get_tree().root.size_changed.connect(_resize)
 	_resize()
@@ -224,6 +233,59 @@ func show_search(progress: float) -> void:
 
 func show_hot(text: String) -> void:
 	_hot_label.text = text
+
+
+## Death: a dark red fade while the (not yet ported) death scene would play, then the record
+## card with message, epitaph, cause and repeated-death hints (old #die panel).
+var _death_fade: ColorRect
+var death_panel: PanelContainer
+var _death_text: Label
+
+
+func _build_death() -> void:
+	_death_fade = ColorRect.new()
+	_death_fade.name = "DeathFade"
+	_death_fade.color = Color(0.1, 0.0, 0.0, 0.0)
+	_death_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_death_fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	$Root.add_child(_death_fade)
+	death_panel = PanelContainer.new()
+	death_panel.name = "DeathPanel"
+	death_panel.visible = false
+	death_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	death_panel.custom_minimum_size = Vector2(480, 0)
+	var box := VBoxContainer.new()
+	_death_text = Label.new()
+	_death_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_death_text.custom_minimum_size = Vector2(440, 0)
+	box.add_child(_death_text)
+	var back := Button.new()
+	back.text = "回到主菜单"
+	back.pressed.connect(func() -> void: death_menu_requested.emit())
+	box.add_child(back)
+	death_panel.add_child(box)
+	$Root.add_child(death_panel)
+
+
+func show_death_fade(alpha: float) -> void:
+	_death_fade.color.a = clampf(alpha, 0.0, 0.92)
+
+
+func show_death_card(message: String, epitaph: String, cause: String, hints: PackedStringArray) -> void:
+	var lines := [message]
+	if not epitaph.is_empty():
+		lines.append("「%s」" % epitaph)
+	if not cause.is_empty():
+		lines.append(cause)
+	for h: String in hints:
+		lines.append("· " + h)
+	_death_text.text = "\n\n".join(lines)
+	death_panel.visible = true
+
+
+func hide_death() -> void:
+	death_panel.visible = false
+	_death_fade.color.a = 0.0
 
 
 func show_choice(text: String, labels: Array) -> void:

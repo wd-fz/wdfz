@@ -79,7 +79,7 @@ autowrap_mode = 2
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-text = "进入测试场景"
+text = "预知梦 · 新游戏"
 
 [node name="LoadGame" type="Button" parent="Root/Menu/Margin/Center/Content"]
 unique_name_in_owner = true

@@ -62,10 +62,14 @@ func _run() -> void:
 	_test_elevator_rules()
 	_test_school_rules()
 	_test_inventory_rules()
+	_test_story_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
 			DirAccess.remove_absolute(_test_path + suffix)
+	var death_log := _test_path.get_base_dir().path_join("death_log.json")
+	if FileAccess.file_exists(death_log):
+		DirAccess.remove_absolute(death_log)
 	DirAccess.remove_absolute(_test_path.get_base_dir())
 	print("FRAMEWORK TESTS: %d checks, %d failures" % [_checks, _failures.size()])
 	quit(0 if _failures.is_empty() else 1)
@@ -604,6 +608,59 @@ func _test_inventory_rules() -> void:
 	check(not bag.validate(saved).is_empty(), "unknown items are rejected")
 
 
+func _test_story_rules() -> void:
+	var fate := StoryModule.new()
+	fate.reset()
+	var first := fate.kill("你一直撑着的那根弦，断了。", "vignette", "san", {"day": 1, "has_elixir": false})
+	check(first.get("dead", false) and first["wake"] and is_equal_approx(first["hold"], 2.0), "day-one death on 预知梦 wakes and the scene lasts 2 s")
+	check(fate.kill("x", "grip", "patrol", {"day": 1, "has_elixir": false}).is_empty(), "a second kill while dead is ignored")
+	check(fate.epitaph() == "有人替你应了一声\"到\"。" and fate.cause().begins_with("你的理智已经耗尽"), "epitaph and cause come from the old tables")
+	check(fate.finish_wake() == 2 and not fate.dead, "the first wake leaves two")
+	fate.kill("x", "names", "assimilation", {"day": 1, "has_elixir": false})
+	fate.finish_wake()
+	fate.kill("x", "names", "assimilation", {"day": 1, "has_elixir": false})
+	check(fate.finish_wake() == 0, "three wakes at most")
+	var fourth := fate.kill("x", "names", "assimilation", {"day": 1, "has_elixir": false})
+	check(fourth["wake"] == false, "after three wakes the next death is final")
+	fate.reset()
+	check(fate.kill("x", "grip", "patrol", {"day": 2, "has_elixir": false})["wake"] == false, "no wake after day one")
+	fate.reset()
+	fate.diff = "hard"
+	check(fate.kill("x", "grip", "patrol", {"day": 1, "has_elixir": false})["wake"] == false, "梦魇 never wakes")
+	fate.reset()
+	var saved := fate.kill("x", "grip", "patrol", {"day": 1, "has_elixir": true})
+	check(saved.get("protected") == "elixir" and not fate.dead, "the unknown pill takes the death instead")
+	check(is_equal_approx(StoryModule.duration("liftdoor"), 4.4) and is_equal_approx(StoryModule.duration("nonsense"), 2.0), "death scene durations follow DeathTimeline")
+	var record := {}
+	fate.reset()
+	fate.kill("x", "vignette", "san", {"day": 1, "has_elixir": false})
+	record = fate.log_death(record, 1, "teach1")
+	check(StoryModule.hints(record).is_empty(), "one death gives no hint yet")
+	fate.finish_wake()
+	fate.kill("x", "vignette", "san", {"day": 1, "has_elixir": false})
+	record = fate.log_death(record, 1, "out")
+	var clues := StoryModule.hints(record)
+	check(clues.size() == 1 and clues[0].begins_with("留意呼吸和画面变化"), "the same death twice gives its clue (deathHints)")
+	check(fate.validate(JSON.parse_string(JSON.stringify(fate.capture()))).is_empty(), "story state survives JSON")
+	var school := SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
+	school.reset()
+	school.san = 0.0
+	school.step(0.1, {"world_id": "out", "w": Vector2(1000, 1000), "moving": false, "running": false, "calendar": true})
+	var asked := school.take_deaths()
+	check(asked.size() == 1 and asked[0]["source"] == "san" and asked[0]["fx"] == "vignette", "SAN 0 asks for the vignette death")
+	school.san = 50.0
+	school.tt = 100.0
+	school.step(0.1, {"world_id": "out", "w": Vector2(1000, 1000), "moving": false, "running": false, "calendar": true})
+	asked = school.take_deaths()
+	check(asked.size() == 1 and asked[0]["source"] == "assimilation" and asked[0]["fx"] == "names", "assimilation 100 asks for the names death")
+	school.san = 0.0
+	school.tt = 100.0
+	school.survive("assimilation")
+	check(school.san >= 45.0 and is_equal_approx(school.tt, 86.0), "a protected assimilation death falls back to 86")
+	school.dream_wake_reset()
+	check(is_equal_approx(school.tsec, 700.0) and is_equal_approx(school.san, 78.0) and school.viol == 0.0 and school.tt == 0.0, "the dream wake returns to 11:40 with SAN 78")
+
+
 func _test_campus_app() -> void:
 	var app: GameApp = APP.instantiate()
 	app.saves = SaveStore.new(_test_path)
@@ -729,6 +786,50 @@ func _test_stair_walk(app: GameApp) -> void:
 	check(absf(app.player.position.y) < 0.2, "teach2 floor is at the scene's own ground level")
 	await _test_spiral_walk(app)
 	await _test_elevator_walk(app)
+	await _test_death_flow(app)
+	app.return_to_menu()
+
+
+func _test_death_flow(app: GameApp) -> void:
+	app.saves.clear()
+	app.start_new_game()
+	await _frames(3)
+	app.items().add("pen")
+	app.campus().interact_at("teach1", _campus_pose(CampusData.layout("teach1"), CampusGeometry.tile_center(CampusData.layout("teach1"), 10, 17), -PI * 0.5))
+	app.school().tsec = 900.0
+	app.school().san = 0.0
+	await _frames(3)
+	check(app.story().dead and app._death_phase == "fade" and not app.player.enabled, "SAN 0 kills: the run is dead and input stops")
+	app.pause_game()
+	check(not paused, "a dead player cannot open the pause menu")
+	app.save_game()
+	check(not app.saves.exists(), "a dead run cannot be saved")
+	await _frames(150)
+	check(not app.story().dead and app.story().wakes == 1 and app.router.current.world_id == &"teach1", "day one on 预知梦 wakes at the own seat")
+	check(absf(app.school().tsec - 700.0) < 1.5 and absf(app.school().san - 78.0) < 1.0 and app.school().seated and app.player.enabled,
+		"the dream wake is 11:40, SAN 78, seated, with control back (t %.2f san %.2f)" % [app.school().tsec, app.school().san])
+	check(app.items().has("pen"), "the bag survives the dream wake")
+	check(FileAccess.file_exists(app._death_log_path()), "the death is counted in the cross-run log")
+	app.school().day = 2
+	app.school().san = 0.0
+	await _frames(3)
+	check(app.story().dead and not app.story().wake_pending, "a day-two death is final")
+	app.save_game()
+	check(not app.saves.exists(), "the final death keeps the run from being saved")
+	await _frames(150)
+	check(app._death_phase == "card" and app.ui.death_panel.visible, "the record card shows after the scene")
+	Input.action_press("interact")
+	await _frames(3)
+	Input.action_release("interact")
+	check(app._death_phase == "card" and app.story().dead, "E on the card does nothing more")
+	app.return_to_menu()
+	check(not app.ui.death_panel.visible and app.session == null, "back to the menu clears the card")
+	app.start_new_game("hard")
+	await _frames(3)
+	check(app.story().diff == "hard", "梦魇 starts on the hard difficulty")
+	app.school().san = 0.0
+	await _frames(3)
+	check(app.story().dead and not app.story().wake_pending, "梦魇 deaths are final even on day one")
 	app.return_to_menu()
 
 
