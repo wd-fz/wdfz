@@ -42,6 +42,7 @@ func _ready() -> void:
 	ui.settings_requested.connect(func() -> void: ui.show_settings(settings.values))
 	ui.setting_changed.connect(_setting_changed)
 	ui.notes_requested.connect(_show_notes)
+	ui.map_requested.connect(_show_map)
 	ui.notes_focus_requested.connect(_notes_focus)
 	_apply_settings()
 	# ui.click on every button press (audio.js click), including buttons made later (choices).
@@ -83,7 +84,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(), ClassmatesModule.new(CampusData.rooms()), DreadModule.new(CampusData.rooms()), AtmosModule.new(CampusData.rooms()), MonoModule.new(CampusData.rooms()), InvestigationModule.new()]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(), ClassmatesModule.new(CampusData.rooms()), DreadModule.new(CampusData.rooms()), AtmosModule.new(CampusData.rooms()), MonoModule.new(CampusData.rooms()), InvestigationModule.new(), ExplorationModule.new(CampusData.rooms())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -97,6 +98,10 @@ func campus() -> CampusModule:
 
 func dread() -> DreadModule:
 	return session.modules.get_module(&"story.dread") as DreadModule if session != null else null
+
+
+func exploration() -> ExplorationModule:
+	return session.modules.get_module(&"campus.exploration") as ExplorationModule if session != null else null
 
 
 func investigation() -> InvestigationModule:
@@ -1036,6 +1041,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	_dread_step(delta)
 	_atmos_step(delta)
 	_mono_step(delta)
+	_explore_step(delta)
 	_anomaly_step(delta, day_rules, room, pose)
 	_audio_step(delta, watcher, day_rules, room, p)
 	_progress_step(watcher, day_rules, weird_now)
@@ -2017,6 +2023,94 @@ func _notes_focus(route: String) -> void:
 	if inv != null and inv.set_focus(route):
 		save_game()
 		_show_notes(ui._notes_search.text if ui._notes_search != null else "")
+
+
+# ---- the map page (features/campus/exploration_module.gd, ui/map_view.gd) ----
+
+func _explore_step(delta: float) -> void:
+	var ex := exploration()
+	var room: Variant = campus().room(session.world_id)
+	if ex == null or room == null or story().dead or get_tree().paused:
+		return
+	var p: Array = player.capture_pose()["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var rid := session.world_id
+	ex.set_context({"scene": rid, "x": w.x, "y": w.y, "door_open": func(c: int, r: int) -> bool: return campus().is_open(CampusGeometry.door_key(campus().room(rid), c, r))})
+	ex.tick(delta)
+
+
+## The mark of a tile on a sketch (exploration-map.js label): what was left behind, searched, locked, tried.
+func _map_label(r: Dictionary, c: int, row: int) -> String:
+	var key := "%s:%d:%d" % [r["id"], c, row]
+	var ch := String(r["grid"][row]).substr(c, 1)
+	var bag := items()
+	if bag != null and bag.pending_loot.has(key):
+		return "留"
+	if bag != null and bag.desk_used.has(key):
+		return "✓"
+	if ch == "=":
+		if campus().is_open(key):
+			return "开"
+		return "锁" if CampusData.campus().get("door_locks", {}).has(key) else "门"
+	if ch == "V":
+		return "×" if garage() != null and garage().car_tried.has("%d:%d" % [c, row]) else "车"
+	if ch == "K" and r.get("host") == "lab" and facilities() != null and (facilities().portal["blueprints"] as Dictionary).has(int(r.get("floor", 0))):
+		return "✓"
+	return MapView.static_mark(ch)
+
+
+func _show_map(selected: String = "") -> void:
+	var ex := exploration()
+	if ex == null:
+		return
+	var here_room: Variant = campus().room(session.world_id)
+	if here_room != null:
+		var p0: Array = player.capture_pose()["position"]
+		var w0 := CampusGeometry.to_world(here_room, float(p0[0]), float(p0[2]))
+		var rid0 := session.world_id
+		ex.set_context({"scene": rid0, "x": w0.x, "y": w0.y, "door_open": func(c: int, r: int) -> bool: return campus().is_open(CampusGeometry.door_key(campus().room(rid0), c, r))})
+		ex.observe()
+	var ids := ex.rooms()
+	if selected.is_empty():
+		selected = session.world_id if session.world_id in ids else "campus"
+	if selected != "campus" and not ids.has(selected):
+		selected = "campus"
+	var options: Array = [["campus", "校园总图"]]
+	for id: String in ids:
+		options.append([id, String(campus().room(id)["name"]) + ("　· 你在这里" if id == session.world_id else "")])
+	var pose := player.capture_pose()
+	var yaw_ang := CampusGeometry.ang_from_yaw(float(pose["yaw"]))
+	if selected == "campus":
+		var view := ui.open_map(options, selected, "走过 %d 处室内" % ids.size(), "")
+		var out: Dictionary = CampusData.layout("out")
+		var cam: Dictionary = CampusData.campus()
+		var bm: Dictionary = cam["bound_map"]
+		var objects: Array = out["objects"]
+		var me := Vector2.ZERO
+		var p: Array = pose["position"]
+		var sc := float(out.get("SC", 2.0))
+		if here_room != null:
+			for o: Dictionary in objects:
+				if o["id"] == here_room.get("host"):
+					me = Vector2(float(o["x"]) + float(o["w"]) / 2.0, float(o["y"]) + float(o["h"]) / 2.0)
+		else:
+			var w1 := CampusGeometry.to_world(null, float(p[0]), float(p[2]))
+			me = w1 / sc
+		var gates: Array = []
+		var gate_names := {"n": "北门", "w": "西小门", "s": "南门"}
+		for g: String in ["n", "w", "s"]:
+			gates.append([gate_names[g], float(cam["gates"][g]["x"]), float(cam["gates"][g]["y"])])
+		view.show_plan({"bound": {"x0": bm["x0"], "y0": bm["y0"], "x1": bm["x1"], "y1": bm["y1"]}, "objects": objects, "gates": gates, "me": me, "ang": yaw_ang})
+		return
+	var r: Dictionary = campus().room(selected)
+	var hereb := selected == session.world_id
+	var view2 := ui.open_map(options, selected, "%s　北 ↑　%s已看清 %d%%" % [r["name"], "你在这一层　" if hereb else "", ex.percent(selected)],
+		"空白处还没看到过。桌、柜、架等字表示看到过，不代表搜过。\n梯 楼梯　电 电梯　廊 连廊　出 出口　锁 门锁着　✓ 已解决　留 有东西没拿　× 钥匙不匹配")
+	var me2 := Vector2.ZERO
+	if hereb:
+		var p2: Array = pose["position"]
+		me2 = CampusGeometry.to_world(r, float(p2[0]), float(p2[2]))
+	view2.show_floor(r, ex.seen(selected), _map_label, me2, yaw_ang, hereb)
 
 
 # ---- the protagonist's muttering (features/story/mono_module.gd) ----

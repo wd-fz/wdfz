@@ -26,6 +26,7 @@ signal opening_finished(skipped: bool)
 signal terminal_closed
 signal sound_toggled(on: bool)
 signal settings_requested
+signal map_requested(id: String)
 signal notes_requested(query: String)
 signal notes_focus_requested(route: String)
 signal setting_changed(key: String, value: int)
@@ -125,6 +126,12 @@ func _ready() -> void:
 	notes_btn.custom_minimum_size = Vector2(0, 48)
 	notes_btn.pressed.connect(func() -> void: notes_requested.emit(""))
 	%Save.add_sibling(notes_btn)
+	var map_btn := Button.new()
+	map_btn.name = "MapPause"
+	map_btn.text = "地图"
+	map_btn.custom_minimum_size = Vector2(0, 48)
+	map_btn.pressed.connect(func() -> void: map_requested.emit(""))
+	%Save.add_sibling(map_btn)
 	load_button.owner = self
 	touch_toggle.owner = self
 	set_touch_enabled(DisplayServer.is_touchscreen_available())
@@ -1007,6 +1014,71 @@ func _note_label(text: String, color: Color) -> void:
 	l.custom_minimum_size = Vector2(480, 0)
 	l.modulate = color
 	_notes_box.add_child(l)
+
+
+# ---- the map page: the campus plan or the sketch of a walked floor ----
+
+var map_panel: PanelContainer
+var map_view: MapView
+var _map_select: OptionButton
+var _map_head: Label
+var _map_note: Label
+
+
+## options: [[id, label]] ("campus" is the plan); returns the view to configure.
+func open_map(options: Array, selected: String, head: String, note: String) -> MapView:
+	if map_panel == null:
+		map_panel = PanelContainer.new()
+		map_panel.name = "MapPanel"
+		map_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		map_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		map_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+		var back := StyleBoxFlat.new()
+		back.bg_color = Color(0.03, 0.05, 0.07, 0.99)
+		back.set_content_margin_all(12)
+		back.set_corner_radius_all(6)
+		map_panel.add_theme_stylebox_override("panel", back)
+		var outer := VBoxContainer.new()
+		outer.add_theme_constant_override("separation", 6)
+		var top := HBoxContainer.new()
+		var lab := Label.new()
+		lab.text = "查看"
+		top.add_child(lab)
+		_map_select = OptionButton.new()
+		_map_select.name = "MapSelect"
+		_map_select.custom_minimum_size = Vector2(240, 0)
+		_map_select.item_selected.connect(func(i: int) -> void: map_requested.emit(String(_map_select.get_item_metadata(i))))
+		top.add_child(_map_select)
+		outer.add_child(top)
+		_map_head = Label.new()
+		outer.add_child(_map_head)
+		var scroll := ScrollContainer.new()
+		scroll.custom_minimum_size = Vector2(480, 380)
+		map_view = MapView.new()
+		map_view.name = "MapView"
+		scroll.add_child(map_view)
+		outer.add_child(scroll)
+		_map_note = Label.new()
+		_map_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_map_note.custom_minimum_size = Vector2(480, 0)
+		_map_note.modulate = Color(1, 1, 1, 0.6)
+		outer.add_child(_map_note)
+		var close := Button.new()
+		close.text = "关闭"
+		close.pressed.connect(func() -> void: map_panel.visible = false)
+		outer.add_child(close)
+		map_panel.add_child(outer)
+		$Root.add_child(map_panel)
+	_map_select.clear()
+	for o: Array in options:
+		_map_select.add_item(String(o[1]))
+		_map_select.set_item_metadata(_map_select.item_count - 1, String(o[0]))
+		if o[0] == selected:
+			_map_select.select(_map_select.item_count - 1)
+	_map_head.text = head
+	_map_note.text = note
+	map_panel.visible = true
+	return map_view
 
 
 func sensory_on() -> bool:

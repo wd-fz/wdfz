@@ -91,6 +91,7 @@ func _run() -> void:
 	_test_scene_rules()
 	_test_settings_rules()
 	_test_investigation_rules()
+	_test_exploration_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -2559,6 +2560,55 @@ func _test_investigation_rules() -> void:
 	for i in 12:
 		many.record("r%d" % i, "t", "线索")
 	check(many.recent.size() == 8 and many.recent[0] == "r4", "only the last eight finds are remembered")
+
+
+func _test_exploration_rules() -> void:
+	var rooms := CampusData.rooms()
+	var t1: Dictionary = rooms["teach1"]
+	var ex := ExplorationModule.new(rooms)
+	ex.reset()
+	var at := CampusGeometry.tile_center(t1, 20, 18)
+	var open_doors := {}
+	ex.set_context({"scene": "teach1", "x": at.x, "y": at.y, "door_open": func(c: int, r: int) -> bool: return open_doors.has("%d:%d" % [c, r])})
+	check(ex.rooms().is_empty() and ex.count("teach1") == 0, "nothing is on the sketch before you look")
+	check(ex.observe() and ex.has(t1, 20, 18) and ex.has(t1, 24, 18) and not ex.has(t1, 40, 18), "the tiles within 6 around you are seen, the far ones are not")
+	check(ex.rooms() == ["teach1"] and ex.count("teach1") > 20, "the room joins the list of walked floors")
+	check(not ex.has(t1, 20, 10), "a classroom behind its closed door is not seen from the corridor")
+	var d := Vector2i(-1, -1)
+	for c in range(10, 24):
+		if String(t1["grid"][15]).substr(c, 1) == "=":
+			d = Vector2i(c, 15)
+			break
+	check(d.x >= 0, "(the corridor wall has classroom doors)")
+	var door_at := CampusGeometry.tile_center(t1, d.x, 17)
+	var ex2 := ExplorationModule.new(rooms)
+	ex2.reset()
+	ex2.set_context({"scene": "teach1", "x": door_at.x, "y": door_at.y, "door_open": func(_c: int, _r: int) -> bool: return false})
+	ex2.observe()
+	check(not ex2.has(t1, d.x, 13), "a closed door hides the room behind it")
+	var ex3 := ExplorationModule.new(rooms)
+	ex3.reset()
+	ex3.set_context({"scene": "teach1", "x": door_at.x, "y": door_at.y, "door_open": func(_c: int, _r: int) -> bool: return true})
+	ex3.observe()
+	check(ex3.has(t1, d.x, 13), "an open door shows it")
+	check(ex.percent("teach1") > 0 and ex.percent("teach1") < 20, "a few steps in, a small part of the floor is seen (%d%%)" % ex.percent("teach1"))
+	# Save: six tiles a character, trailing blanks dropped; a bad record is rejected.
+	var saved := ex.capture()
+	var text := String(saved["seen"]["teach1"])
+	check(text.length() <= (63 * 22 + 5) / 6 and not text.ends_with("A") and ExplorationModule.unpack(text, t1) == ex.seen("teach1"), "the sketch packs to a short string and unpacks to the same tiles")
+	var back := ExplorationModule.new(rooms)
+	back.restore(saved)
+	check(back.count("teach1") == ex.count("teach1") and back.validate(saved).is_empty(), "the sketch saves and loads")
+	check(not back.validate({"seen": {"teach1": "!!"}}).is_empty() and not back.validate({"seen": {"nowhere": "A"}}).is_empty() and not back.validate({"seen": {"teach1": "B".repeat(400)}}).is_empty(), "bad records are rejected")
+	# The tick samples every 0.3 s.
+	var tk := ExplorationModule.new(rooms)
+	tk.reset()
+	tk.set_context({"scene": "teach1", "x": at.x, "y": at.y, "door_open": func(_c: int, _r: int) -> bool: return false})
+	tk.tick(0.2)
+	check(tk.count("teach1") == 0, "no look before 0.3 s")
+	tk.tick(0.15)
+	check(tk.count("teach1") > 0, "a look every 0.3 s")
+	check(MapView.tone("留") == "brass" and MapView.tone("锁") == "seal" and MapView.tone("✓") == "done" and MapView.tone("梯") == "route" and MapView.tone("桌") == "prop" and MapView.static_mark("S") == "梯", "the four tones and the furniture letters of the sketch")
 
 
 func _test_facility_rules() -> void:
