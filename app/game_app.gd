@@ -85,7 +85,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(), ClassmatesModule.new(CampusData.rooms()), DreadModule.new(CampusData.rooms()), AtmosModule.new(CampusData.rooms()), MonoModule.new(CampusData.rooms()), InvestigationModule.new(), ExplorationModule.new(CampusData.rooms())]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(), ClassmatesModule.new(CampusData.rooms()), DreadModule.new(CampusData.rooms()), AtmosModule.new(CampusData.rooms()), MonoModule.new(CampusData.rooms()), InvestigationModule.new(), ExplorationModule.new(CampusData.rooms()), CameraModule.new()]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -99,6 +99,10 @@ func campus() -> CampusModule:
 
 func dread() -> DreadModule:
 	return session.modules.get_module(&"story.dread") as DreadModule if session != null else null
+
+
+func camera() -> CameraModule:
+	return session.modules.get_module(&"phone.camera") as CameraModule if session != null else null
 
 
 func exploration() -> ExplorationModule:
@@ -852,9 +856,7 @@ func _apply_result(result: Dictionary) -> void:
 		_apply_phone_events()
 		return
 	if result.has("phone") and phone() != null:
-		phone().set_context(_phone_context())
-		phone().phone_menu()
-		_apply_phone_events()
+		_open_phone()
 		return
 	if result.has("facility") and facilities() != null:
 		var fac := facilities()
@@ -2125,6 +2127,251 @@ func _show_map(selected: String = "") -> void:
 	view2.show_floor(r, ex.seen(selected), _map_label, me2, yaw_ang, hereb)
 
 
+# ---- the phone shell (ui/phone_panel.gd, features/phone/plane_game.gd) ----
+
+var _phone_panel: PhonePanel
+var _phone_random := RandomNumberGenerator.new()
+
+
+func phone_open() -> bool:
+	return _phone_panel != null and _phone_panel.visible
+
+
+func _ensure_phone_panel() -> void:
+	if _phone_panel != null:
+		return
+	_phone_panel = PhonePanel.new()
+	_phone_panel.app_selected.connect(_phone_select)
+	_phone_panel.action_pressed.connect(_phone_action)
+	_phone_panel.flap.connect(_phone_flap)
+	_phone_panel.closed.connect(_close_phone)
+	_phone_panel.shoot_pressed.connect(_shoot)
+	_phone_panel.flash_pressed.connect(func() -> void:
+		if camera() != null:
+			camera().toggle_flash()
+			_phone_paint())
+	ui.get_node("Root").add_child(_phone_panel)
+
+
+func _open_phone() -> void:
+	var net := phone()
+	if net == null or phone_open():
+		return
+	net.set_context(_phone_context())
+	if not net.available():
+		ui.show_notice("手机已断电 · 充到 5% 后自动开机" if items() != null and items().has("phone") else "没有手机")
+		return
+	_ensure_phone_panel()
+	ui.hide_bag()
+	player.enabled = false
+	player.clear_input()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	net.plane.reset()
+	_phone_panel.screen.game = net.plane
+	_phone_panel.hint.text = ("点屏幕往上飘" if ui.touch_enabled() else "空格 / W 往上飘") + " · " + ("点「收起」" if ui.touch_enabled() else "Esc 收起")
+	_phone_panel.visible = true
+	audio.play("ui.click")
+	_phone_select(net.page)
+
+
+func _close_phone(dark: bool = false) -> void:
+	if not phone_open():
+		return
+	_phone_panel.visible = false
+	if dark and not story().dead:
+		ui.show_notice("我：屏幕一下子黑了。我抬起头。")
+	if session != null and session.running and not get_tree().paused and not story().dead and not ui.choice_open() and not ui.terminal_open():
+		player.enabled = true
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
+
+
+func _phone_danger() -> bool:
+	var weird := anomaly()
+	var watcher := patrol()
+	return (weird != null and bool(weird.an["active"])) or (watcher != null and watcher.local_chase())
+
+
+func _phone_select(app: String) -> void:
+	var net := phone()
+	if app == "plane" and _phone_danger():
+		ui.show_notice("遇险时不能玩纸飞机")
+		app = "home"
+	net.page = app
+	_phone_paint()
+
+
+func _phone_action(action: String) -> void:
+	var net := phone()
+	net.set_context(_phone_context())
+	match action:
+		"wireless":
+			net.toggle_wireless()
+		"download":
+			net.toggle_download()
+		"sync":
+			net.set_context(_phone_context())
+			if not net.available() or not bool(net.device["network"]):
+				ui.show_notice("手机需要电量与学校网络连接")
+			elif routes() != null:
+				routes().sync("phone")
+				_apply_route_events(routes())
+	_apply_phone_events()
+	_phone_paint()
+
+
+var _studio: PhotoStudio
+var _shooting := false
+
+
+func _camera_context() -> Dictionary:
+	var weird := anomaly()
+	var bag := items()
+	return {"an": String(weird.an["id"]) if weird != null and bool(weird.an["active"]) else "", "gaze": gaze() != null and not gaze().current().is_empty(),
+		"crowd": false, "day": school().day, "tsec": school().tsec, "place": school().place_name(session.world_id, float(player.capture_pose()["position"][1])),
+		"clock": (bag != null and bag.has_clock()) or (talent() != null and talent().has("watch"))}
+
+
+## camera.js shoot: the lens image without the interface, the flash, the extra layer, then the album.
+func _shoot() -> void:
+	var cam := camera()
+	if cam == null or _shooting or not phone_open() or story().dead:
+		return
+	_shooting = true
+	cam.set_context(_camera_context())
+	var plan := cam.plan()
+	var root_ui: CanvasItem = ui.get_node("Root")
+	root_ui.visible = false
+	await RenderingServer.frame_post_draw
+	var lens: Image = get_viewport().get_texture().get_image()
+	root_ui.visible = true
+	if _studio == null:
+		_studio = PhotoStudio.new()
+		add_child(_studio)
+	var photo: Image = await _studio.compose(lens, plan)
+	_shooting = false
+	if cam == null or session == null or camera() != cam or story().dead:
+		return
+	var b64 := ""
+	if photo != null and not photo.is_empty():
+		b64 = Marshalls.raw_to_base64(photo.save_jpg_to_buffer(0.6))
+	var seen := false
+	if bool(plan["flash"]):
+		ui.flash_screen(settings.get_int("reduce_flash") == 1)
+		if patrol() != null:
+			patrol().set_context(_patrol_context(campus().room(session.world_id), player.capture_pose()))
+			seen = patrol().camera_flash(CameraModule.FLASH_SEE, CameraModule.FLASH_LOCK)
+			for e: Dictionary in patrol().take_events():
+				ui.show_notice(String(e["text"]))
+	cam.set_context(_camera_context())
+	cam.add_photo(plan, b64, seen)
+	audio.play("ui.click")
+	for e: Dictionary in cam.take_events():
+		match e["kind"]:
+			"say":
+				ui.show_notice(String(e["text"]))
+			"record":
+				_record(e)
+			"fact":
+				fact({"kind": "photo", "an": e["an"], "flash": e["flash"], "seen": e["seen"]})
+	_phone_paint()
+
+
+func _phone_flap() -> void:
+	var net := phone()
+	if net != null and phone_open() and net.page == "plane":
+		if net.plane.flap():
+			pass
+		audio.play("ui.click")
+
+
+func _phone_copy() -> String:
+	var net := phone()
+	var d: Dictionary = net.device
+	var w: Dictionary = d["wireless"]
+	var copy := ""
+	match net.page:
+		"home":
+			copy = "工具查看时不能移动，世界仍在运行。收起手机后，后台任务继续。原教室无渗透时，从空电充满：普通约 5 分钟，科技党约 10 分钟。机房接线只抵普通基础耗电；科技党仍每分钟净掉 10 点。"
+		"wireless":
+			if w["status"] == "complete":
+				copy = "无线接入完成。定位与门禁同步已解锁；不再暴露新位置，已发出的情报不会撤回。"
+			elif w["status"] == "idle":
+				copy = "接入学校无线网络需要 180—600 运行秒，执行期间耗电翻倍。"
+			else:
+				copy = ("已暂停" if w["status"] == "paused" else "正在接入") + " · %d%% · 剩余 %d 秒" % [floori(float(w["elapsed"]) / float(w["target"]) * 100.0), ceili(float(w["target"]) - float(w["elapsed"]))]
+			if w["status"] != "complete":
+				copy += "\n\n破解每累计 15 运行秒暴露一次当时的位置，巡察者会来搜查；坐下、假条和外出登记不能豁免。"
+				if w["status"] == "running":
+					copy += "\n下次暴露：%d 秒；收起手机仍会继续。" % ceili(PhoneEnergy.next_signal_in(w))
+				if w["status"] == "paused":
+					copy += "\n暴露计时已暂停，已发出的位置信息不会撤回。"
+			if talent() != null and talent().has("tech") and w["status"] != "complete":
+				copy += " 科技党执行渗透时，即使在原教室也会净掉电。"
+		"location":
+			copy = "巡察查询：" + (patrol().location_label() if patrol() != null and bool(d["network"]) else "尚未接入学校网络")
+		"sync":
+			copy = "门禁数据已经同步。" if routes() != null and routes().data_synced else ("仍需先在网络中心写入白名单；联网手机可以完成同步。" if bool(d["network"]) else "先接入学校网络。")
+		"container":
+			var dl: Dictionary = d["download"]
+			if dl["status"] == "complete":
+				copy = "模拟 Kali Linux 容器已就绪，可在机房电脑旁打开终端。"
+			elif dl["status"] == "idle":
+				copy = "无线接入完成后，自动安装容器。"
+			else:
+				copy = ("安装已暂停 " if dl["status"] == "paused" else "容器安装 ") + "%d%% · 剩余 %d 秒" % [floori(float(dl["elapsed"]) / 60.0 * 100.0), ceili(60.0 - float(dl["elapsed"]))]
+			if net.termination["status"] == "accepted":
+				copy += "\n服务器停机剩余 %d 运行秒。" % ceili(float(net.termination["remaining"]))
+	return copy
+
+
+func _phone_paint() -> void:
+	var net := phone()
+	if net == null or not phone_open():
+		return
+	var d: Dictionary = net.device
+	_phone_panel.status.text = "电量 %d%% · %s%s" % [floori(float(d["battery"])), "学校网络已连接" if d["network"] else "尚未联网", " · 耗电 ×2" if talent() != null and talent().has("tech") else ""]
+	_phone_panel.copy.text = _phone_copy() if net.page != "plane" else ""
+	var action := ""
+	var label := ""
+	var disabled := false
+	match net.page:
+		"wireless":
+			var ws := String(d["wireless"]["status"])
+			action = "wireless"
+			disabled = ws == "complete"
+			label = "暂停任务" if ws == "running" else ("开始接入" if ws == "idle" else ("已连接" if ws == "complete" else "继续任务"))
+		"container":
+			var ds := String(d["download"]["status"])
+			action = "download"
+			disabled = not ["running", "paused"].has(ds)
+			label = "暂停下载" if ds == "running" else ("继续下载" if ds == "paused" else ("已安装" if ds == "complete" else "等待联网"))
+		"sync":
+			action = "sync"
+			label = "同步门禁数据"
+	if net.page == "camera" and camera() != null:
+		_phone_panel.copy.text = camera().copy_text()
+		_phone_panel.show_album(camera().photos, camera().flash)
+	_phone_panel.select(net.page, action, label, disabled)
+	_phone_panel.screen.queue_redraw()
+
+
+func _phone_shell_step(delta: float) -> void:
+	var net := phone()
+	var ends := net.plane.tick(delta, float(school().pressure()["rest"]), func() -> float: return _phone_random.randf())
+	for e: Dictionary in ends:
+		if float(e["gain"]) > 0.0:
+			school().san = minf(100.0, school().san + float(e["gain"]))
+			ui.show_notice("纸飞机 · 得分 %d" % int(e["score"]))
+		audio.play("ui.click")
+	if not phone_open():
+		return
+	var danger := net.page == "plane" and _phone_danger()
+	if story().dead or danger or ui.choice_open() or ui.terminal_open() or school().inspection_active() or not net.available():
+		_close_phone(danger and not story().dead)
+		return
+	_phone_paint()
+
+
 # ---- the protagonist's muttering (features/story/mono_module.gd) ----
 
 func _mono_step(delta: float) -> void:
@@ -3047,6 +3294,7 @@ func _phone_step(delta: float) -> void:
 		return
 	net.set_context(_phone_context())
 	net.tick(delta)
+	_phone_shell_step(delta)
 	if ui.terminal_open():
 		if not net.terminal_open or Input.is_action_just_pressed("pause"):
 			_terminal_closed()
@@ -3741,6 +3989,13 @@ func _notification(what: int) -> void:
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
+	if key != null and key.pressed and not key.echo and phone_open():
+		if key.keycode == KEY_ESCAPE:
+			_close_phone()
+		elif phone() != null and phone().page == "plane" and key.keycode in [KEY_SPACE, KEY_W]:
+			_phone_flap()
+		get_viewport().set_input_as_handled()
+		return
 	if key != null and key.pressed and not key.echo and key.keycode == KEY_R and days() != null and session != null and not story().over():
 		_lesson_press()
 		get_viewport().set_input_as_handled()

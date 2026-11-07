@@ -153,6 +153,9 @@ func _process(delta: float) -> void:
 	if _bolt_rect != null and _bolt_level > 0.0:
 		_bolt_level = maxf(0.0, _bolt_level - delta * 3.0)
 		_bolt_rect.color.a = _bolt_level
+	if _cam_rect != null and _cam_level > 0.0:
+		_cam_level = maxf(0.0, _cam_level - delta * 2.4)
+		_cam_rect.color.a = _cam_level
 	if _hurt_rect != null and _hurt_level > 0.0:
 		_hurt_level = maxf(0.0, _hurt_level - delta * 0.5)
 		_hurt_rect.color.a = _hurt_level
@@ -1237,6 +1240,23 @@ func flash_light(strength: float) -> void:
 		$Root.add_child(_bolt_rect)
 		$Root.move_child(_bolt_rect, 0)
 	_bolt_level = maxf(_bolt_level, clampf(strength, 0.0, 0.5))
+
+
+## The camera flash (camera.js flashScreen): the whole screen whitens (0.85, or 0.18 with reduce-flash on) and fades.
+var _cam_rect: ColorRect
+var _cam_level := 0.0
+
+
+func flash_screen(reduced: bool) -> void:
+	if _cam_rect == null:
+		_cam_rect = ColorRect.new()
+		_cam_rect.name = "CameraFlash"
+		_cam_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_cam_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_cam_rect.color = Color(1, 1, 0.97, 0.0)
+		$Root.add_child(_cam_rect)
+	$Root.move_child(_cam_rect, $Root.get_child_count() - 1)
+	_cam_level = 0.18 if reduced else 0.85
 
 
 func bolt_level() -> float:

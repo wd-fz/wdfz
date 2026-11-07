@@ -93,6 +93,8 @@ func _run() -> void:
 	_test_investigation_rules()
 	_test_exploration_rules()
 	_test_drop_rules()
+	_test_plane_rules()
+	_test_camera_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -2625,6 +2627,98 @@ func _test_drop_rules() -> void:
 	fac.reset()
 	fac.flags["coil"] = true
 	check(fac.flags["coil"] == true, "(the coil was taken from the server room)")
+
+
+func _test_plane_rules() -> void:
+	var g := PlaneGame.new()
+	var rnd := RandomNumberGenerator.new()
+	rnd.seed = 7
+	var roll := func() -> float: return rnd.randf()
+	check(g.st == "ready" and g.flap() and g.st == "fly" and g.vy == PlaneGame.FLAP, "the first tap starts the round with an upward kick")
+	var tick := g.tick(0.1, 1.0, roll)
+	check(tick.is_empty() and g.y > PlaneGame.H * 0.45 - 30.0 and g.pipes.size() == 1 and float(g.pipes[0]["x"]) < PlaneGame.W + 20.0, "gravity pulls, a shelf comes in from the right")
+	# Fall: the round ends on the floor with no score and no gain.
+	var ended: Array = []
+	for _i in 100:
+		ended.append_array(g.tick(0.05, 1.0, roll))
+	check(g.st == "over" and ended.size() == 1 and ended[0]["gain"] == 0.0 and g.msg == "", "falling ends the round; no score gives no rest")
+	check(g.flap() == true and g.st == "ready" and g.score == 0, "a tap after the end restarts")
+	# A hand-made scored round: pass shelves, end by the floor, and the SAN gain is scaled by the pressure.
+	var h := PlaneGame.new()
+	h.st = "fly"
+	h.score = 3
+	h.y = PlaneGame.H - 9.0
+	h.vy = 200.0
+	var scored := h.tick(0.1, 0.5, roll)
+	check(scored.size() == 1 and absf(float(scored[0]["gain"]) - 1.5) < 0.001 and h.cool == PlaneGame.COOL and h.msg == "手指放松下来，远处声音又清楚了", "a scored round gives 1 SAN a point scaled by the rest factor, then the phone is hot for 45 s")
+	var hot := h
+	hot.reset()
+	hot.st = "fly"
+	hot.score = 5
+	hot.y = PlaneGame.H - 9.0
+	hot.vy = 200.0
+	var none := hot.tick(0.1, 1.0, roll)
+	check(none.size() == 1 and none[0]["gain"] == 0.0 and hot.msg == "手机发烫了，静不下心", "a hot phone gives nothing")
+	var cap := PlaneGame.new()
+	cap.st = "fly"
+	cap.score = 20
+	cap.y = PlaneGame.H - 9.0
+	cap.vy = 200.0
+	check(cap.tick(0.1, 1.0, roll)[0]["gain"] == 6.0, "at most 6 points of rest")
+	cap.tick(40.0, 1.0, roll)
+	check(cap.cool > 0.0 and cap.cool < PlaneGame.COOL, "the heat cools down with time")
+	# Shelf pass counts a point and a collision ends the round.
+	var s := PlaneGame.new()
+	s.st = "fly"
+	s.y = 150.0
+	s.vy = 0.0
+	s.pipes = [{"x": 20.0, "gy": 200.0, "pass": false}]
+	s.tick(0.01, 1.0, roll)
+	check(s.score == 0 and s.st == "over", "hitting a shelf ends the round")
+	var p := PlaneGame.new()
+	p.st = "fly"
+	p.y = 150.0
+	p.pipes = [{"x": 10.0, "gy": 100.0, "pass": false}]
+	p.tick(0.01, 1.0, roll)
+	check(p.score == 1 and p.st == "fly", "passing a shelf scores a point")
+	check(PhoneEnergy.next_signal_in({"elapsed": 14.0}) > 0.99 and PhoneEnergy.next_signal_in({"elapsed": 15.0}) > 14.99, "the next exposure of the cracking comes every 15 run-seconds")
+
+
+func _test_camera_rules() -> void:
+	check(CameraModule.PHOTO.size() == 28 and CameraModule.PHOTO["rain"]["cap"].begins_with("雨幕后面站着一个没打伞的人") and CameraModule.PHOTO["cola"].get("secret", false), "the photo table is the Web version's: 26 anomalies, the window and the lift crowd")
+	var cam := CameraModule.new()
+	cam.reset()
+	cam.set_context({"an": "", "gaze": false, "crowd": false, "day": 2, "tsec": 700.0, "place": "教学楼 1F", "clock": true})
+	var calm := cam.plan()
+	check(calm["an"] == "" and calm["cap"] == "照片里什么也没有。" and calm["kind"] == "" and calm["stamp"] == "%s  D2" % SchoolClock.fmt_clock(700.0), "with nothing happening the photo shows nothing extra")
+	cam.set_context({"an": "rain", "gaze": false, "crowd": false, "day": 2, "tsec": 700.0, "place": "操场", "clock": false})
+	var rain := cam.plan()
+	check(rain["an"] == "rain" and rain["kind"] == "figure" and String(rain["cap"]).begins_with("照片里，雨幕后面") and rain["stamp"] == "--:--  D2" and rain["flash"], "a running anomaly adds its one extra thing; without a watch the stamp has no time")
+	check(cam.plan()["seed"] == rain["seed"], "the same moment gives the same photo")
+	cam.set_context({"an": "rain", "gaze": true, "crowd": false, "day": 2, "tsec": 700.0, "place": "x", "clock": false})
+	check(cam.subject() == "window_gaze" and cam.plan()["kind"] == "eyes", "the window's eyes come before an anomaly")
+	cam.set_context({"an": "rain", "gaze": true, "crowd": true, "day": 2, "tsec": 700.0, "place": "x", "clock": false})
+	check(cam.subject() == "crowd", "the lift crowd comes first")
+	cam.set_context({"an": "nothing", "gaze": false, "crowd": false, "day": 2, "tsec": 700.0, "place": "x", "clock": false})
+	check(cam.subject() == "", "an anomaly without a photo adds nothing")
+	# Album: newest first, at most six, records for public anomalies only.
+	cam.set_context({"an": "rain", "gaze": false, "crowd": false, "day": 3, "tsec": 710.0, "place": "操场", "clock": true})
+	var p := cam.plan()
+	cam.add_photo(p, "AAAA", true)
+	var ev := cam.take_events()
+	check(ev[0]["kind"] == "say" and String(ev[0]["text"]).contains("闪光一亮") and ev[1]["kind"] == "record" and ev[1]["id"] == "photo_rain" and String(ev[1]["text"]).begins_with("手机里的照片（操场）"), "a photo says so, notes the clue and the flash drawing the patroller over")
+	cam.set_context({"an": "cola", "gaze": false, "crowd": false, "day": 3, "tsec": 720.0, "place": "天台", "clock": true})
+	cam.add_photo(cam.plan(), "BBBB", false)
+	check(_of_kind(cam.take_events(), "record").is_empty(), "an internal anomaly's photo is not written into the notes")
+	for i in 8:
+		cam.add_photo(cam.plan(), "C%d" % i, false)
+	check(cam.photos.size() == 6 and cam.photos[0]["img"] == "C7", "the album keeps the last six, newest first")
+	var on_text := cam.copy_text()
+	cam.toggle_flash()
+	check(on_text.contains("闪光开着") and cam.copy_text().contains("闪光关着") and cam.copy_text().contains("6 张"), "the page text follows the flash and the album")
+	var back := CameraModule.new()
+	back.restore(cam.capture())
+	check(back.photos == cam.photos and back.flash == cam.flash and back.validate(cam.capture()).is_empty() and not back.validate({"photos": [{"cap": 1}], "flash": true}).is_empty(), "the album saves and loads; a bad one is rejected")
 
 
 func _test_facility_rules() -> void:

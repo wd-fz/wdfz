@@ -18,6 +18,8 @@ var connection: Variant = null      # {x, y} of the lab3 computer
 var puzzle: Dictionary = {}
 var termination: Dictionary = {}
 var terminal_open := false
+var page := "home"           # the app open on the phone (PhoneNetwork.page)
+var plane := PlaneGame.new()
 var events: Array = []
 
 var _rng := RandomNumberGenerator.new()
@@ -41,6 +43,8 @@ func reset() -> void:
 	puzzle = CampusTerminal.fresh(run_seed, attempt_id)
 	termination = {"status": "idle", "requestId": null, "remaining": 0.0}
 	terminal_open = false
+	page = "home"
+	plane.full_reset()
 	events = []
 
 
