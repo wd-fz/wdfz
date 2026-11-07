@@ -1049,10 +1049,12 @@ func _tick_turn_smile(dt: float, d: Dictionary) -> void:
 		d["done"] = true
 		an["acc"] = 0.0
 		_emit("turn", {"angle": PI})
+		_emit("smile", {"mode": "behind"})
 		_hurt("我：我回头了。身后是一张很大很大的笑脸，眼睛弯成两道缝，嘴角一直咧到耳根。它冲我点了点头，就不见了。我的手心全是汗。", 5.0, true, true)
 	elif d["chosen"] == "no" and float(an["acc"]) > 1.0:
 		d["done"] = true
 		_emit("violation", {"amount": 15.0})
+		_emit("smile", {"mode": "jump"})
 		_hurt("我没有回头。它等不及了——那张脸从我肩膀上绕过来，贴着我的鼻尖，一点一点咧开了嘴。", 30.0)
 
 

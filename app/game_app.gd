@@ -29,6 +29,7 @@ var _seen_lock_ach := false
 var _ach_started := ""
 var _enter_cool := 0.0
 var _audio_period := ""
+var _bolt_next := 6.0
 var _drive_view: CarChaseView
 
 
@@ -1254,6 +1255,7 @@ func _finish_death() -> void:
 	if fate.wake_pending:
 		var left := fate.finish_wake()
 		fact({"kind": "wake"})
+		audio.play("foley.wake")
 		if phone() != null:
 			phone().dream()
 		ui.hide_terminal()
@@ -1348,11 +1350,6 @@ func _progress_step(watcher: PatrolModule, day_rules: SchoolModule, weird: Anoma
 			elif _ach_started != "":
 				fact({"kind": "anomaly", "phase": "end", "id": _ach_started, "survived": not story().dead, "lethal": bool(AnomalyModule.DEFS[_ach_started].get("lethal", false))})
 			_ach_started = id
-	# tickSchoolBell: the bell when the period changes (outdoors quieter and muffled).
-	var period := String(SchoolClock.period_at(day_rules.tsec)[2])
-	if _audio_period != "" and period != _audio_period and not story().dead:
-		audio.school_bell("start" if SchoolClock.period_at(day_rules.tsec)[3] == "教室" else "end", session.world_id == "out")
-	_audio_period = period
 	if watcher != null:
 		var locked := bool(watcher.pat["locked"])
 		var hid := bool(watcher.hide["on"])
@@ -1397,6 +1394,28 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 		"hiding": player.hiding, "body": maxf(0.0, _sense_body), "bpm": float(_sense_view.get("bpm", 0.0)),
 		"chase": watcher != null and bool(watcher.pat["locked"]), "threat": watcher != null and watcher.local_threat(),
 		"patrol_pos": patrol_pos, "patrol_behind": behind, "big": big, "blackout": weird != null and weird.blackout_now(), "moth_near": 0.5 if an_id == "moth" else 0.0})
+	# fx/weather.js: in the rain a bolt every 6–14 s, the screen whitens twice and the thunder comes late.
+	if an_id in ["rain", "raindots"]:
+		_bolt_next -= delta
+		if _bolt_next <= 0.0:
+			_bolt_next = 6.0 + randf() * 8.0
+			var near_b := randf()
+			ui.flash_light(0.45 + 0.3 * (1.0 - near_b))
+			get_tree().create_timer(0.09 + randf() * 0.08).timeout.connect(func() -> void: ui.flash_light(0.35))
+			audio.thunder(0.4 + near_b * 2.0, 1.0 - near_b * 0.6, scene != "out")
+	else:
+		_bolt_next = 6.0
+	if cw != null and cw.lighting != null:
+		cw.lighting.crackle_from = player.camera
+		for c: Dictionary in cw.lighting.crackles:
+			if float(c["k"]) >= 0.05:
+				audio.play("world.crackle", {"k": float(c["k"]), "pan": float(c["pan"])})
+		cw.lighting.crackles.clear()
+	# tickSchoolBell: the bell when the period changes (outdoors quieter and muffled).
+	var period := String(SchoolClock.period_at(day_rules.tsec)[2])
+	if _audio_period != "" and period != _audio_period and not story().dead:
+		audio.school_bell("start" if SchoolClock.period_at(day_rules.tsec)[3] == "教室" else "end", session.world_id == "out")
+	_audio_period = period
 	if watcher != null:
 		var locked := bool(watcher.pat["locked"])
 		if locked and not _seen_lock:
@@ -1453,6 +1472,8 @@ func _add_item(id: String) -> bool:
 	if bag == null:
 		return false
 	var ok := bag.add(id)
+	if ok:
+		audio.play("ui.pickup")
 	for text: String in bag.take_notices():
 		ui.show_notice(text)
 	return ok
@@ -1706,6 +1727,7 @@ func _apply_marks_events() -> void:
 				_marks_key = ""
 			"fact":
 				fact({"kind": "chalk", "sym": e["sym"]})
+				audio.play("foley.chalk")
 			"choice":
 				_choice_count += 1
 				var mine := _choice_count
@@ -2972,6 +2994,12 @@ func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 		match e["kind"]:
 			"notice":
 				ui.show_notice(String(e["text"]))
+			"smile":
+				# SFX.smile: behind you a held-in giggle; in your face a scream at the ear.
+				if e["mode"] == "jump":
+					audio.play("threat.smileJump")
+				else:
+					audio.play("threat.smileBack", {"pan": 0.3, "lp": 0.8})
 			"hurt":
 				day_rules.change_san(-float(e["amount"]), 0.0)
 				ui.flash_hurt(0.4 if e.get("quiet", false) else 0.65)
@@ -3070,6 +3098,8 @@ func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
 		var from_room: Variant = campus().room(from_world)
 		patrol().set_context(_patrol_context(from_room, player.capture_pose()))
 		patrol().left_scene(from_world, world_id)
+	if from_world != world_id and campus() != null and (campus().is_stairwell(world_id) or campus().is_stairwell(from_world)) and not seamless:
+		audio.play("foley.stairs")
 	session.world_id = world_id
 	_enter_cool = 0.0 if seamless else 0.9
 	if seamless:

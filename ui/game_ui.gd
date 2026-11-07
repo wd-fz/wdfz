@@ -118,6 +118,9 @@ func _input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	tick_opening(delta)
+	if _bolt_rect != null and _bolt_level > 0.0:
+		_bolt_level = maxf(0.0, _bolt_level - delta * 3.0)
+		_bolt_rect.color.a = _bolt_level
 	if _hurt_rect != null and _hurt_level > 0.0:
 		_hurt_level = maxf(0.0, _hurt_level - delta * 0.5)
 		_hurt_rect.color.a = _hurt_level
@@ -778,6 +781,25 @@ func show_choice_timer(seconds: float) -> void:
 ## The hurt flash (VisualState.hurt / flash): a red-white pulse that fades.
 var _hurt_rect: ColorRect
 var _hurt_level := 0.0
+var _bolt_rect: ColorRect
+var _bolt_level := 0.0
+
+
+## Lightning (fx/weather.js): the screen whitens and fades in a third of a second.
+func flash_light(strength: float) -> void:
+	if _bolt_rect == null:
+		_bolt_rect = ColorRect.new()
+		_bolt_rect.name = "Lightning"
+		_bolt_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_bolt_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_bolt_rect.color = Color(0.85, 0.9, 1.0, 0.0)
+		$Root.add_child(_bolt_rect)
+		$Root.move_child(_bolt_rect, 0)
+	_bolt_level = maxf(_bolt_level, clampf(strength, 0.0, 0.5))
+
+
+func bolt_level() -> float:
+	return _bolt_level
 
 
 func flash_hurt(strength: float) -> void:

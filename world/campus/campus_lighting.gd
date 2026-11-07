@@ -31,6 +31,11 @@ var time := 0.0
 var reduce_flash := false
 ## VisualState.patrolFlick / patrolRed: the patroller's approach beat and its threat tint.
 var patrol_flick := 0.0
+## Lamp crackles since the last take (k, pan), heard from crackle_from (the camera).
+var crackles: Array = []
+var crackle_from: Node3D
+var _flick_prev: Dictionary = {}
+var _crackle_last := 0.0
 var patrol_red := 0.0
 ## Anomaly effects on the light: the blackout, and the rains pressing the sky down (overcast eases 0.6 / s).
 var blackout := false
@@ -204,6 +209,15 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 		if patrol_flick > 0.0:
 			flick *= 1.0 - patrol_flick * (1.0 - patrol_beat(time))
 		sum += flick
+		# lightCrackle: a lamp dropping out (contact jump) crackles when it is within 9 m.
+		var was: float = _flick_prev.get(i, -1.0)
+		_flick_prev[i] = flick
+		if was > 0.5 and flick < 0.3 and time - _crackle_last >= 0.05 and crackle_from != null:
+			var to_l := room_lights[i].global_position - crackle_from.global_position
+			var dl := Vector2(to_l.x, to_l.z).length()
+			if dl <= 9.0:
+				_crackle_last = time
+				crackles.append({"k": 1.0 - dl / 9.0, "pan": clampf(crackle_from.global_basis.x.dot(to_l.normalized()) * 0.8, -1.0, 1.0)})
 		room_lights[i].light_energy = room_base[i] * pt_k * maxf(0.05, flick) * (1.0 + 0.3 * patrol_red) * ENERGY_POINT
 		var bc := room_col[i]
 		var lr := bc.r * 0.86

@@ -2766,6 +2766,14 @@ func _test_audio(app: GameApp) -> void:
 	fx.death("no_such_death")
 	check(fx.played.has("anomaly.base") and fx.played.has("anomaly.bell13") and fx.played.has("death.swarm") and fx.played.has("death.generic"),
 		"an anomaly opens with the low drop and its own recipe; a death plays its own sound, or the generic one")
+	fx.played.clear()
+	app._add_item("pen")
+	app.ui.flash_light(0.5)
+	check(fx.played.has("ui.pickup") and app.ui.bolt_level() > 0.3, "picking up plays the pickup; lightning whitens the screen")
+	var weird := app.anomaly()
+	weird.events.append({"kind": "smile", "mode": "jump"})
+	app._anomaly_step(0.0, app.school(), CampusData.layout("teach1"), app.player.capture_pose())
+	check(fx.played.has("threat.smileJump"), "the smile in your face screams at the ear")
 	app.audio.muted = true
 	check(AudioServer.is_bus_mute(AudioServer.get_bus_index("Master")), "mute silences the master bus")
 	app.audio.muted = false

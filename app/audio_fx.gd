@@ -302,6 +302,8 @@ func school_bell(kind: String, outdoor: bool) -> void:
 func anomaly_start(id: String) -> void:
 	play("anomaly.base")
 	play("anomaly." + id)
+	if id == "cola":
+		play("foley.colaRattle", {"pan": _rng.randf_range(-0.6, 0.6)})
 
 
 func death(fx: String) -> void:
