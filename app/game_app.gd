@@ -66,7 +66,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new()]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -76,6 +76,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func body() -> BodyModule:
+	return session.modules.get_module(&"body.injury") as BodyModule if session != null else null
 
 
 func fake_normal() -> FakeNormalModule:
@@ -511,6 +515,9 @@ func _campus_step(delta: float) -> void:
 	if _hint_cooldown <= 0.0 and not player.has_focus():
 		_hint_cooldown = 0.1
 		var radio_hint := broadcast().hint() if broadcast() != null else ""
+		if radio_hint == "" and body() != null:
+			body().set_context(_body_context())
+			radio_hint = body().hint()
 		ui.show_prompt(radio_hint if radio_hint != "" else rules.hint(session.world_id, player.capture_pose()))
 
 
@@ -537,6 +544,12 @@ func _campus_interact() -> void:
 		radio.set_context(_broadcast_context())
 		if radio.use_here():
 			_apply_broadcast_events()
+			return
+	var limbs := body()
+	if limbs != null:
+		limbs.set_context(_body_context())
+		if limbs.ask_vault() or limbs.use_clinic():
+			_apply_body_events()
 			return
 	var lift := elevator()
 	var result: Dictionary
@@ -609,6 +622,11 @@ func _apply_result(result: Dictionary) -> void:
 		facilities().set_context(_facility_context())
 		facilities().use_item(String(result["facility_item"]))
 		_apply_facility_events()
+		return
+	if result.has("medkit") and body() != null:
+		body().set_context(_body_context())
+		body().use_medkit()
+		_apply_body_events()
 		return
 	if result.has("leave") and school() != null:
 		if school().use_leave() and items() != null:
@@ -691,7 +709,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 		for text: String in bag.take_notices():
 			ui.show_notice(text)
 		ui.show_search(bag.search_progress())
-		player.speed_multiplier = 1.5 if snack else 1.0
+		player.speed_multiplier = (1.5 if snack else 1.0) * (body().speed_mul() if body() != null else 1.0)
 		player.camera.get_node("Torch").visible = bag.torch_on
 		if talent() != null:
 			talent().tick_watch(day_rules.day if day_rules != null else 1, school().tsec, SchoolClock.rate_at(school().tsec))
@@ -713,7 +731,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	var world := _campus_world()
 	if world != null:
 		world.show_silhouettes(day_rules.inspection_points(), room, float(p[1]))
-	player.can_sprint = day_rules.can_run(snack)
+	player.can_sprint = day_rules.can_run(snack) and (body() == null or body().can_run())
 	_patrol_step(delta, watcher, day_rules, room, pose)
 	if story().dead:
 		return
@@ -731,6 +749,9 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	if story().dead or story().over():
 		return
 	_fake_normal_step(delta)
+	if story().dead or story().over():
+		return
+	_body_step(delta)
 	if story().dead or story().over():
 		return
 	_anomaly_step(delta, day_rules, room, pose)
@@ -932,9 +953,15 @@ func kill(msg: String, fx: String, source: String) -> void:
 		if anomaly() != null:
 			anomaly().end_now()
 		_apply_result(result)
+		if source == "campus_fall" and _fall_back is Dictionary:
+			var room_b: Variant = campus().room(session.world_id)
+			var sb := CampusGeometry.to_scene(room_b, Vector2(float(_fall_back["x"]), float(_fall_back["y"])))
+			player.restore_pose({"position": [sb.x, float(player.capture_pose()["position"][1]), sb.y], "yaw": CampusGeometry.yaw_from_ang(float(_fall_back["ang"]) + PI), "pitch": 0.0})
+		_fall_back = null
 		return
 	if not result.get("dead", false):
 		return
+	fact({"kind": "death", "source": source, "fx": fx})
 	player.enabled = false
 	player.clear_input()
 	audio.stop_all()
@@ -1285,6 +1312,108 @@ func _facility_travel(e: Dictionary) -> void:
 	else:
 		pose = campus().default_spawn(world)
 	travel(world, pose, false)
+
+
+# ---- vaulting, injury and the clinic (features/body) ----
+
+var _fall_back: Variant = null
+var _eye_base := -1.0
+
+
+func _body_context() -> Dictionary:
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "seated": school().seated,
+		"hiding": player.hiding, "stam": school().stam, "moving": player.moving, "locked": patrol() != null and bool(patrol().pat["locked"]),
+		"anomaly": anomaly() != null and anomaly().is_active(), "day": school().day, "dead": story().dead}
+
+
+func _body_step(delta: float) -> void:
+	var limbs := body()
+	if limbs == null:
+		return
+	limbs.set_context(_body_context())
+	limbs.tick(delta)
+	if _eye_base < 0.0:
+		_eye_base = player.camera.position.y
+	player.camera.position.y = _eye_base - limbs.eye_drop()
+	if limbs.fall != null:
+		player.enabled = false
+	var cap := school().stamina_max() - limbs.stamina_cap_drop()
+	if school().stam > cap:
+		school().stam = maxf(0.0, cap)
+	_apply_body_events()
+
+
+func _apply_body_events() -> void:
+	var limbs := body()
+	if limbs == null:
+		return
+	for e: Dictionary in limbs.take_events():
+		match e["kind"]:
+			"notice":
+				ui.show_notice(String(e["text"]))
+			"hurt_fx":
+				ui.flash_hurt(0.5)
+			"stamina":
+				school().stam = maxf(0.0, school().stam + float(e["amount"]))
+			"fact":
+				if e["what"] == "landed":
+					fact({"kind": "vault", "what": "landed"})
+				elif e["what"] == "treated":
+					fact({"kind": "treated"})
+			"give":
+				if _add_item(String(e["id"])):
+					limbs.gave_medkit(String(e["day"]))
+					_apply_body_events()
+			"remove":
+				if items() != null:
+					items().remove(String(e["id"]))
+			"land":
+				_land_outside(String(e["room"]), int(e["side"]))
+				player.enabled = true
+			"choice":
+				_choice_count += 1
+				var mine := _choice_count
+				_choice_handler = func(index: int) -> void:
+					var b := body()
+					if b != null and mine == _choice_count and index == 0:
+						b.set_context(_body_context())
+						b.vault()
+						_apply_body_events()
+				player.enabled = false
+				player.clear_input()
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				ui.show_choice(String(e["text"]), e["labels"], false)
+			"kill":
+				_fall_back = e.get("back")
+				player.camera.position.y = _eye_base
+				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
+				if not story().dead:
+					player.enabled = true
+				return
+
+
+## landOutside: next to the bridge's own footprint outside, on the side the player went over.
+func _land_outside(room_id: String, side: int) -> void:
+	var r: Variant = campus().room(room_id)
+	var host := String(r.get("host", "")) if r != null else ""
+	var target := Vector2(1000, 1000)
+	for o: Dictionary in CampusData.layout("out")["objects"]:
+		if o["id"] == host:
+			var cx := (float(o["x"]) + float(o["w"]) / 2.0) * 2.0
+			var cy := (float(o["y"]) + float(o["h"]) / 2.0) * 2.0
+			var off := (float(o["w"]) / 2.0 + 5.0) * 2.0 * float(side if side != 0 else 1)
+			target = Vector2(cx + off, cy)
+			for k in 12:
+				var tp := Vector2(cx + off + float(k % 3 - 1) * 6.0, cy + (floor(k / 3.0) - 1.5) * 10.0)
+				if _can_stand(tp, null, 0.0):
+					target = tp
+					break
+	var s := CampusGeometry.to_scene(null, target)
+	travel("out", {"position": [s.x, 0.05, s.y], "yaw": player.capture_pose()["yaw"], "pitch": 0.0}, false)
 
 
 # ---- the fake-normal day and the escape ideas ----

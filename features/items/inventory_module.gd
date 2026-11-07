@@ -207,6 +207,8 @@ func use(id: String, tsec: float) -> Dictionary:
 			return {"leave": true}
 		"phone":
 			return {"phone": true}
+		"medkit":
+			return {"medkit": true}
 		"compass", "atlas", "map", "memo", "coil", "lens", "vial":
 			return {"facility_item": id}
 		"coin":

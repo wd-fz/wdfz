@@ -73,6 +73,7 @@ func _run() -> void:
 	_test_phone_rules()
 	_test_talent_rules()
 	_test_fake_normal_rules()
+	_test_body_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -1411,6 +1412,77 @@ func _test_fake_normal_rules() -> void:
 	check(_notices(fac.take_events()).has("我：正门在北边。要走，得先走到北门的闸机前面。"), "away from the gate it only says where to go")
 
 
+func _bodyctx(scene: String, w: Vector2, ang: float, extra: Dictionary = {}) -> Dictionary:
+	var c := {"scene": scene, "x": w.x, "y": w.y, "ang": ang, "seated": false, "hiding": false, "stam": 100.0, "moving": false, "locked": false, "anomaly": false, "day": 1, "dead": false}
+	c.merge(extra, true)
+	return c
+
+
+func _test_body_rules() -> void:
+	var rooms := CampusData.rooms()
+	var b := BodyModule.new(rooms)
+	b.reset()
+	var l1 := CampusData.layout("link1")
+	var mid := CampusGeometry.tile_center(l1, 1, 10)
+	b.set_context(_bodyctx("link1", mid, PI))
+	check(b.target()["kind"] == "link" and b.hint() == "翻过栏杆 · 外侧悬空", "the bridge railing can be climbed")
+	b.set_context(_bodyctx("link1", mid, 0.0))
+	check(b.target().is_empty(), "facing along the bridge there is nothing to climb")
+	var t6 := CampusData.layout("teach6")
+	b.set_context(_bodyctx("teach6", CampusGeometry.tile_center(t6, 5, 1), -PI * 0.5))
+	check(b.target()["kind"] == "roof", "the roof parapet can be climbed")
+	b.set_context(_bodyctx("teach6", CampusGeometry.tile_center(t6, 5, 1), -PI * 0.5, {"stam": 4.0}))
+	check(not b.vault() and _notices(b.take_events()).has("我：喘不过气来，先歇一下。"), "climbing costs 8 stamina")
+	b.set_context(_bodyctx("teach6", CampusGeometry.tile_center(t6, 5, 1), -PI * 0.5))
+	b.ask_vault()
+	check(b.take_events()[0]["labels"] == ["翻过去", "算了"], "E asks first")
+	check(b.vault() and b.busy(), "over the parapet")
+	for _i in 14:
+		b.tick(0.1)
+	var ev := b.take_events()
+	check(ev.any(func(e: Dictionary) -> bool: return e["kind"] == "kill" and e["source"] == "campus_fall"), "the roof is a fatal fall")
+	var l := BodyModule.new(rooms)
+	l.reset()
+	l.set_context(_bodyctx("link1", mid, PI))
+	l.vault()
+	for _i in 10:
+		l.tick(0.1)
+	ev = l.take_events()
+	check(ev.any(func(e: Dictionary) -> bool: return e["kind"] == "land") and l.injury == 45.0 and _notices(ev).has("我：我摔在地上。腿一阵剧痛，还能走。"), "off a bridge: the ground and +45 injury")
+	check(l.speed_mul() == 0.9 and l.can_run() and absf(l.stamina_cap_drop() - 18.0) < 0.001, "injured: ×0.9, stamina cap −18")
+	l.hurt(20.0, "test")
+	check(l.speed_mul() == 0.8 and not l.can_run(), "badly injured: ×0.8 and no running")
+	l.set_context(_bodyctx("link1", mid, PI))
+	check(not l.vault() and _notices(l.take_events()).has("我：腿使不上劲，翻不过去。"), "and no climbing")
+	check(l.use_medkit() and l.busy(), "a medkit starts a 4 s treatment")
+	l.set_context(_bodyctx("link1", mid, PI, {"moving": true}))
+	l.tick(0.5)
+	check(l.treat == null and _notices(l.take_events()).has("我：包扎到一半被打断了。"), "moving interrupts it")
+	l.use_medkit()
+	l.set_context(_bodyctx("link1", mid, PI))
+	for _i in 41:
+		l.tick(0.1)
+	ev = l.take_events()
+	check(l.injury == 25.0 and ev.any(func(e: Dictionary) -> bool: return e["kind"] == "remove"), "a medkit heals 40")
+	l.injury = 10.0
+	for _i in 25:
+		l.tick(1.0)
+	check(l.injury < 10.0, "grazes heal standing still after 20 s")
+	var a1 := CampusData.layout("admin1")
+	var clinic := Vector2(float(a1["ox"]) + 6.0 * float(a1["tw"]), float(a1["oy"]) + 15.85 * float(a1["th"]))
+	l.set_context(_bodyctx("admin1", clinic, 0.0, {"day": 3}))
+	check(l.hint() == "医务室的药柜" and l.use_clinic() and l.take_events()[0]["kind"] == "give", "the clinic cabinet hands out a medkit")
+	l.gave_medkit("3")
+	l.use_clinic()
+	check(_notices(l.take_events()).has("我：药柜里今天的急救包已经拿过了。"), "one a day")
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(l.capture()))
+	var back := BodyModule.new(rooms)
+	back.reset()
+	check(back.validate(saved).is_empty(), "injury survives JSON")
+	back.restore(saved)
+	check(absf(back.injury - l.injury) < 0.001 and back.med_day.has("3"), "and restores")
+
+
 func _test_facility_rules() -> void:
 	var rooms := CampusData.rooms()
 	var fac := FacilitiesModule.new(rooms, CampusData.layout("out"), CampusData.campus())
@@ -2008,6 +2080,7 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_portal_route(app)
 	await _test_dismissal_route(app)
 	await _test_cyber_route(app)
+	await _test_vault_app(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
 
@@ -2474,6 +2547,31 @@ func _test_cyber_route(app: GameApp) -> void:
 	await _frames(2)
 	check(app.story().ended == "cyber" and app.ui.ending_panel.visible, "surviving ten minutes is 《网安仙人》")
 	check(app.achievements().unlocked.has("e.end_cyber"), "with its achievement")
+	app.return_to_menu()
+	DirAccess.remove_absolute(app._profile_path())
+
+
+## Over a bridge railing through the app: E, confirm, fall, land outside hurt.
+func _test_vault_app(app: GameApp) -> void:
+	app.saves.clear()
+	app.start_new_game()
+	await _frames(3)
+	app._stand_up()
+	app.patrol().pat["safety"] = 999.0
+	var l1 := CampusData.layout("link1")
+	app.travel("link1", _campus_pose(l1, CampusGeometry.tile_center(l1, 1, 10), PI), false)
+	await _frames(2)
+	app._campus_interact()
+	await _frames(2)
+	check(app.ui.choice_open(), "E at the railing asks")
+	app._choice_made(0)
+	for _i in 90:
+		await process_frame
+		if app.session.world_id == "out":
+			break
+	await _frames(3)
+	check(app.session.world_id == "out" and app.body().injury == 45.0 and app.player.enabled, "the fall ends on the ground outside, hurt")
+	check(app.player.speed_multiplier < 1.0 and app.achievements().unlocked.has("n.vault"), "walking slower, with 换一条路")
 	app.return_to_menu()
 	DirAccess.remove_absolute(app._profile_path())
 

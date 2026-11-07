@@ -30,6 +30,9 @@ const LIST := {
 	"p.talents": ["p", "七种活法", "换了好几种活法，每一种都走出了校门。"],
 	"p.routes": ["p", "四条路", "我从这所学校出去过很多次，每一次走的路都不一样。"],
 	"p.five_routes": ["p", "五条路", "最后一次，学校以为我只是放学回家。"],
+	"n.vault": ["n", "换一条路", "我摔在地上，腿一阵剧痛，还能走。"],
+	"n.first_aid": ["n", "还能走", "包扎好了，还能走。"],
+	"e.campus_fall": ["e", "楼层之外", "手离开了栏杆。"],
 	"e.nolaugh": ["e", "笑时莫出声", "那一天，我一直没有出声。"],
 	"n.broadcast": ["n", "核对", "记录本里没有刚才那一条。喇叭里还在啸叫。"],
 	"e.end_dismissal": ["e", "《放学》", "长铃还在响。我和同学一起走出了北门。"],
@@ -53,7 +56,7 @@ const LIST := {
 	"p.oneshot": ["p", "一命", "从头到尾，没有人替我挡过一下。"],
 	"p.anomalies": ["p", "异象图鉴", "这所学校能拿出来的东西，我都见过了。"],
 }
-const SCORELESS := ["n.wake", "n.saved"]
+const SCORELESS := ["n.wake", "n.saved", "e.campus_fall"]
 ## Cross-run goals (cross-run sets).
 const LETHAL_GOAL := 4
 
@@ -246,6 +249,12 @@ func _test(id: String, f: Dictionary) -> bool:
 			return kind == "garage" and f["what"] == "torch"
 		"n.rest":
 			return kind == "rest"
+		"n.vault":
+			return kind == "vault" and f.get("what") == "landed"
+		"n.first_aid":
+			return kind == "treated"
+		"e.campus_fall":
+			return kind == "death" and f.get("source") == "campus_fall"
 		"e.nolaugh":
 			return kind == "fakeNormal" and bool(f.get("done", false)) and int(f.get("laughs", 1)) == 0
 		"n.broadcast":
