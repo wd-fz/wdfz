@@ -42,6 +42,8 @@ var death_msg := ""
 var death_source := ""
 var death_t := 0.0
 var wake_pending := false
+## Set when an ending is reached: the run is over and the simulation stops (S.screen = 'end').
+var ended := ""
 
 
 func module_id() -> StringName:
@@ -60,6 +62,22 @@ func reset() -> void:
 	death_source = ""
 	death_t = 0.0
 	wake_pending = false
+	ended = ""
+
+
+## story.js triggerEnding: returns the ending card, or {} when already dead or over.
+func trigger_ending(id: String) -> Dictionary:
+	if dead or ended != "":
+		return {}
+	var c := RoutesModule.card(id)
+	if c.is_empty():
+		return {}
+	ended = id
+	return c
+
+
+func over() -> bool:
+	return dead or ended != ""
 
 
 func capture() -> Dictionary:

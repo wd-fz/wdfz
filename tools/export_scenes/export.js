@@ -329,7 +329,7 @@
         items:window.ITEMS, item_glyph:window.ITEM_GLYPH, desk_loot:window.DESK_LOOT, lab_loot:window.LAB_LOOT,
         pill:{sec:window.PILL_SEC, rate:window.PILL_RATE}, bag_capacity:window.InventoryRules.capacity,
         own_podium:window.ClassroomLayout.podium(window.ClassroomLayout.ownSeat.classId),
-        room_lights:window.ROOM_LIGHTS, light_cfg:window.LCFG, sun:{rise:window.SUN_RISE, set:window.SUN_SET}, bound_map:window.BOUND, meals:window.MEALS,
+        room_lights:window.ROOM_LIGHTS, light_cfg:window.LCFG, sun:{rise:window.SUN_RISE, set:window.SUN_SET}, bound_map:window.BOUND, meals:window.MEALS, gates:{n:window.GATE_N, w:window.GATE_W, s:window.GATE_S},
         stair_layout:window.STAIR_LAYOUT, stair_geometry:window.StairGeometry.config, spiral:window.SPIRAL,
         campus_link:window.CAMPUS_LINK ? {width:window.CAMPUS_LINK.width, annex:window.CAMPUS_LINK.annex, pairs:window.CAMPUS_LINK.pairs} : null,
         reference:'wd-fz/wd-fz.github.io@0bf508a47eac154c2a7047cdb45d314f61c48fdc'};

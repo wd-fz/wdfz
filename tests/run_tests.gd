@@ -65,6 +65,7 @@ func _run() -> void:
 	_test_story_rules()
 	_test_patrol_rules()
 	_test_anomaly_rules()
+	_test_routes_rules()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -815,6 +816,87 @@ func _route_towards(from: String, to: String, pm: PatrolModule) -> int:
 	return 1
 
 
+func _notices(events: Array) -> Array:
+	return events.filter(func(e: Dictionary) -> bool: return e["kind"] == "notice").map(func(e: Dictionary) -> String: return e["text"])
+
+
+func _test_routes_rules() -> void:
+	var rt := RoutesModule.new(CampusData.campus())
+	rt.reset()
+	rt.set_seed(9)
+	rt.use_terminal("lab3", false, 1)
+	check(_notices(rt.take_events()).has("我：屏幕上是一串我看不懂的东西。旁边贴着一张便签：「门禁 U 盘插这里」。") and not rt.hacked and rt.clues.has("usb"), "the lab3 terminal without the USB drive only hints at it")
+	rt.use_terminal("lab1", true, 1)
+	check(_notices(rt.take_events()).has("我：这台终端连不上。"), "other terminals are not connected")
+	rt.use_data("admin3")
+	check(_notices(rt.take_events()).has("我：得先在实验楼三楼的网络中心写入白名单。"), "the admin3 data machine needs the network centre first")
+	rt.use_terminal("lab3", true, 1)
+	check(rt.hacked and rt.clues.has("comp"), "the USB drive writes the whitelist at lab3")
+	rt.take_events()
+	rt.tick(5.0)
+	check(rt.take_events().is_empty(), "the reminder waits 5.2 s")
+	rt.tick(0.3)
+	check(_notices(rt.take_events()).has("我：还得去行政楼三楼，把数据同步过去。"), "then the admin3 reminder is said")
+	rt.use_data("admin3")
+	check(rt.data_synced and _notices(rt.take_events()).has("我：同步完成。照片底下写着：已登记。西小门现在认得我了。"), "the admin3 machine syncs the whitelist")
+	rt.use_data("admin3")
+	check(rt.take_events()[0]["kind"] == "toast", "syncing twice only reports it")
+	check(rt.gate_at(Vector2(401, 1250)) == "w" and rt.gate_at(Vector2(1028, 190)) == "n" and rt.gate_at(Vector2(772, 2790)) == "s" and rt.gate_at(Vector2(1000, 1000)) == "", "gate positions follow GATE_N / W / S within 70 units")
+	var fresh := RoutesModule.new(CampusData.campus())
+	fresh.reset()
+	fresh.use_gate("w", 1)
+	check(_notices(fresh.take_events()).has("我：小门上挂着锁，旁边那台闸机的屏幕亮着：「未登记」。") and fresh.clues.has("gatew"), "the west gate says unregistered before the sync")
+	fresh.use_gate("n", 1)
+	check(_notices(fresh.take_events())[0].begins_with("我：北门的闸机屏幕上显示：「查无此人」"), "the north gate line")
+	# The quiz: three questions, wrong answers cost SAN, swap the question and keep the progress.
+	rt.use_gate("w", 1)
+	var asked := rt.take_events()
+	check(asked[0]["kind"] == "choice" and String(asked[0]["text"]).begins_with("白名单验证 1/3："), "the west gate opens the quiz after the sync")
+	var order: Array = rt.face_quiz["order"].duplicate()
+	var first: Dictionary = RoutesModule.QUESTIONS[order[0]]
+	var wrong := (int(first["answer"]) + 1) % 3
+	rt.choose(wrong, "easy")
+	var after_wrong := rt.take_events()
+	check(after_wrong[0]["kind"] == "san" and absf(float(after_wrong[0]["amount"]) + 4.0 * 0.82) < 0.001, "a wrong answer costs 4 SAN (×0.82 on 预知梦)")
+	check(after_wrong[1]["kind"] == "choice" and String(after_wrong[1]["text"]).contains(RoutesModule.EXPLANATIONS[order[0]]), "and shows the explanation")
+	check(rt.face_quiz["order"][0] != order[0] and rt.face_quiz["used"].size() == 4, "the question is swapped for one not asked yet")
+	rt.choose(0, "easy")
+	var again := rt.take_events()
+	check(String(again[0]["text"]).begins_with("白名单验证 1/3："), "continuing re-asks from the same question number")
+	for n in 3:
+		var q: Dictionary = RoutesModule.QUESTIONS[rt.face_quiz["order"][int(rt.face_quiz["done"])]]
+		rt.choose(int(q["answer"]), "easy")
+		var next := rt.take_events()
+		if n < 2:
+			check(String(next[0]["text"]).begins_with("白名单验证 %d/3：" % (n + 2)), "answering %d moves on to question %d" % [n + 1, n + 2])
+		else:
+			check(next[0]["text"] == "闸机亮起绿灯。外面的路安静得出奇。", "three correct answers open the gate")
+	rt.choose(0, "easy")
+	var end_events := rt.take_events()
+	check(end_events.size() == 1 and end_events[0]["kind"] == "ending" and end_events[0]["id"] == "face" and rt.ending == "face", "walking through is the 《白名单》 ending")
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(rt.capture()))
+	check(rt.validate(saved).is_empty(), "route state survives JSON")
+	var back := RoutesModule.new(CampusData.campus())
+	back.reset()
+	back.restore(saved)
+	check(back.hacked and back.data_synced and back.face_quiz["done"] == 3 and back.ending == "face", "route state restores")
+	saved["data"] = true
+	saved["hacked"] = false
+	check(not back.validate(saved).is_empty(), "a sync without the network write is refused")
+	var trash := RoutesModule.new(CampusData.campus())
+	trash.reset()
+	trash.use_trash("teach1", 1)
+	check(_notices(trash.take_events()).has("我：这个桶太小了。"), "only the trash room bin is the trap")
+	trash.use_trash("trash1", 1)
+	var trapped := trash.take_events()
+	check(trapped[0]["kind"] == "kill" and trapped[0]["fx"] == "trash" and trapped[0]["source"] == "trash", "the trash bin is the 'trash' death")
+	var card := RoutesModule.card("face")
+	check(card["title"] == "《白名单》" and card["tag"] == "真 结 局" and card["lines"].size() == 4, "the ending card carries the old title and four lines")
+	var fate := StoryModule.new()
+	fate.reset()
+	check(not fate.trigger_ending("face").is_empty() and fate.ended == "face" and fate.over() and fate.trigger_ending("car").is_empty(), "an ending ends the run once")
+
+
 func _actx(scene: String, w: Vector2, extra: Dictionary = {}) -> Dictionary:
 	var c := {"scene": scene, "x": w.x, "y": w.y, "ang": 0.0, "tsec": 700.0, "day": 1, "diff": "easy", "san": 100.0, "viol": 0.0, "moving": false,
 		"running": false, "seated": false, "night": false, "need_where": "教室", "tile": ".", "on_field": false, "in_classroom": false, "game_clock": 700.0,
@@ -1148,6 +1230,7 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_spiral_walk(app)
 	await _test_elevator_walk(app)
 	await _test_patrol_app(app)
+	await _test_whitelist_route(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
 
@@ -1188,6 +1271,62 @@ func _test_patrol_app(app: GameApp) -> void:
 	await _frames(3)
 	check(not world.patrol_figure_shown(), "and disappears when it is elsewhere")
 	app.return_to_menu()
+
+
+## Walk the whole whitelist route through the real interactions, ending on the card.
+func _test_whitelist_route(app: GameApp) -> void:
+	app.saves.clear()
+	app.start_new_game()
+	await _frames(3)
+	app._stand_up()
+	app.items().add("usb")
+	app.items().add("pen")
+	check(await _press_terminal(app, "lab3"), "E at the lab3 terminal reaches the route rules")
+	check(app.routes().hacked, "the USB drive hacks the whitelist through the real interaction")
+	check(await _press_terminal(app, "admin3"), "E at the admin3 data machine reaches the route rules")
+	check(app.routes().data_synced, "and syncs it")
+	var gate := CampusGeometry.to_scene(null, Vector2(401, 1250))
+	app.travel("out", {"position": [gate.x, 0.05, gate.y], "yaw": 0.0, "pitch": 0.0}, false)
+	await _frames(3)
+	check(app.campus().hint("out", app.player.capture_pose()) == "西小门", "the west gate hint appears")
+	app._campus_interact()
+	await _frames(2)
+	check(app.ui.choice_open(), "the quiz opens as a choice")
+	for _n in 3:
+		var q: Dictionary = RoutesModule.QUESTIONS[app.routes().face_quiz["order"][int(app.routes().face_quiz["done"])]]
+		app._choice_made(int(q["answer"]))
+		await _frames(2)
+	check(app.ui.choice_open(), "the green gate choice is open")
+	app._choice_made(0)
+	await _frames(2)
+	check(app.story().ended == "face" and app.ui.ending_panel != null and app.ui.ending_panel.visible, "the ending card is shown")
+	check(not app.saves.exists() and not app.player.enabled, "the run is over and the save is cleared")
+	check(FileAccess.file_exists(app.saves.side_path("ends.json")), "the ending is recorded")
+	app.pause_game()
+	check(not paused, "no pause menu after an ending")
+	app.return_to_menu()
+	check(not app.ui.ending_panel.visible and app.session == null, "back to the menu hides the card")
+
+
+## Stand next to a 'D' cell of `scene` and press E until the rules answer with a terminal.
+func _press_terminal(app: GameApp, scene: String) -> bool:
+	var room := CampusData.layout(scene)
+	var grid: Array = room["grid"]
+	for r in grid.size():
+		for c in String(grid[r]).length():
+			if String(grid[r]).substr(c, 1) != "D":
+				continue
+			for off: Vector2i in [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]:
+				var stand := CampusGeometry.tile_center(room, c + off.x, r + off.y)
+				var ang := atan2(-off.y, -off.x)
+				var pose := _campus_pose(room, stand, ang)
+				if CampusData.rules().interact_at(scene, pose).get("terminal", false):
+					app.travel(scene, pose, false)
+					await _frames(3)
+					app._campus_interact()
+					await _frames(2)
+					return true
+	return false
 
 
 func _test_death_flow(app: GameApp) -> void:

@@ -47,7 +47,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly()]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -57,6 +57,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func routes() -> RoutesModule:
+	return session.modules.get_module(&"story.routes") as RoutesModule if session != null else null
 
 
 func anomaly() -> AnomalyModule:
@@ -167,7 +171,7 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 
 
 func _dead() -> bool:
-	return story() != null and story().dead
+	return story() != null and story().over()
 
 
 func save_game() -> void:
@@ -225,6 +229,7 @@ func resume_game() -> void:
 
 
 func return_to_menu() -> void:
+	ui.hide_ending()
 	ui.show_hiding(false)
 	ui.hide_choice()
 	ui.hide_death()
@@ -290,6 +295,8 @@ func _campus_step(delta: float) -> void:
 	if rules == null or not rules.knows(session.world_id):
 		return
 	var fate := story()
+	if fate != null and fate.ended != "":
+		return
 	if fate != null and fate.dead:
 		_death_step(delta)
 		return
@@ -367,6 +374,23 @@ func _apply_result(result: Dictionary) -> void:
 	if result.has("podium") and items() != null:
 		var said := items().podium(session.world_id, int(result["podium"][0]), int(result["podium"][1]))
 		text = String(said.get("notice", text))
+	if result.has("terminal") and routes() != null:
+		var bag_t := items()
+		var scene := session.world_id
+		if scene == "admin3":
+			routes().use_data(scene)
+		else:
+			routes().use_terminal(scene, bag_t != null and bag_t.has("usb"), school().day)
+		_apply_route_events(routes())
+		return
+	if result.has("gate") and routes() != null:
+		routes().use_gate(String(result["gate"]), school().day)
+		_apply_route_events(routes())
+		return
+	if result.has("trash") and routes() != null:
+		routes().use_trash(session.world_id, school().day)
+		_apply_route_events(routes())
+		return
 	if result.has("hide") and patrol() != null:
 		_hide_in(int(result["hide"][0]), int(result["hide"][1]))
 		return
@@ -441,6 +465,9 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	player.can_sprint = day_rules.can_run(snack)
 	_patrol_step(delta, watcher, day_rules, room, pose)
 	if story().dead:
+		return
+	_routes_step(delta)
+	if story().over():
 		return
 	_anomaly_step(delta, day_rules, room, pose)
 	for text: String in day_rules.take_notices():
@@ -756,6 +783,78 @@ func _patrol_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, 
 			"kill":
 				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
 				return
+
+
+## Escape routes: delayed lines, terminals, gates, the face quiz and endings.
+func _routes_step(delta: float) -> void:
+	var route := routes()
+	if route == null:
+		return
+	route.tick(delta)
+	_apply_route_events(route)
+
+
+func _apply_route_events(route: RoutesModule) -> void:
+	for e: Dictionary in route.take_events():
+		match e["kind"]:
+			"notice":
+				ui.show_notice(String(e["text"]))
+			"toast":
+				ui.show_notice(String(e["text"]))
+			"san":
+				var after := school().san + float(e["amount"])
+				school().san = maxf(after, float(e.get("min", -INF)))
+			"choice":
+				_choice_count += 1
+				var mine := _choice_count
+				_choice_handler = func(index: int) -> void:
+					var r := routes()
+					if r != null and mine == _choice_count:
+						r.choose(index, story().diff if story() != null else "easy")
+						_apply_route_events(r)
+				player.enabled = false
+				player.clear_input()
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				ui.show_choice(String(e["text"]), e["labels"])
+			"kill":
+				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
+				return
+			"ending":
+				_reach_ending(String(e["id"]))
+				return
+
+
+## story.js triggerEnding: the run is over; the save is cleared; the ending is recorded.
+func _reach_ending(id: String) -> void:
+	var fate := story()
+	var card := fate.trigger_ending(id) if fate != null else {}
+	if card.is_empty():
+		return
+	player.enabled = false
+	player.clear_input()
+	ui.hide_choice()
+	ui.hide_bag()
+	if items() != null:
+		items().cancel_search()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	saves.clear()
+	ui.set_save_available(saves.exists())
+	var path := saves.side_path("ends.json")
+	var seen_ends: Dictionary = {}
+	if FileAccess.file_exists(path):
+		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		if parsed is Dictionary:
+			seen_ends = parsed
+	seen_ends[id] = 1
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(seen_ends))
+		file.close()
+	var meta := "第 %d 天" % school().day
+	if items() != null and items().has_clock():
+		meta += " · " + SchoolClock.fmt_clock(school().tsec)
+	ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta)
 
 
 func _anomaly_context(room: Variant, pose: Dictionary) -> Dictionary:

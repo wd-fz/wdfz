@@ -92,6 +92,8 @@ func _build_choice() -> void:
 	choice_panel.name = "ChoicePanel"
 	choice_panel.visible = false
 	choice_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	choice_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	choice_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	choice_panel.custom_minimum_size = Vector2(360, 0)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
@@ -162,6 +164,8 @@ func _build_bag() -> void:
 	bag_panel.name = "BagPanel"
 	bag_panel.visible = false
 	bag_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	bag_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	bag_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	bag_panel.custom_minimum_size = Vector2(460, 0)
 	var box := VBoxContainer.new()
 	var title := Label.new()
@@ -256,6 +260,8 @@ func _build_death() -> void:
 	death_panel.name = "DeathPanel"
 	death_panel.visible = false
 	death_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	death_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	death_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	death_panel.custom_minimum_size = Vector2(480, 0)
 	var box := VBoxContainer.new()
 	_death_text = Label.new()
@@ -314,6 +320,42 @@ func show_hiding(on: bool) -> void:
 		$Root.add_child(_hide_overlay)
 		$Root.move_child(_hide_overlay, 0)
 	_hide_overlay.visible = on
+
+
+## Ending card (story.js showEndingCard): tag, title, lines, day/time, back to the menu.
+var ending_panel: PanelContainer
+var _ending_text: Label
+
+
+func show_ending(title: String, tag: String, lines: Array, meta: String) -> void:
+	if ending_panel == null:
+		ending_panel = PanelContainer.new()
+		ending_panel.name = "EndingPanel"
+		ending_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		ending_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		ending_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+		ending_panel.custom_minimum_size = Vector2(520, 0)
+		var box := VBoxContainer.new()
+		box.add_theme_constant_override("separation", 14)
+		_ending_text = Label.new()
+		_ending_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_ending_text.custom_minimum_size = Vector2(480, 0)
+		_ending_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		box.add_child(_ending_text)
+		var back := Button.new()
+		back.text = "回到主菜单"
+		back.pressed.connect(func() -> void: death_menu_requested.emit())
+		box.add_child(back)
+		ending_panel.add_child(box)
+		$Root.add_child(ending_panel)
+	var head := "%s\n%s" % [tag, title] if not tag.is_empty() else title
+	_ending_text.text = "%s\n\n%s\n\n%s" % [head, "\n".join(PackedStringArray(lines)), meta]
+	ending_panel.visible = true
+
+
+func hide_ending() -> void:
+	if ending_panel != null:
+		ending_panel.visible = false
 
 
 func hide_death() -> void:

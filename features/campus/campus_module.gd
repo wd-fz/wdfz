@@ -267,13 +267,26 @@ func crossing(world_id: String, pose: Dictionary) -> Dictionary:
 	return {}
 
 
+## GATE_HINT: the gate within 70 units of a campus position (north, west, south).
+func gate_at(w: Vector2) -> String:
+	var gates: Dictionary = _campus.get("gates", {})
+	for key: String in ["n", "w", "s"]:
+		if gates.has(key) and Vector2(float(gates[key]["x"]) * 2.0, float(gates[key]["y"]) * 2.0).distance_to(w) < 70.0:
+			return key
+	return ""
+
+
 ## Prompt shown for the current spot (subset of interact.js interactHint that is ported).
 func hint(world_id: String, pose: Dictionary) -> String:
 	var p: Array = pose["position"]
 	var ang := CampusGeometry.ang_from_yaw(float(pose["yaw"]))
 	if world_id == "out":
-		var nb := CampusGeometry.near_building(_outside, CampusGeometry.to_world(null, float(p[0]), float(p[2])))
-		if nb.is_empty() or _continuous_host(nb["obj"]["id"]):
+		var here_w := CampusGeometry.to_world(null, float(p[0]), float(p[2]))
+		var nb := CampusGeometry.near_building(_outside, here_w)
+		if nb.is_empty():
+			var gate := gate_at(here_w)
+			return RoutesModule.gate_name(gate) if gate != "" else ""
+		if _continuous_host(nb["obj"]["id"]):
 			return ""
 		return "沿楼梯下到车库" if nb["obj"]["id"] == "garw" else "进入 " + String(nb["obj"]["name"])
 	if is_stairwell(world_id):
@@ -330,6 +343,9 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 		var me := CampusGeometry.to_world(null, float(p[0]), float(p[2]))
 		var nb := CampusGeometry.near_building(_outside, me)
 		if nb.is_empty():
+			var gate := gate_at(me)
+			if gate != "":
+				return {"notice": "", "gate": gate}
 			return {"notice": "我：这里摸不到什么。"}
 		var id := String(nb["obj"]["id"])
 		if id == "garw":
@@ -365,6 +381,10 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 			return {"notice": "", "elevator": true}
 		"P":
 			return {"notice": "", "seat": [hit["c"], hit["r"]]}
+		"D":
+			return {"notice": "", "terminal": true}
+		"X":
+			return {"notice": "", "trash": true}
 		"H":
 			return {"notice": "", "hide": [hit["c"], hit["r"]]}
 		"T":
