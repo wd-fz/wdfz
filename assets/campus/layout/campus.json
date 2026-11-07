@@ -229,6 +229,27 @@
   "back": 7.2,
   "rail": 0.09
  },
+ "spiral": {
+  "room": "bell1",
+  "cx": 0,
+  "cz": -1,
+  "rCol": 0.55,
+  "rIn": 0.75,
+  "rOut": 2.6,
+  "turnH": 3.2,
+  "turns": 2,
+  "steps": 16,
+  "th0": 1.5707963267948966,
+  "enter": [
+   -0.3,
+   0.5
+  ],
+  "hole": 3.9,
+  "arrive": 0.62,
+  "amax": 12.566370614359172,
+  "topH": 6.4,
+  "wallH": 9.8
+ },
  "campus_link": {
   "width": 3,
   "annex": 1.5,

@@ -462,7 +462,30 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _walk(app, [Vector2(-1.25, 0.8), Vector2(-1.25, 5.6), Vector2(-1.25, 6.4), Vector2(1.25, 6.4), Vector2(1.25, 5.6), Vector2(1.25, 0.8), Vector2(0.0, -0.3), Vector2(0.0, -3.2)], 240)
 	check(app.session.world_id == "teach2", "climbing one flight pair and walking out reaches teach2 (now %s, y=%.2f)" % [app.session.world_id, app.player.position.y])
 	check(absf(app.player.position.y) < 0.2, "teach2 floor is at the scene's own ground level")
+	await _test_spiral_walk(app)
 	app.return_to_menu()
+
+
+## Bell tower: walk the spiral two turns up to the 6.4 m top ring (spiral.js), and the ground
+## under the stair stays solid outside the entry angles.
+func _test_spiral_walk(app: GameApp) -> void:
+	var sp: Dictionary = CampusData.campus()["spiral"]
+	var c := Vector2(sp["cx"], sp["cz"])
+	var th0 := float(sp["th0"])
+	var rm := (float(sp["rIn"]) + float(sp["rOut"])) * 0.5
+	app.travel("bell1", {"position": [c.x + cos(th0) * 3.4, 0.05, c.y + sin(th0) * 3.4], "yaw": 0.0, "pitch": 0.0}, false)
+	await _frames(3)
+	var points: Array = []
+	for i in 2 * 24 + 4:
+		var a := th0 - 0.1 + i * TAU / 24.0
+		points.append(c + Vector2(cos(a), sin(a)) * rm)
+	await _walk(app, points, 120)
+	check(app.player.position.y > float(sp["topH"]) - 0.2, "walking the spiral two turns reaches the top ring (y=%.2f)" % app.player.position.y)
+	app.travel("bell1", {"position": [c.x + cos(th0 + 2.0) * 3.4, 0.05, c.y + sin(th0 + 2.0) * 3.4], "yaw": 0.0, "pitch": 0.0}, false)
+	await _frames(3)
+	await _walk(app, [c + Vector2(cos(th0 + 2.0), sin(th0 + 2.0)) * rm], 90)
+	var q := Vector2(app.player.position.x, app.player.position.z) - c
+	check(q.length() > float(sp["rOut"]) + 0.2 and app.player.position.y < 0.2, "ground under the stair is solid away from the entry")
 
 
 func _test_touch(app: GameApp) -> void:

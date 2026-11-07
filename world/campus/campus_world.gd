@@ -4,7 +4,7 @@ extends Node3D
 ## Geometry is the glb exported from the old game's own builders; collision boxes are the old
 ## game's own static collision rectangles (tools/export_scenes). No geometry is redrawn here.
 
-const WALL_TOP := 3.5
+const WALL_TOP := 10.0     # the bell tower top platform is at 6.4 m
 const WALL_BOTTOM := -0.5
 const BOUNDARY := 1.0
 
@@ -123,6 +123,8 @@ func _build_collision() -> void:
 	if is_room():
 		for b: Dictionary in layout["walls"] + layout["boxes"]:
 			_add_rect(body, b)
+		if layout["flags"].get("spiral", false):
+			_build_spiral(body, CampusData.campus()["spiral"])
 		var doorways := rules.stair_doorways(scene_id)
 		for b: Dictionary in layout["stairs"]:
 			for part: Rect2 in _cut_doorways(_rect_of(b), doorways):
@@ -209,6 +211,72 @@ func _build_stairwell(body: StaticBody3D, surfaces: Array[Dictionary]) -> void:
 	_add_box(body, Rect2(0.3, 0.8, 1.9, 4.8), y0, 1.4, "stairwell")
 	# Top landing: the down-going flight side has no flight above it.
 	_add_box(body, Rect2(-2.2, 0.8, 1.9, 0.1), top, top + 2.5, "stairwell")
+
+
+## Bell tower spiral (spiral.js + content/spiral-data.js). The old game tracks ground/stair/top
+## states on a flat grid; physically: the first turn is solid underneath (only the entry angles
+## step on), the second turn is a slab, rails run outside, the top ring leaves the stair hole open
+## and fences its far edge (spiralSolid).
+func _build_spiral(body: StaticBody3D, sp: Dictionary) -> void:
+	var c := Vector2(sp["cx"], sp["cz"])
+	var r_in := float(sp["rIn"])
+	var r_out := float(sp["rOut"])
+	var turn_h := float(sp["turnH"])
+	var amax := float(sp["amax"])
+	var top_h := float(sp["topH"])
+	var th0 := float(sp["th0"])
+	var hole := float(sp["hole"])
+	var column := CylinderShape3D.new()
+	column.radius = r_in
+	column.height = top_h + 4.0
+	var col_node := CollisionShape3D.new()
+	col_node.shape = column
+	col_node.position = Vector3(c.x, column.height * 0.5 - 0.5, c.y)
+	col_node.set_meta("kind", "spiral")
+	body.add_child(col_node)
+	var seg := 48
+	var n := int(round(amax / TAU * seg))
+	for i in n:
+		var a0 := i * TAU / seg
+		var a1 := (i + 1) * TAU / seg
+		var h0 := a0 / TAU * turn_h
+		var h1 := a1 / TAU * turn_h
+		var bottom0 := -0.5 if a1 <= TAU + 1e-6 else h0 - 0.18
+		var bottom1 := -0.5 if a1 <= TAU + 1e-6 else h1 - 0.18
+		_convex(body, [_polar(c, th0 + a0, r_in, h0), _polar(c, th0 + a0, r_out, h0), _polar(c, th0 + a1, r_in, h1), _polar(c, th0 + a1, r_out, h1),
+			_polar(c, th0 + a0, r_in, bottom0), _polar(c, th0 + a0, r_out, bottom0), _polar(c, th0 + a1, r_in, bottom1), _polar(c, th0 + a1, r_out, bottom1)])
+		if a1 > 0.35:
+			_convex(body, [_polar(c, th0 + a0, r_out, h0 - 0.3), _polar(c, th0 + a0, r_out + 0.12, h0 - 0.3), _polar(c, th0 + a1, r_out, h1 - 0.3), _polar(c, th0 + a1, r_out + 0.12, h1 - 0.3),
+				_polar(c, th0 + a0, r_out, h0 + 1.3), _polar(c, th0 + a0, r_out + 0.12, h0 + 1.3), _polar(c, th0 + a1, r_out, h1 + 1.3), _polar(c, th0 + a1, r_out + 0.12, h1 + 1.3)])
+	var base := th0 + amax
+	var platform := TAU - hole
+	var k := int(ceil(platform / (TAU / seg)))
+	for i in k:
+		var u0 := platform * i / k
+		var u1 := platform * (i + 1) / k
+		_convex(body, [_polar(c, base + u0, r_in, top_h), _polar(c, base + u0, r_out, top_h), _polar(c, base + u1, r_in, top_h), _polar(c, base + u1, r_out, top_h),
+			_polar(c, base + u0, r_in, top_h - 0.16), _polar(c, base + u0, r_out, top_h - 0.16), _polar(c, base + u1, r_in, top_h - 0.16), _polar(c, base + u1, r_out, top_h - 0.16)])
+	for i in seg:
+		var t0 := i * TAU / seg
+		var t1 := (i + 1) * TAU / seg
+		_convex(body, [_polar(c, t0, r_out, top_h), _polar(c, t0, r_out + 0.12, top_h), _polar(c, t1, r_out, top_h), _polar(c, t1, r_out + 0.12, top_h),
+			_polar(c, t0, r_out, top_h + 1.2), _polar(c, t0, r_out + 0.12, top_h + 1.2), _polar(c, t1, r_out, top_h + 1.2), _polar(c, t1, r_out + 0.12, top_h + 1.2)])
+	var fence := base + platform
+	_convex(body, [_polar(c, fence, r_in, top_h), _polar(c, fence, r_out, top_h), _polar(c, fence + 0.03, r_in, top_h), _polar(c, fence + 0.03, r_out, top_h),
+		_polar(c, fence, r_in, top_h + 1.2), _polar(c, fence, r_out, top_h + 1.2), _polar(c, fence + 0.03, r_in, top_h + 1.2), _polar(c, fence + 0.03, r_out, top_h + 1.2)])
+
+
+static func _polar(c: Vector2, a: float, r: float, y: float) -> Vector3:
+	return Vector3(c.x + cos(a) * r, y, c.y + sin(a) * r)
+
+
+func _convex(body: StaticBody3D, points: Array) -> void:
+	var shape := ConvexPolygonShape3D.new()
+	shape.points = PackedVector3Array(points)
+	var node := CollisionShape3D.new()
+	node.shape = shape
+	node.set_meta("kind", "spiral")
+	body.add_child(node)
 
 
 func _add_slab(body: StaticBody3D, s: Dictionary) -> void:

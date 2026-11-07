@@ -280,7 +280,7 @@
       Object.keys(window.DOOR_LOCKS).forEach(function(k){ var id = window.DOOR_LOCKS[k]; locks[k] = {item:id, name:window.ITEMS[id] ? window.ITEMS[id].n : id}; });
       return {campus_doors:campusDoors(), door_locks:locks, PRAD:window.PRAD, TTILE:window.TTILE, U2M:U, SC:window.SC, EYE:window.EYE, WALLH:window.WALLH,
         SPD_WALK:window.SPD_WALK, SPD_RUN:window.SPD_RUN, start_room:window.ClassroomLayout.ownSeat.room,
-        stair_layout:window.STAIR_LAYOUT, stair_geometry:window.StairGeometry.config,
+        stair_layout:window.STAIR_LAYOUT, stair_geometry:window.StairGeometry.config, spiral:window.SPIRAL,
         campus_link:window.CAMPUS_LINK ? {width:window.CAMPUS_LINK.width, annex:window.CAMPUS_LINK.annex, pairs:window.CAMPUS_LINK.pairs} : null,
         reference:'wd-fz/wd-fz.github.io@0bf508a47eac154c2a7047cdb45d314f61c48fdc'};
     }
