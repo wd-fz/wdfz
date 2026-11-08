@@ -765,7 +765,7 @@ func show_import() -> void:
 		head.modulate = Color(1.0, 0.9, 0.55)
 		box.add_child(head)
 		var help := Label.new()
-		help.text = "把旧版网页存档（浏览器里键名 wdfz3d 的那段 JSON）贴在下面。位置、时间、SAN、背包会带过来；异象、路线与剧情进度从头开始；这一局记为「从旧存档继续」。"
+		help.text = "把旧版网页存档（浏览器里键名 wdfz3d 的那段 JSON）贴在下面。接续位置、时间、背包、路线、巡察、异象与调查记录。导入前会校验整局；不支持的 DLC 存档会说明原因。原文保留在新档中，这一局标记为「从旧存档继续」。"
 		help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		help.custom_minimum_size = Vector2(500, 0)
 		help.modulate = Color(1, 1, 1, 0.75)

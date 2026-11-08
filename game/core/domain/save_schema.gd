@@ -42,7 +42,7 @@ static func validate(data: Dictionary, known_worlds: PackedStringArray) -> Strin
 	if not is_json_value(data):
 		return "存档只能包含有限数值、字符串、布尔值、数组与字典"
 	if data.get("format") != FORMAT or not is_integer(data.get("version"), VERSION, VERSION):
-		return "不支持的存档格式或版本；Web 版存档尚未提供转换器"
+		return "不支持的存档格式或版本；Web 版存档请使用「导入旧存档」"
 	if not data.get("world_id") is String or not known_worlds.has(data["world_id"]):
 		return "存档引用了未登记的场景"
 	if not data.get("clock") is Dictionary or not data.get("player") is Dictionary or not data.get("modules") is Dictionary:

@@ -1,11 +1,8 @@
 class_name LegacySave
 extends RefCounted
 ## Reads a save of the old Web build (game3d/js/save.js: the JSON in localStorage under "wdfz3d", reference
-## wd-fz.github.io@0bf508a) and plans what of it can be carried into a new Godot run. A new run is started (difficulty,
-## talent) and then the player's own state is put on it: where you stand and face, the clock and the day, SAN, violation,
-## stamina, assimilation, the bag and the hotbar. Everything else — the anomaly in progress, the routes and their clues, the
-## story flags, doors, marks — starts fresh (it lives in the Godot modules in another shape). The run is rated "from an old save":
-## what happened before is not on record (RunScoreModule.legacy). Nothing is read from it unvalidated: a bad file is refused whole.
+## wd-fz.github.io@0bf508a). Validate the envelope and migrate the old continuous clock;
+## LegacyState translates individual modules before a candidate run is installed.
 
 const LIMITS := {"san": [0, 100], "viol": [0, 100], "stam": [0, 100], "tt": [0, 100]}
 
@@ -15,7 +12,11 @@ static func plan(d: Variant, known_rooms: Dictionary, known_items: Dictionary, t
 	if not (d is Dictionary):
 		return {"error": "不是旧版存档（要一个 JSON 对象）"}
 	var s: Dictionary = d
-	if s.has("clockVersion") and not (int(s["clockVersion"]) == 1 or int(s["clockVersion"]) == 2):
+	if not SaveSchema.is_json_value(s):
+		return {"error": "旧存档包含非法数据"}
+	if s.has("v") and not SaveSchema.is_integer(s["v"], 1, 1):
+		return {"error": "不支持的旧存档版本"}
+	if s.has("clockVersion") and not SaveSchema.is_integer(s["clockVersion"], 1, 2):
 		return {"error": "不支持的时钟版本"}
 	for k: String in ["x", "y", "tsec"]:
 		if not _num(s.get(k)):
@@ -23,9 +24,11 @@ static func plan(d: Variant, known_rooms: Dictionary, known_items: Dictionary, t
 	var tsec := float(s["tsec"])
 	if tsec < 0.0 or tsec > 1500.0:
 		return {"error": "存档位置或时间无效"}
-	var day := int(s.get("day", 1)) if _num(s.get("day", 1)) else 0
-	if day < 1 or day > 100000:
+	if not SaveSchema.is_integer(s.get("day", 1), 1, 100000):
 		return {"error": "存档天数无效"}
+	var day := int(s.get("day", 1))
+	if s.has("mode") and not s["mode"] is String or s.has("room") and s["room"] != null and not s["room"] is String:
+		return {"error": "存档位置模式无效"}
 	var mode := String(s.get("mode", "out"))
 	var room := String(s.get("room", "")) if s.get("room") != null else ""
 	var world := "out"
@@ -37,7 +40,7 @@ static func plan(d: Variant, known_rooms: Dictionary, known_items: Dictionary, t
 		return {"error": "存档位置模式无效"}
 	var out := {"error": "", "world": world, "x": float(s["x"]), "y": float(s["y"]), "ang": float(s.get("ang", 0.0)) if _num(s.get("ang", 0.0)) else 0.0,
 		"pitch": clampf(float(s.get("pitch", 0.0)) if _num(s.get("pitch", 0.0)) else 0.0, -1.4, 1.4), "tsec": tsec, "day": day,
-		"diff": "hard" if String(s.get("diff", "easy")) == "hard" else "easy", "talent": String(s.get("talent", "none")), "dropped": []}
+		"diff": "hard" if s.get("diff") is String and s["diff"] == "hard" else "easy", "talent": s.get("talent", "none") if s.get("talent", "none") is String else "none", "dropped": []}
 	if not talents.has(out["talent"]):
 		out["talent"] = "none"
 	for k: String in LIMITS:
@@ -59,6 +62,18 @@ static func plan(d: Variant, known_rooms: Dictionary, known_items: Dictionary, t
 			if rh[i] is String and bag.has(rh[i]):
 				hot[i] = rh[i]
 	out["hot"] = hot
+	out["source"] = s.duplicate(true)
+	out["original"] = s.duplicate(true)
+	if int(s.get("clockVersion", 1)) != 2:
+		if tsec < 60.0:
+			out["tsec"] = tsec + 1440.0
+		var now := SchoolClock.continuous(day, float(out["tsec"]))
+		for field: String in ["actCool", "anCool"]:
+			if not s.get(field, {}) is Dictionary:
+				return {"error": "旧存档冷却时间无效"}
+			for key: String in s.get(field, {}):
+				if _num(s[field][key]):
+					out["source"][field][key] = now + maxf(0.0, float(s[field][key]) - (day * 1440.0 + tsec)) if field == "actCool" else now - fposmod(float(out["tsec"]) - float(s[field][key]) + 1440.0, 1440.0)
 	return out
 
 

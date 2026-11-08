@@ -404,35 +404,30 @@ func import_legacy_save(text: String) -> String:
 	var p := LegacySave.plan(parser.data, CampusData.rooms(), CampusData.campus().get("items", {}), TalentModule.KEYS)
 	if not String(p["error"]).is_empty():
 		return String(p["error"])
+	var candidate := _make_session()
+	if candidate == null:
+		return "无法创建存档会话"
+	candidate.start(String(p["world"]))
+	var base := candidate.capture({"position":[0.0,0.01,0.0],"yaw":0.0,"pitch":0.0})
+	var converted := LegacyState.new().convert(p, base, CampusData.rooms(), CampusData.campus(), CampusData.maze_geometry())
+	if not String(converted["error"]).is_empty():
+		return String(converted["error"])
+	var snapshot: Dictionary = converted["snapshot"]
+	var why := candidate.validate(snapshot, router.known_ids())
+	if not why.is_empty():
+		return "旧存档无法恢复：" + why
+	why = router.switch_to(String(snapshot["world_id"]))
+	if not why.is_empty():
+		return why
+	# All parsing, conversion and validation finish before touching the current run or sidecars.
 	speedrun.disarm()
-	start_new_game(String(p["diff"]), String(p["talent"]))
-	if session == null:
-		return "没能开始新局"
-	var rules := school()
-	rules.day = int(p["day"])
-	rules.tsec = float(p["tsec"])
-	rules.pressure_clock = rules.tsec
-	rules.san = float(p["san"])
-	rules.viol = float(p["viol"])
-	rules.stam = float(p["stam"])
-	rules.tt = float(p["tt"])
-	rules.seated = false
-	var inv := items()
-	if inv != null:
-		inv.bag = (p["bag"] as Array).duplicate()
-		inv.hot = (p["hot"] as Array).duplicate()
-	if runscore() != null:
-		runscore().legacy = 1
-	var world := String(p["world"])
-	var room: Variant = campus().room(world) if world != "out" else null
-	var sc := CampusGeometry.to_scene(room, Vector2(float(p["x"]), float(p["y"])))
-	travel(world, {"position": [sc.x, 0.05, sc.y], "yaw": CampusGeometry.yaw_from_ang(float(p["ang"])), "pitch": float(p["pitch"])}, false)
-	player.seated = false
-	player.enabled = true
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
-	var note := "已从旧版存档继续：位置、时间、SAN、背包等带过来了；异象、路线与剧情进度从头开始。"
+	ui.speedrun_text = ""
+	candidate.restore(snapshot)
+	_install_session(candidate, snapshot["player"])
+	_restore_loaded_world()
+	var note := "已恢复旧版进度：路线、背包、时钟、巡察和异象状态已接续。"
 	if not (p["dropped"] as Array).is_empty():
-		note += "\n这个版本里没有的物品已丢掉：" + "、".join(p["dropped"])
+		note += "\n未识别物品保留在导入原文中：" + "、".join(p["dropped"])
 	ui.show_notice(note)
 	return ""
 
@@ -652,6 +647,13 @@ func load_game() -> void:
 		return
 	candidate.restore(data)
 	_install_session(candidate, data["player"])
+	_restore_loaded_world()
+	ui.show_notice("已恢复进度；读档不会再次触发交互奖励。")
+
+
+func _restore_loaded_world() -> void:
+	if atmos() != null and phone() != null:
+		atmos().set_seed(phone().run_seed)
 	if runscore() != null:
 		_runlog.restore(runscore().run, _read_side("runlog_cur.json"))
 	if dread() != null:
@@ -662,7 +664,6 @@ func load_game() -> void:
 		atmos().enter(session.world_id)
 	if garage() != null and garage().driving():
 		_enter_drive()
-	ui.show_notice("已恢复测试进度；读档不会再次触发交互奖励。")
 
 
 func pause_game() -> void:

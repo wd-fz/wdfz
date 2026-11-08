@@ -82,7 +82,15 @@ func set_seed(value: int) -> void:
 
 
 func capture() -> Dictionary:
-	return {"act_cool": act_cool.duplicate(), "flags": flags.duplicate(), "spots": spots.duplicate(), "portal": portal.duplicate(true), "seed": _rng.seed, "rng": _rng.state}
+	var saved_portal := portal.duplicate(true)
+	# Runtime floor keys are integers; JSON object keys must be strings. Do this
+	# before validation, not only when JSON.stringify eventually writes the file.
+	for field: String in ["blueprints", "work"]:
+		var values := {}
+		for floor_id: Variant in portal[field]:
+			values[str(floor_id)] = portal[field][floor_id]
+		saved_portal[field] = values
+	return {"act_cool": act_cool.duplicate(), "flags": flags.duplicate(), "spots": spots.duplicate(), "portal": saved_portal, "seed": _rng.seed, "rng": _rng.state}
 
 
 func validate(data: Dictionary) -> String:
@@ -92,6 +100,17 @@ func validate(data: Dictionary) -> String:
 	for k: String in data["act_cool"]:
 		if not SAN_ACTS.has(k) and not FAC_CD.has(k.trim_prefix("fac")):
 			return "设施冷却无效"
+		if not SaveSchema.number_in(data["act_cool"][k],0,1e9):
+			return "设施冷却无效"
+	var p: Dictionary = data["portal"]
+	for field: String in ["blueprints","work"]:
+		if not p.get(field,{}) is Dictionary:
+			return "传送门图纸无效"
+		for floor_id: Variant in p.get(field,{}):
+			if not str(floor_id).is_valid_int() or not int(floor_id) in BLUEPRINT_FLOORS:
+				return "传送门图纸楼层无效"
+			if field=="work" and not SaveSchema.is_integer(p[field][floor_id],0,3):
+				return "传送门接线进度无效"
 	return ""
 
 

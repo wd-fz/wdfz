@@ -126,6 +126,21 @@ func validate(data: Dictionary) -> String:
 	var ins: Variant = data.get("inspection", {})
 	if not ins is Dictionary or not ins.get("queue", []) is Array or not ins.get("seen", {}) is Dictionary:
 		return "检查状态无效"
+	if not ins.get("current", {}) is Dictionary:
+		return "检查状态无效"
+	for item: Variant in ins.get("queue", []) + ([] if ins.get("current", {}).is_empty() else [ins["current"]]):
+		if not item is Dictionary or not SaveSchema.is_integer(item.get("day"),1,100000) or not SaveSchema.is_integer(item.get("slot"),0,INSPECT["times"].size()-1):
+			return "检查日期无效"
+	var current: Dictionary = ins.get("current", {})
+	if not current.is_empty():
+		for k: String in ["t","look","move"]:
+			if not SaveSchema.number_in(current.get(k),0,SaveSchema.MAX_SECONDS):
+				return "检查计时无效"
+		if not current.get("room") is String or not current.get("compliant") is bool or not current.get("points") is Array:
+			return "检查现场无效"
+		for xy: Variant in current["points"]:
+			if not xy is Array or xy.size()!=2 or not SaveSchema.number_in(xy[0],-1e7,1e7) or not SaveSchema.number_in(xy[1],-1e7,1e7):
+				return "检查人影的位置无效"
 	if not data.get("outing", {}) is Dictionary:
 		return "外出登记无效"
 	var d: Variant = data.get("duties", {"seq": 0, "list": [], "processed": {}})

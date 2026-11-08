@@ -20,7 +20,7 @@ var _campus: Dictionary = {}
 var bag: Array = []
 var hot: Array = [null, null]
 var torch_on := false
-var brolly_up := false          # the umbrella is open (USE.brollyShield): not saved, a new run starts closed
+var brolly_up := false          # USE.brollyShield: persisted with the bag, new runs start closed.
 var pill_t := 0.0
 var snack_t := 0.0
 var desk_used: Dictionary = {}
@@ -66,7 +66,7 @@ func set_seed(value: int) -> void:
 
 
 func capture() -> Dictionary:
-	return {"bag": bag.duplicate(), "hot": hot.duplicate(), "torch": torch_on, "pill_t": pill_t, "snack_t": snack_t,
+	return {"bag": bag.duplicate(), "hot": hot.duplicate(), "torch": torch_on, "brolly": brolly_up, "pill_t": pill_t, "snack_t": snack_t,
 		"desk_used": desk_used.duplicate(), "pending_loot": pending_loot.duplicate(), "key_miss": key_miss,
 		"hw_taken": hw_taken, "rng_seed": str(_rng.seed), "rng_state": str(_rng.state)}
 
@@ -98,6 +98,7 @@ func restore(data: Dictionary) -> void:
 	bag = data["bag"].duplicate()
 	hot = data["hot"].duplicate()
 	torch_on = bool(data.get("torch", false)) and bag.has("torch")
+	brolly_up = bool(data.get("brolly", false)) and bag.has("brolly")
 	pill_t = float(data["pill_t"])
 	snack_t = float(data["snack_t"])
 	desk_used = data["desk_used"].duplicate()
