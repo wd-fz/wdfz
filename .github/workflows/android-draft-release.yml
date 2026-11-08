@@ -1,0 +1,145 @@
+name: Android Draft Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Existing draft Release ID (never published by this workflow)
+        required: true
+        type: string
+      run_id:
+        description: Successful Android Debug workflow run ID
+        required: true
+        type: string
+      source_sha:
+        description: Full source commit SHA of the original APK
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: android-draft-release-${{ inputs.release_id }}
+  cancel-in-progress: false
+
+jobs:
+  attach:
+    name: Attach verified APK to draft
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_ID: ${{ inputs.release_id }}
+      SOURCE_RUN: ${{ inputs.run_id }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify source run and draft destination
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+
+          for name in ("RELEASE_ID", "SOURCE_RUN"):
+              if not re.fullmatch(r"[1-9][0-9]*", os.environ[name]):
+                  raise SystemExit(f"Invalid {name}")
+          sha = os.environ["SOURCE_SHA"]
+          if not re.fullmatch(r"[0-9a-f]{40}", sha):
+              raise SystemExit("SOURCE_SHA must be a full commit SHA")
+          root = f"repos/{os.environ['GH_REPO']}"
+          def api(path):
+              return json.loads(subprocess.check_output(["gh", "api", f"{root}/{path}"]))
+          run = api(f"actions/runs/{os.environ['SOURCE_RUN']}")
+          if (run["status"] != "completed" or run["conclusion"] != "success"
+                  or run["head_sha"] != sha or run["head_branch"] != "main"
+                  or run["event"] not in ("push", "workflow_dispatch")
+                  or run["path"] != ".github/workflows/android-debug.yml"):
+              raise SystemExit("Source must be a successful main Android Debug build at SOURCE_SHA")
+          release = api(f"releases/{os.environ['RELEASE_ID']}")
+          if not release["draft"] or release["target_commitish"] != sha:
+              raise SystemExit("Destination must be an existing draft targeting SOURCE_SHA")
+          print(f"Verified source run {run['id']} and draft {release['id']}")
+          PY
+      - name: Download original signed APK (no rebuild)
+        uses: actions/download-artifact@v4
+        with:
+          name: wdfz-android-debug-arm64-${{ inputs.source_sha }}
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: release-assets
+      - name: Verify files, attach missing assets, and confirm draft
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          repo = os.environ["GH_REPO"]
+          endpoint = f"repos/{repo}/releases/{os.environ['RELEASE_ID']}"
+          sha = os.environ["SOURCE_SHA"]
+          def draft():
+              release = json.loads(subprocess.check_output(["gh", "api", endpoint]))
+              if not release["draft"] or release["target_commitish"] != sha:
+                  raise SystemExit("Release is no longer the expected draft; refusing upload")
+              return release
+
+          folder = Path("release-assets")
+          apk = folder / "wdfz-android-debug-arm64.apk"
+          checksum = folder / f"{apk.name}.sha256"
+          metadata = folder / "wdfz-android-debug-arm64.build.json"
+          files = (apk, checksum, metadata)
+          if set(folder.iterdir()) != set(files) or not all(p.is_file() for p in files):
+              raise SystemExit("Expected only the original APK, SHA256 and build metadata")
+          hashes = {}
+          for path in files:
+              with path.open("rb") as source:
+                  hashes[path.name] = hashlib.file_digest(source, "sha256").hexdigest()
+          build = json.loads(metadata.read_text())
+          expected = {
+              "passed": True, "debug": True, "working_tree_dirty": False,
+              "revision": sha, "file": apk.name, "bytes": apk.stat().st_size,
+              "sha256": hashes[apk.name], "abi": "arm64-v8a",
+              "package": "org.wdfz.godot.debug",
+          }
+          if any(build.get(key) != value for key, value in expected.items()):
+              raise SystemExit("Build metadata does not match a verified clean ARM64 Debug APK")
+          if checksum.read_text().split() != [hashes[apk.name], apk.name]:
+              raise SystemExit("APK checksum mismatch")
+
+          def matches(asset, path):
+              return (asset["state"] == "uploaded" and asset["size"] == path.stat().st_size
+                      and asset.get("digest") == f"sha256:{hashes[path.name]}")
+
+          release = draft()
+          assets = {asset["name"]: asset for asset in release["assets"]}
+          missing = []
+          for path in files:
+              existing = assets.get(path.name)
+              if existing is None:
+                  missing.append(str(path))
+              elif not matches(existing, path):
+                  raise SystemExit(f"Existing asset differs: {path.name}; refusing to overwrite")
+          if missing:
+              subprocess.run(["gh", "release", "upload", "--repo", repo, "--",
+                              release["tag_name"], *missing], check=True)
+          release = draft()
+          assets = {asset["name"]: asset for asset in release["assets"]}
+          for path in files:
+              if path.name not in assets or not matches(assets[path.name], path):
+                  raise SystemExit(f"Uploaded asset verification failed: {path.name}")
+          summary = (f"APK attached to [draft Release]({release['html_url']}).\n\n"
+                     f"Source: `{sha}`\n\nAPK SHA256: `{hashes[apk.name]}`\n\n"
+                     "The Release remains a draft; nothing was published.\n")
+          print(summary)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as output:
+              output.write(summary)
+          PY
