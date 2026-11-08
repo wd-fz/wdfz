@@ -250,6 +250,7 @@ func _resize() -> void:
 		_map_generation += 1
 		_map_center_pending = true
 	_fit_map.call_deferred()
+	_fit_documents.call_deferred()
 
 
 var _menu_scrolls: Array[ScrollContainer] = []
@@ -538,21 +539,27 @@ func _build_death() -> void:
 	death_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	death_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	death_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	death_panel.custom_minimum_size = Vector2(480, 0)
+	death_panel.minimum_size_changed.connect(func() -> void: _fit_documents.call_deferred())
 	var box := VBoxContainer.new()
+	_death_scroll = ScrollContainer.new()
+	_death_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_death_scroll.follow_focus = true
 	_death_text = Label.new()
 	_death_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_death_text.custom_minimum_size = Vector2(440, 0)
-	box.add_child(_death_text)
+	_death_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_death_scroll.add_child(_death_text)
+	box.add_child(_death_scroll)
 	var back := Button.new()
+	back.name = "DeathMenu"
 	back.text = "回到主菜单"
+	back.custom_minimum_size.y = 44
 	back.pressed.connect(func() -> void: death_menu_requested.emit())
 	box.add_child(back)
 	death_panel.add_child(box)
 	$Root.add_child(death_panel)
 
 
-## Screen-space death scene (a placeholder for fx/death-cg.js): the style follows the family of the
+## Screen-space overlay accompanying the world death scene: the style follows the family of the
 ## cause. 0 closing vignette, 1 rising water, 2 flickering specks, 3 falling streaks, 4 hands from the sides.
 const DEATH_STYLE := {"drown": [1, Color(0.04, 0.12, 0.15)], "water": [1, Color(0.05, 0.1, 0.16)], "freeze": [1, Color(0.55, 0.7, 0.78)],
 	"swarm": [2, Color(0.06, 0.05, 0.03)], "shatter": [2, Color(0.75, 0.8, 0.85)], "floor": [3, Color(0.03, 0.03, 0.04)],
@@ -632,6 +639,8 @@ func show_death_card(message: String, epitaph: String, cause: String, hints: Pac
 		lines.append(score_line)
 	_death_text.text = "\n\n".join(lines)
 	death_panel.visible = true
+	_death_scroll.scroll_vertical = 0
+	_fit_documents.call_deferred()
 
 
 ## The locker slits (old #hideslits): a dark screen with thin lit lines.
@@ -923,6 +932,8 @@ func cut_fade(v: float) -> void:
 var _import_panel: PanelContainer
 var _import_text: TextEdit
 var _import_msg: Label
+var _import_scroll: ScrollContainer
+var _death_scroll: ScrollContainer
 
 
 ## 导入旧存档: paste the old save's JSON (the localStorage entry "wdfz3d"), see game/features/compatibility/legacy_save.gd.
@@ -930,6 +941,7 @@ func show_import() -> void:
 	if _import_panel == null:
 		_import_panel = PanelContainer.new()
 		_import_panel.name = "LegacyImport"
+		_import_panel.minimum_size_changed.connect(func() -> void: _fit_documents.call_deferred())
 		_import_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 		_import_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		_import_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
@@ -939,37 +951,44 @@ func show_import() -> void:
 		back.set_corner_radius_all(6)
 		_import_panel.add_theme_stylebox_override("panel", back)
 		var box := VBoxContainer.new()
-		box.custom_minimum_size = Vector2(520, 0)
 		box.add_theme_constant_override("separation", 8)
 		var head := Label.new()
 		head.text = "导入旧版存档"
 		head.modulate = Color(1.0, 0.9, 0.55)
 		box.add_child(head)
+		_import_scroll = ScrollContainer.new()
+		_import_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		_import_scroll.follow_focus = true
+		var body := VBoxContainer.new()
+		body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		body.add_theme_constant_override("separation",8)
+		_import_scroll.add_child(body)
+		box.add_child(_import_scroll)
 		var help := Label.new()
 		help.text = "把旧版网页存档（浏览器里键名 wdfz3d 的那段 JSON）贴在下面。接续位置、时间、背包、路线、巡察、异象与调查记录。导入前会校验整局；不支持的 DLC 存档会说明原因。原文保留在新档中，这一局标记为「从旧存档继续」。"
 		help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		help.custom_minimum_size = Vector2(500, 0)
 		help.modulate = Color(1, 1, 1, 0.75)
-		box.add_child(help)
+		body.add_child(help)
 		_import_text = TextEdit.new()
 		_import_text.name = "ImportText"
-		_import_text.custom_minimum_size = Vector2(500, 200)
-		box.add_child(_import_text)
+		_import_text.custom_minimum_size = Vector2(0, 180)
+		body.add_child(_import_text)
 		_import_msg = Label.new()
 		_import_msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_import_msg.custom_minimum_size = Vector2(500, 0)
 		_import_msg.modulate = Color(0.95, 0.6, 0.5)
-		box.add_child(_import_msg)
-		var row := HBoxContainer.new()
+		body.add_child(_import_msg)
+		var row := HFlowContainer.new()
 		var go := Button.new()
 		go.name = "ImportGo"
 		go.text = "导入并开始"
+		go.custom_minimum_size.y = 44
 		go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		go.pressed.connect(func() -> void: legacy_import_requested.emit(_import_text.text))
 		row.add_child(go)
 		var close := Button.new()
 		close.name = "ImportClose"
 		close.text = "关闭"
+		close.custom_minimum_size.y = 44
 		close.pressed.connect(func() -> void: _import_panel.visible = false)
 		row.add_child(close)
 		box.add_child(row)
@@ -977,6 +996,8 @@ func show_import() -> void:
 		$Root.add_child(_import_panel)
 	_import_msg.text = ""
 	_import_panel.visible = true
+	_import_scroll.scroll_vertical = 0
+	_fit_documents.call_deferred()
 
 
 func show_import_result(error: String) -> void:
@@ -986,6 +1007,7 @@ func show_import_result(error: String) -> void:
 		_import_panel.visible = false
 	else:
 		_import_msg.text = "没有导入：" + error
+		_fit_documents.call_deferred()
 
 
 var _cut_flash: ColorRect
@@ -1364,6 +1386,7 @@ func set_grain(on: bool) -> void:
 var notes_panel: PanelContainer
 var _notes_box: VBoxContainer
 var _notes_search: LineEdit
+var _notes_scroll: ScrollContainer
 const NOTE_COLORS := {"事实": Color(0.78, 0.86, 0.95), "推测": Color(0.95, 0.85, 0.6), "验证": Color(0.65, 0.9, 0.7), "线索": Color(0.88, 0.75, 0.95)}
 
 
@@ -1372,10 +1395,10 @@ func show_notes(data: Dictionary) -> void:
 	if notes_panel == null:
 		notes_panel = PanelContainer.new()
 		notes_panel.name = "NotesPanel"
+		notes_panel.minimum_size_changed.connect(func() -> void: _fit_documents.call_deferred())
 		notes_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 		notes_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		notes_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-		notes_panel.custom_minimum_size = Vector2(520, 0)
 		var back := StyleBoxFlat.new()
 		back.bg_color = Color(0.03, 0.05, 0.07, 0.99)
 		back.set_content_margin_all(14)
@@ -1388,23 +1411,28 @@ func show_notes(data: Dictionary) -> void:
 		outer.add_child(head)
 		_notes_search = LineEdit.new()
 		_notes_search.name = "NotesSearch"
+		_notes_search.custom_minimum_size.y = 44
 		_notes_search.placeholder_text = "搜索记录（事实、地点）"
 		_notes_search.text_changed.connect(func(t: String) -> void: notes_requested.emit(t))
 		outer.add_child(_notes_search)
-		var scroll := ScrollContainer.new()
-		scroll.custom_minimum_size = Vector2(490, 380)
+		_notes_scroll = ScrollContainer.new()
+		_notes_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		_notes_scroll.follow_focus = true
 		_notes_box = VBoxContainer.new()
 		_notes_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_notes_box.add_theme_constant_override("separation", 6)
-		scroll.add_child(_notes_box)
-		outer.add_child(scroll)
+		_notes_scroll.add_child(_notes_box)
+		outer.add_child(_notes_scroll)
 		var close := Button.new()
+		close.name = "NotesClose"
 		close.text = "关闭"
+		close.custom_minimum_size.y = 44
 		close.pressed.connect(func() -> void: notes_panel.visible = false)
 		outer.add_child(close)
 		notes_panel.add_child(outer)
 		$Root.add_child(notes_panel)
 	for child in _notes_box.get_children():
+		_notes_box.remove_child(child)
 		child.queue_free()
 	var query := String(data.get("query", ""))
 	if _notes_search.text != query:
@@ -1413,7 +1441,7 @@ func show_notes(data: Dictionary) -> void:
 	_note_label(String(data["goal"]), Color.WHITE)
 	var routes: Array = data["routes"]
 	if routes.size() > 1:
-		var row := HBoxContainer.new()
+		var row := HFlowContainer.new()
 		var tag := Label.new()
 		tag.text = "关注"
 		row.add_child(tag)
@@ -1421,6 +1449,7 @@ func show_notes(data: Dictionary) -> void:
 			var b := Button.new()
 			b.name = "Focus_" + String(r[0])
 			b.text = String(r[1])
+			b.custom_minimum_size.y = 44
 			b.toggle_mode = true
 			b.button_pressed = r[0] == data.get("focus", "")
 			b.pressed.connect(func() -> void: notes_focus_requested.emit(String(r[0])))
@@ -1447,6 +1476,7 @@ func show_notes(data: Dictionary) -> void:
 		for p: Array in progress:
 			_note_label("%s %s：%s" % ["✓" if bool(p[2]) else "·", p[0], p[1]], Color(0.65, 0.9, 0.7) if bool(p[2]) else Color.WHITE)
 	notes_panel.visible = true
+	_fit_documents.call_deferred()
 
 
 func _route_name(data: Dictionary) -> String:
@@ -1460,7 +1490,6 @@ func _note_label(text: String, color: Color) -> void:
 	var l := Label.new()
 	l.text = text
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.custom_minimum_size = Vector2(480, 0)
 	l.modulate = color
 	_notes_box.add_child(l)
 
@@ -1591,10 +1620,11 @@ func show_terminal(history: String, status: String) -> void:
 	if terminal_panel == null:
 		terminal_panel = PanelContainer.new()
 		terminal_panel.name = "TerminalPanel"
+		terminal_panel.visible = false
+		terminal_panel.minimum_size_changed.connect(func() -> void: _fit_documents.call_deferred())
 		terminal_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 		terminal_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		terminal_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-		terminal_panel.custom_minimum_size = Vector2(680, 0)
 		var back := StyleBoxFlat.new()
 		back.bg_color = Color(0.01, 0.03, 0.02, 0.97)
 		back.set_content_margin_all(12)
@@ -1602,18 +1632,20 @@ func show_terminal(history: String, status: String) -> void:
 		var box := VBoxContainer.new()
 		var head := Label.new()
 		head.text = "机房 · 模拟 Linux 终端　（世界仍在运行。留意脚步与灯光；Esc 退出）"
+		head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		box.add_child(head)
 		_term_status = Label.new()
+		_term_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_term_status.modulate = Color(0.6, 0.95, 0.7)
 		box.add_child(_term_status)
 		_term_out = RichTextLabel.new()
-		_term_out.custom_minimum_size = Vector2(650, 320)
 		_term_out.scroll_following = true
 		_term_out.selection_enabled = true
 		_term_out.add_theme_color_override("default_color", Color(0.75, 1.0, 0.8))
 		box.add_child(_term_out)
-		var row := HBoxContainer.new()
 		_term_line = LineEdit.new()
+		_term_line.name = "TerminalInput"
+		_term_line.custom_minimum_size.y = 44
 		_term_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_term_line.placeholder_text = "help"
 		_term_line.max_length = 4096
@@ -1621,10 +1653,13 @@ func show_terminal(history: String, status: String) -> void:
 			terminal_command.emit(t)
 			_term_line.text = ""
 			_term_line.grab_focus())
-		row.add_child(_term_line)
+		box.add_child(_term_line)
+		var row := HFlowContainer.new()
 		for pair: Array in [["执行", ""], ["帮助", "help"], ["线索位置", "campusctl hint 1"], ["关联方法", "campusctl hint 2"], ["退出", "__exit"]]:
 			var b := Button.new()
 			b.text = pair[0]
+			b.custom_minimum_size.y = 44
+			if pair[1] == "__exit": b.name = "TerminalExit"
 			var cmd: String = pair[1]
 			b.pressed.connect(func() -> void:
 				if cmd == "__exit":
@@ -1644,11 +1679,21 @@ func show_terminal(history: String, status: String) -> void:
 	if not terminal_panel.visible:
 		terminal_panel.visible = true
 		_term_line.grab_focus()
+	_fit_documents.call_deferred()
 
 
 func hide_terminal() -> void:
 	if terminal_panel != null:
+		_term_line.release_focus()
 		terminal_panel.visible = false
+
+
+func _fit_documents() -> void:
+	PanelLayout.fit(notes_panel,_notes_scroll,620,380)
+	PanelLayout.fit(_import_panel,_import_scroll,620,380)
+	PanelLayout.fit(terminal_panel,_term_out,720,320)
+	if is_instance_valid(_death_text):
+		PanelLayout.fit(death_panel,_death_scroll,520,minf(380,_death_text.get_combined_minimum_size().y))
 
 
 func terminal_open() -> bool:

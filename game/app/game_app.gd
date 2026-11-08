@@ -623,6 +623,8 @@ func _unwire(old: GameSession) -> void:
 
 func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	_cancel_cinematics()
+	_close_mic()
+	ui.hide_terminal()
 	_reset_sensory()
 	if session != null:
 		_unwire(session)
@@ -825,7 +827,7 @@ func return_to_menu() -> void:
 		_visit_nodes.queue_free()
 	_visit_nodes = null
 	ui.hide_terminal()
-	_mic_open = false
+	_close_mic()
 	_radio_job = null
 	if is_instance_valid(_crowd_nodes):
 		_crowd_nodes.queue_free()
@@ -4339,6 +4341,7 @@ func _close_mic() -> void:
 	_mic_open = false
 	_mic_hold_button = false
 	if _mic_panel != null:
+		_mic_panel.cancel_hold()
 		_mic_panel.visible = false
 	if broadcast() != null:
 		broadcast().hold(false)
