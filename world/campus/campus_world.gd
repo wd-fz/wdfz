@@ -50,6 +50,8 @@ func _ready() -> void:
 		broadcast_props.build(layout)
 	if not is_room():
 		_ready_banner()
+	else:
+		_build_link_preview()
 	if is_room():
 		atmos_fx = AtmosFx.new()
 		atmos_fx.name = "AtmosFx"
@@ -71,6 +73,46 @@ func _ready_banner() -> void:
 
 func is_room() -> bool:
 	return scene_id != "out"
+
+
+## The corridor bridges seen from both ends (modules/campus-link/link-view.js): the neighbouring room's model placed by the rigid
+## transform of the port pair (CampusPortals.link_between), plus a lamp 3 m inside its doorway so the far end is not black.
+## Visual only: no collision, nothing advances. Standing at the west end of the second floor you see the whole bridge.
+var link_previews: Array[Node3D] = []
+
+
+func _build_link_preview() -> void:
+	var rooms := CampusData.rooms()
+	var cfg: Dictionary = CampusData.campus().get("campus_link", {})
+	for v: Dictionary in CampusPortals.link_ports(cfg, rooms, scene_id):
+		var peer_id := String(v["peer"]["room"])
+		if not rooms.has(peer_id) or not ResourceLoader.exists(CampusData.SCENE_DIR + peer_id + ".glb"):
+			continue
+		var model := (load(CampusData.SCENE_DIR + peer_id + ".glb") as PackedScene).instantiate() as Node3D
+		model.name = "LinkPreview_" + peer_id
+		for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+			if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
+				_to_multimesh(mesh)
+		var t := CampusPortals.link_between(v["peer"], v["self"])
+		var peer_room: Dictionary = rooms[peer_id]
+		var phi := float(t["phi"])
+		var c_there := Vector2(float(peer_room["cx"]), float(peer_room["cy"]))
+		var c_here := Vector2(float(layout["cx"]), float(layout["cy"]))
+		var p := (c_there.rotated(phi) + (t["t"] as Vector2) - c_here) * CampusGeometry.U2M
+		model.rotation.y = -phi
+		model.position = Vector3(p.x, 0.0, p.y)
+		var pp: Dictionary = v["peer"]
+		var inner: Vector2 = (pp["p"] as Vector2) - (pp["n"] as Vector2) * 3.0 / CampusGeometry.U2M
+		var lamp := OmniLight3D.new()
+		lamp.name = "LinkLamp"
+		lamp.light_color = Color("#f2dcc0")
+		lamp.omni_range = 14.0
+		lamp.light_energy = 0.9
+		lamp.shadow_enabled = false
+		lamp.position = Vector3((inner.x - c_there.x) * CampusGeometry.U2M, 2.7, (inner.y - c_there.y) * CampusGeometry.U2M)
+		model.add_child(lamp)
+		add_child(model)
+		link_previews.append(model)
 
 
 # ---- model ----
@@ -101,7 +143,7 @@ func _build_model() -> void:
 
 
 ## Instances were kept as one prototype + per-instance transforms/colours in glTF extras.
-func _to_multimesh(source: MeshInstance3D) -> void:
+static func _to_multimesh(source: MeshInstance3D) -> void:
 	var extras: Dictionary = source.get_meta("extras")
 	var xf := Marshalls.base64_to_raw(String(extras["wdfz_instances"])).to_float32_array()
 	var count := xf.size() / 12

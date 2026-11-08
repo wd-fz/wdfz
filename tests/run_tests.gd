@@ -117,6 +117,7 @@ func _run() -> void:
 	_test_chalk_texture()
 	_test_phantoms()
 	_test_traces()
+	_test_link_view()
 	_test_broadcast_props()
 	_test_inspection_scatter()
 	await _test_campus_app()
@@ -3215,6 +3216,14 @@ func _test_broadcast_props() -> void:
 	bp.build(CampusData.rooms()["teach2"])
 	check(bp.count() == 0, "other rooms have no station props")
 	bp.queue_free()
+
+
+func _test_link_view() -> void:
+	var cw := CampusWorld.new()
+	cw.scene_id = "link1"
+	check(CampusPortals.link_ports(CampusData.campus()["campus_link"], CampusData.rooms(), "link1").size() == 2, "the first bridge has a port at each end")
+	check(CampusPortals.link_ports(CampusData.campus()["campus_link"], CampusData.rooms(), "teach3").is_empty(), "a room off the bridges has no neighbour to show")
+	cw.free()
 
 
 func _test_traces() -> void:

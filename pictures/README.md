@@ -51,3 +51,4 @@
 | [粉笔笔触](粉笔笔触/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture_chalk_marks.gd`：八种粉笔符号的贴图（灰边白芯、断续线条、颗粒），以及贴在教室黑板上的叉 |
 | [笑脸与幻觉](笑脸与幻觉/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_phantoms.gd`：拍肩的另一种——回头时身后一米多的笑脸（点头淡出）与不回头时的突脸（撑满视野） |
 | [广播站道具](广播站道具/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture_broadcast_props.gd`：行政楼二楼广播站的功放、话筒、记录本与「功放保险丝已烧」的牌子 |
+| [连廊互看](连廊互看/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_link_view.gd`：站在连廊一里朝两头看，对面那栋楼的模型按端口的刚性变换摆进来，门洞里补了一盏灯 |
