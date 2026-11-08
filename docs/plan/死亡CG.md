@@ -8,8 +8,8 @@
 
 | 死因 | 状态 |
 | --- | --- |
-| trash 垃圾桶、liftdoor 电梯门缝、grip 脚下伸手、neck 长脖子、shadow 影子、twin 另一个你 | 已完成 |
-| swarm、shatter、drown、water、freeze、gaze、stare、voice、bell、follow、deep、floor、ring、loop、lamps、laugh | 未做 |
+| trash 垃圾桶、liftdoor 电梯门缝、grip 脚下伸手、neck 长脖子、shadow 影子、twin 另一个你、shatter 车铃炸开、drown 溺水、water 天花板渗水、freeze 冷库 | 已完成 |
+| swarm、gaze、stare、voice、bell、follow、deep、floor、ring、loop、lamps、laugh | 未做 |
 | void、abyss（虚空迷宫）、campus_fall（坠落）、window_gaze（窗内视线）、crowd（电梯人群）、paper_sender（纸飞机）、misread（念错通知） | 未做 |
 | 其余的「画面特效渐隐」（vignette、names、chalk、slit、squeeze、face、wall、mirror、hand 等） | 旧版也没有独立分镜 |
 

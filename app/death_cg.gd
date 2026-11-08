@@ -7,7 +7,7 @@ extends Node
 ## a turn and a lift change (and are put back at the end); a veil sphere on it closes the scene.
 ## Not every cause has a scene yet (CAUSES lists the ported ones); the others keep the screen-effect fade.
 
-const CAUSES := ["trash", "liftdoor", "grip", "neck", "shadow", "twin"]
+const CAUSES := ["trash", "liftdoor", "grip", "neck", "shadow", "twin", "shatter", "drown", "water", "freeze"]
 
 var on := false
 var fx := ""
@@ -215,6 +215,36 @@ func hide_world(sky: Color = Color(0.02, 0.025, 0.03)) -> void:
 	m.cull_mode = BaseMaterial3D.CULL_FRONT
 	_sky.material_override = m
 	cam.add_child(_sky)
+
+
+## Many small things drawn at once: a MultiMesh of count instances, placed each frame with set_i.
+func inst(m: Mesh, mat: Material, count: int) -> MultiMeshInstance3D:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = m
+	mm.instance_count = count
+	var mi := MultiMeshInstance3D.new()
+	mi.multimesh = mm
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.custom_aabb = AABB(Vector3(-50, -50, -50), Vector3(100, 100, 100))
+	put(mi, 0.0, 0.0, 0.0)
+	return mi
+
+
+## Place instance i; a scale of 0 hides it.
+func set_i(im: MultiMeshInstance3D, i: int, pos: Vector3, rot: Vector3 = Vector3.ZERO, scl: Vector3 = Vector3.ONE) -> void:
+	im.multimesh.set_instance_transform(i, Transform3D(Basis.from_euler(rot, EULER_ORDER_XYZ).scaled(scl), pos))
+
+
+func disc(radius: float, col: Color, op: float, x: float, y: float, z: float, sides: int = 24) -> MeshInstance3D:
+	var cm := CylinderMesh.new()
+	cm.top_radius = radius
+	cm.bottom_radius = radius
+	cm.height = 0.004
+	cm.radial_segments = sides
+	cm.rings = 1
+	return mesh(cm, _mat(col, op, true), x, y, z)
 
 
 func cam_y() -> float:
@@ -517,3 +547,216 @@ func _update_twin(kk: float) -> void:
 	t.rotation.x = 0.22 * reach
 	view(kk, 0.0, -0.04, 0.0)
 	shade(0.92 * ss(kk, 2.7, 3.1))
+
+
+# ---- shatter: the bike-shed bells ring together and burst one by one; the shards hang round you, then drive in ----
+
+func _build_shatter() -> void:
+	var metal := _mat(Color("#9a9890"))
+	var dome := SphereMesh.new()
+	dome.radius = 0.08
+	dome.height = 0.08
+	dome.is_hemisphere = true
+	var bells: Array = []
+	var shards: Array = []
+	for q in 8:
+		box(0.5, 0.03, 0.03, Color("#0b0c0d"), -1.0, -2.1 + float(q) * 0.6, 0.98, 2.0 + absf(float(q) - 3.5) * 0.25)
+	var sg := SphereMesh.new()
+	sg.radius = 0.04
+	sg.height = 0.08
+	sg.radial_segments = 4
+	sg.rings = 2
+	d["shardIM"] = inst(sg, _mat(Color("#c8c8c0")), 40)
+	for i in 8:
+		var x := -2.1 + float(i) * 0.6
+		var z := 2.0 + absf(float(i) - 3.5) * 0.25
+		var bl := mesh(dome, metal, x + 0.18, 1.0, z)
+		bl.set_meta("b", {"x": x + 0.18, "z": z, "t": 1.0 + float((i * 3) % 8) * 0.07})
+		bells.append(bl)
+		for j in 5:
+			shards.append({"b": i, "az": (rand.randf() - 0.5) * 2.4, "el": (rand.randf() - 0.5) * 1.2, "rad": 0.55 + rand.randf() * 0.25, "spin": 2.0 + rand.randf() * 5.0,
+				"ox": (rand.randf() - 0.5) * 0.3, "oy": rand.randf() * 0.3})
+	d["bells"] = bells
+	d["shards"] = shards
+	veil(Color("#050505"))
+
+
+func _update_shatter(kk: float) -> void:
+	view(kk, 0.0, -0.1 * ss(kk, 0.0, 0.4) + 0.03 * sin(kk * 40.0) * shk * seg(kk, 1.0, 1.8) * (1.0 - seg(kk, 1.8, 2.2)), 0.0)
+	var cy := cam_y()
+	var cl := ss(kk, 2.6, 3.2)
+	var i := 0
+	for bl: MeshInstance3D in d["bells"]:
+		var b: Dictionary = bl.get_meta("b")
+		var ring := 0.3 + seg(kk, 0.0, 1.0)
+		bl.position.x = float(b["x"]) + 0.015 * sin(kk * 60.0 + float(i)) * ring
+		bl.visible = kk < float(b["t"])
+		i += 1
+	i = 0
+	for u: Dictionary in d["shards"]:
+		var bl: Dictionary = (d["bells"][int(u["b"])] as Node3D).get_meta("b")
+		var f := ss(kk, float(bl["t"]), float(bl["t"]) + 0.9)
+		var rad := float(u["rad"]) * (1.0 - 0.78 * cl)
+		var tx := sin(float(u["az"])) * cos(float(u["el"])) * rad
+		var ty := cy + sin(float(u["el"])) * rad
+		var tz := cos(float(u["az"])) * cos(float(u["el"])) * rad
+		var hx := float(bl["x"]) + float(u["ox"])
+		var hy := 1.0 + float(u["oy"])
+		var hz := float(bl["z"])
+		var spin := float(u["spin"])
+		set_i(d["shardIM"], i, Vector3(hx + (tx - hx) * f, hy + (ty - hy) * f + sin(f * PI) * 0.3, hz + (tz - hz) * f),
+			Vector3(kk * spin * (1.0 - f * 0.8), kk * spin * 0.7 * (1.0 - f * 0.8), 0.0), Vector3.ONE if kk >= float(bl["t"]) else Vector3.ZERO)
+		i += 1
+	if kk >= 1.0 and not _flashed.has("crack"):
+		_flashed["crack"] = true
+		_ui.cut_flash(0.25)
+	elif kk >= 1.1:
+		_ui.cut_flash(0.0)
+	shade(0.9 * ss(kk, 2.95, 3.2))
+
+
+# ---- drown: the rain does not stop, water rises from the feet, over the head, down ----
+
+func _build_drown() -> void:
+	var rain: Array = []
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.012, 0.5, 0.012)
+	d["rainIM"] = inst(bm, _mat(Color("#9fb6c4"), 0.5), 80)
+	for i in 80:
+		var a := rand.randf() * TAU
+		var dd := 0.6 + rand.randf() * 4.0
+		rain.append({"x": cos(a) * dd, "z": absf(sin(a)) * dd + 0.4, "off": rand.randf() * 5.0})
+	d["rain"] = rain
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(16, 16)
+	d["water"] = mesh(pm, _mat(Color("#1d2c35"), 0.8, true), 0.0, 0.0, 0.0)
+	var sm := SphereMesh.new()
+	sm.radius = 0.025
+	sm.height = 0.05
+	sm.radial_segments = 6
+	sm.rings = 4
+	d["bubIM"] = inst(sm, _mat(Color("#a8c8d8"), 0.6), 24)
+	var bub: Array = []
+	for i in 24:
+		bub.append({"x": (rand.randf() - 0.5) * 0.8, "z": 0.4 + rand.randf() * 0.8, "off": rand.randf() * 1.4})
+	d["bub"] = bub
+	veil(Color("#081218"))
+
+
+func _update_drown(kk: float) -> void:
+	var sink_t := ss(kk, 2.4, 3.4)
+	view(kk, 0.0, -0.35 * ss(kk, 0.2, 1.4) * (1.0 - ss(kk, 1.8, 2.3)) + 0.75 * ss(kk, 1.9, 2.8), -0.9 * sink_t)
+	var cy := cam_y()
+	var lv := 0.5 * ss(kk, 0.3, 1.0) + 0.9 * ss(kk, 1.0, 1.8) + (_base_y + 0.45 - 1.4) * ss(kk, 1.8, 2.4) + 0.6 * sink_t
+	(d["water"] as Node3D).position.y = lv
+	var i := 0
+	for o: Dictionary in d["rain"]:
+		var y := 4.5 - fmod(kk * 9.0 + float(o["off"]), 5.0)
+		set_i(d["rainIM"], i, Vector3(float(o["x"]), y, float(o["z"])), Vector3.ZERO, Vector3.ONE if y > lv else Vector3.ZERO)
+		i += 1
+	i = 0
+	for b: Dictionary in d["bub"]:
+		set_i(d["bubIM"], i, Vector3(float(b["x"]), cy - 0.3 + fmod((kk - 2.2) * 1.3 + float(b["off"]), 1.4), float(b["z"])), Vector3.ZERO, Vector3.ONE if kk > 2.2 else Vector3.ZERO)
+		i += 1
+	shade(0.6 * ss(kk, 2.2, 2.6) + 0.3 * ss(kk, 3.0, 3.4))
+
+
+# ---- water: the ceiling seeps; the stain spreads, the drips come faster, a blister bulges down onto the face ----
+
+func _build_water() -> void:
+	d["stain"] = disc(1.0, Color("#4a5a52"), 0.85, 0.0, 2.88, 1.0)
+	var drips: Array = []
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.025, 0.08, 0.025)
+	var dm := _mat(Color("#a8c8d4"), 0.95)
+	for i in 16:
+		var n := mesh(bm, dm, (rand.randf() - 0.5) * 1.6, 2.8, 0.4 + rand.randf() * 1.4)
+		n.set_meta("off", rand.randf())
+		drips.append(n)
+	d["drips"] = drips
+	var sm := SphereMesh.new()
+	sm.radius = 1.0
+	sm.height = 2.0
+	sm.is_hemisphere = true
+	var bulge := mesh(sm, _mat(Color("#3a5560"), 0.85, true), 0.0, 2.9, 1.0)
+	bulge.rotation.x = PI           # the lower half
+	d["bulge"] = bulge
+	veil(Color("#0b1820"))
+
+
+func _update_water(kk: float) -> void:
+	var spread := ss(kk, 0.0, 1.0)
+	var sag := ss(kk, 1.0, 2.2)
+	var wrap := ss(kk, 2.2, 3.0)
+	view(kk, 0.0, 0.7 * ss(kk, 0.1, 0.9), -0.15 * wrap)
+	(d["stain"] as Node3D).scale = Vector3(1, 1, 1) * (0.3 + 1.6 * spread)
+	for n: MeshInstance3D in d["drips"]:
+		var rate := 1.4 + 1.6 * seg(kk, 0.4, 2.2)
+		n.position.y = 2.85 - fmod(kk * rate + float(n.get_meta("off")), 1.0) * 2.8
+		n.visible = kk > 0.2
+	var b := d["bulge"] as Node3D
+	b.position.z = 1.0 - 0.95 * sag
+	b.scale = Vector3(0.3 + 0.9 * sag + 0.4 * wrap, 0.05 + 0.8 * sag + 0.6 * wrap, 0.3 + 0.9 * sag + 0.4 * wrap)
+	shade(0.88 * ss(kk, 2.8, 3.4))
+
+
+# ---- freeze: the cold store. White breath, frost on the floor, icicles growing in from the sides, frost over the view ----
+
+func _build_freeze() -> void:
+	d["frost"] = disc(4.0, Color("#dfeef5"), 0.0, 0.0, 0.015, 0.0, 32)
+	var cone := CylinderMesh.new()
+	cone.top_radius = 0.0
+	cone.bottom_radius = 0.07
+	cone.height = 1.0
+	cone.radial_segments = 5
+	d["spikeIM"] = inst(cone, _mat(Color("#cfe4ee"), 0.85), 30)
+	var spikes: Array = []
+	for i in 30:
+		spikes.append({"a": float(i) / 30.0 * TAU + (rand.randf() - 0.5) * 0.2, "r": 2.4 + rand.randf() * 1.2, "h": 0.6 + rand.randf() * 1.4, "d": rand.randf() * 0.6})
+	d["spikes"] = spikes
+	var puffs: Array = []
+	var pm := SphereMesh.new()
+	pm.radius = 1.0
+	pm.height = 2.0
+	pm.radial_segments = 10
+	pm.rings = 6
+	for i in 3:
+		puffs.append(mesh(pm, _mat(Color("#eef4f6"), 0.0), 0.0, 0.0, 0.0))
+	d["puffs"] = puffs
+	var panes: Array = []
+	for i in 8:
+		var pn := disc(0.2 + rand.randf() * 0.12, Color("#d8eaf2"), 0.45, 0.0, 0.0, 0.0, 7)
+		pn.set_meta("a", float(i) / 8.0 * TAU + rand.randf() * 0.3)
+		panes.append(pn)
+	d["panes"] = panes
+	veil(Color("#c8dce4"))
+
+
+func _update_freeze(kk: float) -> void:
+	var kneel := ss(kk, 1.8, 3.0)
+	view(kk, 0.0, -0.12 - 0.2 * kneel + 0.015 * sin(kk * 31.0) * shk * seg(kk, 0.5, 1.8) * (1.0 - seg(kk, 2.2, 2.8)), -0.5 * kneel)
+	var cy := cam_y()
+	var grow := ss(kk, 0.8, 2.4)
+	var cover := ss(kk, 2.0, 3.3)
+	((d["frost"] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color.a = 0.22 * ss(kk, 0.0, 1.2)
+	var i := 0
+	for u: Dictionary in d["spikes"]:
+		var g := ss(kk, 0.8 + float(u["d"]), 1.8 + float(u["d"]))
+		var rad := float(u["r"]) * (1.0 - 0.6 * grow)
+		var a := float(u["a"])
+		set_i(d["spikeIM"], i, Vector3(cos(a) * rad, float(u["h"]) * g * 0.5, sin(a) * rad), Vector3(0.25 * sin(a), 0.0, -0.25 * cos(a)), Vector3(1.0, maxf(0.02, float(u["h"]) * g), 1.0))
+		i += 1
+	i = 0
+	for p: MeshInstance3D in d["puffs"]:
+		var ph := fmod(kk + float(i) * 0.37, 1.1) / 1.1
+		p.position = Vector3(0.05 * sin(float(i) * 2.0), cy - 0.2 + ph * 0.08, 0.4 + ph * 0.35)
+		p.scale = Vector3.ONE * (0.012 + 0.04 * ph)
+		(p.material_override as StandardMaterial3D).albedo_color.a = 0.22 * (1.0 - ph) * (1.0 - seg(kk, 2.2, 2.8))
+		i += 1
+	for pn: MeshInstance3D in d["panes"]:
+		var rr := 0.62 - 0.38 * cover
+		var a2 := float(pn.get_meta("a"))
+		pn.position = Vector3(cos(a2) * rr, cy + sin(a2) * rr * 0.6, 0.32)
+		pn.rotation = Vector3(PI / 2.0, 0.0, 0.0)
+		pn.visible = cover > 0.0
+	shade(0.85 * ss(kk, 2.9, 3.4))
