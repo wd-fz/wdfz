@@ -246,6 +246,10 @@ func _resize() -> void:
 	_fit_settings.call_deferred()
 	_fit_menu_scrolls.call_deferred()
 	_resize_list.call_deferred()
+	if is_instance_valid(map_panel) and map_panel.visible:
+		_map_generation += 1
+		_map_center_pending = true
+	_fit_map.call_deferred()
 
 
 var _menu_scrolls: Array[ScrollContainer] = []
@@ -1468,6 +1472,10 @@ var map_view: MapView
 var _map_select: OptionButton
 var _map_head: Label
 var _map_note: Label
+var _map_scroll: ScrollContainer
+var _map_close_button: Button
+var _map_center_pending := false
+var _map_generation := 0
 
 
 ## options: [[id, label]] ("campus" is the plan); returns the view to configure.
@@ -1475,11 +1483,12 @@ func open_map(options: Array, selected: String, head: String, note: String) -> M
 	if map_panel == null:
 		map_panel = PanelContainer.new()
 		map_panel.name = "MapPanel"
+		map_panel.minimum_size_changed.connect(func() -> void: _fit_map.call_deferred())
 		map_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 		map_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		map_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 		var back := StyleBoxFlat.new()
-		back.bg_color = Color(0.03, 0.05, 0.07, 0.99)
+		back.bg_color = Color(.06,.05,.04,.99)
 		back.set_content_margin_all(12)
 		back.set_corner_radius_all(6)
 		map_panel.add_theme_stylebox_override("panel", back)
@@ -1491,27 +1500,31 @@ func open_map(options: Array, selected: String, head: String, note: String) -> M
 		top.add_child(lab)
 		_map_select = OptionButton.new()
 		_map_select.name = "MapSelect"
-		_map_select.custom_minimum_size = Vector2(240, 0)
+		_map_select.custom_minimum_size.y = 44
+		_map_select.fit_to_longest_item = false
+		_map_select.clip_text = true
+		_map_select.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_map_select.item_selected.connect(func(i: int) -> void: map_requested.emit(String(_map_select.get_item_metadata(i))))
 		top.add_child(_map_select)
 		outer.add_child(top)
 		_map_head = Label.new()
+		_map_head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		outer.add_child(_map_head)
-		var scroll := ScrollContainer.new()
-		scroll.custom_minimum_size = Vector2(480, 380)
+		_map_scroll = ScrollContainer.new()
+		_map_scroll.follow_focus = true
 		map_view = MapView.new()
 		map_view.name = "MapView"
-		scroll.add_child(map_view)
-		outer.add_child(scroll)
+		map_view.scroll_min_width = 0
+		_map_scroll.add_child(map_view)
+		outer.add_child(_map_scroll)
 		_map_note = Label.new()
 		_map_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_map_note.custom_minimum_size = Vector2(480, 0)
 		_map_note.modulate = Color(1, 1, 1, 0.6)
 		outer.add_child(_map_note)
-		var close := Button.new()
-		close.text = "关闭"
-		close.pressed.connect(func() -> void: map_panel.visible = false)
-		outer.add_child(close)
+		_map_close_button = Button.new()
+		_map_close_button.text = "关闭"
+		_map_close_button.pressed.connect(func() -> void: map_panel.visible = false)
+		outer.add_child(_map_close_button)
 		map_panel.add_child(outer)
 		$Root.add_child(map_panel)
 	_map_select.clear()
@@ -1523,7 +1536,44 @@ func open_map(options: Array, selected: String, head: String, note: String) -> M
 	_map_head.text = head
 	_map_note.text = note
 	map_panel.visible = true
+	_map_generation += 1
+	_map_center_pending = true
+	_map_scroll.scroll_vertical = 0
+	_map_scroll.scroll_horizontal = 0
+	_fit_map.call_deferred()
 	return map_view
+
+
+func _fit_map() -> void:
+	if not is_instance_valid(map_panel) or not map_panel.visible: return
+	var screen := get_viewport().get_visible_rect().size
+	var width := minf(720,screen.x-24)
+	map_panel.custom_minimum_size.x = width
+	_map_head.size.x = width-24
+	_map_note.size.x = width-24
+	var fixed := 24.0
+	for child in _map_head.get_parent().get_children():
+		if child is Control and child != _map_scroll and child.visible:
+			fixed += child.get_combined_minimum_size().y+6
+	map_view.scroll_max_height = maxf(60,minf(500,screen.y-fixed-24))
+	if not map_view.plan.is_empty():
+		map_view.show_plan(map_view.plan,Vector2(width-52,map_view.scroll_max_height-14))
+	elif not map_view.room.is_empty():
+		map_view.show_floor(map_view.room,map_view.seen,map_view.label_of,map_view.me,map_view.ang,map_view.here,width-52)
+	map_panel.reset_size()
+	map_panel.position = (screen-map_panel.size)*.5
+	if _map_center_pending:
+		_map_center_pending = false
+		_center_map_player.call_deferred(_map_generation)
+
+
+func _center_map_player(generation: int) -> void:
+	# Scroll ranges settle after the container has wrapped the header and legend.
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if generation != _map_generation or not is_instance_valid(map_view) or not map_panel.visible or map_view.room.is_empty() or not map_view.here: return
+	var px := (map_view.me.x-float(map_view.room["ox"]))/float(map_view.room["tw"])*map_view.cell
+	_map_scroll.scroll_horizontal = maxi(0,roundi(px-_map_scroll.size.x*.5))
 
 
 func sensory_on() -> bool:
@@ -1917,6 +1967,9 @@ func clear_touch() -> void:
 func set_mode(mode: String) -> void:
 	if _mode != mode:
 		show_notice("")
+		_map_generation += 1
+		for panel in [map_panel,notes_panel,_import_panel,settings_panel,records_panel,results_panel]:
+			if is_instance_valid(panel): panel.hide()
 	_mode = mode
 	if _sense != null:
 		_sense.visible = mode != "menu"

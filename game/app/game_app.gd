@@ -2547,8 +2547,6 @@ func _show_map(selected: String = "") -> void:
 	if selected == "campus":
 		var view := ui.open_map(options, selected, "走过 %d 处室内" % ids.size(), "")
 		var out: Dictionary = CampusData.layout("out")
-		var cam: Dictionary = CampusData.campus()
-		var bm: Dictionary = cam["bound_map"]
 		var objects: Array = out["objects"]
 		var me := Vector2.ZERO
 		var p: Array = pose["position"]
@@ -2560,11 +2558,10 @@ func _show_map(selected: String = "") -> void:
 		else:
 			var w1 := CampusGeometry.to_world(null, float(p[0]), float(p[2]))
 			me = w1 / sc
-		var gates: Array = []
-		var gate_names := {"n": "北门", "w": "西小门", "s": "南门"}
-		for g: String in ["n", "w", "s"]:
-			gates.append([gate_names[g], float(cam["gates"][g]["x"]), float(cam["gates"][g]["y"])])
-		view.show_plan({"bound": {"x0": bm["x0"], "y0": bm["y0"], "x1": bm["x1"], "y1": bm["y1"]}, "objects": objects, "gates": gates, "me": me, "ang": yaw_ang})
+		var plan := CampusData.campus_map().duplicate()
+		plan["me"] = me
+		plan["ang"] = yaw_ang
+		view.show_plan(plan)
 		return
 	var r: Dictionary = campus().room(selected)
 	var hereb := selected == session.world_id

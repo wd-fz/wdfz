@@ -48,6 +48,12 @@ static func campus() -> Dictionary:
 	return layout("campus")
 
 
+static func campus_map() -> Dictionary:
+	if not _cache.has("campus_map"):
+		_cache["campus_map"] = JSON.parse_string(FileAccess.get_file_as_string("res://assets/campus/map.json"))
+	return _cache["campus_map"]
+
+
 static func rules_dlc() -> Dictionary:
 	if not _cache.has("rules_dlc"):
 		_cache["rules_dlc"]=JSON.parse_string(FileAccess.get_file_as_string("res://assets/campus/rules_dlc.json"))

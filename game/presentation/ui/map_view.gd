@@ -30,6 +30,11 @@ var plan: Dictionary = {}        # {bound, objects, gates, me, ang}
 var plan_scale := 0.4
 
 
+func _init() -> void:
+	size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_SHRINK_CENTER
+	size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+
+
 static func tone(mark: String) -> String:
 	if mark == "留":
 		return "brass"
@@ -68,7 +73,7 @@ func show_plan(p: Dictionary, avail: Vector2 = Vector2(440, 520)) -> void:
 	var bw := float(b["x1"]) - float(b["x0"])
 	var bh := float(b["y1"]) - float(b["y0"])
 	plan_scale = minf(avail.x / bw, avail.y / bh)
-	custom_minimum_size = Vector2(bw * plan_scale, bh * plan_scale)
+	custom_minimum_size = Vector2(roundf(bw * plan_scale), roundf(bh * plan_scale))
 	_fit_scroll()
 	queue_redraw()
 
@@ -77,7 +82,7 @@ func show_plan(p: Dictionary, avail: Vector2 = Vector2(440, 520)) -> void:
 func _fit_scroll() -> void:
 	var sc := get_parent() as ScrollContainer
 	if sc != null:
-		sc.custom_minimum_size = Vector2(scroll_min_width, clampf(custom_minimum_size.y + 14.0, 120.0, scroll_max_height))
+		sc.custom_minimum_size = Vector2(scroll_min_width, clampf(custom_minimum_size.y + 14.0, minf(120,scroll_max_height), scroll_max_height))
 
 
 func _draw() -> void:
@@ -159,13 +164,74 @@ func _draw() -> void:
 		draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[0]]), PAPER, 2.0)
 
 
+static func road_rects(data: Dictionary, sc: float) -> Array[Rect2]:
+	var out: Array[Rect2] = []
+	var bound: Dictionary = data["bound"]
+	for road: Array in data.get("roads",[]):
+		out.append(Rect2((float(road[0])-float(bound["x0"]))*sc,(float(road[1])-float(bound["y0"]))*sc,(float(road[2])-float(road[0]))*sc,(float(road[3])-float(road[1]))*sc))
+	return out
+
+
+## Original UI.renderMap label placement. Text metrics are provided by the active font.
+static func plan_labels(data: Dictionary, sc: float, extent: Vector2, measure: Callable) -> Array[Dictionary]:
+	var labels: Array[Dictionary] = []
+	var boxes: Array[Rect2] = []
+	var used: Array[Rect2] = []
+	var bound: Dictionary = data["bound"]
+	var origin := Vector2(bound["x0"],bound["y0"])
+	var at := func(x: float,y: float) -> Vector2: return (Vector2(x,y)-origin)*sc
+	var clamp_label := func(p: Vector2,w: float) -> Vector2: return Vector2(clampf(p.x,3,extent.x-w-3),clampf(p.y,13,extent.y-4))
+	for object: Dictionary in data["objects"]:
+		if object["k"] == "roof": boxes.append(Rect2(at.call(object["x"],object["y"]),Vector2(object["w"],object["h"])*sc))
+	for object: Dictionary in data["objects"]:
+		if object["k"] != "roof" or float(object["w"])*sc<=34: continue
+		var pos: Vector2 = at.call(object["x"],object["y"])+Vector2(3,12)
+		var text := String(object["name"])
+		var width: float = measure.call(text,10)
+		labels.append({"text":text,"pos":pos,"size":10,"gate":false})
+		used.append(Rect2(pos-Vector2(0,10),Vector2(width,10)))
+	# Reserve gate labels before placing small buildings, as the source does.
+	var gates: Array[Dictionary] = []
+	for gate: Array in data["gates"]:
+		var width: float = measure.call(gate[0],11)
+		var pos: Vector2 = clamp_label.call(at.call(gate[1],gate[2])+Vector2(-11,-6),width)
+		used.append(Rect2(pos-Vector2(0,11),Vector2(width,11)))
+		gates.append({"text":gate[0],"pos":pos,"size":11,"gate":true})
+	for object: Dictionary in data["objects"]:
+		if object["k"] != "roof" or float(object["w"])*sc>34: continue
+		var text := String(object.get("short",object["name"]))
+		var width: float = measure.call(text,10)
+		var own: Vector2 = at.call(object["x"],object["y"])
+		var end := own+Vector2(object["w"],object["h"])*sc
+		var candidates := [Vector2(end.x+3,own.y+12),Vector2(own.x,end.y+11),Vector2(own.x-width-3,own.y+12)]
+		var best: Vector2 = candidates[0]
+		var cost_best := 1000000
+		for candidate: Vector2 in candidates:
+			var pos: Vector2 = clamp_label.call(candidate,width)
+			var rect := Rect2(pos-Vector2(0,10),Vector2(width,10))
+			var cost := 0
+			for other: Rect2 in used:
+				if rect.intersects(other): cost += 10
+			for building: Rect2 in boxes:
+				if not building.position.is_equal_approx(own) and rect.intersects(building): cost += 1
+			if cost<cost_best:
+				cost_best = cost
+				best = pos
+		best = clamp_label.call(best,width)
+		labels.append({"text":text,"pos":best,"size":10,"gate":false})
+		used.append(Rect2(best-Vector2(0,10),Vector2(width,10)))
+	labels.append_array(gates)
+	return labels
+
+
 func _draw_plan() -> void:
 	var b: Dictionary = plan["bound"]
 	var x0 := float(b["x0"])
 	var y0 := float(b["y0"])
 	var sc := plan_scale
-	draw_rect(Rect2(Vector2.ZERO, size), Color(0.05, 0.07, 0.08))
+	draw_rect(Rect2(Vector2.ZERO, size), Color("0d0b09"))
 	draw_rect(Rect2(Vector2.ZERO, Vector2((float(b["x1"]) - x0) * sc, (float(b["y1"]) - y0) * sc)), Color(0.47, 0.71, 0.59, 0.35), false, 2.0)
+	for road: Rect2 in road_rects(plan,sc): draw_rect(road,Color(150.0/255,160.0/255,150.0/255,.16))
 	var font := get_theme_default_font()
 	for o: Dictionary in plan["objects"]:
 		var col := Color("#182420")
@@ -181,37 +247,12 @@ func _draw_plan() -> void:
 		var rect := Rect2((float(o["x"]) - x0) * sc, (float(o["y"]) - y0) * sc, float(o["w"]) * sc, float(o["h"]) * sc)
 		draw_rect(rect, col)
 		draw_rect(rect, Color(0.47, 0.71, 0.59, 0.3), false, 1.0)
-	var placed: Array[Rect2] = []
-	for o: Dictionary in plan["objects"]:
-		if String(o["k"]) != "roof":
-			continue
-		var name := String(o["name"])
-		var tw := font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
-		var rect2 := Rect2((float(o["x"]) - x0) * sc, (float(o["y"]) - y0) * sc, float(o["w"]) * sc, float(o["h"]) * sc)
-		var best := Vector2(rect2.position.x + 3.0, rect2.position.y + 12.0)
-		if rect2.size.x <= tw + 6.0:
-			# Narrow building: the name beside it, where it covers the least.
-			var cands := [Vector2(rect2.end.x + 3.0, rect2.position.y + 12.0), Vector2(rect2.position.x, rect2.end.y + 11.0), Vector2(rect2.position.x - tw - 3.0, rect2.position.y + 12.0)]
-			var cost_best := 1000000
-			for cnd: Vector2 in cands:
-				var p := Vector2(clampf(cnd.x, 3.0, size.x - tw - 3.0), clampf(cnd.y, 13.0, size.y - 4.0))
-				var box := Rect2(p.x, p.y - 10.0, tw, 10.0)
-				var cost := 0
-				for u: Rect2 in placed:
-					if u.intersects(box):
-						cost += 10
-				if cost < cost_best:
-					cost_best = cost
-					best = p
-		var pos := Vector2(clampf(best.x, 3.0, size.x - tw - 3.0), clampf(best.y, 13.0, size.y - 4.0))
-		draw_string(font, pos, name, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.63, 0.78, 0.71, 0.75))
-		placed.append(Rect2(pos.x, pos.y - 10.0, tw, 10.0))
-	var gold := Color("#c8a24a")
-	for g: Array in plan["gates"]:
-		var gp := Vector2((float(g[1]) - x0) * sc, (float(g[2]) - y0) * sc)
-		draw_rect(Rect2(gp - Vector2(2, 2), Vector2(4, 4)), gold)
-		var gw := font.get_string_size(String(g[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
-		draw_string(font, Vector2(clampf(gp.x - 11.0, 3.0, size.x - gw - 3.0), clampf(gp.y - 6.0, 13.0, size.y - 4.0)), String(g[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, gold)
+	var measure := func(text: String,font_size: int) -> float: return font.get_string_size(text,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x
+	for label: Dictionary in plan_labels(plan,sc,custom_minimum_size,measure):
+		draw_string(font,label["pos"],label["text"],HORIZONTAL_ALIGNMENT_LEFT,-1,label["size"],Color("c8a24a") if label["gate"] else Color(160.0/255,200.0/255,180.0/255,.62))
+	for gate: Array in plan["gates"]:
+		var gp := Vector2((float(gate[1])-x0)*sc,(float(gate[2])-y0)*sc)
+		draw_rect(Rect2(gp-Vector2(2,2),Vector2(4,4)),Color("c8a24a"))
 	var me_pos: Vector2 = plan["me"]
 	var mp := Vector2((me_pos.x - x0) * sc, (me_pos.y - y0) * sc)
 	var green := Color("#79c8a4")

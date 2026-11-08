@@ -1,43 +1,34 @@
 extends SceneTree
-## The map page (needs a display): godot --path . --script res://tools/capture/capture_map.gd
-## Output: build/previews/map/. A floor sketch after a walk along the corridor, and the campus plan.
-
+## Real handbook pages from a new run, with the original exploration mask retained.
 const APP := preload("res://game/app/app.tscn")
-
-
-func _initialize() -> void:
-	call_deferred("_run")
-
-
-func _shot(name: String) -> void:
-	for _i in 15:
-		await process_frame
+func _initialize() -> void: call_deferred("_run")
+func shot(label: String) -> void:
+	for _i in 8: await process_frame
 	await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png("res://build/previews/map/%s.png" % name)
-
-
+	root.get_texture().get_image().save_png("res://build/previews/map/"+label+".png")
 func _run() -> void:
-	root.size = Vector2i(1280, 720)
+	root.size = Vector2i(1280,720)
+	DirAccess.make_dir_recursive_absolute("res://build/previews/map")
 	var app: GameApp = APP.instantiate()
-	app.saves = SaveStore.new("user://map-preview/unused.json")
-	app.settings = GameSettings.new("user://map-preview/settings.json")
+	app.saves = SaveStore.new("user://capture-map-%d/slot.json" % Time.get_ticks_usec())
+	app.settings = GameSettings.new(app.saves.side_path("settings.json"))
 	root.add_child(app)
 	await process_frame
-	app.start_new_game()
-	for _i in 5:
-		await process_frame
-	app.patrol().pat["safety"] = 999.0
-	app._stand_up()
-	DirAccess.make_dir_recursive_absolute("res://build/previews/map")
-	var t1 := CampusData.layout("teach1")
-	# Walk along the corridor and into the first classroom.
-	for c in range(8, 58, 4):
-		var s := CampusGeometry.to_scene(t1, CampusGeometry.tile_center(t1, c, 18))
-		app.player.global_position = Vector3(s.x, 0.05, s.y)
-		app.player.rotation.y = CampusGeometry.yaw_from_ang(0.0)
-		app._explore_step(0.4)
-	app._show_map("teach1")
-	await _shot("floor-sketch")
+	app.wuda_roll = func() -> float: return 1
+	app.start_new_game("hard","none")
+	for _i in 5: await process_frame
+	app.set_physics_process(false)
+	app.set_process(false)
+	app.player.set_physics_process(false)
 	app._show_map("campus")
-	await _shot("campus-plan")
+	await shot("校园道路与名称")
+	root.size = Vector2i(420,900)
+	app._setting_changed("text",150)
+	app._show_map("teach1")
+	await shot("竖屏大字楼层与当前位置")
+	app._show_map("campus")
+	await shot("竖屏校园总图")
+	app.return_to_menu()
+	app.queue_free()
+	await process_frame
 	quit()
