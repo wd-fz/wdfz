@@ -32,6 +32,7 @@ var _flashed := {}
 var _fx_cache := {}
 var _ui: GameUI
 var _restored := true
+var sound_output: Callable
 var audio: AudioFx  ## set by the caller; the beat sounds of the scenes (SFX.door, sting, ...) go through it
 
 
@@ -52,7 +53,7 @@ static func ss(kk: float, a: float, b: float) -> float:
 	return x * x * (3.0 - 2.0 * x)
 
 
-func begin(cause: String, player: PlayerController, world: Node3D, ui: GameUI, duration: float, reduce_shake: bool = false) -> void:
+func begin(cause: String, player: PlayerController, world: Node3D, ui: GameUI, duration: float, reduce_shake: bool = false, camera_override: Camera3D = null) -> void:
 	_restored = false
 	fx = cause
 	dur = duration
@@ -61,7 +62,7 @@ func begin(cause: String, player: PlayerController, world: Node3D, ui: GameUI, d
 	_player = player
 	_world = world
 	_ui = ui
-	cam = player.camera
+	cam = player.camera if camera_override == null else camera_override
 	shk = 0.0 if reduce_shake else 1.0
 	rand.seed = hash(cause)
 	_base_pitch = cam.rotation.x
@@ -282,7 +283,9 @@ func view(kk: float, dang: float, pitch: float, lift: float) -> void:
 
 ## One beat sound (the old SFX.* calls inside the scenes). Silent when no audio is attached (tests).
 func snd(sound_id: String, opts: Dictionary = {}) -> void:
-	if audio != null and is_instance_valid(audio):
+	if sound_output.is_valid():
+		sound_output.call(sound_id, opts)
+	elif audio != null and is_instance_valid(audio):
 		audio.play(sound_id, opts)
 
 

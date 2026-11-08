@@ -42,6 +42,13 @@ func same_json(a: Variant, b: Variant) -> bool:
 
 
 func _run() -> void:
+	var debug_tools:=preload("res://tests/suites/debug_tools.gd").new(self)
+	print("CASE: debug_tools.test_reference_time")
+	debug_tools.test_reference_time()
+	print("CASE: debug_tools.test_commands")
+	await debug_tools.test_commands()
+	print("CASE: debug_tools.test_preview_lifecycle")
+	await debug_tools.test_preview_lifecycle()
 	var traces:=preload("res://tests/suites/traces.gd").new(self)
 	print("CASE: traces.test_reference")
 	traces.test_reference()

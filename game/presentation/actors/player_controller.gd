@@ -17,6 +17,8 @@ signal focus_changed(prompt: String)
 @onready var ray: RayCast3D = %InteractionRay
 
 var enabled := false
+## Explicit developer freeze is independent of menu pause and input ownership.
+var debug_frozen := false
 ## Seated (old S.seated): the body stays on the chair, the view still turns.
 var seated := false
 ## Hidden in a locker (old HIDE.on): no movement, the view still turns.
@@ -39,7 +41,7 @@ var _look_pitch := 0.0
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not enabled:
+	if not enabled or debug_frozen:
 		return
 	# Godot synthesizes device -1 mouse events for Control button taps.
 	# Keep those for UI, but never capture/rotate the world camera with them.
@@ -56,7 +58,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if not enabled:
+	if not enabled or debug_frozen:
 		return
 	var typing := editing_text()
 	if typing:
@@ -91,7 +93,7 @@ func _physics_process(delta: float) -> void:
 
 ## Movement input this frame (old updatePlayer: a seated player stands up when it exceeds 0.08).
 func wants_move() -> bool:
-	if not enabled or editing_text():
+	if not enabled or debug_frozen or editing_text():
 		return false
 	return (Input.get_vector("move_left", "move_right", "move_forward", "move_back") + _touch_move).length() > 0.08
 
@@ -112,7 +114,7 @@ func _update_focus() -> void:
 
 
 func request_interaction() -> void:
-	if not enabled:
+	if not enabled or debug_frozen:
 		return
 	_update_focus() # Never use a target cached before a teleport/pause.
 	if is_instance_valid(_focus) and not _focus.interaction_id.is_empty():
@@ -126,15 +128,15 @@ func request_interaction() -> void:
 
 
 func set_touch_move(value: Vector2) -> void:
-	_touch_move = value.limit_length() if enabled else Vector2.ZERO
+	_touch_move = value.limit_length() if enabled and not debug_frozen else Vector2.ZERO
 
 
 func set_touch_sprint(value: bool) -> void:
-	_touch_sprint = value and enabled
+	_touch_sprint = value and enabled and not debug_frozen
 
 
 func look_from_touch(relative: Vector2) -> void:
-	if enabled:
+	if enabled and not debug_frozen:
 		apply_look(relative * touch_sensitivity)
 
 

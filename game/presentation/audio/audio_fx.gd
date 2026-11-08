@@ -48,6 +48,7 @@ var _pool: Array[AudioStreamPlayer] = []
 var _pool3: Array[AudioStreamPlayer3D] = []
 var _audition: AudioStreamPlayer
 var _audition_rng := RandomNumberGenerator.new()
+var _preview_voices: Array[AudioStreamPlayer] = []
 var _next := 0
 var _next3 := 0
 var _beds: Dictionary = {}      # name → {player, gain}
@@ -717,3 +718,33 @@ func loop(id: String, on: bool, db: float = -12.0) -> void:
 
 func looping(id: String) -> bool:
 	return _legacy_loops.has(id) or bed_playing(id)
+
+
+## Separate disposable voices for developer previews; no gameplay RNG or bed interruption.
+func preview_play(id: String, opts: Dictionary = {}) -> bool:
+	if not has(id) or not is_inside_tree(): return false
+	var d: Dictionary=_index.sfx[id]
+	var files: Array=d.files
+	if files.is_empty(): return false
+	var take: Dictionary=files[_audition_rng.randi()%files.size()]
+	var vary: Dictionary=d.get("vary",{})
+	var voice:=AudioStreamPlayer.new()
+	voice.stream=_stream("sfx/"+String(take.file),false)
+	voice.bus="Ui" if d.cat=="ui" else "Sfx"
+	voice.volume_db=float(take.db)+linear_to_db(maxf(.001,float(opts.get("k",1))*(1+_audition_rng.randf_range(-1,1)*float(vary.get("g",0)))))
+	voice.pitch_scale=maxf(.05,float(opts.get("pitch",1))*(1+_audition_rng.randf_range(-1,1)*float(vary.get("p",0))))
+	voice.process_mode=Node.PROCESS_MODE_ALWAYS
+	add_child(voice)
+	_preview_voices.append(voice)
+	voice.finished.connect(func() -> void:
+		_preview_voices.erase(voice)
+		voice.queue_free())
+	voice.play()
+	return true
+
+func stop_preview() -> void:
+	for voice in _preview_voices:
+		if is_instance_valid(voice):
+			voice.stop()
+			voice.queue_free()
+	_preview_voices.clear()

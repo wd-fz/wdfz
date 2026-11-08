@@ -139,6 +139,8 @@ func test_floating_panel() -> void:
 	root.add_child(player)
 	await _frames(2)
 	player.enabled = true
+	panel.select_page("工具")
+	await _frames(2)
 	panel._note.grab_focus()
 	Input.action_press("move_forward")
 	var before := player.position

@@ -876,10 +876,7 @@ func _inspection_tick(dt: float, ctx: Dictionary) -> void:
 			_duty_cancel(queue.pop_front())
 		if not queue.is_empty():
 			var item: Dictionary = queue.pop_front()
-			var present := at_my_seat(world_id, w)
-			inspection["current"] = {"day": item["day"], "slot": item["slot"], "t": 0.0, "look": 0.0, "move": 0.0,
-				"compliant": present, "room": world_id, "points": _points_json(ring_points(w, can_stand))}
-			_say("我：走廊里的声音一下子停了。一圈黑影站在附近——别动，也别看它们。")
+			start_inspection(item, world_id, w, can_stand)
 		return
 	if c["room"] != world_id:
 		c["room"] = world_id
@@ -1037,3 +1034,23 @@ func take_events() -> Array:
 	var out := _events
 	_events = []
 	return out
+
+
+## Shared with developer staging; normal starts still go through the timed queue.
+func start_inspection(item: Dictionary, world_id: String, w: Vector2, can_stand: Callable) -> void:
+	inspection["current"] = {"day": item["day"], "slot": item["slot"], "t": 0.0, "look": 0.0, "move": 0.0,
+		"compliant": at_my_seat(world_id,w), "room": world_id, "points": _points_json(ring_points(w,can_stand))}
+	_say("我：走廊里的声音一下子停了。一圈黑影站在附近——别动，也别看它们。")
+
+
+## systems.js rewindGameTime: pressure high-water mark cannot be erased by rewinding.
+func rewind_game_time(minutes: float) -> void:
+	if not is_finite(minutes) or minutes<=0: return
+	_observe_pressure()
+	var remaining:=minutes
+	while remaining>0:
+		var start:=SchoolClock.DAY_END if tsec<=SchoolClock.DAY_START else tsec
+		var used:=minf(remaining,start-SchoolClock.DAY_START)
+		tsec=start-used
+		if start>=SchoolClock.LIGHTS_OUT+10 and tsec<SchoolClock.LIGHTS_OUT+10 and day>1: day-=1
+		remaining-=used

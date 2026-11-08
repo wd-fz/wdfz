@@ -12,6 +12,7 @@ signal playtest_note(text: String)
 signal clear_debug_records
 signal mark_untrusted
 signal closed
+signal action(id: String, args: Dictionary)
 
 var _index: Dictionary = {}
 var _cat: OptionButton
@@ -22,6 +23,13 @@ var _state: Label
 var _toggle: Button
 var _note: LineEdit
 var _msg: Label
+var _pages: Dictionary = {}
+var _selectors: Dictionary = {}
+var _live: Label
+var _bag_info: Label
+var _diagnostics: Label
+var _switches: Dictionary = {}
+var _active_page := "状态"
 var _cats: Array = []
 var _ids: Array = []
 var playing_all := false
@@ -37,7 +45,8 @@ func _init(index: Dictionary = {}) -> void:
 	_index = index
 	name = "DebugPanel"
 	visible = false
-	var box := VBoxContainer.new()
+	var root_box := VBoxContainer.new()
+	var box := _make_pages(root_box)
 	box.add_theme_constant_override("separation", 6)
 	var head := Label.new()
 	head.text = "开发工具（不属于玩家的游戏）"
@@ -124,14 +133,14 @@ func _init(index: Dictionary = {}) -> void:
 	box.add_child(tools)
 	_msg = Label.new()
 	_msg.modulate = Color(0.85, 0.8, 0.55)
-	box.add_child(_msg)
+	root_box.add_child(_msg)
 	var close := Button.new()
 	close.name = "DebugClose"
 	close.text = "关闭"
 	close.pressed.connect(dismiss)
-	box.add_child(close)
-	set_body(box)
-	for label: Node in box.find_children("*", "Label", true, false):
+	root_box.add_child(close)
+	set_body(root_box)
+	for label: Node in root_box.find_children("*", "Label", true, false):
 		(label as Label).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		(label as Label).custom_minimum_size.x = 0
 	dismissed.connect(func() -> void:
@@ -211,3 +220,166 @@ func set_playtest(on: bool, events: int, has_data: bool) -> void:
 
 func say(text: String) -> void:
 	_msg.text = text
+
+
+func _label(parent: Node, text: String) -> Label:
+	var label:=Label.new()
+	label.text=text
+	label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	parent.add_child(label)
+	return label
+
+func _button(parent: Node, title: String, key: String, fn: Callable) -> Button:
+	var b:=Button.new()
+	b.name=key
+	b.text=title
+	b.custom_minimum_size.y=40
+	b.pressed.connect(fn)
+	parent.add_child(b)
+	return b
+
+func _row(parent: Node) -> HFlowContainer:
+	var row:=HFlowContainer.new()
+	parent.add_child(row)
+	return row
+
+func _send(id: String, args: Dictionary = {}) -> void:
+	action.emit(id,args)
+
+func _select(parent: Node, key: String, choices: Array) -> void:
+	var search:=LineEdit.new()
+	search.name=key+"Search"
+	search.placeholder_text="搜索名称或 ID"
+	parent.add_child(search)
+	var option:=OptionButton.new()
+	option.name=key+"Select"
+	option.fit_to_longest_item=false
+	option.clip_text=true
+	option.custom_minimum_size.y=40
+	parent.add_child(option)
+	_selectors[key]={"option":option,"search":search,"choices":choices}
+	search.text_changed.connect(func(_text: String) -> void: _filter(key))
+	_filter(key)
+
+func _filter(key: String) -> void:
+	var entry: Dictionary=_selectors[key]
+	var option: OptionButton=entry.option
+	var old:=selected(key)
+	option.clear()
+	var query:=String(entry.search.text).strip_edges().to_lower()
+	for pair: Array in entry.choices:
+		if query!="" and not (String(pair[0])+" "+String(pair[1])).to_lower().contains(query): continue
+		option.add_item(String(pair[1])+" · "+String(pair[0]))
+		option.set_item_metadata(option.item_count-1,String(pair[0]))
+		if String(pair[0])==old: option.select(option.item_count-1)
+	option.disabled=option.item_count==0
+	if option.item_count==0: option.text="没有匹配项"
+
+func selected(key: String) -> String:
+	var option: OptionButton=_selectors[key].option
+	return String(option.get_item_metadata(option.selected)) if option.selected>=0 and option.item_count>0 else ""
+
+func select_page(title: String) -> void:
+	_active_page=title
+	for key: String in _pages: _pages[key].visible=key==title
+
+func _make_pages(parent: VBoxContainer) -> VBoxContainer:
+	var tabs:=_row(parent)
+	for title: String in ["状态","场景","物品","事件","工具"]:
+		var page:=VBoxContainer.new()
+		page.name="DevPage"+title
+		parent.add_child(page)
+		_pages[title]=page
+		_button(tabs,title,"DevTab"+title,select_page.bind(title))
+	var status: VBoxContainer=_pages["状态"]
+	_live=_label(status,"没有进行中的一局")
+	var switches:=_row(status)
+	for pair: Array in [["freeze","冻结模拟"],["fast","快跑 ×2.6"],["god","无敌"],["search","立即翻找"]]:
+		var key:=String(pair[0])
+		var b:=_button(switches,pair[1],"Dev"+key,_send.bind(key,{}))
+		b.toggle_mode=true
+		_switches[key]=b
+	var stats:=OptionButton.new()
+	stats.name="DevStat"
+	for key: String in ["san","stam","viol","tt"]: stats.add_item(key)
+	status.add_child(stats)
+	var value:=LineEdit.new()
+	value.name="DevStatValue"
+	value.placeholder_text="0–100（SAN／体力／违规／同化）"
+	status.add_child(value)
+	var sr:=_row(status)
+	_button(sr,"应用数值","DevSetStat",func() -> void: _send("stat",{"key":stats.get_item_text(stats.selected),"value":value.text}))
+	_button(sr,"恢复 SAN / 体力","DevHeal",_send.bind("heal",{}))
+	var time:=LineEdit.new()
+	time.name="DevClock"
+	time.placeholder_text="HH:MM · 07:20–次日 00:59"
+	status.add_child(time)
+	var tr:=_row(status)
+	_button(tr,"设置时间","DevSetClock",func() -> void: _send("clock",{"value":time.text}))
+	for minutes: int in [-60,-10,10,60]:
+		_button(tr,"%+d 分钟" % minutes,"DevTime%d" % minutes,_send.bind("time",{"minutes":minutes}))
+	var scene: VBoxContainer=_pages["场景"]
+	_label(scene,"传送会结束异象、检查、驾驶与电梯，关闭互动和预览。")
+	var rooms: Array=[]
+	for id: String in CampusData.rooms(): rooms.append([id,CampusData.rooms()[id]["name"]])
+	_select(scene,"DevRoom",rooms)
+	_button(scene,"传送到室内","DevTeleport",func() -> void: _send("teleport",{"id":selected("DevRoom")}))
+	var outside: Array=[]
+	for i in DebugFlow.POI.size(): outside.append([str(i),DebugFlow.POI[i][0]])
+	_select(scene,"DevOutdoor",outside)
+	_button(scene,"传送到室外","DevTeleportOut",func() -> void: _send("outdoor",{"id":selected("DevOutdoor")}))
+	var items: VBoxContainer=_pages["物品"]
+	_bag_info=_label(items,"")
+	var catalog: Array=[]
+	for id: String in CampusData.campus()["items"]: catalog.append([id,CampusData.campus()["items"][id]["n"]])
+	_select(items,"DevItem",catalog)
+	var ir:=_row(items)
+	for pair: Array in [["item_add","给予"],["item_remove","移除"],["hot1","设为快捷 1"],["hot2","设为快捷 2"]]:
+		var key:=String(pair[0])
+		_button(ir,pair[1],"Dev"+key,func() -> void: _send(key,{"id":selected("DevItem")}))
+	var events: VBoxContainer=_pages["事件"]
+	var anomalies: Array=[]
+	for id: String in AnomalyModule.DEFS: anomalies.append([id,AnomalyModule.DEFS[id].get("cn",id)])
+	_select(events,"DevAnomaly",anomalies)
+	var ar:=_row(events)
+	_button(ar,"触发异象","DevAnomalyStart",func() -> void: _send("anomaly",{"id":selected("DevAnomaly")}))
+	_button(ar,"结束异象","DevAnomalyEnd",_send.bind("anomaly_end",{}))
+	var er:=_row(events)
+	for pair: Array in [["fake_normal","切换假正常"],["patrol_start","重置巡察"],["patrol_end","解除追逐"],["inspection","开始检查"],["inspection_end","取消检查"]]:
+		_button(er,pair[1],"Dev"+pair[0],_send.bind(pair[0],{}))
+	var causes: Array=[]
+	for id: String in DeathCG.CAUSES: causes.append([id,StoryModule.EPITAPH.get(id,id)])
+	_select(events,"DevDeath",causes)
+	var dr:=_row(events)
+	_button(dr,"预览演出","DevPreview",func() -> void: _send("preview",{"id":selected("DevDeath")}))
+	_button(dr,"停止预览","DevStopPreview",_send.bind("clear_preview",{}))
+	_button(dr,"实际死亡…","DevDeath",_confirm_death)
+	_button(dr,"复活","DevRevive",_send.bind("revive",{}))
+	var tools: VBoxContainer=_pages["工具"]
+	_diagnostics=_label(tools,"")
+	_button(tools,"复制诊断信息","DevCopy",_send.bind("copy",{}))
+	select_page("状态")
+	return tools
+
+func _confirm_death() -> void:
+	var id:=selected("DevDeath")
+	if id=="": return
+	var dialog:=ConfirmationDialog.new()
+	dialog.title="实际死亡"
+	dialog.dialog_text="会触发救命道具，并可能删除本局存档。继续？"
+	dialog.confirmed.connect(func() -> void: _send("death",{"id":id}); dialog.queue_free())
+	dialog.canceled.connect(dialog.queue_free)
+	add_child(dialog)
+	dialog.popup_centered(Vector2i(300,140))
+
+func set_runtime(state: Dictionary) -> void:
+	for key: String in _switches: (_switches[key] as Button).set_pressed_no_signal(bool(state[key]))
+	if state.has("room"):
+		_live.text="第 %d 天 %s · %s\nSAN %.1f · 违规 %.1f · 同化 %.1f · 体力 %.1f / %.1f\n异象 %s · 检查 %s / 排队 %d · 巡察 %s\n%s" % [state.day,state.time,state.room,state.san,state.viol,state.tt,state.stam,state.cap,state.anomaly,"进行中" if state.inspection else "无",state.queued,state.patrol,"真实局" if state.trusted else "调试局（不计真实成绩）"]
+		var names: Array=[]
+		for id: String in state.bag: names.append(CampusData.campus()["items"].get(id,{}).get("n",id))
+		_bag_info.text="背包 %d / 8：%s\n快捷栏：%s" % [names.size(),"、".join(names),str(state.hot)]
+	else:
+		_live.text="没有进行中的一局。"
+		_bag_info.text="背包未载入。"
+	_diagnostics.text="%s · 画质 %d · FPS %d\n%s" % [state.renderer,state.quality,state.fps,"\n".join(state.history)]

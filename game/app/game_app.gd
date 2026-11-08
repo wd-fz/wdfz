@@ -34,6 +34,7 @@ var _bolt_next := 6.0
 var _drive_view: CarChaseView
 var playtest := Playtest.new()
 var debug_panel: DebugPanel
+var debug_flow: DebugFlow
 var maze_flow: MazeFlow
 var knife_flow: KnifeFlow
 var inception_flow: InceptionFlow
@@ -54,6 +55,9 @@ func _ready() -> void:
 	inception_flow=InceptionFlow.new()
 	inception_flow.app=self
 	add_child(inception_flow)
+	debug_flow=DebugFlow.new()
+	debug_flow.app=self
+	add_child(debug_flow)
 	settings.load_file(DisplayServer.is_touchscreen_available())
 	ui.set_wuda_armed(settings.wuda_armed)
 	ui.school_tapped.connect(_school_tapped)
@@ -666,6 +670,7 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 		rules.has_item = bag.has
 	_sync_world()
 	player.restore_pose(pose)
+	debug_flow.session_started()
 	maze_flow.changed_world(true)
 	inception_flow.changed_world()
 	player.show()
@@ -755,6 +760,7 @@ func resume_game() -> void:
 
 
 func _cancel_cinematics() -> void:
+	if is_instance_valid(debug_flow): debug_flow.cancel()
 	if is_instance_valid(inception_flow): inception_flow.cancel()
 	if is_instance_valid(_lift_crowd_fx):
 		_lift_crowd_fx.clear()
@@ -838,6 +844,7 @@ func return_to_menu() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if is_instance_valid(debug_flow) and debug_flow.frozen: return
 	if _choice_left > 0.0 and ui.choice_open():
 		_choice_left -= delta
 		ui.show_choice_timer(maxf(0.0, _choice_left))
@@ -1232,11 +1239,11 @@ func _school_step(delta: float, rules: CampusModule, advance_calendar: bool = tr
 		snack = bag.snack_active()
 		var room_here: Variant = rules.room(session.world_id)
 		var here: Array = player.capture_pose()["position"]
-		bag.search_tick(delta, session.world_id, CampusGeometry.to_world(room_here, float(here[0]), float(here[2])))
+		bag.search_tick(60.0 if debug_flow.instant_search else delta, session.world_id, CampusGeometry.to_world(room_here, float(here[0]), float(here[2])))
 		for text: String in bag.take_notices():
 			ui.show_notice(text)
 		ui.show_search(bag.search_progress())
-		player.speed_multiplier = (1.5 if snack else 1.0) * (body().speed_mul() if body() != null else 1.0)
+		player.speed_multiplier = (1.5 if snack else 1.0) * (body().speed_mul() if body() != null else 1.0) * (2.6 if debug_flow.fast else 1.0)
 		player.camera.get_node("Torch").visible = bag.torch_on
 		if talent() != null:
 			talent().tick_watch(day_rules.day if day_rules != null else 1, school().tsec, SchoolClock.rate_at(school().tsec))
@@ -1427,6 +1434,7 @@ func _bag_entries() -> Array:
 
 
 func _touch_torch() -> void:
+	if is_instance_valid(debug_flow) and debug_flow.frozen: return
 	if session == null or not player.enabled or story().over():
 		return
 	if not items().has("torch"):
@@ -1436,6 +1444,7 @@ func _touch_torch() -> void:
 
 
 func _touch_hot(index: int) -> void:
+	if is_instance_valid(debug_flow) and debug_flow.frozen: return
 	if session==null or get_tree().paused or story().over() or (not player.enabled and not knife_flow.captured()):
 		return
 	if index in [0,1] and items().hot[index]!=null and knife_flow.use(String(items().hot[index]),"hot"):
@@ -1446,6 +1455,7 @@ func _touch_hot(index: int) -> void:
 
 
 func _open_manual() -> void:
+	if is_instance_valid(debug_flow) and debug_flow.frozen: return
 	if knife_flow.captured() and not story().over():
 		_open_bag()
 		return
@@ -1469,6 +1479,7 @@ func _open_manual() -> void:
 
 
 func _open_bag() -> void:
+	if is_instance_valid(debug_flow) and debug_flow.frozen: return
 	player.enabled = false
 	player.clear_input()
 	ui.clear_touch()
@@ -1566,6 +1577,9 @@ func kill(msg: String, fx: String, source: String) -> void:
 	var fate := story()
 	if fate == null or fate.dead:
 		return
+	if is_instance_valid(debug_flow) and debug_flow.god:
+		ui.show_notice("【Dev】无敌挡下了死亡。")
+		return
 	var bag := items()
 	var elixir := bag != null and bag.has("elixir")
 	var immune := not elixir and not fate.dead and talent() != null and talent().prevent_death()
@@ -1590,6 +1604,7 @@ func kill(msg: String, fx: String, source: String) -> void:
 		return
 	if not result.get("dead", false):
 		return
+	debug_flow.before_death()
 	fact({"kind": "death", "source": source, "fx": fx, "wake": bool(result["wake"])})
 	if not bool(result["wake"]):
 		_score_death()
@@ -3652,6 +3667,7 @@ func _day_step(_delta: float) -> void:
 
 
 func _lesson_press() -> void:
+	if is_instance_valid(debug_flow) and debug_flow.frozen: return
 	var dm := days()
 	if dm == null or ui.choice_open():
 		return
@@ -4903,6 +4919,7 @@ func _lift_close() -> void:
 
 ## Switch scene inside the running session (old doEnterRoom / doExitRoom). Seamless moves keep input.
 func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
+	if is_instance_valid(debug_flow): debug_flow.clear_preview()
 	var error := router.switch_to(world_id)
 	if not error.is_empty():
 		ui.show_notice(error)
@@ -4980,8 +4997,10 @@ func _toggle_debug() -> void:
 		debug_panel = DebugPanel.new(audio._index)
 		ui.get_node("Root").add_child(debug_panel)
 		debug_panel.closed.connect(func() -> void:
+			debug_flow.cancel()
 			if session != null and player.enabled and not get_tree().paused and not ui.touch_enabled():
 				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED)
+		debug_panel.action.connect(debug_flow.command)
 		debug_panel.sound_play.connect(func(id: String) -> void: audio.audition(id))
 		debug_panel.sound_stop.connect(audio.stop_audition)
 		debug_panel.playtest_toggled.connect(func() -> void:
@@ -5013,6 +5032,7 @@ func _toggle_debug() -> void:
 		ui.clear_touch()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		debug_panel.set_playtest(playtest.recording, playtest.data.get("events", []).size(), not playtest.data.is_empty())
+		debug_flow.refresh()
 
 
 func _playtest_state() -> Dictionary:
@@ -5050,6 +5070,7 @@ func _notification(what: int) -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
+	if is_instance_valid(debug_flow) and debug_flow.frozen: return
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo and snake_open():
 		if key.keycode == KEY_ESCAPE:
