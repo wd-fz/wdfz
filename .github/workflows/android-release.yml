@@ -48,7 +48,12 @@ jobs:
               raise SystemExit('Tag must match the APK release version')
           PY
       - name: Import and run complete headless regression
-        run: python tools/check.py
+        # Font metrics are part of the UI regression, even with a headless display.
+        # Keep this environment consistent with Godot CI.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          python tools/check.py
       - name: Decode release keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}

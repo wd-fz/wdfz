@@ -19,6 +19,27 @@ def activity(orientation, launcher=True):
 
 
 class AndroidManifestTests(unittest.TestCase):
+    def test_godot_launcher_alias_checks_the_target_activity(self):
+        tree = '''E: manifest
+  A: package="org.wdfz.godot"
+  E: application
+    E: activity
+      A: android:name(0x01010003)="org.wdfz.godot.GodotApp"
+      A: android:screenOrientation(0x0101001e)=(type 0x10)0x6
+    E: activity-alias
+      A: android:name(0x01010003)=".GodotAppLauncher"
+      A: android:targetActivity(0x01010202)=".GodotApp"
+      E: intent-filter
+        E: action
+          A: android:name(0x01010003)="android.intent.action.MAIN"
+        E: category
+          A: android:name(0x01010003)="android.intent.category.LAUNCHER"
+'''
+        self.assertEqual(verify_launcher_orientation(tree), "sensorLandscape")
+        for bad in [tree.replace("0x6", "0xa"), tree.replace('=".GodotApp"','=".Missing"'), tree.replace("android:targetActivity", "android:other")]:
+            with self.subTest(bad=bad), self.assertRaises(RuntimeError):
+                verify_launcher_orientation(bad)
+
     def test_public_release_must_not_be_debuggable(self):
         manifest = "package: name='org.wdfz.godot' versionCode='1' versionName='0.1.0'\nsdkVersion:'24'\ntargetSdkVersion:'36'\nnative-code: 'arm64-v8a'\n"
         verify_manifest(manifest,True)

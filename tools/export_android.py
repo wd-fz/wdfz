@@ -34,9 +34,9 @@ def verify_manifest(manifest, release=False):
 def verify_launcher_orientation(tree):
     """Check the launch activity, not an unrelated activity or a runtime setting."""
     lines = tree.splitlines()
-    launchers = []
+    entries = []
     for index, line in enumerate(lines):
-        activity = re.match(r"^( *)E: activity(?: |$)", line)
+        activity = re.match(r"^( *)E: (activity(?:-alias)?)(?: |$)", line)
         if not activity:
             continue
         indent = len(activity[1])
@@ -51,11 +51,29 @@ def verify_launcher_orientation(tree):
             if not nested:
                 attributes.append(child)
         text = "\n".join(block)
-        if '"android.intent.action.MAIN"' in text and '"android.intent.category.LAUNCHER"' in text:
-            launchers.append("\n".join(attributes))
+        entries.append({"kind": activity[2], "attributes": "\n".join(attributes),
+                        "launcher": '"android.intent.action.MAIN"' in text and '"android.intent.category.LAUNCHER"' in text})
+    launchers = [entry for entry in entries if entry["launcher"]]
     if len(launchers) != 1:
         raise RuntimeError("APK must have exactly one verifiable launcher activity")
-    orientation = re.search(r"android:screenOrientation\([^)]*\)=\(type 0x10\)(0x[0-9a-fA-F]+)", launchers[0])
+    launcher = launchers[0]
+    if launcher["kind"] == "activity-alias":
+        # Godot 4.6 launches through GodotAppLauncher; orientation belongs to its target.
+        package_match = re.search(r'A: package="([^"]+)"', tree)
+        package = package_match[1] if package_match else ""
+
+        def attribute(entry, name):
+            value = re.search(r'android:' + name + r'\([^)]*\)="([^"]+)"', entry["attributes"])
+            if not value: return ""
+            name = value[1]
+            return package + name if name.startswith(".") else package + "." + name if "." not in name else name
+
+        target = attribute(launcher, "targetActivity")
+        targets = [entry for entry in entries if entry["kind"] == "activity" and attribute(entry, "name") == target]
+        if not target or len(targets) != 1:
+            raise RuntimeError("Launcher alias must resolve to exactly one declared activity")
+        launcher = targets[0]
+    orientation = re.search(r"android:screenOrientation\([^)]*\)=\(type 0x10\)(0x[0-9a-fA-F]+)", launcher["attributes"])
     if not orientation or int(orientation[1], 16) != 6:
         raise RuntimeError("APK launcher must declare sensorLandscape (6) before Godot starts")
     return "sensorLandscape"
