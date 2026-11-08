@@ -66,6 +66,7 @@ func _ready() -> void:
 	archive_flow = ArchiveFlow.new()
 	add_child(archive_flow)
 	archive_flow.setup(self)
+	add_child(ApplicationExit.new())
 	settings.load_file(DisplayServer.is_touchscreen_available())
 	ui.set_wuda_armed(settings.wuda_armed)
 	ui.school_tapped.connect(_school_tapped)

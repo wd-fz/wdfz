@@ -40,8 +40,10 @@ def main():
                 binary.chmod(binary.stat().st_mode | 0o111)
                 # Release templates do not expose --script. Check native startup, then inspect
                 # the same PCK with the editor's external test runner; no tests enter the package.
-                run('startup-linux', [str(binary), '--headless', '--audio-driver', 'Dummy', '--quit-after', '5'],
-                    reports, timeout=180, cwd=directory)
+                output = run('startup-linux', [str(binary), '--headless', '--audio-driver', 'Dummy', '--verbose',
+                             '--', '--startup-smoke'], reports, timeout=180, cwd=directory)
+                if 'STARTUP SMOKE: passed' not in output:
+                    raise RuntimeError('Exported Linux runtime did not complete normal startup and shutdown')
                 output = run('smoke-linux', [ENGINE, '--headless', '--audio-driver', 'Dummy',
                              '--main-pack', str(binary.with_suffix('.pck')),
                              '--script', str(ROOT / 'tools/ci/export_smoke.gd')], reports, timeout=180, cwd=directory)

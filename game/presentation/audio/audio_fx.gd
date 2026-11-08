@@ -312,6 +312,15 @@ func stop_all() -> void:
 		b["gain"] = 0.0
 
 
+func _exit_tree() -> void:
+	# Stop looping playbacks explicitly before the audio server shuts down.
+	stop_all()
+	for voice in get_children():
+		if voice is AudioStreamPlayer or voice is AudioStreamPlayer3D:
+			voice.stream = null
+	_streams.clear()
+
+
 func playing_ids() -> Array:
 	var out: Array = []
 	for p in _pool:
