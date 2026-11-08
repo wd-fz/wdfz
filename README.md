@@ -66,6 +66,8 @@ godot --path . --script res://tools/capture/capture_preview.gd
 
 本地导出：安装同版本桌面 export templates 后运行 `python tools/export.py`。详细安装、日志与限制见[项目结构与持续集成](docs/项目结构与持续集成.md)。
 
+Android 调试包在 [Actions → Android Debug](https://github.com/wd-fz/wdfz/actions/workflows/android-debug.yml) 的成功运行中下载 `wdfz-android-debug-arm64-<SHA>`。解压后安装其中的 APK，支持 ARM64、Android 7.0 及以上；采用独立调试包名，横屏运行并自动启用触屏控件。构建检查签名、Debug 标记、16 KB 对齐和运行时资源，尚未代表 Android 真机运行验收。本地 Linux 构建入口为 `python tools/export_android.py --sdk <Android SDK 路径>`。
+
 ## 存档与范围
 
 本机测试存档为 `user://saves/slot_1.json`，应用数据目录名为 `wdfz-godot`。保存先写临时文件，保留前一份 `.bak` 后替换；读取先完成格式、场景 ID 和模块状态校验，再替换会话。未启用模块的 JSON 数据会保留。

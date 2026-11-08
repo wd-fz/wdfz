@@ -9,13 +9,13 @@ ROOT = Path(__file__).resolve().parents[2]
 ENGINE = os.environ.get("GODOT_BIN", "godot")
 
 
-def run(label, command, reports, timeout=600, cwd=ROOT):
+def run(label, command, reports, timeout=600, cwd=ROOT, env=None):
     reports.mkdir(parents=True, exist_ok=True)
     log = reports / f"{label}.log"
     print(f"[{label}] running (log: {log.relative_to(ROOT) if log.is_relative_to(ROOT) else log})", flush=True)
     deadline = time.monotonic() + timeout
     with log.open("w", encoding="utf-8") as output:
-        process = subprocess.Popen(command, cwd=cwd, text=True, stdout=output, stderr=subprocess.STDOUT)
+        process = subprocess.Popen(command, cwd=cwd, env=env, text=True, stdout=output, stderr=subprocess.STDOUT)
         try:
             # Some GDScript parse errors leave a SceneTree running forever. Fail immediately.
             with log.open(encoding="utf-8", errors="replace") as reader:
