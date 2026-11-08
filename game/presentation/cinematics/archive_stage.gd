@@ -65,6 +65,11 @@ func begin(entry: Dictionary, worlds: Array[WorldDefinition], view: GameUI, opti
 	ui.cut_mode(true)
 	_light()
 	if kind == "opening":
+		var classroom := ClassmatesView.new()
+		router.world_instance().add_child(classroom)
+		var mates := ClassmatesModule.new(CampusData.rooms())
+		mates.set_seed("archive")
+		classroom.build(CampusData.rules().room(stage),mates.layout(stage)["seats"])
 		var opening := OpeningCut.new()
 		cut = opening
 		add_child(opening)

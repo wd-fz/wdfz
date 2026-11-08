@@ -368,6 +368,8 @@ func _play_opening() -> void:
 				f.close()
 			_opening_done(skipped))
 		_opening_cut.audio = audio
+		var at := CampusGeometry.to_world(room,player.position.x,player.position.z)
+		_show_classmates(classmates(),room,at,0)
 		_opening_cut.begin(world, room, player, ui, FileAccess.file_exists(seen))
 		return
 	ui.show_opening()
@@ -3128,7 +3130,7 @@ func _mono_step(delta: float) -> void:
 
 # ---- classmates (game/features/school/classmates_module.gd) ----
 
-var _mates_nodes: Node3D
+var _mates_nodes: ClassmatesView
 var _mates_key := ""
 var _atmos_busy := false
 
@@ -3150,67 +3152,55 @@ func _classmates_step(delta: float) -> void:
 	var drain := mates.pressure(session.world_id, day_rules.viol)
 	if drain > 0.0 and not story().dead and day_rules.san > 1.0:
 		day_rules.san = maxf(1.0, day_rules.san - drain * delta)
-	_show_classmates(mates, room, w, day_rules.viol >= 70.0)
+	_show_classmates(mates, room, w, delta)
 
 
-## Seated classmates (placeholder figures on the chairs), facing the board or, at 70+, the player.
-func _show_classmates(mates: ClassmatesModule, room: Variant, me: Vector2, staring: bool) -> void:
+## Classroom movement stays in the presentation adapter; rules retain occupancy and door ownership.
+func _show_classmates(mates: ClassmatesModule, room: Variant, me: Vector2, dt: float) -> void:
 	var world := _campus_world()
 	if world == null or room == null or not ClassmatesModule.eligible(room):
-		if is_instance_valid(_mates_nodes):
-			_mates_nodes.queue_free()
+		if is_instance_valid(_mates_nodes): _mates_nodes.queue_free()
 		_mates_nodes = null
 		_mates_key = ""
 		return
 	var key := session.world_id
 	if key != _mates_key or not is_instance_valid(_mates_nodes) or _mates_nodes.get_parent() != world:
 		_mates_key = key
-		if is_instance_valid(_mates_nodes):
-			_mates_nodes.queue_free()
-		_mates_nodes = Node3D.new()
-		_mates_nodes.name = "Classmates"
+		if is_instance_valid(_mates_nodes): _mates_nodes.queue_free()
+		_mates_nodes = ClassmatesView.new()
 		world.add_child(_mates_nodes)
-		for t: Vector2i in mates.layout(session.world_id)["seats"]:
-			var k := ClassmatesModule.DESK_ROWS.find(t.y)
-			var shift := (0.11 if k % 2 == 0 else -0.11) if k >= 0 else 0.0
-			var wp := Vector2(float(room["ox"]) + (t.x + 0.8) * float(room["tw"]), float(room["oy"]) + (t.y + 0.5 + shift) * float(room["th"]))
-			var sp := CampusGeometry.to_scene(room, wp)
-			var fig := FigureModel.make("sit", Color(0.32, 0.34, 0.4))
-			fig.position = Vector3(sp.x, 0.0, sp.y)
-			fig.set_meta("w", wp)
-			fig.set_meta("cls", "%s:%d" % [key, AtmosModule.class_index(t.x, t.y)])
-			_mates_nodes.add_child(fig)
-	# A3 (atmos_module.gd): a class turns to you and back; after a return one more seat is empty.
+		_mates_nodes.build(room,mates.layout(key)["seats"])
+	var bell: bool = broadcast() != null and broadcast().b["phase"] == "bell"
+	var stare: bool = anomaly() != null and anomaly().an.get("active",false) and anomaly().an.get("id") == "stare"
+	_mates_nodes.advance(dt,me,school().viol,mates.state.get("door"),stare,bell,patrol().nav if patrol()!=null else null)
+	if bell: return
+	# A3 is a separate brief glance in a quiet classroom; departure takes precedence.
 	var mood := atmos()
 	var turn := 0.0
 	var turning := ""
-	var day_i := school().day
 	if mood != null and not mood.stare.is_empty() and mood.stare["room"] == key:
 		var tt := float(mood.stare["t"])
 		var tm: float = AtmosModule.CFG["stare_turn"]
 		var th: float = AtmosModule.CFG["stare_hold"]
-		var kk := tt / tm if tt < tm else (1.0 if tt < tm + th else maxf(0.0, 1.0 - (tt - tm - th) / tm))
-		turn = kk * kk * (3.0 - 2.0 * kk)
+		var kk := tt/tm if tt<tm else (1.0 if tt<tm+th else maxf(0,1-(tt-tm-th)/tm))
+		turn = kk*kk*(3-2*kk)
 		turning = String(mood.stare["cls"])
 	var by_class := {}
-	for fig: Node in _mates_nodes.get_children():
-		var f := fig as Node3D
-		var wp: Vector2 = f.get_meta("w")
-		var target := me if staring else wp + Vector2(-10, 0)
-		var base := -atan2(target.y - wp.y, target.x - wp.x) - PI * 0.5
+	for data: Dictionary in _mates_nodes.figures:
+		if data["teacher"]: continue
+		var f: Node3D = data["node"]
 		var cls: String = f.get_meta("cls")
-		if turn > 0.0 and cls == turning:
-			var want := -atan2(me.y - wp.y, me.x - wp.x) - PI * 0.5
-			base += wrapf(want - base, -PI, PI) * turn * 0.85
-		f.rotation.y = base
-		var list: Array = by_class.get(cls, [])
+		if cls == turning and school().viol < 35 and not stare:
+			var player_pos := CampusGeometry.to_scene(room,me)
+			var want := atan2(f.position.x-player_pos.x,f.position.z-player_pos.y)
+			f.rotation.y = PI/2+wrapf(want-PI/2,-PI,PI)*turn*.85
+		var list: Array = by_class.get(cls,[])
 		list.append(f)
 		by_class[cls] = list
 	for cls: String in by_class:
-		var gone := int(mood.seats.get("%d:%s" % [day_i, cls], 0)) if mood != null and not _atmos_busy and school().viol < 35.0 else 0
+		var gone := int(mood.seats.get("%d:%s" % [school().day,cls],0)) if mood != null and not _atmos_busy and school().viol<35 else 0
 		var list: Array = by_class[cls]
-		for i in list.size():
-			(list[i] as Node3D).visible = not (gone > 0 and i == gone % list.size())
+		for i in list.size(): (list[i] as Node3D).visible = not (gone>0 and i==gone%list.size())
 
 
 # ---- chalk marks and the last life (game/features/campus/marks_module.gd) ----
@@ -4251,7 +4241,7 @@ var _mic_open := false
 var _mic_panel: MicPanel
 var _mic_hold_button := false
 var _radio_job: Variant = null   # {index, t, seconds, x, y, scene}
-var _crowd_nodes: Node3D
+var _crowd_nodes: DepartingCrowd
 
 
 func _broadcast_context() -> Dictionary:
@@ -4310,29 +4300,16 @@ func _broadcast_step(delta: float) -> void:
 
 func _show_crowd(radio: BroadcastModule) -> void:
 	var p := radio.crowd()
-	var show := not p.is_empty() and session.world_id == "out"
-	if not show:
-		if is_instance_valid(_crowd_nodes):
-			_crowd_nodes.queue_free()
+	var world := _campus_world()
+	if p.is_empty() or session.world_id != "out" or world == null:
+		if is_instance_valid(_crowd_nodes): _crowd_nodes.queue_free()
 		_crowd_nodes = null
 		return
-	var world := _campus_world()
-	if world == null:
-		return
-	if not is_instance_valid(_crowd_nodes):
-		_crowd_nodes = Node3D.new()
-		_crowd_nodes.name = "DismissalCrowd"
-		var rng := RandomNumberGenerator.new()
-		rng.seed = 11
-		for i in 26:
-			var fig := FigureModel.make("person", Color(0.18, 0.2, 0.26), false, 0.9)
-			fig.rotation.y = rng.randf() * TAU
-			fig.position = Vector3(rng.randf_range(-2.6, 2.6), 0.0, rng.randf_range(-3.5, 3.5))
-			_crowd_nodes.add_child(fig)
+	if not is_instance_valid(_crowd_nodes) or _crowd_nodes.get_parent() != world:
+		if is_instance_valid(_crowd_nodes): _crowd_nodes.queue_free()
+		_crowd_nodes = DepartingCrowd.new()
 		world.add_child(_crowd_nodes)
-	var s := CampusGeometry.to_scene(null, Vector2(float(p["x"]), float(p["y"])))
-	_crowd_nodes.position = Vector3(s.x, 0.0, s.y)
-	_crowd_nodes.rotation.y = -float(p["angle"]) - PI * 0.5
+	_crowd_nodes.update(p)
 
 
 func _open_mic() -> void:

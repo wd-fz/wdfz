@@ -56,6 +56,8 @@ var _board := Vector3.ZERO
 var _dust3 := Vector3.ZERO
 var _cams: Array = []
 var _caption := ""
+var _classroom: ClassmatesView
+var _teacher_shadow := false
 var _mates: Array = []          # {node, base_y, kind, amp, f, ph}
 
 
@@ -120,7 +122,7 @@ func begin(world: Node3D, room: Dictionary, player: PlayerController, ui: GameUI
 	_cams = [[_cell(C0 + 10.0, AISLE_N, 1.62), _cell(C0 + 6.8, AISLE_N, 1.5)], [_cell(C0 + 1.75, R0 + 1.0, 1.55), _cell(C0 + 1.55, R0 + 1.45, 1.5)],
 		[_cell(C0 + 6.1, AISLE_N - 0.05, 1.55), _cell(C0 + 5.3, AISLE_N + 0.05, 1.45)], [_cell(C0 + 4.6, AISLE_S + 0.25, 1.35), _cell(C0 + 4.05, AISLE_S + 0.1, 1.2)]]
 	# The teacher beside the board (facing the class, east), and "you" in your own chair (facing the board, west).
-	_teacher = FigureModel.make("teacher", Color(0.29, 0.33, 0.37))
+	_teacher = FigureModel.make("teacher", Color("5d6873"))
 	_teacher.position = _cell(C0 + 0.62, MID, 0.0)
 	_teacher.position.y = 0.0
 	_teacher.rotation.y = -PI / 2.0
@@ -133,10 +135,13 @@ func begin(world: Node3D, room: Dictionary, player: PlayerController, ui: GameUI
 	_build_dust()
 	# The classmates' small movements: some write (nodding forward again and again), some turn a page (a little turn), some stay.
 	var crowd := world.get_node_or_null("Classmates")
+	_classroom = crowd as ClassmatesView
+	if _classroom != null and is_instance_valid(_classroom.teacher): _classroom.teacher.hide()
 	if crowd != null:
 		var mr := RandomNumberGenerator.new()
 		mr.seed = 4141
 		for n: Node in crowd.get_children():
+			if n.get_meta("teacher",false): continue
 			var node := n as Node3D
 			if node == null:
 				continue
@@ -223,6 +228,13 @@ func _apply(kk: float) -> void:
 		_lighting.world_normal=norm
 		_lighting.update(0,700.0,cam)
 	_beats(kk)
+	if is_instance_valid(_classroom): _classroom.set_normal(kk<.72)
+	if _teacher_shadow != (kk>=.72):
+		_teacher_shadow = kk>=.72
+		for mesh: Node in _teacher.find_children("*","MeshInstance3D",true,false):
+			var mat := (mesh as MeshInstance3D).material_override as StandardMaterial3D
+			mat.albedo_color = Color("080b0d") if _teacher_shadow else Color("5d6873")
+			mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED if _teacher_shadow else BaseMaterial3D.SHADING_MODE_PER_PIXEL
 	for m: Dictionary in _mates:
 		if is_instance_valid(m["node"]):
 			var pz := mate_pose(String(m["kind"]), float(m["amp"]), float(m["f"]), float(m["ph"]), kk)
@@ -345,6 +357,10 @@ func _finish(skipped: bool, notify: bool) -> void:
 		if is_instance_valid(m["node"]):
 			(m["node"] as Node3D).rotation = Vector3(0.0, float(m["base_y"]), 0.0)
 	_mates = []
+	if is_instance_valid(_classroom):
+		_classroom.set_normal(false)
+		if is_instance_valid(_classroom.teacher): _classroom.teacher.show()
+	_classroom = null
 	if is_instance_valid(_player) and is_instance_valid(_player.camera):
 		_player.camera.current = true
 	if is_instance_valid(_root):
