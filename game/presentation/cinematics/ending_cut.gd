@@ -388,7 +388,7 @@ func _finish(skipped: bool, notify: bool) -> void:
 	on = false
 	if is_instance_valid(_ui):
 		_ui.set_normal_world(_normal_before)
-		if is_instance_valid(_live_lighting):
+		if is_instance_valid(_live_lighting) and _live_lighting.is_inside_tree():
 			_live_lighting.world_normal=_normal_before
 			_live_lighting.update(0,_cut_clock,_player.camera if is_instance_valid(_player) else null)
 			_ui.scene_post().parameter("exposure",_live_lighting.post_exposure)
