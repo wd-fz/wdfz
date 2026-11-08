@@ -35,6 +35,9 @@ var _drive_view: CarChaseView
 var playtest := Playtest.new()
 var debug_panel: DebugPanel
 var maze_flow: MazeFlow
+var knife_flow: KnifeFlow
+var wuda_roll: Callable = func() -> float: return randf()
+var _school_taps: Array = []
 
 
 func _ready() -> void:
@@ -44,7 +47,13 @@ func _ready() -> void:
 	maze_flow = MazeFlow.new()
 	add_child(maze_flow)
 	maze_flow.setup(self)
+	knife_flow=KnifeFlow.new()
+	knife_flow.app=self
+	add_child(knife_flow)
 	settings.load_file(DisplayServer.is_touchscreen_available())
+	ui.set_wuda_armed(settings.wuda_armed)
+	ui.school_tapped.connect(_school_tapped)
+	ui.ending_wake_requested.connect(knife_flow.wake)
 	ui.settings_requested.connect(func() -> void: ui.show_settings(settings.values))
 	ui.setting_changed.connect(_setting_changed)
 	ui.touch_layout_changed.connect(func(layout: Dictionary) -> void:
@@ -277,6 +286,23 @@ func story() -> StoryModule:
 	return session.modules.get_module(&"story.death") as StoryModule if session != null else null
 
 
+func knife() -> KnifeModule:
+	return session.modules.get_module(&"story.knife") as KnifeModule if session != null else null
+
+
+func wuda_kid() -> WudaKidModule:
+	return session.modules.get_module(&"story.wuda_kid") as WudaKidModule if session != null else null
+
+
+func _school_tapped(now_ms: float = -1.0) -> void:
+	if not ui.menu.visible: return
+	if not WudaKidModule.tap(_school_taps,Time.get_ticks_msec() if now_ms<0 else now_ms): return
+	settings.wuda_armed=not settings.wuda_armed
+	settings.save_file()
+	ui.set_wuda_armed(settings.wuda_armed,true)
+	audio.play("ui.blink")
+
+
 func items() -> InventoryModule:
 	return session.modules.get_module(&"items.bag") as InventoryModule if session != null else null
 
@@ -470,6 +496,11 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 		if gift.has("tech") and bag0 != null:
 			bag0.add("phone")
 			bag0.take_notices()
+	var kid := candidate.modules.get_module(&"story.wuda_kid") as WudaKidModule
+	if kid.start(settings.wuda_armed,float(wuda_roll.call()) if not settings.wuda_armed and speedrun.run.is_empty() else 1.0,not speedrun.run.is_empty()):
+		var bag0 := candidate.modules.get_module(&"items.bag") as InventoryModule
+		if bag0.add("torch") and bag0.hot[0]==null: bag0.set_hot(0,"torch")
+		bag0.take_notices()
 	var cars := candidate.modules.get_module(&"garage.world") as GarageModule
 	if cars != null:
 		cars.set_seed(int(Time.get_ticks_usec() % 2147483647))
@@ -705,7 +736,7 @@ func resume_game() -> void:
 	if session == null or not session.running or _dead():
 		return
 	get_tree().paused = false
-	player.enabled = true
+	player.enabled = not knife_flow.captured()
 	player.clear_input()
 	ui.set_mode("play")
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
@@ -855,6 +886,7 @@ func _campus_step(delta: float) -> void:
 	if _dead():
 		return
 	_school_step(delta, rules)
+	knife_flow.step(delta)
 	_handle_deaths()
 	if fate != null and fate.dead:
 		return
@@ -882,7 +914,8 @@ func _campus_step(delta: float) -> void:
 		if maze_flow.here():
 			ui.show_prompt(maze_flow.hint())
 			return
-		var radio_hint := broadcast().hint() if broadcast() != null else ""
+		var radio_hint := knife_flow.hint()
+		if radio_hint=="" and broadcast()!=null: radio_hint=broadcast().hint()
 		if radio_hint == "" and marks() != null:
 			marks().set_context(_marks_context())
 			radio_hint = marks().box_hint()
@@ -936,6 +969,8 @@ func _lift_crowd_events() -> void:
 func _campus_interact() -> void:
 	var rules := campus()
 	if session == null or get_tree().paused or rules == null or not rules.knows(session.world_id):
+		return
+	if knife_flow.captured() or knife_flow.interact():
 		return
 	if maze_flow.here():
 		maze_flow.interact()
@@ -1161,6 +1196,8 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	var day_rules := school()
 	if day_rules == null:
 		return
+	var kid_line := wuda_kid().tick(delta)
+	if kid_line!="": ui.show_notice(kid_line)
 	if driving():
 		_drive_step(delta)
 		return
@@ -1344,9 +1381,9 @@ func _item_keys(bag: InventoryModule) -> void:
 	if Input.is_action_just_pressed("bag"):
 		if ui.bag_open():
 			_close_bag()
-		elif player.enabled:
+		elif player.enabled or knife_flow.captured():
 			_open_bag()
-	if not player.enabled:
+	if not player.enabled and not knife_flow.captured():
 		return
 	var tsec := school().tsec if school() != null else 0.0
 	if Input.is_action_just_pressed("torch"):
@@ -1356,6 +1393,7 @@ func _item_keys(bag: InventoryModule) -> void:
 			_apply_result(bag.use("torch", tsec))
 	for i in 2:
 		if Input.is_action_just_pressed("hot_%d" % (i + 1)):
+			if bag.hot[i]!=null and knife_flow.use(String(bag.hot[i]),"hot"): continue
 			if bag.hot[i] == null or not maze_flow.intercept_item(String(bag.hot[i])):
 				_apply_result(bag.use_hot(i, tsec))
 
@@ -1378,11 +1416,18 @@ func _touch_torch() -> void:
 
 
 func _touch_hot(index: int) -> void:
+	if session==null or get_tree().paused or story().over() or (not player.enabled and not knife_flow.captured()):
+		return
+	if index in [0,1] and items().hot[index]!=null and knife_flow.use(String(items().hot[index]),"hot"):
+		return
 	if session != null and player.enabled and not story().over():
 		_apply_result(items().use_hot(index,school().tsec))
 
 
 func _open_manual() -> void:
+	if knife_flow.captured() and not story().over():
+		_open_bag()
+		return
 	if session == null or not player.enabled or story().over() or opening_busy():
 		return
 	player.enabled = false
@@ -1413,13 +1458,16 @@ func _open_bag() -> void:
 func _close_bag() -> void:
 	ui.hide_bag()
 	if session != null and session.running and not get_tree().paused:
-		player.enabled = true
+		player.enabled = not knife_flow.captured()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
 
 
 func _use_item(id: String) -> void:
 	var bag := items()
 	if bag == null:
+		return
+	if knife_flow.use(id):
+		if ui.bag_open(): ui.show_bag(_bag_entries())
 		return
 	_close_bag()
 	if maze_flow.intercept_item(id):
@@ -1702,7 +1750,8 @@ func _patrol_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, 
 			"toast":
 				ui.show_notice(String(e["text"]))
 			"kill":
-				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
+				if e["source"]!="patrol" or e["fx"]!="grip" or not knife_flow.catch_player(String(e["msg"])):
+					kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
 				return
 
 
@@ -4547,6 +4596,7 @@ func _reach_ending(id: String) -> void:
 	var card := fate.trigger_ending(id) if fate != null else {}
 	if card.is_empty():
 		return
+	var fake := bool(card.get("fake",false))
 	player.enabled = false
 	player.clear_input()
 	audio.stop_all()
@@ -4557,7 +4607,9 @@ func _reach_ending(id: String) -> void:
 		items().cancel_search()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var run_line := ""
-	if speedrun.run.is_empty():
+	if fake:
+		pass # A false ending resumes this same run; neither save nor timer is finished.
+	elif speedrun.run.is_empty():
 		saves.clear()
 		ui.set_save_available(saves.exists())
 	else:
@@ -4578,9 +4630,9 @@ func _reach_ending(id: String) -> void:
 		file.close()
 	if achievements() != null and routes() != null:
 		achievements().face_wrong = maxi(0, routes().wrong_answers())
-	_write_side("last_life.json", null)
-	fact({"kind": "ending", "id": id, "day": school().day, "diff": story().diff, "talent": talent().id if talent() != null else "none"})
-	_last_result = _score_ending(id, String(card["title"]))
+	if not fake: _write_side("last_life.json", null)
+	fact({"kind": "ending", "id": id, "fake":fake, "day": school().day, "diff": story().diff, "talent": talent().id if talent() != null else "none"})
+	_last_result = {} if fake else _score_ending(id, String(card["title"]))
 	var meta := "第 %d 天" % school().day
 	if (items() != null and items().has_clock()) or (talent() != null and talent().has("watch")):
 		meta += " · " + SchoolClock.fmt_clock(school().tsec)
@@ -4592,6 +4644,7 @@ func _reach_ending(id: String) -> void:
 			return
 		ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta, achievements().run_new_labels() if achievements() != null else PackedStringArray(),
 			"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""))
+		ui.set_ending_wake(fake)
 	var world := _campus_world()
 	if (id == "dismissal" or id == "cyber") and session != null and session.world_id != "out" and DisplayServer.get_name() != "headless":
 		# The last stage of the dismissal is the real campus at the north gate: take the player outside first, then play (Engine.beginOutsideStage).

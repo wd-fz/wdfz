@@ -28,6 +28,7 @@ const SUB_MULT := [0.6, 1.0, 1.6]
 var path: String
 var values: Dictionary = DEFAULTS.duplicate()
 var touch_layout: Dictionary = {}
+var wuda_armed := false  # local menu unlock, not a visible setting or a chosen talent
 
 
 func _init(file: String = "user://settings.json") -> void:
@@ -51,12 +52,14 @@ static func normalize(raw: Dictionary) -> Dictionary:
 ## First run on a touch device: performance first (quality 流畅), as the Web version did.
 func load_file(touch_device: bool = false) -> bool:
 	touch_layout = {}
+	wuda_armed=false
 	if not FileAccess.file_exists(path):
 		values = DEFAULTS.duplicate()
 		if touch_device:
 			values["quality"] = 0
 		return false
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	wuda_armed = parsed is Dictionary and parsed.get("wuda_armed") is bool and parsed["wuda_armed"]
 	values = normalize(parsed.get("values", {}) if parsed is Dictionary else {})
 	touch_layout = TouchLayout.normalize(parsed.get("touch_layout", {}) if parsed is Dictionary else {})
 	return parsed is Dictionary
@@ -67,7 +70,7 @@ func save_file() -> bool:
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
 		return false
-	file.store_string(JSON.stringify({"version": VERSION, "values": values, "touch_layout": touch_layout}))
+	file.store_string(JSON.stringify({"version": VERSION, "values": values, "touch_layout": touch_layout,"wuda_armed":wuda_armed}))
 	file.close()
 	return true
 

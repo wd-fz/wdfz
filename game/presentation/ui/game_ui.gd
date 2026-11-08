@@ -42,6 +42,8 @@ signal torch_requested
 signal hot_requested(index: int)
 signal bag_closed
 signal debug_requested
+signal school_tapped
+signal ending_wake_requested
 
 @onready var menu: Control = %Menu
 @onready var pause_panel: Control = %PausePanel
@@ -77,6 +79,7 @@ func _ready() -> void:
 	_build_choice()
 	_build_status()
 	_build_bag()
+	%SchoolName.pressed.connect(func() -> void: school_tapped.emit())
 	_build_touch_tools()
 	_build_death()
 	var hard := Button.new()
@@ -229,6 +232,7 @@ func _resize() -> void:
 		_fit_choice.call_deferred()
 	_refit_touch.call_deferred()
 	_fit_bag.call_deferred()
+	_fit_ending.call_deferred()
 	_fit_settings.call_deferred()
 	_fit_menu_scrolls.call_deferred()
 
@@ -795,6 +799,7 @@ var _cut_caption: Label
 ## body.cut: while a cutscene plays the HUD (status, hotbar, prompt, crosshair, captions) is hidden.
 func cut_mode(on: bool) -> void:
 	if on:
+		show_notice("") # Cut captions replace the last ordinary line, as os(..., OS_FORCE) did.
 		_hud_was = hud.visible
 		hud.visible = false
 	else:
@@ -1506,6 +1511,17 @@ func terminal_open() -> bool:
 ## Ending card (story.js showEndingCard): tag, title, lines, day/time, back to the menu.
 var ending_panel: PanelContainer
 var _ending_text: Label
+var _ending_scroll: ScrollContainer
+
+
+func set_wuda_armed(armed: bool, tell: bool = false) -> void:
+	%SchoolName.modulate=Color("#cdbb86") if armed else Color.WHITE
+	if tell:
+		%Description.text="……你想起来了：你家就住在珞珈山下。" if armed else "……还是当个普通的转学生吧。"
+
+
+func set_ending_wake(shown: bool) -> void:
+	if is_instance_valid(_ending_wake): _ending_wake.visible=shown
 
 
 func show_ending(title: String, tag: String, lines: Array, meta: String, achieved: PackedStringArray = PackedStringArray(), result_note: String = "") -> void:
@@ -1516,11 +1532,15 @@ func show_ending(title: String, tag: String, lines: Array, meta: String, achieve
 		ending_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		ending_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 		ending_panel.custom_minimum_size = Vector2(520, 0)
+		_ending_scroll=ScrollContainer.new()
+		_ending_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+		ending_panel.add_child(_ending_scroll)
 		var box := VBoxContainer.new()
+		box.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		box.add_theme_constant_override("separation", 14)
 		_ending_text = Label.new()
 		_ending_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_ending_text.custom_minimum_size = Vector2(480, 0)
+		_ending_text.custom_minimum_size = Vector2.ZERO
 		_ending_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(_ending_text)
 		_ending_results = Button.new()
@@ -1531,11 +1551,18 @@ func show_ending(title: String, tag: String, lines: Array, meta: String, achieve
 		_ending_note = Label.new()
 		_ending_note.modulate = Color(1, 1, 1, 0.6)
 		box.add_child(_ending_note)
+		_ending_wake=Button.new()
+		_ending_wake.name="EndingWake"
+		_ending_wake.text="……再睁开眼"
+		_ending_wake.custom_minimum_size.y=44
+		_ending_wake.pressed.connect(func() -> void: ending_wake_requested.emit())
+		box.add_child(_ending_wake)
 		var back := Button.new()
 		back.text = "回到主菜单"
+		back.custom_minimum_size.y=44
 		back.pressed.connect(func() -> void: death_menu_requested.emit())
 		box.add_child(back)
-		ending_panel.add_child(box)
+		_ending_scroll.add_child(box)
 		$Root.add_child(ending_panel)
 	var head := "%s\n%s" % [tag, title] if not tag.is_empty() else title
 	_ending_text.text = "%s\n\n%s\n\n%s" % [head, "\n".join(PackedStringArray(lines)), meta]
@@ -1544,11 +1571,24 @@ func show_ending(title: String, tag: String, lines: Array, meta: String, achieve
 	_ending_results.visible = result_note == "rated"
 	_ending_note.text = "调试局 · 不评级，不进通关记录" if result_note == "debug" else ""
 	_ending_note.visible = result_note == "debug"
+	_ending_wake.hide()
 	ending_panel.visible = true
+	_fit_ending.call_deferred()
+
+
+func _fit_ending() -> void:
+	if not is_instance_valid(ending_panel) or not ending_panel.visible: return
+	var view:=get_viewport().get_visible_rect().size
+	var width:=minf(520,view.x-24)
+	ending_panel.custom_minimum_size.x=width
+	_ending_scroll.custom_minimum_size.y=minf(440,view.y-64)
+	ending_panel.size=Vector2(width,0)
+	ending_panel.position=(view-ending_panel.size)*.5
 
 
 var _ending_results: Button
 var _ending_note: Label
+var _ending_wake: Button
 var results_panel: ResultsPanel
 var records_panel: RecordsPanel
 

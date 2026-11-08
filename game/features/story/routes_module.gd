@@ -37,6 +37,7 @@ const EXPLANATIONS := [
 ]
 ## story.js ENDINGS (public ones): title, true ending, lines.
 const ENDINGS := {
+	"knife":{"t":"《管制刀具》","secret":true,"fake":true,"l":["压在头顶的手停住了。","「管制刀具。」它把小刀收进一个透明袋子，递给你一张登记单。","登记单上早就填好了你的名字，后面写着：留校。","东西被收走了。你还在这里。"]},
 	"beast": {"t":"《先 辈》", "secret":true, "l":["门是被从外面撞开的。","你看清了那个背影——穿着很多年前的校服，一直在往外跑。","你跟着他跑了出去。","整座学校，第一次有了颜色。"]},
 	"dismissal": {"t": "《放学》", "true": true, "l": ["通知稿最后一句，从学校每一只喇叭里同时响起。", "长铃响着，同学们收好书包，从北门走了出去。", "登记簿翻到新的一页：放学 · 全体。", "你回头时，教学楼的灯一层一层熄了。", "明天见。"]},
 	"cyber": {"t": "《网安仙人》", "true": true, "l": ["服务器接受了最后一条指令。名单、门禁和巡察停止运行。", "AnthroPrank AI（安抄派智能）的校园试点终止了。更早的纸质档案和断链后的回执，仍没有答案。", "您未能完全理解里世界"]},
@@ -389,4 +390,4 @@ static func card(id: String) -> Dictionary:
 	var e: Dictionary = ENDINGS.get(id, {})
 	if e.is_empty():
 		return {}
-	return {"title": e["t"], "tag": "真 结 局" if e.get("true", false) else "", "lines": e["l"]}
+	return {"title": e["t"], "tag": "假 结 局" if e.get("fake",false) else ("真 结 局" if e.get("true", false) else ""), "lines": e["l"],"fake":bool(e.get("fake",false))}

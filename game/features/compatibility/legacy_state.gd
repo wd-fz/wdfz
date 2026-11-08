@@ -45,6 +45,16 @@ func convert(plan: Dictionary, defaults: Dictionary, rooms: Dictionary, campus: 
 	var story := _module(data, "story.death")
 	story["diff"] = plan["diff"]
 	_copy(story, rt, {"wakes":"wakes"})
+	var blade := _module(data,"story.knife")
+	var old_blade := _object(rt.get("knife"),"knife")
+	for key: String in ["took","held","done"]: blade[key]=_flag(old_blade.get(key,false))
+	blade["cap"]=_object(old_blade.get("cap"),"knife.cap").duplicate(true)
+	var kid := _module(data,"story.wuda_kid")
+	var old_kid := _object(mods.get("wuda-kid"),"wuda-kid")
+	kid["on"]=_flag(old_kid.get("on",false))
+	kid["told"]=_flag(old_kid.get("told",false))
+	kid["via"]=("menu" if old_kid.get("via")=="menu" else "chance") if kid["on"] else ""
+	kid["t"]=6.0 if kid["told"] else 0.0
 	var talent := _module(data, "story.talent")
 	talent["id"] = plan["talent"]
 	var ts := _object(s.get("talentState"), "talentState")

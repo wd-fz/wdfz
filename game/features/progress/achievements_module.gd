@@ -19,6 +19,7 @@ const EXPLORE_ANY := [["dorm1", "dorm2", "dorm3"], ["dorm4", "dorm5", "dorm6"]]
 ## id -> [tier, name, memory]
 const LIST := {
 	"h.beast":["h","《先辈》","穿旧校服的人回头看了我一眼。"],
+	"h.knife":["h","《管制刀具》","东西被收走了。我还在这里。"],
 	"h.crowd":["h","最后一个进来的人","门合上以前我走了出来。显示屏上还是「满员」。"],
 	"h.beast_run":["h","追着旧校服","我追着那个背影，一路没有停。"],
 	"n.day2": ["n", "熬过第一天", "熄灯，换日。日历往后翻了一页。"],
@@ -74,7 +75,7 @@ const LIST := {
 	"p.oneshot": ["p", "一命", "从头到尾，没有人替我挡过一下。"],
 	"p.anomalies": ["p", "异象图鉴", "这所学校能拿出来的东西，我都见过了。"],
 }
-const SCORELESS := ["n.wake", "n.saved", "e.campus_fall"]
+const SCORELESS := ["n.wake", "n.saved", "e.campus_fall","h.knife"]
 ## Cross-run goals (cross-run sets).
 const LETHAL_GOAL := 4
 
@@ -286,6 +287,8 @@ func _test(id: String, f: Dictionary) -> bool:
 			return kind == "wake"
 		"h.beast":
 			return kind == "ending" and f.get("id") == "beast"
+		"h.knife":
+			return kind == "ending" and f.get("id") == "knife"
 		"h.crowd":
 			return kind == "anomaly" and f.get("id") == "crowd" and f.get("phase") == "end" and bool(f.get("survived",false))
 		"h.beast_run":
