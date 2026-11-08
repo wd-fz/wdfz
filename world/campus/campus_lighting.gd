@@ -11,6 +11,9 @@ const SKY_GOLD := ["#2a2f3c", "#4c4852", "#7d6559", "#94776a"]
 const MOON_DIR := Vector3(-0.42, 0.80, 0.43)
 ## three.js candela (decay 2) -> Godot omni energy; ambient / directional radiance -> energy.
 const ENERGY_POINT := 1.0 / 14.0
+## Render layer of the first-person hands: they are lit by the ambient and their own fill light only (hands.js drew them in a separate scene).
+const HAND_LAYER := 1 << 19
+const WORLD_LIGHT_MASK := 0xFFFFF & ~HAND_LAYER
 const ENERGY_AMBIENT := 0.9
 const ENERGY_DIR := 0.8
 const LAMP_POOL := 4
@@ -69,10 +72,12 @@ func setup(id: String, room_data: Variant, model: Node, stair_rise: float) -> vo
 	we.environment = env
 	add_child(we)
 	sun_light = DirectionalLight3D.new()
+	sun_light.light_cull_mask = WORLD_LIGHT_MASK
 	sun_light.shadow_enabled = shadows_on
 	sun_light.name = "SunMoon"
 	add_child(sun_light)
 	cam_light = OmniLight3D.new()
+	cam_light.light_cull_mask = WORLD_LIGHT_MASK
 	cam_light.name = "CameraFill"
 	cam_light.omni_range = float(campus.get("light_cfg", {}).get("camDist", 6.5))
 	cam_light.omni_attenuation = 1.8
@@ -90,6 +95,7 @@ func setup(id: String, room_data: Variant, model: Node, stair_rise: float) -> vo
 		for i in LAMP_POOL:
 			var l := OmniLight3D.new()
 			l.name = "StreetLamp%d" % i
+			l.light_cull_mask = WORLD_LIGHT_MASK
 			l.omni_range = float(campus.get("light_cfg", {}).get("lampDist", 15))
 			l.omni_attenuation = 2.0
 			l.light_color = Color(1.0, 0.86, 0.62)
@@ -313,6 +319,7 @@ func _add_room_lights(stair_rise: float) -> void:
 
 func _add_light(pos: Vector3, col: int, intensity: float, dist: float) -> void:
 	var l := OmniLight3D.new()
+	l.light_cull_mask = WORLD_LIGHT_MASK
 	l.position = pos
 	l.omni_range = dist
 	l.omni_attenuation = 2.0

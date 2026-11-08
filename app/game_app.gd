@@ -4665,7 +4665,11 @@ func _process(delta: float) -> void:
 			player.camera.add_child(_hands)
 		var shown := not get_tree().paused and not story().dead and not driving() and not opening_busy()
 		var inv := items()
-		_hands.update(delta, inv != null and inv.torch_on and inv.has("torch"), inv != null and inv.brolly_up, phone_open() and not snake_open(), shown, player.moving, player.sprinting)
+		var torch_lit := inv != null and inv.torch_on and inv.has("torch")
+		_hands.update(delta, torch_lit, inv != null and inv.brolly_up, phone_open() and not snake_open(), shown, player.moving, player.sprinting)
+		var cw := _campus_world()
+		if cw != null and cw.lighting != null and cw.lighting.cam_light != null:
+			_hands.light(cw.lighting.cam_light.light_energy, cw.lighting.cam_light.light_color, torch_lit)
 	var m := "menu"
 	if session != null and not get_tree().paused and not opening_busy():
 		m = "death" if story().dead else "play"

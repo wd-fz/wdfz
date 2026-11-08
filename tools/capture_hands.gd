@@ -29,10 +29,15 @@ func _run() -> void:
 		await process_frame
 	var h := HandsView.new()
 	app.player.camera.add_child(h)
+	var cw: CampusWorld = app._campus_world()
+	var li := cw.lighting.cam_light
 	h.update(0.1, true, false, false, true, false, false)
+	h.light(li.light_energy, li.light_color, true)
 	await _shot("torch")
 	h.update(0.1, true, true, false, true, false, false)
+	h.light(li.light_energy, li.light_color, true)
 	await _shot("torch-umbrella")
 	h.update(0.1, false, false, true, true, false, false)
+	h.light(li.light_energy, li.light_color, false)
 	await _shot("phone")
 	quit()

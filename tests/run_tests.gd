@@ -3556,6 +3556,12 @@ func _test_hands() -> void:
 	check(hv.held("R") == "torch" and hv.held("L") == "phone" and hv.get_child_count() == 2, "the hands are built from the exported models")
 	hv.update(0.1, false, false, false, true, false, false)
 	check(hv.held("R") == "" and hv.held("L") == "", "putting things away empties the hands")
+	hv.update(0.1, true, false, false, true, false, false)
+	hv.light(2.0, Color("#ffd9a0"), true)
+	check(hv._fill != null and hv._fill.light_cull_mask == CampusLighting.HAND_LAYER and is_equal_approx(hv._fill.light_energy, HandsView.fill_energy(2.0, true)) and hv._fill.light_energy > HandsView.fill_energy(2.0, false), "the hands have their own near light, with the torch lit it is stronger")
+	check(CampusLighting.WORLD_LIGHT_MASK & CampusLighting.HAND_LAYER == 0 and hv._lens.size() == 2 and hv._lens[0].albedo_color == Color("#fff2c8"), "the world's lights skip the hand layer; the torch lens shines warm")
+	hv.light(2.0, Color.WHITE, false)
+	check(hv._lens[0].albedo_color == Color("#30343a") and hv._lens[1].albedo_color == Color("#3a3e44"), "an unlit torch has a dark lens and bulb")
 	hv.queue_free()
 
 

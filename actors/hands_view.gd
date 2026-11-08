@@ -13,6 +13,8 @@ var _hands := {}              # "L" / "R" → Node3D (current)
 var _holding := {"L": "", "R": ""}
 var _cache := {}
 var _phase := 0.0
+var _fill: OmniLight3D        # the hand scene's own near light (hands.js HANDS.near)
+var _lens: Array[StandardMaterial3D] = []   # the torch's lens and bulb, to light and darken with the torch
 
 
 ## What is held now, from the state: torch lit, umbrella up, phone open.
@@ -42,10 +44,13 @@ func _make(item: String, side: String) -> Node3D:
 	if not _cache.has(key):
 		_cache[key] = load(path)
 	var inst := (_cache[key] as PackedScene).instantiate() as Node3D
+	if item == "torch":
+		_lens.clear()
 	root.add_child(inst)
 	for mi: Node in inst.find_children("*", "MeshInstance3D", true, false):
 		var m := mi as MeshInstance3D
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		m.layers = CampusLighting.HAND_LAYER    # only the ambient and this hand's own fill light touch it
 		for s in m.mesh.get_surface_count():
 			var src := m.get_active_material(s)
 			if src is BaseMaterial3D:
@@ -54,6 +59,8 @@ func _make(item: String, side: String) -> Node3D:
 				mat.render_priority = 20
 				mat.disable_fog = true
 				m.set_surface_override_material(s, mat)
+				if item == "torch" and mat.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and not mat.vertex_color_use_as_albedo:
+					_lens.append(mat)     # the lens (m3, 0xfff2c8) and the bulb (m4, white) are the unshaded ones
 	return root
 
 
@@ -64,6 +71,36 @@ func _set_place(h: Node3D, item: String, sign: float) -> void:
 	h.position = Vector3(sign * float(p[0]), float(p[1]), float(p[2]))
 	h.basis = Basis.from_euler(Vector3(float(r[0]), sign * float(r[1]), sign * float(r[2])), EULER_ORDER_XYZ)
 	h.set_meta("base", h.position)
+
+
+## The hand light: 0.35 of the camera fill plus 0.45 more with the torch on (hands.js handsTick), same colour as the fill.
+static func fill_energy(cam_energy: float, torch_on: bool) -> float:
+	return cam_energy * 0.35 + (0.45 * CampusLighting.ENERGY_POINT * 9.0 if torch_on else 0.0)
+
+
+func _ensure_fill() -> void:
+	if _fill != null and is_instance_valid(_fill):
+		return
+	_fill = OmniLight3D.new()
+	_fill.name = "HandFill"
+	_fill.light_cull_mask = CampusLighting.HAND_LAYER
+	_fill.omni_range = 3.0
+	_fill.omni_attenuation = 1.5
+	_fill.position = Vector3(0.1, 0.25, 0.1)
+	_fill.shadow_enabled = false
+	add_child(_fill)
+
+
+## Light the hands from the world's camera fill: its colour, a share of its energy, plus the torch's.
+func light(cam_energy: float, cam_color: Color, torch_on: bool) -> void:
+	_ensure_fill()
+	_fill.light_color = cam_color
+	_fill.light_energy = fill_energy(cam_energy, torch_on)
+	_fill.visible = _holding["L"] != "" or _holding["R"] != ""
+	# The lens shines and the bulb is white while it is lit; dark grey when the torch is off.
+	for i in _lens.size():
+		if is_instance_valid(_lens[i]):
+			_lens[i].albedo_color = (Color("#fff2c8") if i == 0 else Color.WHITE) if torch_on else (Color("#30343a") if i == 0 else Color("#3a3e44"))
 
 
 func update(delta: float, torch_on: bool, brolly_up: bool, phone_open: bool, shown: bool, moving: bool, running: bool) -> void:

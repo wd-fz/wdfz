@@ -613,11 +613,17 @@ func _apply_dis(kk: float) -> void:
 		(_st[i] as Node3D).visible = i == s
 	_ui.cut_caption(dis_caption(t))
 	if s == 0:
+		if not _dis_said.has("radio"):
+			_dis_said["radio"] = true
+			snd("dread.radio", {"k": 0.4})
 		_look(Vector3(1.5, 1.55, 2.1), Vector3(0.0, 1.25, -1.4))
 		for i in _speakers.size():
 			var mat := (_speakers[i] as MeshInstance3D).material_override as StandardMaterial3D
 			mat.albedo_color = Color("#8b9d83") if t > 0.25 + float(i) * 0.35 else Color("#313b34")
 	elif s == 1:
+		if not _dis_said.has("chairs"):
+			_dis_said["chairs"] = true
+			snd("dread.chair", {"k": 0.6})
 		var p := phase(kk, 3.2 / 18.0, 7.8 / 18.0)
 		_look(Vector3(28.0 + 5.0, 2.1, 3.9), Vector3(28.0 - 0.5, 1.2, -2.0))
 		for i in _students.size():
