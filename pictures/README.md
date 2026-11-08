@@ -58,3 +58,4 @@
 | [医务室药柜](医务室药柜/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture_clinic.gd`：行政楼一楼西头第一间办公室（医务室）墙上带红十字的药柜 |
 | [驾驶仪表盘](驾驶仪表盘/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_drive.gd`：驾驶视角的仪表盘、方向盘与后视镜；追影远时镜里只有一个黑影，近时五个 |
 | [异象留下的痕迹](异象留下的痕迹/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture_traces.gd`：异象过后留在教室地上的积水、死飞蛾、脚印与散落的纸 |
+| [楼梯井互看](楼梯井互看/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture_stair_view.gd`：站在教学楼一楼走廊，从楼梯间门洞里看得见楼梯井 |

@@ -69,6 +69,7 @@ func _ready() -> void:
 		_ready_banner()
 	else:
 		_build_link_preview()
+	_build_stair_preview()
 	if is_room():
 		atmos_fx = AtmosFx.new()
 		atmos_fx.name = "AtmosFx"
@@ -125,6 +126,43 @@ func _build_clinic() -> void:
 ## transform of the port pair (CampusPortals.link_between), plus a lamp 3 m inside its doorway so the far end is not black.
 ## Visual only: no collision, nothing advances. Standing at the west end of the second floor you see the whole bridge.
 var link_previews: Array[Node3D] = []
+var stair_previews: Array[Node3D] = []
+
+
+## The stairwell shafts seen through their doorways (fx/stairwell-view.js): every stair that serves this scene, its shaft model placed
+## 2.8 m beyond the port, dropped by the level's height, turned by the port's normal. Visual only.
+func _build_stair_preview() -> void:
+	var rooms := CampusData.rooms()
+	var outside := CampusData.layout("out")
+	for st: Dictionary in CampusData.campus().get("stair_layout", []):
+		if scene_id == String(st["id"]):
+			continue
+		var level := (st["rooms"] as Array).find(scene_id)
+		if level < 0:
+			continue
+		var path := CampusData.SCENE_DIR + String(st["id"]) + ".glb"
+		if not ResourceLoader.exists(path):
+			continue
+		var port := CampusPortals.stair_port(st, level, rooms, outside)
+		if port.is_empty():
+			continue
+		var shaft := (load(path) as PackedScene).instantiate() as Node3D
+		shaft.name = "StairPreview_" + String(st["id"])
+		for mesh: MeshInstance3D in shaft.find_children("*", "MeshInstance3D", true, false):
+			if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
+				_to_multimesh(mesh)
+		var pos := CampusGeometry.to_scene(layout if is_room() else null, port["p"])
+		var n: Vector2 = port["n"]
+		shaft.position = Vector3(pos.x + 2.8 * n.x, -float(level) * float(st["rise"]), pos.y + 2.8 * n.y)
+		shaft.rotation.y = -CampusPortals.stair_turn(n)
+		var lamp := OmniLight3D.new()
+		lamp.light_color = Color("#f2dcc0")
+		lamp.omni_range = 9.0
+		lamp.light_energy = 0.8
+		lamp.position = Vector3(0, 2.4 + float(level) * float(st["rise"]), 0)
+		shaft.add_child(lamp)
+		add_child(shaft)
+		stair_previews.append(shaft)
 
 
 func _build_link_preview() -> void:
