@@ -26,6 +26,7 @@ def main():
     parser.add_argument("--source", type=Path, required=True, help="read-only original Web checkout")
     parser.add_argument("--chromium", help="optional installed Chromium executable")
     parser.add_argument("--output", type=Path, default=ROOT / "tests/fixtures/web-reference.json.gz")
+    parser.add_argument("--maze-only", action="store_true", help="capture the height-dependent maze fixture instead")
     args = parser.parse_args()
     source = args.source.resolve()
     tree = subprocess.check_output(["git", "rev-parse", "HEAD:game3d"], cwd=source, text=True).strip()
@@ -45,6 +46,22 @@ def main():
             page.add_init_script("localStorage.setItem('wdfz_pro','1');localStorage.setItem('zw3d_set',JSON.stringify({q:0,amb:0,vol:0,renderer:'webgl',rv:1}));")
             page.goto(f"http://127.0.0.1:{server.server_port}/")
             page.wait_for_function("Engine.ready() && Assets.ready(Assets.want())", timeout=180000)
+            if args.maze_only:
+                maze = page.evaluate('''() => {
+                  const points=[];
+                  for(const h of [-8,-4,0,4,8])for(let z=-38.6;z<39;z+=1.37)for(let x=-23.6;x<24;x+=1.31){
+                    const g=VoidMaze.groundAt(x,z,h+MAZE_CFG.step);
+                    points.push([x,z,h,VoidMaze.depthAt(x,z,1/3,h),Number.isFinite(g)?g:null]);
+                  }
+                  return {points,reference:'wd-fz/wd-fz.github.io@0bf508a47eac154c2a7047cdb45d314f61c48fdc'};
+                }''')
+                maze["game3d_tree"] = tree
+                target = ROOT / "tests/fixtures/maze-reference.json.gz" if args.output == ROOT / "tests/fixtures/web-reference.json.gz" else args.output
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(gzip.compress((json.dumps(maze, ensure_ascii=False, separators=(",", ":")) + "\n").encode(), mtime=0))
+                print(f"{len(maze['points'])} maze depth/height samples → {target}")
+                browser.close()
+                return
             known = [p.stem for p in (ROOT / "assets/campus/layout").glob("*.json") if p.stem not in ["campus", "out"]]
             result = page.evaluate(r'''ids => {
       S.mode='out';S.room=null;S.floorY=0;S.viol=0;S.seated=false;

@@ -7,7 +7,7 @@ extends Node
 ## a turn and a lift change (and are put back at the end); a veil sphere on it closes the scene.
 ## Not every cause has a scene yet (CAUSES lists the ported ones); the others keep the screen-effect fade.
 
-const CAUSES := ["trash", "liftdoor", "grip", "neck", "shadow", "twin", "shatter", "drown", "water", "freeze", "stare", "voice", "bell", "follow", "deep", "floor", "ring", "loop", "lamps", "laugh", "swarm", "gaze", "window_gaze", "paper_sender", "misread", "campus_fall"]
+const CAUSES := ["trash", "liftdoor", "grip", "neck", "shadow", "twin", "shatter", "drown", "water", "freeze", "stare", "voice", "bell", "follow", "deep", "floor", "ring", "loop", "lamps", "laugh", "swarm", "gaze", "window_gaze", "paper_sender", "misread", "campus_fall", "void", "abyss"]
 ## Scenes that carry their own length (seconds) when the cause is not one of StoryModule.DURATIONS.
 const LENGTH := {"window_gaze": 7.0, "paper_sender": 8.0, "misread": 4.1, "campus_fall": 6.0}
 
@@ -31,6 +31,7 @@ var _cued := {}
 var _flashed := {}
 var _fx_cache := {}
 var _ui: GameUI
+var _restored := true
 var audio: AudioFx  ## set by the caller; the beat sounds of the scenes (SFX.door, sting, ...) go through it
 
 
@@ -52,6 +53,7 @@ static func ss(kk: float, a: float, b: float) -> float:
 
 
 func begin(cause: String, player: PlayerController, world: Node3D, ui: GameUI, duration: float, reduce_shake: bool = false) -> void:
+	_restored = false
 	fx = cause
 	dur = duration
 	k = 0.0
@@ -80,12 +82,15 @@ func _exit_tree() -> void:
 
 
 func _restore() -> void:
+	if _restored:
+		return
+	_restored = true
 	if cam != null and is_instance_valid(cam):
 		cam.rotation = Vector3(_base_pitch, 0.0, 0.0)
 		cam.position.y = _base_y
-		for c in cam.get_children():
-			if c.name == "DeathVeil":
-				c.queue_free()
+		if is_instance_valid(veil_mesh):
+			veil_mesh.queue_free()
+	veil_mesh = null
 	if _world != null and is_instance_valid(_world):
 		_world.visible = _world_was_visible
 	if F != null and is_instance_valid(F):
@@ -93,6 +98,7 @@ func _restore() -> void:
 	F = null
 	if _sky != null and is_instance_valid(_sky):
 		_sky.queue_free()
+	_sky = null
 
 
 func tick(delta: float) -> void:
@@ -1558,3 +1564,20 @@ func _update_campus_fall(kk: float) -> void:
 	shade(0.05 + 0.9 * ss(kk, 4.3, 4.9))
 	cue("wind", kk, 1.7, func() -> void: _ui.show_notice("（风声。校园里的声音一下子远了。）"))
 	cue("hit", kk, 4.9, func() -> void: _ui.show_notice("（一声闷响。）"))
+
+
+# The maze owns its two scenes without growing the public scene implementation.
+func _build_void() -> void:
+	MazeDeath.build_lost(self)
+
+
+func _update_void(t: float) -> void:
+	MazeDeath.update_lost(self, t)
+
+
+func _build_abyss() -> void:
+	MazeDeath.build_fall(self)
+
+
+func _update_abyss(t: float) -> void:
+	MazeDeath.update_fall(self, t)

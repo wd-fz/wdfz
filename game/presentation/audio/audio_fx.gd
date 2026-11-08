@@ -69,6 +69,8 @@ var _next_menu := 2.5
 var _duck_until := 0.0
 var _space := ""
 var _last_period := ""
+var _void_ping := 8.0
+var _void_moan := 35.0
 
 
 func _ready() -> void:
@@ -453,6 +455,10 @@ func update(delta: float, ctx: Dictionary) -> void:
 		return
 	var on := ambience and not bool(ctx.get("dead", false))
 	var scene := String(ctx.get("scene", ""))
+	if scene == "lift_dream":
+		_maze_audio(delta, ctx, on, duck_k)
+		return
+	_bed("void", 0.0, 0.5, delta)
 	var out := bool(ctx.get("out", false))
 	var night := float(ctx.get("night", 0.0))
 	var an := String(ctx.get("anomaly", ""))
@@ -485,6 +491,28 @@ func update(delta: float, ctx: Dictionary) -> void:
 	if not on or ducking():
 		return
 	_ambient(delta, ctx, out, night, garage, an, tension, rain_on, cover)
+
+
+func _maze_audio(dt: float, ctx: Dictionary, on: bool, duck_k: float) -> void:
+	for name: String in _beds.keys():
+		if name != "void":
+			_bed(name, 0.0, 0.4, dt)
+	_bed("void", 0.075 * duck_k if on else 0.0, 0.5, dt)
+	_set_space("hall", 1.7)
+	_body(dt, ctx)
+	var local := ctx.duplicate()
+	local["surface"] = "void"
+	_steps(dt, local)
+	if not on or ducking():
+		return
+	_void_ping -= dt
+	_void_moan -= dt
+	if _void_ping <= 0.0:
+		_void_ping = _rng.randf_range(9.0, 24.0)
+		play("void.ping", {"pan": _rng.randf_range(-0.8, 0.8), "pitch": _rng.randf_range(0.65, 1.45)})
+	if _void_moan <= 0.0:
+		_void_moan = _rng.randf_range(40.0, 90.0)
+		play("void.moan", {"pan": _rng.randf_range(-0.6, 0.6)})
 
 
 func _menu(delta: float, duck_k: float) -> void:

@@ -243,7 +243,7 @@ func update_moths(dt: float, cam: Vector3, t: float, hard: bool) -> void:
 		_bodies.multimesh.set_instance_transform(i, Transform3D(Basis.from_euler(Vector3(0, head, 0), EULER_ORDER_YZX), p))
 		_wings.multimesh.set_instance_transform(i * 2, Transform3D(Basis.from_euler(Vector3(-PI / 2.0, head, flap), EULER_ORDER_YZX), p))
 		_wings.multimesh.set_instance_transform(i * 2 + 1, Transform3D(Basis.from_euler(Vector3(-PI / 2.0, head, -flap), EULER_ORDER_YZX).scaled(Vector3(-1, 1, 1)), p))
-		sum += cd
+		sum += p.distance_to(cam)
 		i += 1
 	distance = sum / float(_moths.size())
 	var emit := int(floor(dt * 60.0 * (1.0 + thr))) + 1

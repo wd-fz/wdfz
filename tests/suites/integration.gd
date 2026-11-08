@@ -168,8 +168,8 @@ func _test_stair_walk(app: GameApp) -> void:
 
 func _test_audio(app: GameApp) -> void:
 	var fx := app.audio
-	check(fx.ids().size() == 139, "the baked bank has the 139 public recipes (%d)" % fx.ids().size())
-	check(not fx.ids().any(func(id: String) -> bool: return id.begins_with("void.") or id == "death.void"), "hidden content's sounds are not baked")
+	check(fx.ids().size() == 147, "the baked bank includes 139 public and eight maze recipes (%d)" % fx.ids().size())
+	check(fx.ids().has("void.ping") and fx.ids().has("death.void") and fx.ids().has("step.void"), "the playable maze has its own soundscape and death cues")
 	for id: String in ["step.tile", "step.garage", "threat.heartLow", "event.bellEnd", "event.dismissal", "death.generic", "ui.click", "anomaly.bell13", "music.box"]:
 		var stream := fx.stream_of(id)
 		check(stream is AudioStreamOggVorbis and stream.get_length() > 0.02 and not (stream as AudioStreamOggVorbis).loop, "%s is a baked one-shot" % id)

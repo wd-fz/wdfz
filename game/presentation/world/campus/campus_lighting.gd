@@ -185,6 +185,12 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 		hemi = 0.10 + 0.24 * day
 		dirv = 0.11 + 0.27 * day if day > 0.02 else 0.11
 		pt_k = 1.0
+	if scene_id == "lift_dream":
+		var cfg: Dictionary = CampusData.maze_data()["cfg"]
+		amb = float(cfg["amb"])
+		hemi = float(cfg["hemi"])
+		dirv = 0.0
+		pt_k = 1.0
 	var sun_col := Color(0.86, 0.88, 0.90).lerp(Color(0.92, 0.66, 0.50), sun["gold"])
 	var dc := Color(0.55, 0.66, 0.86).lerp(sun_col, smooth01(0.0, 0.35, day))
 	var hs := Color(0.16, 0.21, 0.30).lerp(Color(0.70, 0.74, 0.78), day).lerp(Color(0.86, 0.62, 0.50), float(sun["gold"]) * 0.5)
@@ -231,6 +237,11 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 		env.background_color = fc
 		env.fog_density = 0.09 if scene_id == "garage1" else (0.04 if scene_id == "portal_tunnel" else 0.072 + 0.03 * fnight)
 	env.fog_density *= float(am.get("fog", 1.0))
+	if scene_id == "lift_dream":
+		var fog: Dictionary = CampusData.maze_data()["cfg"]["fog"]
+		env.fog_light_color = Color(float(fog["r"]), float(fog["g"]), float(fog["b"]))
+		env.background_color = env.fog_light_color
+		env.fog_density = float(fog["density"])
 	env.adjustment_enabled = absf(brightness - 1.0) > 0.001
 	env.adjustment_brightness = brightness
 	# lighting.js dayExpo: outdoors the picture is pressed down to 0.6 at noon (DAY_K).
@@ -238,6 +249,8 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var sum := 0.0
 	for i in room_lights.size():
 		var flick := 0.94 if reduce_flash else room_flicker(i, time, day) * lamp_health(i)
+		if scene_id == "lift_dream":
+			flick = 1.0
 		# A revisit's broken lamp (fx/dread-fx.js lampMul): a glimmer, now and then a twitch.
 		if dread_lamp >= 0 and i == dread_lamp % room_lights.size():
 			flick *= 0.85 if not reduce_flash and (sin(time * 7.3 + 1.1) > 0.985 or sin(time * 2.9) > 0.996) else 0.06

@@ -129,6 +129,7 @@ func target() -> Dictionary:
 	var a := float(_c.get("ang", 0.0))
 	var dir := Vector2(cos(a), sin(a))
 	var pitch := float(_c.get("pitch", 0.0))
+	var eye := float(_c.get("eye", 1.65))
 	var step := 0.05 / U2M
 	if pitch > LOOK_DOWN:
 		var last := 0.0
@@ -142,12 +143,21 @@ func target() -> Dictionary:
 			d += step
 		if hit < 0.0:
 			return {}
-		var wall_a := PI if absf(dir.x) > absf(dir.y) and dir.x > 0.0 else (0.0 if absf(dir.x) > absf(dir.y) else (-PI * 0.5 if dir.y > 0.0 else PI * 0.5))
-		var h := clampf(1.65 + tan(pitch) * last * U2M, 0.35, 2.3)
+		for _i in 10:
+			var mid := (last + hit) * 0.5
+			if _solid(me + dir * mid):
+				hit = mid
+			else:
+				last = mid
 		var p := me + dir * last
-		return {"face": "wall", "x": p.x, "y": p.y, "h": h, "a": wall_a, "room": String(_c.get("scene", ""))}
+		var bx := _solid(p + Vector2(dir.x * 0.06 / U2M, 0))
+		var by := _solid(p + Vector2(0, dir.y * 0.06 / U2M))
+		var x_face := (bx and not by) or (bx == by and absf(dir.x) > absf(dir.y))
+		var wall_a := (PI if dir.x > 0.0 else 0.0) if x_face else (-PI * 0.5 if dir.y > 0.0 else PI * 0.5)
+		var h := clampf(eye + tan(pitch) * last * U2M, 0.35, 2.3)
+		return {"face": "wall", "x": p.x, "y": p.y, "h": h, "a": wall_a, "room": String(_c.get("scene", "")), "floor": float(_c.get("floor", 0.0))}
 	var down := maxf(0.12, -pitch)
-	var dist := minf(FLOOR_REACH, 1.65 / tan(down)) / U2M
+	var dist := minf(FLOOR_REACH, eye / tan(down)) / U2M
 	var fp := me + dir * dist
 	var back := 0
 	while back < 6 and _solid(fp):
@@ -155,7 +165,10 @@ func target() -> Dictionary:
 		back += 1
 	if _solid(fp):
 		return {}
-	return {"face": "floor", "x": fp.x, "y": fp.y, "h": 0.0, "a": a, "room": String(_c.get("scene", ""))}
+	var ground: Variant = _c["floor_at"].call(fp) if _c.get("floor_at") is Callable else float(_c.get("floor", 0.0))
+	if ground == null:
+		return {"face": "void"}
+	return {"face": "floor", "x": fp.x, "y": fp.y, "h": float(ground), "a": a, "room": String(_c.get("scene", ""))}
 
 
 func _near_mark(t: Dictionary) -> int:
@@ -165,7 +178,9 @@ func _near_mark(t: Dictionary) -> int:
 		var m: Dictionary = marks[i]
 		if m["room"] != t["room"] or m["face"] != t["face"]:
 			continue
-		if absf(float(m["h"]) - float(t["h"])) > (0.8 if t["face"] == "wall" else 0.6):
+		var mh := float(m["h"]) + (float(m.get("f", 0.0)) if m["face"] == "wall" else 0.0)
+		var th := float(t["h"]) + (float(t.get("floor", 0.0)) if t["face"] == "wall" else 0.0)
+		if absf(mh - th) > (0.8 if t["face"] == "wall" else 0.6):
 			continue
 		var d := Vector2(float(m["x"]), float(m["y"])).distance_to(Vector2(float(t["x"]), float(t["y"])))
 		if d < bd:
@@ -182,6 +197,9 @@ func use_chalk() -> bool:
 	var t := target()
 	if t.is_empty():
 		_say("我：够不着能画的地方。走近一面墙，或者低头看着地面。")
+		return false
+	if t.get("face") == "void":
+		_say("我：下面什么也没有。画不上去。")
 		return false
 	var near := _near_mark(t)
 	var labels: Array = []
@@ -212,11 +230,13 @@ func choose(index: int) -> void:
 
 
 func place(sym: String, t: Dictionary) -> Dictionary:
-	if _sym(sym) == "":
+	if _sym(sym) == "" or not t.get("face") in ["wall", "floor"]:
 		return {}
 	serial += 1
 	var m := {"room": t["room"], "x": snappedf(float(t["x"]), 0.01), "y": snappedf(float(t["y"]), 0.01), "h": snappedf(float(t["h"]), 0.001),
 		"face": t["face"], "a": snappedf(float(t["a"]), 0.0001), "s": sym, "n": serial}
+	if t["face"] == "wall":
+		m["f"] = snappedf(float(t.get("floor", 0.0)), 0.001)
 	marks.append(m)
 	var in_room: Array = marks.filter(func(q: Dictionary) -> bool: return q["room"] == m["room"])
 	if in_room.size() > PER_ROOM:

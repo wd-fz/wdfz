@@ -27,6 +27,9 @@ var moving := false
 var sprinting := false
 ## Snack (items.js): walking and running ×1.5 for 30 s.
 var speed_multiplier := 1.0
+## The maze uses the original falling acceleration and terminal speed; ordinary scenes use project gravity.
+var gravity_override := 0.0
+var max_fall_speed := INF
 var _touch_move := Vector2.ZERO
 var _touch_sprint := false
 var _focus: WorldInteractable
@@ -70,7 +73,8 @@ func _physics_process(delta: float) -> void:
 	velocity.x = world_direction.x * speed
 	velocity.z = world_direction.z * speed
 	if not is_on_floor():
-		velocity += get_gravity() * delta
+		velocity += (Vector3.DOWN * gravity_override if gravity_override > 0.0 else get_gravity()) * delta
+		velocity.y = maxf(velocity.y, -max_fall_speed)
 	else:
 		velocity.y = 0.0
 	var before := global_position

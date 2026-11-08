@@ -3038,6 +3038,166 @@
      "db": -32.49
     }
    ]
+  },
+  "death.abyss": {
+   "cat": "death",
+   "len": 4.27,
+   "stereo": true,
+   "vary": {
+    "p": 0,
+    "g": 0
+   },
+   "wet": 0.4,
+   "files": [
+    {
+     "file": "death.abyss.0.ogg",
+     "db": -16.09
+    },
+    {
+     "file": "death.abyss.1.ogg",
+     "db": -17.48
+    }
+   ]
+  },
+  "death.void": {
+   "cat": "death",
+   "len": 6.25,
+   "stereo": true,
+   "vary": {
+    "p": 0,
+    "g": 0
+   },
+   "wet": 0.4,
+   "files": [
+    {
+     "file": "death.void.0.ogg",
+     "db": -17.52
+    }
+   ]
+  },
+  "step.void": {
+   "cat": "step",
+   "len": 0.57,
+   "stereo": false,
+   "vary": {
+    "p": 0.04,
+    "g": 0.15
+   },
+   "wet": 0.9,
+   "files": [
+    {
+     "file": "step.void.0.ogg",
+     "db": -29.99
+    },
+    {
+     "file": "step.void.1.ogg",
+     "db": -32.17
+    },
+    {
+     "file": "step.void.2.ogg",
+     "db": -30.94
+    }
+   ]
+  },
+  "void.fall": {
+   "cat": "foley",
+   "len": 2.2,
+   "stereo": false,
+   "vary": {
+    "p": 0,
+    "g": 0
+   },
+   "wet": 0.3,
+   "files": [
+    {
+     "file": "void.fall.0.ogg",
+     "db": -26.62
+    },
+    {
+     "file": "void.fall.1.ogg",
+     "db": -26.8
+    }
+   ]
+  },
+  "void.gust": {
+   "cat": "void",
+   "len": 1.05,
+   "stereo": false,
+   "vary": {
+    "p": 0,
+    "g": 0
+   },
+   "wet": 0.9,
+   "files": [
+    {
+     "file": "void.gust.0.ogg",
+     "db": -39.19
+    },
+    {
+     "file": "void.gust.1.ogg",
+     "db": -37.44
+    },
+    {
+     "file": "void.gust.2.ogg",
+     "db": -37.75
+    }
+   ]
+  },
+  "void.moan": {
+   "cat": "void",
+   "len": 5.85,
+   "stereo": false,
+   "vary": {
+    "p": 0,
+    "g": 0
+   },
+   "wet": 0.9,
+   "files": [
+    {
+     "file": "void.moan.0.ogg",
+     "db": -36.87
+    }
+   ]
+  },
+  "void.ping": {
+   "cat": "void",
+   "len": 6.35,
+   "stereo": false,
+   "vary": {
+    "p": 0.25,
+    "g": 0
+   },
+   "wet": 0.9,
+   "files": [
+    {
+     "file": "void.ping.0.ogg",
+     "db": -54.99
+    }
+   ]
+  },
+  "void.thud": {
+   "cat": "event",
+   "len": 1.65,
+   "stereo": false,
+   "vary": {
+    "p": 0,
+    "g": 0
+   },
+   "wet": 0.5,
+   "files": [
+    {
+     "file": "void.thud.0.ogg",
+     "db": -18.62
+    },
+    {
+     "file": "void.thud.1.ogg",
+     "db": -18.62
+    },
+    {
+     "file": "void.thud.2.ogg",
+     "db": -18.62
+    }
+   ]
   }
  },
  "beds": {
@@ -3100,6 +3260,10 @@
   "pad_menu": {
    "db": 7.04,
    "len": 14.285714285714285
+  },
+  "void": {
+   "db": 2.18,
+   "len": 120
   }
  }
 }

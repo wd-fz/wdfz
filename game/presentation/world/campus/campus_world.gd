@@ -860,6 +860,9 @@ func _build_collision() -> void:
 	add_child(body)
 	var extent := _extent()
 	var rules := CampusData.rules()
+	if scene_id == "lift_dream":
+		MazePhysics.build(body, CampusData.maze_geometry())
+		return
 	if rules.is_stairwell(scene_id):
 		_build_stairwell(body, rules.stair_surfaces(scene_id))
 		return

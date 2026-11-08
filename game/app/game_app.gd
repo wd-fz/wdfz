@@ -34,12 +34,16 @@ var _bolt_next := 6.0
 var _drive_view: CarChaseView
 var playtest := Playtest.new()
 var debug_panel: DebugPanel
+var maze_flow: MazeFlow
 
 
 func _ready() -> void:
 	audio = AudioFx.new()
 	audio.name = "AudioFx"
 	add_child(audio)
+	maze_flow = MazeFlow.new()
+	add_child(maze_flow)
+	maze_flow.setup(self)
 	settings.load_file(DisplayServer.is_touchscreen_available())
 	ui.settings_requested.connect(func() -> void: ui.show_settings(settings.values))
 	ui.setting_changed.connect(_setting_changed)
@@ -95,6 +99,10 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func maze() -> MazeModule:
+	return session.modules.get_module(&"campus.maze") as MazeModule if session != null else null
 
 
 func dread() -> DreadModule:
@@ -601,6 +609,7 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 		rules.has_item = bag.has
 	_sync_world()
 	player.restore_pose(pose)
+	maze_flow.changed_world(true)
 	player.show()
 	ui.set_save_available(saves.exists())
 	resume_game()
@@ -610,14 +619,15 @@ func _dead() -> bool:
 	return story() != null and story().over()
 
 
-func save_game() -> void:
+func save_game(quiet: bool = false) -> void:
 	if session == null or not session.running or _dead() or not speedrun.run.is_empty():
 		return
 	var snapshot := session.capture(player.capture_pose())
 	var error := session.validate(snapshot, router.known_ids())
 	if error.is_empty():
 		error = saves.write(snapshot)
-	ui.show_notice("已保存测试进度。" if error.is_empty() else error)
+	if not quiet or not error.is_empty():
+		ui.show_notice("已保存测试进度。" if error.is_empty() else error)
 	ui.set_save_available(saves.exists())
 
 
@@ -656,7 +666,7 @@ func load_game() -> void:
 
 
 func pause_game() -> void:
-	if opening_busy():
+	if opening_busy() or is_instance_valid(maze_flow.cut):
 		return
 	# Game.pause: no pause menu once dead (a death cannot be saved around).
 	if session == null or not session.running or _dead():
@@ -681,6 +691,8 @@ func resume_game() -> void:
 
 
 func _cancel_cinematics() -> void:
+	if is_instance_valid(maze_flow):
+		maze_flow.cancel()
 	if is_instance_valid(_opening_cut):
 		_opening_cut.cancel()
 		_opening_cut.queue_free()
@@ -815,6 +827,9 @@ func _campus_step(delta: float) -> void:
 	if fate != null and fate.dead:
 		_death_step(delta)
 		return
+	maze_flow.step(delta)
+	if _dead():
+		return
 	_school_step(delta, rules)
 	_handle_deaths()
 	if fate != null and fate.dead:
@@ -839,6 +854,9 @@ func _campus_step(delta: float) -> void:
 	_hint_cooldown -= delta
 	if _hint_cooldown <= 0.0 and not player.has_focus():
 		_hint_cooldown = 0.1
+		if maze_flow.here():
+			ui.show_prompt(maze_flow.hint())
+			return
 		var radio_hint := broadcast().hint() if broadcast() != null else ""
 		if radio_hint == "" and marks() != null:
 			marks().set_context(_marks_context())
@@ -861,6 +879,9 @@ func _campus_step(delta: float) -> void:
 func _campus_interact() -> void:
 	var rules := campus()
 	if session == null or get_tree().paused or rules == null or not rules.knows(session.world_id):
+		return
+	if maze_flow.here():
+		maze_flow.interact()
 		return
 	var pose := player.capture_pose()
 	var day_rules := school()
@@ -1051,6 +1072,9 @@ func _apply_result(result: Dictionary) -> void:
 		return
 	if result.has("san") and school() != null:
 		school().change_san(float(result["san"]), 0.0)
+	if result.has("maze_enter"):
+		maze_flow.begin_entry()
+		return
 	if result.has("travel"):
 		travel(result["travel"]["world"], result["travel"]["pose"], bool(result["travel"].get("seamless", false)))
 	if not text.is_empty():
@@ -1174,7 +1198,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 		period = tale_now.checkup_period()
 	if watcher != null and bool(watcher.pat["permanent"]) and not frozen:
 		period += " · 持续追踪"
-	ui.show_status(day_rules.place_name(session.world_id, float(p[1])), period, day_rules.period_class(frozen), day_rules.clock_text((bag != null and bag.has_clock()) or (talent() != null and talent().has("watch"))))
+	ui.show_status(day_rules.place_name(session.world_id, float(p[1])), period, day_rules.period_class(frozen), "???" if maze_flow.here() else day_rules.clock_text((bag != null and bag.has_clock()) or (talent() != null and talent().has("watch"))))
 	if hiding_now:
 		ui.show_prompt("出来")
 	elif weird_now != null and weird_now.near_roster():
@@ -1263,7 +1287,8 @@ func _item_keys(bag: InventoryModule) -> void:
 			_apply_result(bag.use("torch", tsec))
 	for i in 2:
 		if Input.is_action_just_pressed("hot_%d" % (i + 1)):
-			_apply_result(bag.use_hot(i, tsec))
+			if bag.hot[i] == null or not maze_flow.intercept_item(String(bag.hot[i])):
+				_apply_result(bag.use_hot(i, tsec))
 
 
 func _bag_entries() -> Array:
@@ -1293,6 +1318,8 @@ func _use_item(id: String) -> void:
 	if bag == null:
 		return
 	_close_bag()
+	if maze_flow.intercept_item(id):
+		return
 	_apply_result(bag.use(id, school().tsec if school() != null else 0.0))
 
 
@@ -1654,7 +1681,7 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 		cw.lighting.crackles.clear()
 	# tickSchoolBell: the bell when the period changes (outdoors quieter and muffled).
 	var period := String(SchoolClock.period_at(day_rules.tsec)[2])
-	if _audio_period != "" and period != _audio_period and not story().dead:
+	if _audio_period != "" and period != _audio_period and not story().dead and session.world_id != "lift_dream":
 		var bell_kind := "start" if SchoolClock.period_at(day_rules.tsec)[3] == "教室" else "end"
 		audio.school_bell(bell_kind, session.world_id == "out", atmos().bell_tune(bell_kind, day_rules.tsec) if atmos() != null else {})
 	_audio_period = period
@@ -2246,6 +2273,9 @@ func _map_label(r: Dictionary, c: int, row: int) -> String:
 
 
 func _show_map(selected: String = "") -> void:
+	if maze_flow.here():
+		ui.show_notice("我：打开地图，纸上什么也没有。这里不在任何一张图上。")
+		return
 	var ex := exploration()
 	if ex == null:
 		return
@@ -2963,11 +2993,20 @@ func _marks_context() -> Dictionary:
 	var p: Array = pose["position"]
 	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
 	var solid := func(q: Vector2) -> bool:
+		if maze_flow.here():
+			var scene := CampusGeometry.to_scene(room, q)
+			return maze().geometry.depth_at(scene.x, scene.y, 0.00001, float(p[1])) > 0.0
 		if room != null:
 			return CampusGeometry.SOLID_CH.contains(CampusGeometry.tile_at(room, q))
 		return not _can_stand(q, null, 0.0)
+	var floor_at := func(q: Vector2) -> Variant:
+		if not maze_flow.here():
+			return float(p[1])
+		var scene := CampusGeometry.to_scene(room, q)
+		var height := maze().geometry.ground_at(scene.x, scene.y, float(p[1]) + 0.42)
+		return height if is_finite(height) and height >= float(p[1]) - 1.5 else null
 	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "pitch": float(pose["pitch"]),
-		"solid": solid, "has_chalk": items() != null and items().has("chalk")}
+		"solid": solid, "floor": float(p[1]), "eye": player.camera.position.y, "floor_at": floor_at, "has_chalk": items() != null and items().has("chalk")}
 
 
 func _apply_marks_events() -> void:
@@ -3018,6 +3057,8 @@ func _show_marks() -> void:
 	world.add_child(_marks_nodes)
 	var room: Variant = campus().room(session.world_id)
 	var list: Array = mk.visible(session.world_id).duplicate()
+	if maze_flow.here():
+		list.append_array(maze_flow.chalk_presets())
 	if mk.last_life is Dictionary and String(mk.last_life.get("scene", "")) == session.world_id:
 		list.append({"x": mk.last_life["x"], "y": mk.last_life["y"], "h": 0.0, "face": "floor", "a": 0.0, "text": "× " + SchoolClock.fmt_clock(float(mk.last_life.get("tsec", 700))), "old": true})
 	for m: Dictionary in list:
@@ -3048,7 +3089,7 @@ func _show_marks() -> void:
 			else:
 				var sw := 0.6 * (0.92 + 0.16 * jj)
 				qm.size = Vector2(sw, sw)
-				quad.position = Vector3(sp.x + cos(float(m["a"])) * 0.012, float(m["h"]), sp.y + sin(float(m["a"])) * 0.012)
+				quad.position = Vector3(sp.x + cos(float(m["a"])) * 0.012, float(m["h"]) + float(m.get("f", 0.0)), sp.y + sin(float(m["a"])) * 0.012)
 				quad.rotation = Vector3(0.0, -float(m["a"]) + PI * 0.5, (jj - 0.5) * 0.14)
 			_marks_nodes.add_child(quad)
 			continue
@@ -3063,7 +3104,7 @@ func _show_marks() -> void:
 			label.position = Vector3(sp.x, float(m["h"]) + 0.012, sp.y)
 			label.rotation = Vector3(-PI * 0.5, -float(m["a"]) - PI * 0.5, 0.0)
 		else:
-			label.position = Vector3(sp.x, float(m["h"]), sp.y)
+			label.position = Vector3(sp.x, float(m["h"]) + float(m.get("f", 0.0)), sp.y)
 			label.rotation.y = -float(m["a"]) + PI * 0.5
 		_marks_nodes.add_child(label)
 
@@ -4650,6 +4691,7 @@ func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
 		player.place(pose)
 	else:
 		player.restore_pose(pose)
+	maze_flow.changed_world()
 	_sync_world()
 	_hint_cooldown = 0.0
 	return ""

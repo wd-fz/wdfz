@@ -81,6 +81,19 @@ static func rules() -> CampusModule:
 
 
 static var _lift_geometry: ElevatorModule
+static var _maze_geometry: MazeGeometry
+
+
+static func maze_data() -> Dictionary:
+	if not _cache.has("maze_data"):
+		_cache["maze_data"] = JSON.parse_string(FileAccess.get_file_as_string("res://assets/campus/maze/maze.json"))
+	return _cache["maze_data"]
+
+
+static func maze_geometry() -> MazeGeometry:
+	if _maze_geometry == null:
+		_maze_geometry = MazeGeometry.new(maze_data())
+	return _maze_geometry
 
 
 ## Read-only elevator geometry (frames, door rectangles, cabin gaps) for scene adapters.
@@ -121,6 +134,7 @@ static func make_patrol() -> PatrolModule:
 static func clear_caches() -> void:
 	_rules = null
 	_lift_geometry = null
+	_maze_geometry = null
 	_patrol_nav = null
 	_patrol_data = {}
 	_cache.clear()

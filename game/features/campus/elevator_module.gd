@@ -6,9 +6,8 @@ extends FeatureModule
 ## and the car leaves does the player move to the cabin scene (lift_teach / lift_lab), and on
 ## arrival back to the same spot behind the target floor's doors.
 ##
-## Not ported yet (documented in docs/plan): unsafe() blockers (anomalies, local chase, pending
-## inspection) are treated as false; the rare "wrong elevator" is held back until the void maze
-## is ported (see VOID_MAZE_PORTED); the internal 1 % cabin event is a separate module.
+## unsafe() is supplied by the app (anomalies, local chase, pending inspection).
+## MazeFlow owns the wrong elevator's spatial gameplay and cinematic transitions.
 
 const STATE_VERSION := 1
 const CFG := {"wait": 3.0, "travel": 2.0, "per_floor": 0.7, "rare_chance": 0.08, "dream_san": 5, "open": 0.9, "close": 1.0, "hold": 4.0}
@@ -16,10 +15,7 @@ const GEO := {"landing": 0.40, "car": -0.47, "inner": -0.5, "back": -1.95, "half
 const HOSTS := ["teach", "lab"]
 const RIDE_ROOMS := ["lift_teach", "lift_lab", "lift_dream"]
 const PRAD_M := CampusGeometry.PRAD * CampusGeometry.U2M
-## The wrong elevator (8 %) leads into the void maze. The exported lift_dream scene IS the maze
-## (the void-maze module replaced the old white room), whose rules are not ported yet; until they
-## are, the roll is not made so that no run can get stuck in a cabin offering only 67 / 89.
-const VOID_MAZE_PORTED := false
+## Original 8 % wrong-elevator roll; both displayed buttons enter the playable maze.
 
 var _rooms: Dictionary = {}
 var _frames: Dictionary = {}
@@ -277,7 +273,7 @@ func _close(host: String) -> void:
 ## Hall call button / cabin panel (Elevator.interact). Returns {"notice"} or {"choice"}.
 func use_at(room_id: String, w: Vector2) -> Dictionary:
 	if room_id == "lift_dream":
-		return _leave_dream()
+		return {} # Only a nearby, grounded maze exit can leave this space.
 	if room_id in ["lift_teach", "lift_lab"]:
 		return controls(room_id, w)
 	var hf := _host_floor(room_id)
@@ -386,15 +382,19 @@ func _enter_dream(button: String) -> Dictionary:
 	var lift: Dictionary = lifts[ride["host"]]
 	lift["door"] = 0.0
 	lift["dir"] = 0
-	# VoidMaze.enter(button) takes over here once the void-maze module is ported (-5 SAN first).
-	return {"travel": {"world": "lift_dream", "pose": _pose("lift_dream", CampusGeometry.tile_center(_rooms["lift_dream"], 2, 5), 0.0, 0.0), "seamless": false}, "san": -int(CFG["dream_san"])}
+	return {"maze_enter": button, "san": -int(CFG["dream_san"])}
 
 
-func _leave_dream() -> Dictionary:
-	if ride.is_empty() or ride["phase"] != "dream":
+func leave_maze(exit_id: String) -> Dictionary:
+	if not exit_id in ["exit1", "exit2"]:
 		return {}
+	if ride.is_empty():
+		ride = {"host": "teach", "origin": 1, "phase": "dream"}
+	ride["phase"] = "dream"
+	if exit_id == "exit2":
+		lifts[ride["host"]].merge({"phase": "idle", "floor": int(ride["origin"]), "remaining": 0.0}, true)
+		ride["host"] = "lab" if ride["host"] == "teach" else "teach"
 	var r := _arrive(int(ride["origin"]), {}, false)
-	r["notice"] = "我：门合上了。外面的走廊和刚才一样。"
 	return r
 
 
@@ -506,7 +506,7 @@ func _enter_cabin(host: String, floor: int) -> void:
 	if not ride.is_empty() and ride["host"] == host and ride["phase"] == "cabin":
 		ride["origin"] = floor
 		return
-	ride = {"host": host, "origin": floor, "target": floor, "phase": "cabin", "rare": VOID_MAZE_PORTED and _rng.randf() < CFG["rare_chance"], "remaining": 0.0, "pending": null}
+	ride = {"host": host, "origin": floor, "target": floor, "phase": "cabin", "rare": _rng.randf() < CFG["rare_chance"], "remaining": 0.0, "pending": null}
 
 
 func show_close_button(room_id: String, pose: Dictionary) -> bool:

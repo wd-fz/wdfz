@@ -12,8 +12,10 @@ const fs = require('fs'), path = require('path'), vm = require('vm');
 const SRC = process.argv[2] || path.join(__dirname, '../../../wd-fz/wd-fz.github.io/game3d/js');
 const OUT = process.argv[3] || path.join(__dirname, '../../assets/audio');
 const SR = 22050, VARIANTS = 3;
-// Hidden content is not ported (CLAUDE.md secrecy rule): its sounds are not baked.
-const SKIP = /^(void\.|step\.void$|death\.(void|abyss|crowd)$|event\.liftOverload$|threat\.crowd$)/;
+// Only the cabin crowd event is still pending. The maze's sounds are part of its playable port.
+const SKIP = /^(death\.crowd$|event\.liftOverload$|threat\.crowd$)/;
+const MAZE = /^(void\.|step\.void$|death\.(void|abyss)$)/;
+const ONLY_MAZE = process.argv.includes('--maze-only');
 
 // ---- load the old data unchanged ----
 const pub = {};
@@ -164,10 +166,10 @@ const check = {};
 
 // ---- one-shots ----
 fs.mkdirSync(path.join(OUT, 'sfx'), {recursive: true});
-const index = {rate: SR, cats: {}, sfx: {}, beds: {}};
+const index = ONLY_MAZE ? JSON.parse(fs.readFileSync(path.join(OUT, 'index.json'), 'utf8')) : {rate: SR, cats: {}, sfx: {}, beds: {}};
 for (const c in CATS) index.cats[c] = {target: CATS[c].target, wet: CAT_WET[c] || 0.3};
 for (const id of Object.keys(BANK).sort()) {
-  if (SKIP.test(id)) continue;
+  if (SKIP.test(id) || (ONLY_MAZE && !MAZE.test(id))) continue;
   const D = BANK[id], vars = []; let stereo = false, len = 0;
   // Every play re-rolls the recipe's ranges in the Web version; here short sounds get three baked
   // takes, middle ones two and long ones (bells, scenes) one, plus pitch and gain variation at play time.
@@ -200,6 +202,7 @@ function loopBake(name, seconds, rate, gen) {
 }
 function noiseLoop(name, type, f, q, lfo) { const bq = new Biquad(type), nr = mulberry(name.length * 7919);
   const SRb = SR; loopBake(name, lfo ? 1 / lfo.rate * 2 : 6, SRb, (s) => { bq.set(f + (lfo ? lfo.depth * Math.sin(2 * Math.PI * lfo.rate * s) : 0), q); return bq.run(nr() * 2 - 1); }); }
+if (!ONLY_MAZE) {
 noiseLoop('wind', 'bandpass', 420, 0.7, {rate: 0.11, depth: 180});
 noiseLoop('rain', 'lowpass', 3600, 0.4);
 noiseLoop('rain2', 'highpass', 5200, 0.3);
@@ -217,6 +220,16 @@ function pad(name, root, cutoff, tritone, ss) {
 const ROOTS = {in: 46.25, day: 55, night: 49, garage: 41.2};
 for (const k in ROOTS) { pad('pad_' + k + '_calm', ROOTS[k], k === 'in' ? 180 + 0.15 * 700 - 40 : 180 + 0.15 * 700, false, 0); pad('pad_' + k + '_tense', ROOTS[k], k === 'in' ? 180 + 0.85 * 700 - 40 : 180 + 0.85 * 700, true, 0.6); }
 pad('pad_menu', 43.65, 240, true, 0.27);
+}
+// void-maze/maze-sound.js: four slow sine voices and very low filtered noise.
+const voidTone = new Biquad('lowpass'), voidNoise = new Biquad('lowpass'), voidRng = mulberry(90210);
+voidTone.set(150, 0.6);
+loopBake('void', 120, SR, s => {
+  const voices = [[36,.5],[36.6,.45],[72.4,.09],[108.9,.035]];
+  const tone = voices.reduce((a, v) => a + Math.sin(2*Math.PI*v[0]*s)*v[1], 0);
+  voidNoise.set(180+70*Math.sin(2*Math.PI*.017*s), .7);
+  return voidTone.run(tone*(.7+.28*Math.sin(2*Math.PI*.031*s))) + .32*voidNoise.run(voidRng()*2-1);
+});
 
 fs.writeFileSync(path.join(OUT, 'index.json'), JSON.stringify(index, null, 1));
 for (const c in check) { const d = check[c], m = d.reduce((a, b) => a + b, 0) / d.length; console.log(`loudness ${c}: mean ${m.toFixed(1)} dB from target, worst ${Math.max(...d.map(Math.abs)).toFixed(1)} (n ${d.length})`); }

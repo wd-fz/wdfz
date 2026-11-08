@@ -127,18 +127,19 @@ func _test_elevator_rules() -> void:
 	check(waiting["notice"] == "我：按下呼梯键。楼层指示灯缓慢亮了起来。" and lab.lifts["lab"]["phase"] == "waiting", "calling from lab4 summons the car")
 	_run_lift(lab, 3.0 + 3 * 0.7 + 1.2, "lab4", _campus_pose(l4, lab_hall, 0.0))
 	check(lab.lifts["lab"]["floor"] == 4 and lab.door_amount("lab", 4) > 0.9, "car arrives at lab4 and opens")
-	# Rare ride: the 67/89 buttons and the old built-in white room.
+	# Rare ride: the 67/89 buttons enter the fully ported maze.
 	lab.ride = {"host": "lab", "origin": 4, "target": 4, "phase": "cabin", "rare": true, "remaining": 0.0, "pending": null}
 	var rare_panel := lab.controls("lab4", lab.world("lab4", -1.2, 0.0))
 	check(rare_panel["choice"]["values"] == ["67", "89"], "the rare cabin only offers 67 and 89")
 	var fresh := ElevatorModule.new(rooms)
 	fresh.reset()
+	fresh.set_seed(20261108)
 	var rare_rolls := 0
 	for _i in 200:
 		fresh.ride = {}
 		fresh._enter_cabin("teach", 1)
 		rare_rolls += 1 if fresh.ride["rare"] else 0
-	check(rare_rolls == 0, "no wrong-elevator roll before the void maze is ported")
+	check(rare_rolls > 0 and rare_rolls < 40, "seeded natural boarding includes rare rides alongside ordinary ones (%d / 200)" % rare_rolls)
 
 
 func _test_inventory_rules() -> void:

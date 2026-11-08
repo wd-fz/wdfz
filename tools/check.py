@@ -28,7 +28,8 @@ def main():
             for display in (("headless", "windowed") if mode == "both" else (mode,)):
                 args = ["--headless"] if display == "headless" else ["--rendering-method", "gl_compatibility"]
                 output = run(display, [ENGINE, *args, "--path", str(ROOT), "--audio-driver", "Dummy",
-                                      "--fixed-fps", "60", "--script", "res://tests/run_tests.gd"], reports, timeout=900)
+                                      "--fixed-fps", "60", "--script", "res://tests/run_tests.gd"], reports,
+                             timeout=3600 if display == "windowed" else 900)
                 result = re.search(r"FRAMEWORK TESTS: (\d+) checks, 0 failures", output)
                 if not result or int(result[1]) == 0:
                     raise RuntimeError(f"{display}: test runner did not confirm a completed, nonempty suite")

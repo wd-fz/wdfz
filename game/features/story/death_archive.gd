@@ -2,10 +2,8 @@ class_name DeathArchive
 extends RefCounted
 ## CG archive of deaths and endings (death-archive.js DEATH_ARCHIVE / ARCHIVE_CUTS, reference
 ## wd-fz.github.io@0bf508a): every real cause of death gets a file the first time it happens and
-## later deaths only add to a counter. Ported here: the public causes the ported systems can
-## produce, and the public endings that exist. The replay stages and the death CG scenes
-## (fx/death-cg.js) are not ported, so the archive is a record list, not a viewer.
-## Hidden endings and the maze deaths are not part of this public table.
+## later deaths only add to a counter. The archive remains a record list; live death scenes
+## are implemented by DeathCG. Undiscovered maze entries are entirely absent from this list.
 
 ## [id, name, one-line record]; the id is the kill source ("an:<id>" for anomalies).
 const DEATHS := [
@@ -38,6 +36,11 @@ const ENDS := [["international", "《外国语学生》", "队尾的人回头看
 
 
 ## record: the death log's "sources" counts; ends: the ending record ({id: 1}).
+const SECRET_DEATHS := [
+	["void_lost", "迷失", "白墙上的门一扇接一扇亮起来，又一扇接一扇暗下去。我想不起来时的那一扇。"],
+	["void_fall", "下面的我", "那块画着箭头的方块第三次从面前飞过去。下面站着的人，抬起了手电。"]]
+
+
 static func rows(record: Dictionary, ends: Dictionary) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	var sources: Dictionary = record.get("sources", {})
@@ -46,6 +49,11 @@ static func rows(record: Dictionary, ends: Dictionary) -> Array[Dictionary]:
 		var n := int(sources.get(d[0], 0))
 		out.append({"no": no, "name": d[1], "on": n > 0, "count": n, "memo": d[2]})
 		no += 1
+	for d: Array in SECRET_DEATHS:
+		var n := int(sources.get(d[0], 0))
+		if n > 0:
+			out.append({"no": no, "name": d[1], "on": true, "count": n, "memo": d[2]})
+			no += 1
 	for e: Array in ENDS:
 		var seen := ends.has(e[0])
 		out.append({"no": no, "name": e[1], "on": seen, "count": 1 if seen else 0, "memo": e[2]})

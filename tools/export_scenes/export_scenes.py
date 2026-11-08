@@ -167,6 +167,11 @@ def main():
         if not a.only:
             common = pg.evaluate("window.__wdfzLayout('campus')")
             (layout_dir / 'campus.json').write_text(json.dumps(common, ensure_ascii=False, indent=1))
+        if not a.only or 'lift_dream' in todo:
+            maze = pg.evaluate("window.__wdfzLayout('maze')")
+            maze_dir = Path(a.out) / 'maze'
+            maze_dir.mkdir(parents=True, exist_ok=True)
+            (maze_dir / 'maze.json').write_text(json.dumps(maze, ensure_ascii=False, indent=2) + '\n')
         for sid in todo:
             kind = 'out' if sid == 'out' else 'room'
             lay = pg.evaluate('([k,i])=>window.__wdfzLayout(k,i)', [kind, sid])

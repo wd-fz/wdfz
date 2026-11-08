@@ -342,6 +342,8 @@
   }
   window.__wdfzLayout = function(kind, id){
     if(kind === 'out') return outLayout();
+    if(kind === 'maze') return {cfg:window.MAZE_CFG, air:window.MAZE_AIR, solid:window.MAZE_SOLID,
+      walk:window.MAZE_WALK, eggs:window.MAZE_EGG_CFG};
     if(kind === 'campus'){
       var locks = {};
       Object.keys(window.DOOR_LOCKS).forEach(function(k){ var id = window.DOOR_LOCKS[k]; locks[k] = {item:id, name:window.ITEMS[id] ? window.ITEMS[id].n : id}; });
