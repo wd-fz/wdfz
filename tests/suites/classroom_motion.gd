@@ -100,8 +100,11 @@ func test_app() -> void:
 	app.add_child(cut)
 	cut.begin(app._campus_world(),CampusData.rules().room("teach1"),app.player,app.ui,false)
 	cut.set_process(false)
+	var material: StandardMaterial3D = (view.figures[0]["node"] as Node3D).find_children("*","MeshInstance3D",true,false)[0].material_override
+	check(material.albedo_color == Color("5d6873") and material.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL,"opening figures use the original lit normal material")
 	check(view.normal and not view.teacher.visible,"full opening uses normal classmates and only one teacher")
 	cut._apply(.75)
+	check(material.albedo_color == Color("080b0d") and material.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED,"the flip changes actual figure materials")
 	check(not view.normal,"opening flips classmates to the original dark silhouette")
 	cut.cancel()
 	check(view.teacher.visible and not view.normal and same_json(before,app.session.capture(app.player.capture_pose())),"opening cancellation restores figures without changing the run")
