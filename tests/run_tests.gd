@@ -117,6 +117,7 @@ func _run() -> void:
 	_test_chalk_texture()
 	_test_phantoms()
 	_test_traces()
+	_test_chase_dash()
 	_test_canteen_view()
 	_test_mirror_view()
 	_test_legacy_save()
@@ -3302,6 +3303,11 @@ func _test_canteen_view() -> void:
 	cv.update(false, Vector2(0, 0), false)
 	check(not cv.visible, "dark before lights out")
 	cv.queue_free()
+
+
+func _test_chase_dash() -> void:
+	check(not CarChaseView.shade_state(0.0, 0, 0.0)["visible"] and CarChaseView.shade_state(0.1, 0, 0.0)["visible"] and not CarChaseView.shade_state(0.1, 1, 0.0)["visible"] and CarChaseView.shade_state(0.9, 4, 0.0)["visible"], "the shadows in the mirror come one by one as the pursuit closes")
+	check(CarChaseView.shade_state(1.0, 0, 0.0)["scale"].x > CarChaseView.shade_state(0.1, 0, 0.0)["scale"].x, "and grow")
 
 
 func _test_traces() -> void:

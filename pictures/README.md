@@ -56,3 +56,4 @@
 | [镜中轮廓](镜中轮廓/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_mirror.gd`：教学楼洗手池上方的镜子，SAN 高时轮廓与你同步；SAN 极低时它先抬起一只手 |
 | [午夜食堂](午夜食堂/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_canteen.gd`：熄灯后食堂里唯一亮着的灯、地上的光圈与背对着你的打饭的人 |
 | [医务室药柜](医务室药柜/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture_clinic.gd`：行政楼一楼西头第一间办公室（医务室）墙上带红十字的药柜 |
+| [驾驶仪表盘](驾驶仪表盘/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_drive.gd`：驾驶视角的仪表盘、方向盘与后视镜；追影远时镜里只有一个黑影，近时五个 |
