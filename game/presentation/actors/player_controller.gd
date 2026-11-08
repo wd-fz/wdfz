@@ -6,6 +6,7 @@ signal interaction_rejected(reason: String)
 ## E pressed with no physical interactable in front: tile-based rules (campus) decide.
 signal free_interaction_requested
 signal focus_changed(prompt: String)
+signal touch_sprint_changed(value: bool)
 
 ## Web version input.js SPD_WALK = 21 and SPD_RUN = 36.4 world units/s; 1 unit = 1/9 m.
 @export var walk_speed := 21.0 / 9.0
@@ -63,7 +64,7 @@ func _physics_process(delta: float) -> void:
 	var typing := editing_text()
 	if typing:
 		_touch_move = Vector2.ZERO
-		_touch_sprint = false
+		set_touch_sprint(false)
 	if seated or hiding:
 		# The seated body overlaps its chair (old S.seated skips moveBy entirely).
 		velocity = Vector3.ZERO
@@ -73,7 +74,8 @@ func _physics_process(delta: float) -> void:
 		return
 	var direction := Vector2.ZERO if typing else (Input.get_vector("move_left", "move_right", "move_forward", "move_back") + _touch_move).limit_length()
 	var world_direction := global_basis * Vector3(direction.x, 0.0, direction.y)
-	var want_run := (Input.is_action_pressed("sprint") or _touch_sprint or _touch_move.length() > 0.96) and direction.length() > 0.08
+	# The stick sets direction/strength; only the explicit run control selects speed.
+	var want_run := (Input.is_action_pressed("sprint") or _touch_sprint) and direction.length() > 0.08
 	sprinting = want_run and can_sprint
 	var speed := (sprint_speed if sprinting else walk_speed) * speed_multiplier
 	velocity.x = world_direction.x * speed
@@ -116,6 +118,9 @@ func _update_focus() -> void:
 func request_interaction() -> void:
 	if not enabled or debug_frozen:
 		return
+	if seated or hiding:
+		free_interaction_requested.emit()
+		return
 	_update_focus() # Never use a target cached before a teleport/pause.
 	if is_instance_valid(_focus) and not _focus.interaction_id.is_empty():
 		var reason := _focus.blocked_reason(self)
@@ -133,6 +138,7 @@ func set_touch_move(value: Vector2) -> void:
 
 func set_touch_sprint(value: bool) -> void:
 	_touch_sprint = value and enabled and not debug_frozen
+	touch_sprint_changed.emit(_touch_sprint)
 
 
 func look_from_touch(relative: Vector2) -> void:
@@ -166,7 +172,7 @@ func reset_view(drop: float = 0.0) -> void:
 
 func clear_input() -> void:
 	_touch_move = Vector2.ZERO
-	_touch_sprint = false
+	set_touch_sprint(false)
 	velocity = Vector3.ZERO
 	moving = false
 	sprinting = false
@@ -194,6 +200,10 @@ func place(data: Dictionary) -> void:
 
 func has_focus() -> bool:
 	return is_instance_valid(_focus)
+
+
+func focus_prompt() -> String:
+	return _focus.prompt if is_instance_valid(_focus) else ""
 
 
 func restore_pose(data: Dictionary) -> void:

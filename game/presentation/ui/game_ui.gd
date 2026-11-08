@@ -78,7 +78,9 @@ func _ready() -> void:
 	%BackToMenu.pressed.connect(func() -> void: menu_requested.emit())
 	%PauseButton.pressed.connect(func() -> void: pause_requested.emit())
 	%TouchInteract.pressed.connect(func() -> void: interact_requested.emit())
-	%TouchSprint.toggled.connect(func(value: bool) -> void: touch_sprint.emit(value))
+	%TouchSprint.toggled.connect(func(value: bool) -> void:
+		touch_sprint.emit(value)
+		_update_sprint_label())
 	stick.moved.connect(func(value: Vector2) -> void: touch_move.emit(value))
 	look_pad.looked.connect(func(value: Vector2) -> void: touch_look.emit(value))
 	%TouchToggle.toggled.connect(set_touch_enabled)
@@ -1151,144 +1153,25 @@ func reset_post() -> void:
 
 # ---- settings (settings.js): a panel over the menu or the pause screen ----
 
-const SETTING_ROWS := [
-	["声音", "", "", []],
-	["vol", "音量", "slider", [0, 100, 5]],
-	["amb", "环境声", "choice", [["开", 1], ["关", 0]]],
-	["captions", "声音字幕", "choice", [["自动", 0], ["开", 1], ["关", 2]]],
-	["sub", "提示文字大小", "choice", [["小", 0], ["中", 1], ["大", 2]]],
-	["画面与舒适", "", "", []],
-	["distortion", "视野扭曲", "choice", [["关", 0], ["减弱", 1], ["完整", 2]]],
-	["shake", "镜头晃动", "choice", [["开", 1], ["关", 0]]],
-	["reduce_flash", "减少闪光", "choice", [["关", 0], ["开", 1]]],
-	["bright", "亮度", "slider", [50, 150, 5]],
-	["grain", "胶片颗粒", "choice", [["开", 1], ["关", 0]]],
-	["quality", "画质", "choice", [["流畅", 0], ["均衡", 1], ["精细", 2], ["超精细", 3], ["真实", 4]]],
-	["操作与文字", "", "", []],
-	["mouse", "鼠标灵敏度 %", "slider", [25, 250, 5]],
-	["touch", "触屏灵敏度 %", "slider", [25, 250, 5]],
-	["text", "文字大小 %", "slider", [85, 150, 5]],
-	["touch_size", "触屏按钮大小 %", "slider", [85, 125, 5]],
-	["auto_land", "自动横屏（手机）", "choice", [["开", 1], ["关", 0]]],
-	["full_screen", "全屏", "choice", [["关", 0], ["开", 1]]],
-]
-var settings_panel: PanelContainer
-var _settings_box: VBoxContainer
-var _settings_scroll: ScrollContainer
+var settings_panel: GameSettingsPanel
 
 
 func show_settings(values: Dictionary) -> void:
 	if settings_panel == null:
-		settings_panel = PanelContainer.new()
-		settings_panel.name = "SettingsPanel"
-		settings_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-		settings_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-		settings_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-		settings_panel.custom_minimum_size = Vector2(440, 0)
-		var back := StyleBoxFlat.new()
-		back.bg_color = Color(0.06, 0.05, 0.04, 0.98)
-		back.set_content_margin_all(14)
-		back.set_corner_radius_all(6)
-		settings_panel.add_theme_stylebox_override("panel", back)
-		var outer := VBoxContainer.new()
-		outer.add_theme_constant_override("separation", 8)
-		var head := Label.new()
-		head.text = "设置"
-		outer.add_child(head)
-		var scroll := ScrollContainer.new()
-		_settings_scroll = scroll
-		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-		scroll.custom_minimum_size.y = 340
-		_settings_box = VBoxContainer.new()
-		_settings_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		_settings_box.add_theme_constant_override("separation", 6)
-		scroll.add_child(_settings_box)
-		outer.add_child(scroll)
-		var layout := Button.new()
-		layout.name = "EditTouchLayout"
-		layout.text = "调整触屏布局"
-		layout.custom_minimum_size.y = 44
-		layout.pressed.connect(show_touch_layout_editor)
-		outer.add_child(layout)
-		var buttons := HFlowContainer.new()
-		var wipe := Button.new()
-		wipe.name = "ClearLastLife"
-		wipe.text = "清除上一局的痕迹"
-		wipe.pressed.connect(func() -> void: setting_changed.emit("clear_last_life", 0))
-		buttons.add_child(wipe)
-		var reset := Button.new()
-		reset.text = "恢复操作与文字默认"
-		reset.pressed.connect(func() -> void: setting_changed.emit("reset_comfort", 0))
-		buttons.add_child(reset)
-		var close := Button.new()
-		close.text = "关闭"
-		close.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		close.pressed.connect(func() -> void: settings_panel.visible = false)
-		buttons.add_child(close)
-		outer.add_child(buttons)
-		settings_panel.add_child(outer)
+		settings_panel = GameSettingsPanel.new()
+		settings_panel.hide()
 		$Root.add_child(settings_panel)
-	for child in _settings_box.get_children():
-		child.queue_free()
-	for row: Array in SETTING_ROWS:
-		var key := String(row[0])
-		if String(row[2]).is_empty():
-			var title := Label.new()
-			title.text = "— " + key + " —"
-			title.modulate = Color(1, 1, 1, 0.6)
-			_settings_box.add_child(title)
-			continue
-		var line := VBoxContainer.new()
-		var name_label := Label.new()
-		name_label.text = String(row[1])
-		name_label.custom_minimum_size = Vector2(150, 0)
-		line.add_child(name_label)
-		var cur := int(values.get(key, 0))
-		if row[2] == "slider":
-			var spec: Array = row[3]
-			var slider := HSlider.new()
-			slider.name = "S_" + key
-			slider.min_value = float(spec[0])
-			slider.max_value = float(spec[1])
-			slider.step = float(spec[2])
-			slider.value = cur
-			slider.custom_minimum_size = Vector2(170, 24)
-			slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			var value_label := Label.new()
-			value_label.text = str(cur)
-			value_label.custom_minimum_size = Vector2(36, 0)
-			slider.value_changed.connect(func(v: float) -> void:
-				value_label.text = str(int(v))
-				setting_changed.emit(key, int(v)))
-			line.add_child(slider)
-			line.add_child(value_label)
-		else:
-			var choices := HFlowContainer.new()
-			line.add_child(choices)
-			var group := ButtonGroup.new()
-			for opt: Array in row[3]:
-				var b := Button.new()
-				b.name = "O_%s_%d" % [key, int(opt[1])]
-				b.text = String(opt[0])
-				b.custom_minimum_size.y = 44
-				b.toggle_mode = true
-				b.button_group = group
-				b.button_pressed = int(opt[1]) == cur
-				b.pressed.connect(func() -> void: setting_changed.emit(key, int(opt[1])))
-				choices.add_child(b)
-		_settings_box.add_child(line)
-	settings_panel.visible = true
-	_fit_settings()
+		settings_panel.setting_changed.connect(func(key: String, value: int) -> void: setting_changed.emit(key,value))
+		settings_panel.layout_requested.connect(show_touch_layout_editor)
+	settings_panel.open(values)
 
 
 func _fit_settings() -> void:
-	if settings_panel == null or not settings_panel.visible:
-		return
-	var view := get_viewport().get_visible_rect().size
-	settings_panel.custom_minimum_size.x = minf(650,view.x-24)
-	_settings_scroll.custom_minimum_size.y = maxf(120,minf(340,view.y-190))
-	settings_panel.size = Vector2(settings_panel.custom_minimum_size.x,0)
-	settings_panel.position = (view-settings_panel.size)*.5
+	if is_instance_valid(settings_panel): settings_panel.fit()
+
+
+func settings_saved(values: Dictionary, success: bool) -> void:
+	if is_instance_valid(settings_panel): settings_panel.saved(values,success)
 
 
 func apply_text_scale(pct: int) -> void:
@@ -1309,7 +1192,7 @@ func _build_touch_tools() -> void:
 	_touch_tools.add_theme_constant_override("separation",4)
 	_touch_tools.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for spec: Array in [["手册","Manual"],["手电","Torch"],["1","Hot1"],["2","Hot2"]]:
-		var b := Button.new()
+		var b := TouchActionButton.new()
 		b.name = spec[1]
 		b.text = spec[0]
 		b.focus_mode = Control.FOCUS_NONE
@@ -1366,6 +1249,10 @@ func show_touch_layout_editor() -> void:
 	_layout_editor.layout = _touch_layout.duplicate(true)
 	_layout_editor.percent = _touch_percent
 	$Root.add_child(_layout_editor)
+	if is_instance_valid(settings_panel):
+		settings_panel.set_process_input(false)
+		_layout_editor.tree_exited.connect(func() -> void:
+			if is_instance_valid(settings_panel): settings_panel.set_process_input(true))
 	_layout_editor.saved.connect(func(layout: Dictionary) -> void:
 		touch_layout_changed.emit(layout)
 		_layout_editor.queue_free())
@@ -1979,7 +1866,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 		if settings_panel != null and settings_panel.visible:
-			settings_panel.hide()
+			settings_panel.dismiss()
 			get_viewport().set_input_as_handled()
 			return
 		if bag_open():
@@ -2061,9 +1948,29 @@ func show_paper_time(seconds: float) -> void:
 func clear_touch() -> void:
 	stick.clear()
 	look_pad.clear()
+	for button: Node in touch_controls.find_children("*", "TouchActionButton", true, false):
+		button.cancel_touch()
 	%TouchSprint.set_pressed_no_signal(false)
 	touch_sprint.emit(false)
+	_update_sprint_label()
 	if is_instance_valid(_paper_pad): _paper_pad.clear()
+
+
+var _sprint_available := true
+
+
+func show_touch_sprint(value: bool) -> void:
+	%TouchSprint.set_pressed_no_signal(value)
+	_update_sprint_label()
+
+
+func show_sprint_available(value: bool) -> void:
+	_sprint_available = value
+	_update_sprint_label()
+
+
+func _update_sprint_label() -> void:
+	%TouchSprint.text = "奔跑：关" if not %TouchSprint.button_pressed else ("奔跑：开" if _sprint_available else "暂不能跑")
 
 
 func set_mode(mode: String) -> void:

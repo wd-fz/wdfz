@@ -1,9 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://game/presentation/ui/game_ui.gd" id="1"]
 [ext_resource type="Script" path="res://game/presentation/ui/touch_stick.gd" id="2"]
 [ext_resource type="Script" path="res://game/presentation/ui/touch_look.gd" id="3"]
 [ext_resource type="Theme" path="res://content/ui/theme.tres" id="4"]
+[ext_resource type="Script" path="res://game/presentation/ui/touch_action_button.gd" id="5"]
 
 [node name="UI" type="CanvasLayer"]
 layer = 10
@@ -297,6 +298,7 @@ offset_bottom = -20.0
 grow_horizontal = 0
 grow_vertical = 0
 text = "交互"
+script = ExtResource("5")
 
 [node name="TouchSprint" type="Button" parent="Root/TouchControls"]
 unique_name_in_owner = true
@@ -312,7 +314,8 @@ offset_bottom = -92.0
 grow_horizontal = 0
 grow_vertical = 0
 toggle_mode = true
-text = "奔跑"
+text = "奔跑：关"
+script = ExtResource("5")
 
 [node name="Toast" type="Label" parent="Root"]
 unique_name_in_owner = true

@@ -118,8 +118,11 @@ func _ready() -> void:
 	ui.touch_move.connect(player.set_touch_move)
 	ui.touch_look.connect(player.look_from_touch)
 	ui.touch_sprint.connect(player.set_touch_sprint)
+	player.touch_sprint_changed.connect(ui.show_touch_sprint)
 	ui.interact_requested.connect(player.request_interaction)
-	player.focus_changed.connect(ui.show_prompt)
+	player.focus_changed.connect(func(_text: String) -> void:
+		_hint_cooldown = 0.0
+		_refresh_interaction_prompt())
 	player.interaction_requested.connect(_interact)
 	player.free_interaction_requested.connect(_campus_interact)
 	ui.choice_selected.connect(_choice_made)
@@ -958,11 +961,36 @@ func _campus_step(delta: float) -> void:
 	if not crossing.is_empty():
 		travel(crossing["world"], crossing["pose"], true)
 	_hint_cooldown -= delta
-	if _hint_cooldown <= 0.0 and not player.has_focus():
+	_refresh_interaction_prompt()
+
+
+## One owner for the action label: posture wins over nearby desks and physical targets.
+## These priorities match _campus_interact; expensive tile hints remain throttled.
+func _refresh_interaction_prompt() -> void:
+	if session == null or not player.enabled or _dead():
+		ui.show_prompt("")
+		return
+	var rules := campus()
+	if rules == null or not rules.knows(session.world_id):
+		ui.show_prompt(player.focus_prompt())
+		return
+	if maze_flow.here():
+		ui.show_prompt(maze_flow.hint())
+		return
+	if patrol() != null and bool(patrol().hide["on"]):
+		ui.show_prompt("出来")
+		return
+	if anomaly() != null and anomaly().near_roster():
+		ui.show_prompt("那张名单")
+		return
+	if school() != null and school().seated:
+		ui.show_prompt("站起来")
+		return
+	if player.has_focus():
+		ui.show_prompt(player.focus_prompt())
+		return
+	if _hint_cooldown <= 0.0:
 		_hint_cooldown = 0.1
-		if maze_flow.here():
-			ui.show_prompt(maze_flow.hint())
-			return
 		var radio_hint := rules_dlc_flow.hint()
 		if radio_hint=="": radio_hint=knife_flow.hint()
 		if radio_hint=="": radio_hint=inception_flow.hint()
@@ -1235,6 +1263,7 @@ func _stand_up(text: String = "") -> void:
 		return
 	var stood := day_rules.stand_up()
 	player.seated = false
+	_hint_cooldown = 0.0
 	if stood.has("pose"):
 		var pose: Dictionary = stood["pose"]
 		pose["yaw"] = player.capture_pose()["yaw"]
@@ -1349,12 +1378,7 @@ func _school_step(delta: float, rules: CampusModule, advance_calendar: bool = tr
 	if watcher != null and bool(watcher.pat["permanent"]) and not frozen:
 		period += " · 持续追踪"
 	ui.show_status(day_rules.place_name(session.world_id, float(p[1])), period, day_rules.period_class(frozen), "??:??" if inception_flow.here() else ("???" if maze_flow.here() else day_rules.clock_text((bag != null and bag.has_clock()) or (talent() != null and talent().has("watch")))))
-	if hiding_now:
-		ui.show_prompt("出来")
-	elif weird_now != null and weird_now.near_roster():
-		ui.show_prompt("那张名单")
-	elif day_rules.seated and not player.has_focus():
-		ui.show_prompt("站起来")
+	ui.show_sprint_available(player.can_sprint)
 	ui.show_stamina(day_rules.stam, day_rules.stamina_max(), day_rules.tired)
 	var lit := _campus_world()
 	if lit != null:
@@ -2244,14 +2268,14 @@ func _setting_changed(key: String, value: int) -> void:
 		return
 	if key == "reset_comfort":
 		settings.reset_comfort()
-		ui.show_settings(settings.values)
 		ui.show_notice("操作与文字设置已恢复默认")
 	else:
 		settings.set_value(key, value)
 		if key == "quality":
 			ui.show_notice("画质：" + String(GameSettings.QUALITY_LABELS[settings.get_int("quality")]))
-	settings.save_file()
+	var saved := settings.save_file()
 	_apply_settings()
+	ui.settings_saved(settings.values, saved)
 
 
 ## Push every stored setting to where it takes effect (presentation and comfort only).
