@@ -117,10 +117,12 @@ func _run() -> void:
 	_test_chalk_texture()
 	_test_phantoms()
 	_test_traces()
+	_test_legacy_save()
 	_test_link_view()
 	_test_broadcast_props()
 	_test_inspection_scatter()
 	await _test_campus_app()
+	await _test_legacy_import()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
 			DirAccess.remove_absolute(_test_path + suffix)
@@ -3224,6 +3226,47 @@ func _test_link_view() -> void:
 	check(CampusPortals.link_ports(CampusData.campus()["campus_link"], CampusData.rooms(), "link1").size() == 2, "the first bridge has a port at each end")
 	check(CampusPortals.link_ports(CampusData.campus()["campus_link"], CampusData.rooms(), "teach3").is_empty(), "a room off the bridges has no neighbour to show")
 	cw.free()
+
+
+func _test_legacy_import() -> void:
+	var app: GameApp = APP.instantiate()
+	app.saves = SaveStore.new(_test_path.get_base_dir() + "/legacy-import/save.json")
+	root.size = Vector2i(1280, 720)
+	root.add_child(app)
+	await _frames()
+	var save := {"v": 1, "clockVersion": 2, "mode": "in", "room": "teach1", "x": 500.0, "y": 300.0, "ang": 1.0, "pitch": 0.1, "tsec": 800, "day": 3, "diff": "hard", "san": 61.5, "viol": 12,
+		"stam": 40, "tt": 25, "bag": ["torch", "pill"], "hot": ["torch", null], "talent": "watch"}
+	var why := app.import_legacy_save("not json")
+	check(not why.is_empty() and app.session == null, "a file that is not JSON is refused and nothing starts")
+	why = app.import_legacy_save(JSON.stringify(save))
+	await _frames(3)
+	check(why.is_empty() and app.session != null and app.school().day == 3 and absf(app.school().tsec - 800.0) < 1.0, "an old save starts a run on its day and time")
+	check(absf(app.school().san - 61.5) < 0.5 and absf(app.school().viol - 12.0) < 0.5 and app.items().bag == ["torch", "pill"] and app.talent().id == "watch" and app.story().diff == "hard", "SAN, violation, bag, talent and difficulty come over")
+	check(app.session.world_id == "teach1" and app.runscore().legacy == 1 and app.player.enabled and not app.player.seated, "it puts you where you stood and marks the run as from an old save")
+	app.queue_free()
+	await _frames()
+
+
+func _test_legacy_save() -> void:
+	var rooms := CampusData.rooms()
+	var items: Dictionary = CampusData.campus().get("items", {})
+	var keys: Array = TalentModule.KEYS
+	var good := {"v": 1, "clockVersion": 2, "mode": "in", "room": "teach1", "x": 500.0, "y": 300.0, "ang": 1.0, "pitch": 0.1, "tsec": 800, "day": 3, "diff": "hard", "san": 61.5, "viol": 12,
+		"stam": 40, "tt": 25, "bag": ["torch", "pill", "ghost_item"], "hot": ["torch", "pill"], "talent": "watch"}
+	var p := LegacySave.plan(good, rooms, items, keys)
+	check(String(p["error"]).is_empty() and p["world"] == "teach1" and p["day"] == 3 and p["diff"] == "hard" and p["talent"] == "watch" and is_equal_approx(float(p["san"]), 61.5), "a good old save is planned")
+	check(p["bag"] == ["torch", "pill"] and p["dropped"] == ["ghost_item"] and p["hot"] == ["torch", "pill"], "items this version does not have are dropped, the hotbar keeps what is in the bag")
+	check(not String(LegacySave.plan("nope", rooms, items, keys)["error"]).is_empty(), "something that is not an object is refused")
+	check(not String(LegacySave.plan({"x": 1, "y": 2, "tsec": 2000}, rooms, items, keys)["error"]).is_empty(), "a time out of range is refused")
+	var bad_room := good.duplicate()
+	bad_room["room"] = "nowhere"
+	check(not String(LegacySave.plan(bad_room, rooms, items, keys)["error"]).is_empty(), "an unknown room is refused")
+	var out := {"mode": "out", "x": 10, "y": 20, "tsec": 700, "day": 1, "san": 500, "talent": "bogus"}
+	var po := LegacySave.plan(out, rooms, items, keys)
+	check(String(po["error"]).is_empty() and po["world"] == "out" and float(po["san"]) == 100.0 and po["talent"] == "none", "numbers are clamped and an unknown talent becomes none")
+	var bad_clock := good.duplicate()
+	bad_clock["clockVersion"] = 9
+	check(not String(LegacySave.plan(bad_clock, rooms, items, keys)["error"]).is_empty(), "an unknown clock version is refused")
 
 
 func _test_traces() -> void:

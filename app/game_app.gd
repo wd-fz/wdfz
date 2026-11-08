@@ -47,6 +47,9 @@ func _ready() -> void:
 	ui.notes_requested.connect(_show_notes)
 	ui.results_requested.connect(_open_results)
 	ui.records_requested.connect(_open_records)
+	ui.legacy_import_requested.connect(func(text: String) -> void:
+		var why := import_legacy_save(text)
+		ui.show_import_result(why))
 	ui.grade_sound.connect(func(b: String) -> void: audio.play("ui.grade." + b))
 	ui.map_requested.connect(_show_map)
 	ui.notes_focus_requested.connect(_notes_focus)
@@ -398,6 +401,45 @@ func _pick_talent(difficulty: String, speed: bool = false) -> void:
 		start_new_game(difficulty, pick)
 		_play_opening()
 	ui.show_choice("%s · 选择天赋（每局一个；限制写在卡片上）" % ("梦魇" if difficulty == "hard" else "预知梦"), labels)
+
+
+## Carry what can be carried of an old Web save into a new run (app/legacy_save.gd). Returns "" or why not.
+func import_legacy_save(text: String) -> String:
+	var parsed: Variant = JSON.parse_string(text.strip_edges())
+	var p := LegacySave.plan(parsed, CampusData.rooms(), CampusData.campus().get("items", {}), TalentModule.KEYS)
+	if not String(p["error"]).is_empty():
+		return String(p["error"])
+	speedrun.disarm()
+	start_new_game(String(p["diff"]), String(p["talent"]))
+	if session == null:
+		return "没能开始新局"
+	var rules := school()
+	rules.day = int(p["day"])
+	rules.tsec = float(p["tsec"])
+	rules.pressure_clock = rules.tsec
+	rules.san = float(p["san"])
+	rules.viol = float(p["viol"])
+	rules.stam = float(p["stam"])
+	rules.tt = float(p["tt"])
+	rules.seated = false
+	var inv := items()
+	if inv != null:
+		inv.bag = (p["bag"] as Array).duplicate()
+		inv.hot = (p["hot"] as Array).duplicate()
+	if runscore() != null:
+		runscore().legacy = 1
+	var world := String(p["world"])
+	var room: Variant = campus().room(world) if world != "out" else null
+	var sc := CampusGeometry.to_scene(room, Vector2(float(p["x"]), float(p["y"])))
+	travel(world, {"position": [sc.x, 0.05, sc.y], "yaw": CampusGeometry.yaw_from_ang(float(p["ang"])), "pitch": float(p["pitch"])}, false)
+	player.seated = false
+	player.enabled = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
+	var note := "已从旧版存档继续：位置、时间、SAN、背包等带过来了；异象、路线与剧情进度从头开始。"
+	if not (p["dropped"] as Array).is_empty():
+		note += "\n这个版本里没有的物品已丢掉：" + "、".join(p["dropped"])
+	ui.show_notice(note)
+	return ""
 
 
 func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> void:

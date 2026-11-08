@@ -29,6 +29,7 @@ signal sound_toggled(on: bool)
 signal settings_requested
 signal results_requested
 signal records_requested
+signal legacy_import_requested(text: String)
 signal grade_sound(band: String)
 signal fullscreen_requested
 signal map_requested(id: String)
@@ -116,6 +117,12 @@ func _ready() -> void:
 	option_row.add_child(sound)
 	var extra_row := HBoxContainer.new()
 	option_row.add_sibling(extra_row)
+	var imp := Button.new()
+	imp.name = "ImportMenu"
+	imp.text = "导入旧存档"
+	imp.custom_minimum_size = Vector2(0, 48)
+	imp.pressed.connect(func() -> void: show_import())
+	extra_row.add_child(imp)
 	var recs := Button.new()
 	recs.name = "RecordsMenu"
 	recs.text = "通关记录"
@@ -720,6 +727,74 @@ func cut_fade(v: float) -> void:
 		$Root.add_child(_cut_fade)
 	_cut_fade.modulate.a = clampf(v, 0.0, 1.0)
 	_cut_fade.visible = v > 0.001
+
+
+var _import_panel: PanelContainer
+var _import_text: TextEdit
+var _import_msg: Label
+
+
+## 导入旧存档: paste the old save's JSON (the localStorage entry "wdfz3d"), see app/legacy_save.gd.
+func show_import() -> void:
+	if _import_panel == null:
+		_import_panel = PanelContainer.new()
+		_import_panel.name = "LegacyImport"
+		_import_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		_import_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_import_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+		var back := StyleBoxFlat.new()
+		back.bg_color = Color(0.03, 0.05, 0.07, 0.99)
+		back.set_content_margin_all(14)
+		back.set_corner_radius_all(6)
+		_import_panel.add_theme_stylebox_override("panel", back)
+		var box := VBoxContainer.new()
+		box.custom_minimum_size = Vector2(520, 0)
+		box.add_theme_constant_override("separation", 8)
+		var head := Label.new()
+		head.text = "导入旧版存档"
+		head.modulate = Color(1.0, 0.9, 0.55)
+		box.add_child(head)
+		var help := Label.new()
+		help.text = "把旧版网页存档（浏览器里键名 wdfz3d 的那段 JSON）贴在下面。位置、时间、SAN、背包会带过来；异象、路线与剧情进度从头开始；这一局记为「从旧存档继续」。"
+		help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		help.custom_minimum_size = Vector2(500, 0)
+		help.modulate = Color(1, 1, 1, 0.75)
+		box.add_child(help)
+		_import_text = TextEdit.new()
+		_import_text.name = "ImportText"
+		_import_text.custom_minimum_size = Vector2(500, 200)
+		box.add_child(_import_text)
+		_import_msg = Label.new()
+		_import_msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_import_msg.custom_minimum_size = Vector2(500, 0)
+		_import_msg.modulate = Color(0.95, 0.6, 0.5)
+		box.add_child(_import_msg)
+		var row := HBoxContainer.new()
+		var go := Button.new()
+		go.name = "ImportGo"
+		go.text = "导入并开始"
+		go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		go.pressed.connect(func() -> void: legacy_import_requested.emit(_import_text.text))
+		row.add_child(go)
+		var close := Button.new()
+		close.name = "ImportClose"
+		close.text = "关闭"
+		close.pressed.connect(func() -> void: _import_panel.visible = false)
+		row.add_child(close)
+		box.add_child(row)
+		_import_panel.add_child(box)
+		$Root.add_child(_import_panel)
+	_import_msg.text = ""
+	_import_panel.visible = true
+
+
+func show_import_result(error: String) -> void:
+	if _import_panel == null:
+		return
+	if error.is_empty():
+		_import_panel.visible = false
+	else:
+		_import_msg.text = "没有导入：" + error
 
 
 var _cut_flash: ColorRect
