@@ -7,9 +7,8 @@ extends FeatureModule
 ##
 ## Context in, events out: the app calls `set_context()` with the player's state before `tick()` and
 ## hiding calls, then drains `take_events()` (kill / violation / remove_item / notice / toast).
-## Not ported yet (marked where they plug in): the phone network wireless signal source
-## (`reveal_wireless` is ready), the void maze gateway, talents (hearing range), the car chase,
-## the knife / camouflage hooks, the broadcast region (`zone_active`).
+## Phone reports, hearing, driving, capture hooks and broadcast zones connect through the app.
+## The void-maze gateway retains its original elevator and uses height-aware navigation.
 
 const STATE_VERSION := 1
 const ROUTE_VERSION := 3
@@ -68,7 +67,7 @@ static func fresh_pat() -> Dictionary:
 		"memoryVisit": null, "transition": null, "lock": 0.0, "locked": false, "cited": false, "lost": 0.0, "lastSeen": null,
 		"search": 0.0, "queue": [], "investigation": null, "wirelessSignal": null, "regionSeq": 0, "lastRegion": null,
 		"respawn": 0.0, "safety": 3.6, "warning": 0.0, "near": false, "blinkCD": TRAVEL_CD, "afterBlink": 0.22, "step": 0.0,
-		"stuck": 0, "diagnostic": null, "doorRush": null, "absence": ""}
+		"stuck": 0, "diagnostic": null, "mazeGateway":null,"doorRush": null, "absence": ""}
 
 
 func reset() -> void:
@@ -106,6 +105,9 @@ func validate(data: Dictionary) -> String:
 			return "巡察标志无效：%s" % key
 	if not h.get("on") is bool or not SaveSchema.is_integer(h.get("c"), 0, 1000) or not SaveSchema.is_integer(h.get("r"), 0, 1000):
 		return "躲藏状态无效"
+	var gate: Variant=p.get("mazeGateway")
+	if gate!=null and (not gate is Dictionary or not gate.get("host") in ["teach","lab"] or not SaveSchema.is_integer(gate.get("origin"),1,5)):
+		return "特殊空间入口无效"
 	return ""
 
 
@@ -133,6 +135,10 @@ func restore(data: Dictionary) -> void:
 		_put(nav.nodes["admin1:stairs"])
 		pat["transition"] = null
 		pat["safety"] = 3.6
+	if pat["mazeGateway"]!=null: pat["mazeGateway"]["origin"]=int(pat["mazeGateway"]["origin"])
+	if pat["room"]=="lift_dream" and pat["transition"]==null and nav.maze!=null and not nav.maze.supported(position()):
+		_put(spawn())
+		pat["safety"]=3.6
 	var h: Dictionary = data["hide"]
 	hide = {"on": bool(h["on"]), "c": int(h["c"]), "r": int(h["r"]), "seen": bool(h.get("seen", false)), "t": 0.0, "near": bool(h.get("near", false))}
 	_frame_path = {}
@@ -143,7 +149,7 @@ func restore(data: Dictionary) -> void:
 
 
 func _navigable(scene: String) -> bool:
-	return nav != null and (nav.is_stairwell(scene) or not nav.grid(scene).is_empty())
+	return nav != null and ((scene=="lift_dream" and nav.maze!=null) or nav.is_stairwell(scene) or not nav.grid(scene).is_empty())
 
 
 func set_context(ctx: Dictionary) -> void:
@@ -522,12 +528,31 @@ func _patrol_route(a: Dictionary, b: Dictionary) -> Dictionary:
 	if edge.is_empty():
 		return {}
 	if from["scene"] == b["scene"]:
-		return {"points": nav.path(a, b)} if a["scene"] == b["scene"] else nav.route(a, from)
+		return {"points": nav.path(a, b)} if a["scene"] == b["scene"] else _maze_route(a, from)
 	if a["scene"] != from["scene"]:
-		return nav.route(a, from)
+		return _maze_route(a, from)
 	if Vector2(float(a["x"]) - float(from["x"]), float(a["y"]) - float(from["y"])).length() > 3.0:
 		return {"points": nav.path(a, from)}
 	return {"transition": {"from": a.duplicate(), "to": b.duplicate(), "kind": edge["kind"], "remaining": float(edge["weight"]), "total": float(edge["weight"])}}
+
+
+func _maze_route(a: Dictionary, b: Dictionary) -> Dictionary:
+	if nav.maze==null or (a["scene"]!="lift_dream" and b["scene"]!="lift_dream"): return nav.route(a,b)
+	var gate: Dictionary=pat["mazeGateway"] if pat["mazeGateway"]!=null else {"host":"teach","origin":1}
+	var floor_id: String=gate["host"]+str(int(gate["origin"]))
+	var w:=CampusGeometry.tile_center(_rooms[floor_id],20 if gate["host"]=="teach" else 10,20 if gate["host"]=="teach" else 18)
+	var landing:=PatrolNav.point(floor_id,w.x,w.y)
+	if b["scene"]=="lift_dream" and a["scene"]!="lift_dream":
+		if a["scene"]==floor_id and Vector2(a["x"]-landing["x"],a["y"]-landing["y"]).length()<6:
+			return {"transition":{"from":a.duplicate(),"to":nav.maze.point(0,0),"remaining":2.0,"total":2.0,"kind":"special"}}
+		return nav.route(a,landing)
+	if a["scene"]=="lift_dream" and b["scene"]!="lift_dream":
+		var exit: Dictionary=nav.maze.shape.cfg["exits"][0]
+		var q:=nav.maze.point(exit["x"],exit["z"],exit["h"])
+		if Vector2(a["x"]-q["x"],a["y"]-q["y"]).length()<7 and absf(a.get("fy",0)-q["fy"])<1:
+			return {"transition":{"from":a.duplicate(),"to":landing,"remaining":2.0,"total":2.0,"kind":"special"}}
+		return {"points":nav.path(a,q)}
+	return nav.route(a,b)
 
 
 func _prepare_path(goal: Dictionary) -> bool:
@@ -535,7 +560,7 @@ func _prepare_path(goal: Dictionary) -> bool:
 	var key := "%s:%d:%d:%d" % [goal["scene"], roundi(float(goal["x"]) / 3.0), roundi(float(goal["y"]) / 3.0), roundi(float(goal.get("fy", 0.0)) * 10.0)]
 	if _frame_path.get("key") == key and not (_frame_path.get("points", []) as Array).is_empty():
 		return true
-	var route_result := _patrol_route(a, goal) if pat["behavior"] == "patrol" else nav.route(a, goal)
+	var route_result := _patrol_route(a, goal) if pat["behavior"] == "patrol" else _maze_route(a, goal)
 	var pts: Variant = route_result.get("points") if not route_result.is_empty() else null
 	if pts != null and (pts as Array).is_empty():
 		pts = null
@@ -773,6 +798,8 @@ func observe_locker(c: int, r: int) -> void:
 
 ## Leaving a scene while locked on and seen: only the far end of the exit becomes known.
 func left_scene(from: String, to: String) -> void:
+	if to=="lift_dream" and elevator!=null and not elevator.ride.is_empty():
+		pat["mazeGateway"]={"host":elevator.ride["host"],"origin":int(elevator.ride["origin"])}
 	if pat["locked"] and not pat["permanent"] and sees() and from != to and pat["room"] == from:
 		var p := nav.observed_exit(from, to, player_point())
 		if not p.is_empty():

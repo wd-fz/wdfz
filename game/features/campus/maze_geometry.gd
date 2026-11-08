@@ -11,6 +11,7 @@ var _ny: int
 var _nz: int
 var _origin: Vector3
 var _boxes: Array[AABB] = []
+var _walk_cells: Dictionary = {}
 
 
 func _init(data: Dictionary) -> void:
@@ -26,6 +27,14 @@ func _init(data: Dictionary) -> void:
 		_fill(volume["b"], 0)
 	for volume: Dictionary in data["solid"]:
 		_fill(volume["b"], 1)
+	# Preserve surface order, but query only nearby ramps/platforms. Patrol A* asks
+	# thousands of identical local geometry questions; scanning all 20 surfaces stalls a frame.
+	for p: Dictionary in walks:
+		for z in range(floori(p["z0"]-1),floori(p["z1"]+1)+1):
+			for x in range(floori(p["x0"]-1),floori(p["x1"]+1)+1):
+				var key:=Vector2i(x,z)
+				if not _walk_cells.has(key): _walk_cells[key]=[]
+				_walk_cells[key].append(p)
 
 
 func _index(x: int, y: int, z: int) -> int:
@@ -66,7 +75,7 @@ func ground_at(x: float, z: float, max_y: float) -> float:
 			if _voxels[_index(ix, iy, iz)] == 1:
 				best = _origin.y + iy + 1.0
 				break
-	for p: Dictionary in walks:
+	for p: Dictionary in _walk_cells.get(Vector2i(floori(x),floori(z)),[]):
 		var h := surface_height(p, x, z)
 		if h <= max_y + 1e-9 and h > best:
 			best = h
@@ -96,7 +105,7 @@ func depth_at(x: float, z: float, radius: float, feet_y: float) -> float:
 					total += _rect_depth(x, z, radius, x0, z0, x0 + 1.0, z0 + 1.0)
 				elif x >= x0 and x < x0 + 1.0 and z >= z0 and z < z0 + 1.0:
 					total += 1.0
-	for p: Dictionary in walks:
+	for p: Dictionary in (walks if radius>1 else _walk_cells.get(Vector2i(floori(x),floori(z)),[])):
 		var x0 := float(p["x0"])
 		var x1 := float(p["x1"])
 		var z0 := float(p["z0"])

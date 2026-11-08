@@ -42,6 +42,13 @@ func same_json(a: Variant, b: Variant) -> bool:
 
 
 func _run() -> void:
+	var maze_patrol:=preload("res://tests/suites/maze_patrol.gd").new(self)
+	print("CASE: maze_patrol.test_reference")
+	maze_patrol.test_reference()
+	print("CASE: maze_patrol.test_save")
+	maze_patrol.test_save()
+	print("CASE: maze_patrol.test_app")
+	await maze_patrol.test_app()
 	var inception:=preload("res://tests/suites/inception.gd").new(self)
 	print("CASE: inception.test_reference")
 	inception.test_reference()

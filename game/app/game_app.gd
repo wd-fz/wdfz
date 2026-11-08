@@ -4954,6 +4954,7 @@ var _hands: HandsView
 
 func _process(delta: float) -> void:
 	if session != null and player != null and player.camera != null:
+		if patrol()!=null and patrol().nav.maze!=null: patrol().nav.maze.warm_step()
 		if _hands == null or not is_instance_valid(_hands):
 			_hands = HandsView.new()
 			_hands.name = "Hands"

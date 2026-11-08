@@ -118,7 +118,7 @@ static func patrol_data() -> Dictionary:
 
 static func patrol_nav() -> PatrolNav:
 	if _patrol_nav == null:
-		_patrol_nav = PatrolNav.new(patrol_data(), rooms(), campus())
+		_patrol_nav = PatrolNav.new(patrol_data(), rooms(), campus(), maze_geometry())
 	return _patrol_nav
 
 

@@ -6,7 +6,7 @@ extends RefCounted
 ## Points are Dictionaries {scene, x, y, fy}: old world units, fy = foot height in metres.
 ## Paths on the grids use AStarGrid2D (diagonals only when both neighbours are free — the old
 ## "no corner cutting" rule); ties between equal-cost routes can differ from the JavaScript heap.
-## Not ported: the void maze scene (lift_dream) — its paths are reported unreachable.
+## The void maze uses its own height-aware voxel/ramp navigation.
 
 const U2M := CampusGeometry.U2M
 const SNAP_RINGS := 12
@@ -25,12 +25,15 @@ var _adj: Dictionary = {}
 var _grids: Dictionary = {}
 var _dijkstra_cache: Dictionary = {}
 var _stair_cfg: Dictionary = {}
+var maze: MazePatrolNav
 
 
-func _init(data: Dictionary = {}, rooms: Dictionary = {}, campus: Dictionary = {}) -> void:
+func _init(data: Dictionary = {}, rooms: Dictionary = {}, campus: Dictionary = {}, maze_shape: MazeGeometry = null) -> void:
 	_geometry = data.get("geometry", {})
 	_rooms = rooms
 	_campus = campus
+	if maze_shape!=null and rooms.has("lift_dream"):
+		maze=MazePatrolNav.new(maze_shape,rooms["lift_dream"])
 	var consts: Dictionary = data.get("consts", {})
 	speed = float(consts.get("speed", 16))
 	chase = float(consts.get("chase", 31))
@@ -324,7 +327,7 @@ func path(a: Dictionary, b: Dictionary) -> Array:
 	if is_stairwell(id):
 		return stair_path(a, b)
 	if id == "lift_dream":
-		return []
+		return maze.path(a,b) if maze!=null else []
 	if id == "bell1":
 		return bell_path(a, b)
 	return planar(a, b)
@@ -482,6 +485,8 @@ func los(a: Dictionary, b: Dictionary) -> bool:
 			for o: Array in _geometry["out"]["occluders"]:
 				if x > float(o[0]) and x < float(o[2]) and y > float(o[1]) and y < float(o[3]):
 					return false
+		elif id=="lift_dream" and maze!=null:
+			if maze.occluded(x,y,float(a.get("fy",0))): return false
 		elif room != null:
 			var tile := CampusGeometry.tile_at(room, Vector2(x, y))
 			if tile == "#":
