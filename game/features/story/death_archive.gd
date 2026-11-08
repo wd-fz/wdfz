@@ -39,6 +39,7 @@ const ENDS := [["international", "《外国语学生》", "队尾的人回头看
 const SECRET_DEATHS := [
 	["void_lost", "迷失", "白墙上的门一扇接一扇亮起来，又一扇接一扇暗下去。我想不起来时的那一扇。"],
 	["void_fall", "下面的我", "那块画着箭头的方块第三次从面前飞过去。下面站着的人，抬起了手电。"]]
+const SECRET_ENDS := [["beast","《先辈》","隔间的门缝里漏出光。穿旧校服的人看了你一眼就往外跑，你跟了出去，学校有了颜色。"]]
 
 
 static func rows(record: Dictionary, ends: Dictionary) -> Array[Dictionary]:
@@ -58,6 +59,10 @@ static func rows(record: Dictionary, ends: Dictionary) -> Array[Dictionary]:
 		var seen := ends.has(e[0])
 		out.append({"no": no, "name": e[1], "on": seen, "count": 1 if seen else 0, "memo": e[2]})
 		no += 1
+	for e: Array in SECRET_ENDS:
+		if ends.has(e[0]):
+			out.append({"no":no,"name":e[1],"on":true,"count":1,"memo":e[2]})
+			no += 1
 	return out
 
 

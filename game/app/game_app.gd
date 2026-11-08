@@ -1007,6 +1007,10 @@ func _apply_result(result: Dictionary) -> void:
 		_open_phone()
 		return
 	if result.has("facility") and facilities() != null:
+		if String(result["facility"][0]) in ["B","G"] and routes().open_stall(session.world_id):
+			facilities().spots["stall"] = true
+			_apply_route_events(routes())
+			return
 		var fac := facilities()
 		var use_here := func() -> void:
 			fac.set_context(_facility_context())
@@ -1374,13 +1378,17 @@ func _use_item(id: String) -> void:
 
 func _drop_item(id: String) -> void:
 	var bag := items()
-	if bag == null or story().dead or not bag.drop(id):
+	if bag == null or _dead() or not bag.drop(id):
 		return
 	if id in ["coil", "lens", "vial"] and facilities() != null:
 		facilities().flags[id] = false     # the unique portal materials can be taken again where they were found
 	for line: String in bag.take_notices():
 		ui.show_notice(line)
 	ui.show_bag(_bag_entries())
+	var p: Array = player.capture_pose()["position"]
+	var room: Variant = campus().room(session.world_id)
+	if routes().offer_item(room, CampusGeometry.to_world(room,p[0],p[2]),school().tsec,school().day):
+		_apply_route_events(routes())
 
 
 func _set_hot(index: int, id: String) -> void:
@@ -3915,6 +3923,17 @@ func _route_hint(route: String) -> void:
 		else:
 			r.use_trash("trash1", school().day)
 			_apply_route_events(r)
+	elif route == "beast":
+		var room: Variant = campus().room(session.world_id)
+		var p: Array = player.capture_pose()["position"]
+		if session.world_id != "teach1" or not RoutesModule.in_stall(room,CampusGeometry.to_world(room,p[0],p[2])):
+			ui.show_notice("我：得在教学楼一楼的厕所里，第三个隔间门口。")
+		elif r.open_stall(session.world_id):
+			facilities().spots["stall"] = true
+			_apply_route_events(r)
+		else:
+			facilities()._stall(session.world_id)
+			_apply_facility_events()
 
 
 # ---- the phone, the network and 《网安仙人》 (features/phone) ----
@@ -4408,6 +4427,8 @@ func _routes_step(delta: float) -> void:
 func _apply_route_events(route: RoutesModule) -> void:
 	for e: Dictionary in route.take_events():
 		match e["kind"]:
+			"save":
+				save_game(true)
 			"fact_face":
 				fact({"kind": "face", "correct": bool(e["correct"])})
 			"record":

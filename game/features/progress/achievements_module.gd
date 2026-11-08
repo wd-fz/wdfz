@@ -4,20 +4,22 @@ extends FeatureModule
 ## domain/achievement-rules.js + modules/achievements). Record only, no bonuses.
 ## Ported here: the public entries whose facts the ported systems can produce. Entries that need
 ## systems not yet in Godot (exams, garage, paper planes, the other routes, talents, the
-## archive, speedrun, ...) are absent, not locked. Hidden entries are not part of this public table
-## (see CLAUDE.md); the achievement method text stays internal, the player sees only the name and,
+## archive, speedrun, ...) are added with those systems. Undiscovered hidden entries
+## are omitted from the player-facing list; the player sees only the name and,
 ## once unlocked, a memory line.
 ## Run facts (rooms walked, inspections, wrong quiz answers, rescues) are saved with the session;
 ## the cross-run profile (unlocked, collected sets) is stored by the app in a side file.
 
 const STATE_VERSION := 1
-const TIERS := {"n": {"name": "普通", "pts": 10}, "e": {"name": "精英", "pts": 40}, "p": {"name": "史诗", "pts": 100}}
+const TIERS := {"n": {"name": "普通", "pts": 10}, "e": {"name": "精英", "pts": 40}, "p": {"name": "史诗", "pts": 100}, "h":{"name":"隐藏","pts":60}}
 const PUBLIC_ENDS := ["car", "face", "portal", "cyber", "dismissal"]
 const EXPLORE := ["teach1", "teach2", "teach3", "teach4", "teach5", "teach6", "admin1", "admin2", "admin3", "admin4", "admin5",
 	"lab1", "lab2", "lab3", "lab4", "lab5", "canteen1", "garage1", "bell1", "guard1", "gear1", "trash1"]
 const EXPLORE_ANY := [["dorm1", "dorm2", "dorm3"], ["dorm4", "dorm5", "dorm6"]]
 ## id -> [tier, name, memory]
 const LIST := {
+	"h.beast":["h","《先辈》","穿旧校服的人回头看了我一眼。"],
+	"h.beast_run":["h","追着旧校服","我追着那个背影，一路没有停。"],
 	"n.day2": ["n", "熬过第一天", "熄灯，换日。日历往后翻了一页。"],
 	"n.snake": ["n", "一口一口", "屏幕上那条蛇越来越长。机房里只有我这一台亮着。"],
 	"n.anomaly": ["n", "看见了", "从那一刻起，我知道这所学校不对劲。"],
@@ -172,6 +174,8 @@ func entries() -> Array[Dictionary]:
 	for id: String in LIST:
 		var row: Array = LIST[id]
 		var got := unlocked.has(id)
+		if row[0] == "h" and not got:
+			continue
 		var e := {"id": id, "tier": TIERS[row[0]]["name"], "name": row[1], "unlocked": got, "memo": row[2] if got else ""}
 		var prog := progress(id)
 		if not prog.is_empty():
@@ -279,6 +283,10 @@ func _test(id: String, f: Dictionary) -> bool:
 			return kind == "inspection" and bool(f["compliant"])
 		"n.wake":
 			return kind == "wake"
+		"h.beast":
+			return kind == "ending" and f.get("id") == "beast"
+		"h.beast_run":
+			return kind == "speedrun" and f.get("status") == "finished" and f.get("route") == "beast"
 		"n.saved":
 			return kind == "protect"
 		"n.torch":

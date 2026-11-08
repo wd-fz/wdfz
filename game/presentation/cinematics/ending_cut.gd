@@ -25,7 +25,7 @@ extends Node
 
 signal finished(skipped: bool)
 
-const DEFS := {"face": {"dur": 10.0, "outdoor": true}, "international": {"dur": 20.0, "outdoor": false}, "dismissal": {"dur": 18.0, "outdoor": false}, "portal": {"dur": 10.0, "outdoor": false}, "cyber": {"dur": 16.0, "outdoor": false}, "car": {"dur": 10.0, "outdoor": false}}
+const DEFS := {"beast":{"dur":9.0,"outdoor":false}, "face": {"dur": 10.0, "outdoor": true}, "international": {"dur": 20.0, "outdoor": false}, "dismissal": {"dur": 18.0, "outdoor": false}, "portal": {"dur": 10.0, "outdoor": false}, "cyber": {"dur": 16.0, "outdoor": false}, "car": {"dur": 10.0, "outdoor": false}}
 const STAGED := ["international", "dismissal", "portal", "cyber", "car"]
 const COAT := [Color("#3a4a6a"), Color("#7a5a3a"), Color("#5a6a4a"), Color("#8a6a6a")]
 const SC := 2.0
@@ -92,6 +92,7 @@ var _log_n := -1
 var _arch_n := -1
 var _door: MeshInstance3D
 var _flash: ColorRect
+var _beast: BeastScene
 
 
 static func has(id: String) -> bool:
@@ -204,6 +205,13 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	cam.far = player.camera.far
 	_root.add_child(cam)
 	cam.current = true
+	if id == "beast":
+		_beast = BeastScene.new()
+		_root.add_child(_beast)
+		var environment: Environment = world.lighting.env if world is CampusWorld else null
+		_beast.begin(CampusData.layout("teach1"),environment)
+		_apply(0.0)
+		return
 	if id == "car":
 		snd("scene.engine")
 		if _car_live:
@@ -277,6 +285,10 @@ func _look(from: Vector3, to: Vector3) -> void:
 
 
 func _apply(kk: float) -> void:
+	if kind == "beast":
+		var state := _beast.apply(kk,cam,_player.view_motion.shake_enabled)
+		_ui.cut_fade(state["fade"])
+		return
 	if kind == "international":
 		_apply_intl(kk)
 		return
@@ -357,6 +369,8 @@ func _finish(skipped: bool, notify: bool) -> void:
 	if not on:
 		return
 	on = false
+	if is_instance_valid(_beast):
+		_beast.cancel()
 	if is_instance_valid(_ui):
 		_ui.cut_mode(false)
 		_ui.cut_caption("")

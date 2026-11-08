@@ -5,7 +5,7 @@ extends FeatureModule
 ## WhitelistSync.commit, story.js FaceChallenge), the trash-bin death, the three gates' lines, and
 ## story.js ENDINGS / triggerEnding. Ported routes so far: 《白名单》. The other public routes
 ## (the car, the portal, 《网安仙人》, 《放学》) keep their cards here and arrive with their systems.
-## Hidden endings are not part of this public table.
+## Undiscovered routes are kept out of player-facing lists until reached.
 
 const STATE_VERSION := 1
 const FACE_WRONG_SAN := 4.0
@@ -37,6 +37,7 @@ const EXPLANATIONS := [
 ]
 ## story.js ENDINGS (public ones): title, true ending, lines.
 const ENDINGS := {
+	"beast": {"t":"《先 辈》", "secret":true, "l":["门是被从外面撞开的。","你看清了那个背影——穿着很多年前的校服，一直在往外跑。","你跟着他跑了出去。","整座学校，第一次有了颜色。"]},
 	"dismissal": {"t": "《放学》", "true": true, "l": ["通知稿最后一句，从学校每一只喇叭里同时响起。", "长铃响着，同学们收好书包，从北门走了出去。", "登记簿翻到新的一页：放学 · 全体。", "你回头时，教学楼的灯一层一层熄了。", "明天见。"]},
 	"cyber": {"t": "《网安仙人》", "true": true, "l": ["服务器接受了最后一条指令。名单、门禁和巡察停止运行。", "AnthroPrank AI（安抄派智能）的校园试点终止了。更早的纸质档案和断链后的回执，仍没有答案。", "您未能完全理解里世界"]},
 	"car": {"t": "《闸 门》", "true": true, "l": ["你踩下油门的时候，雨刷自己动了起来。", "后视镜里，教学楼的窗户一扇一扇地暗下去，像有人在挨个关灯。", "开出校门很远，你才敢看一眼副驾。", "那里放着一张学生证。照片上的人，你终于认得了。"]},
@@ -53,6 +54,7 @@ func wrong_answers() -> int:
 ## The programming-club talent: the first wrong answer costs nothing (Talent.faceRemedy).
 var face_remedy: Callable
 var hacked := false
+var beast_drop := false
 var data_synced := false
 var data_source := ""
 var face_quiz: Dictionary = {}
@@ -79,6 +81,7 @@ func state_version() -> int:
 
 
 func reset() -> void:
+	beast_drop = false
 	hacked = false
 	data_synced = false
 	data_source = ""
@@ -96,11 +99,13 @@ func set_seed(value: int) -> void:
 
 
 func capture() -> Dictionary:
-	return {"hacked": hacked, "data": data_synced, "data_source": data_source, "face_quiz": face_quiz.duplicate(true), "clues": clues.duplicate(),
+	return {"hacked": hacked, "beast_drop": beast_drop, "data": data_synced, "data_source": data_source, "face_quiz": face_quiz.duplicate(true), "clues": clues.duplicate(),
 		"ending": ending, "delayed": _delayed.duplicate(true), "rng_seed": str(_rng.seed), "rng_state": str(_rng.state)}
 
 
 func validate(data: Dictionary) -> String:
+	if not data.get("beast_drop",false) is bool:
+		return "隔间进度无效"
 	if not data.get("hacked") is bool or not data.get("data") is bool:
 		return "路线状态无效"
 	if data["data"] and not data["hacked"]:
@@ -123,6 +128,7 @@ func validate(data: Dictionary) -> String:
 
 
 func restore(data: Dictionary) -> void:
+	beast_drop = bool(data.get("beast_drop",false))
 	hacked = bool(data["hacked"])
 	data_synced = bool(data["data"])
 	data_source = String(data.get("data_source", ""))
@@ -305,6 +311,12 @@ func choose(index: int, diff: String) -> void:
 	if pending.is_empty() or index < 0:
 		return
 	match pending["handler"]:
+		"beast":
+			if index == 0:
+				ending = "beast"
+				_emit("ending", {"id":"beast"})
+			else:
+				_say("我：门后没有再催促。")
 		"face_pass":
 			if index == 0:
 				ending = "face"
@@ -334,6 +346,35 @@ func choose(index: int, diff: String) -> void:
 
 
 # ---- the trash bin (story.js tryTrashRoute) ----
+
+## items.js dropSelected / inBeastWindow: the successful inventory removal must
+## happen first. The one-second school-clock window is half a real second.
+func offer_item(room: Variant, w: Vector2, tsec: float, day: int) -> bool:
+	if room == null or room["id"] != "teach1" or beast_drop or tsec < 705.0+14.0/60.0 or tsec >= 705.0+15.0/60.0:
+		return false
+	if not in_stall(room,w):
+		return false
+	beast_drop = true
+	_clue("beast",day)
+	_say('我：东西刚落地，就被地砖缝里的什么接住了。很轻的一声："嗯。" 第三个隔间的门锁，自己弹开了。')
+	_emit("save")
+	return true
+
+
+static func in_stall(room: Variant, w: Vector2) -> bool:
+	if room == null:
+		return false
+	var col := floori((w.x-float(room["ox"]))/float(room["tw"]))
+	var row := floori((w.y-float(room["oy"]))/float(room["th"]))
+	return CampusGeometry.tile_at(room,w) in ["B","G"] or (room.get("host")=="teach" and col>=58 and col<=61 and row>=16 and row<=19)
+
+
+func open_stall(scene: String) -> bool:
+	if scene != "teach1" or not beast_drop:
+		return false
+	_pending = {"handler":"beast"}
+	_emit("choice", {"text":"门后传来一个声音：「你愿意跟我一起走吗？」", "labels":["跟上","先等等"]})
+	return true
 
 func use_trash(scene: String, day: int) -> void:
 	if scene != "trash1":

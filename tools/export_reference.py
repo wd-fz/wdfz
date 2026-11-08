@@ -28,6 +28,7 @@ def main():
     parser.add_argument("--output", type=Path, default=ROOT / "tests/fixtures/web-reference.json.gz")
     parser.add_argument("--maze-only", action="store_true", help="capture the height-dependent maze fixture instead")
     parser.add_argument("--save-only", action="store_true", help="capture original save/restore scenarios instead")
+    parser.add_argument("--story-only", action="store_true", help="capture original route triggers and cinematic paths")
     args = parser.parse_args()
     source = args.source.resolve()
     tree = subprocess.check_output(["git", "rev-parse", "HEAD:game3d"], cwd=source, text=True).strip()
@@ -47,13 +48,14 @@ def main():
             page.add_init_script("localStorage.setItem('wdfz_pro','1');localStorage.setItem('zw3d_set',JSON.stringify({q:0,amb:0,vol:0,renderer:'webgl',rv:1}));")
             page.goto(f"http://127.0.0.1:{server.server_port}/")
             page.wait_for_function("Engine.ready() && Assets.ready(Assets.want())", timeout=180000)
-            if args.save_only:
-                result = page.evaluate((ROOT / "tools/reference_saves.js").read_text())
+            if args.save_only or args.story_only:
+                stem = "routes" if args.story_only else "saves"
+                result = page.evaluate((ROOT / f"tools/reference_{stem}.js").read_text())
                 result["game3d_tree"] = tree
-                target = ROOT / "tests/fixtures/save-reference.json.gz" if args.output == ROOT / "tests/fixtures/web-reference.json.gz" else args.output
+                target = ROOT / f"tests/fixtures/{'routes' if args.story_only else 'save'}-reference.json.gz" if args.output == ROOT / "tests/fixtures/web-reference.json.gz" else args.output
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(gzip.compress((json.dumps(result, ensure_ascii=False, separators=(",", ":")) + "\n").encode(), mtime=0))
-                print(f"{len(result['cases'])} original save/restore scenarios → {target}")
+                print(f"Original {stem} scenarios → {target}")
                 browser.close()
                 return
             if args.maze_only:

@@ -52,9 +52,9 @@ func _test_achievements() -> void:
 	check(again.unlocked.size() == ach.unlocked.size() and again.sets["lethal"].size() == 4, "the profile survives JSON")
 	again.load_profile({"unlocked": {"h.secret": true, "n.day2": true}})
 	check(again.unlocked.size() == 1 and again.unlocked.has("n.day2"), "unknown or non-public ids in a profile are dropped")
-	check(ach.points() > 0 and not AchievementsModule.LIST.keys().any(func(k: String) -> bool: return k.begins_with("h.")), "the points count and the public table has no hidden entries")
+	check(ach.points() > 0 and not ach.entries().any(func(r: Dictionary) -> bool: return String(r["id"]).begins_with("h.")), "undiscovered hidden achievements do not appear in the player list")
 	var rows := ach.entries()
-	check(rows.size() == AchievementsModule.LIST.size() and rows.filter(func(r: Dictionary) -> bool: return not r["unlocked"] and r["memo"] != "").is_empty(), "locked entries show no memory line")
+	check(rows.size() == AchievementsModule.LIST.keys().filter(func(k: String) -> bool: return not k.begins_with("h.")).size() and rows.filter(func(r: Dictionary) -> bool: return not r["unlocked"] and r["memo"] != "").is_empty(), "locked public entries show no memory line")
 
 
 func _test_speedrun_rules() -> void:

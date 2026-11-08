@@ -62,7 +62,7 @@ func convert(plan: Dictionary, defaults: Dictionary, rooms: Dictionary, campus: 
 			fac["flags"][pair[1]] = rt[pair[0]]
 	_copy(fac["portal"], rt, {"portalDiary":"diary", "portalBlueprints":"blueprints", "portalWork":"work", "portalSketch":"sketch", "portalOpen":"open", "portalReturn":"ret"})
 	var route := _module(data, "story.routes")
-	_copy(route, rt, {"hacked":"hacked", "data":"data", "dataSource":"data_source", "faceQuiz":"face_quiz"})
+	_copy(route, rt, {"hacked":"hacked", "beastDrop":"beast_drop", "data":"data", "dataSource":"data_source", "faceQuiz":"face_quiz"})
 	_copy(route, s, {"clues":"clues"})
 	var garage := _module(data, "garage.world")
 	_copy(garage, s, {"roam":"roam"})

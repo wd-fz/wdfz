@@ -5,10 +5,10 @@ extends RefCounted
 ## → finished / failed / abandoned. The clock keeps running through pauses, the bag and cutscenes;
 ## the larger of the monotonic and the wall clock is used. Records: the last 20 runs and the
 ## personal best per rules version · difficulty · route, in a side file next to the save. Speedruns
-## do not write the normal save slot. Hidden routes are not part of this public table.
+## do not write the normal save slot. Hidden routes appear in the table only after a record exists.
 
 const RULES := 6
-const ROUTES := {"dismissal": "《放学》", "international": "《外国语学生》", "cyber": "《网安仙人》", "car": "《闸门》", "face": "《白名单》", "portal": "《门》"}
+const ROUTES := {"dismissal": "《放学》", "international": "《外国语学生》", "cyber": "《网安仙人》", "car": "《闸门》", "face": "《白名单》", "portal": "《门》", "beast":"《先辈》"}
 const DIFF_NAME := {"easy": "预知梦", "hard": "梦魇"}
 
 var run: Dictionary = {}
@@ -97,6 +97,8 @@ static func rows(record: Dictionary) -> Array:
 	for diff: String in ["easy", "hard"]:
 		for route: String in ROUTES:
 			var b: Variant = (record.get("best", {}) as Dictionary).get(key(diff, route))
+			if route == "beast" and b == null:
+				continue
 			out.append({"text": "%s · %s　%s" % [DIFF_NAME[diff], ROUTES[route], fmt(int(b["ms"])) if b != null else "—"], "on": b != null, "memo": ""})
 	for r: Dictionary in record.get("recent", []):
 		var what: String = {"finished": "完成", "failed": "失败", "abandoned": "放弃"}.get(String(r["status"]), String(r["status"]))

@@ -654,10 +654,10 @@ func spot_tick() -> void:
 			spots[id] = true
 
 
-## story.js IDEAS (the public ones): escape ideas unlocked by the places the player has marked.
+## story.js IDEAS: escape ideas unlocked by the places the player has marked.
 const IDEAS := [["key", "拿那串车钥匙", "guard", "car"], ["car", "开车走", "garage", "car"], ["white", "走闸机白名单", "data", "face"],
 	["bin", "钻进第三个垃圾桶", "trash", "trash"], ["front", "从正门走", "front", "trap_out"], ["climb", "翻墙", "climb", "trap_wall"],
-	["beg", "去东围墙等一个路过的人", "wall", "trap_beg"], ["portal", "在物理实验室造一扇门", "portal", "portal"]]
+	["beg", "去东围墙等一个路过的人", "wall", "trap_beg"], ["beast","把东西扔进第三个隔间","stall","beast"], ["portal", "在物理实验室造一扇门", "portal", "portal"]]
 
 
 func ideas() -> Array:
@@ -710,7 +710,7 @@ func _choose_idea(id: String) -> void:
 					_say("我：得先下到车库去。")
 				else:
 					_say("我：牌号对得上的那两辆，油表不是零。")
-			"face", "trash":
+			"face", "trash", "beast":
 				_emit("route_hint", {"route": route})
 			"portal":
 				_say("我：%s" % ("门还在物理实验室的实验台前面。" if bool(portal["open"]) else ("图纸分散在实验楼二、四、五楼的教师台。" if bool(portal["diary"]) and not bool(portal["sketch"]) else ("物理实验室的实验台后面似乎有条隧道。" if not bool(portal["sketch"]) else "还差" + portal_need_text().strip_edges()))))

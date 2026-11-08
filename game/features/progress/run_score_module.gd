@@ -322,7 +322,7 @@ func _context(ctx: Dictionary, extra: Dictionary) -> Dictionary:
 func finish(f: Dictionary, ctx: Dictionary) -> Dictionary:
 	_result = {}
 	var id := String(f["id"])
-	var ok := bool(f.get("legit", true)) and PUBLIC_ENDS.has(id)
+	var ok := bool(f.get("legit", true)) and (PUBLIC_ENDS.has(id) or id == "beast")
 	var c := _context(ctx, {"ending": ok, "ending_name": "通关 · " + String(ctx.get("route_name", id))})
 	var sum := ScoreRules.total(ledger, c)
 	var par := float(ScoreRules.PAR.get(id, 1200))
