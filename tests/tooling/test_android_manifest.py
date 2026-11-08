@@ -25,7 +25,7 @@ class AndroidManifestTests(unittest.TestCase):
   E: application
     E: activity
       A: android:name(0x01010003)="org.wdfz.godot.GodotApp"
-      A: android:screenOrientation(0x0101001e)=(type 0x10)0x6
+      A: android:screenOrientation(0x0101001e)=(type 0x10)0xb
     E: activity-alias
       A: android:name(0x01010003)=".GodotAppLauncher"
       A: android:targetActivity(0x01010202)=".GodotApp"
@@ -35,8 +35,8 @@ class AndroidManifestTests(unittest.TestCase):
         E: category
           A: android:name(0x01010003)="android.intent.category.LAUNCHER"
 '''
-        self.assertEqual(verify_launcher_orientation(tree), "sensorLandscape")
-        for bad in [tree.replace("0x6", "0xa"), tree.replace('=".GodotApp"','=".Missing"'), tree.replace("android:targetActivity", "android:other")]:
+        self.assertEqual(verify_launcher_orientation(tree), "userLandscape")
+        for bad in [tree.replace("0xb", "0xa"), tree.replace('=".GodotApp"','=".Missing"'), tree.replace("android:targetActivity", "android:other")]:
             with self.subTest(bad=bad), self.assertRaises(RuntimeError):
                 verify_launcher_orientation(bad)
 
@@ -47,20 +47,20 @@ class AndroidManifestTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(RuntimeError):
                 verify_manifest(bad,True)
 
-    def test_actual_launcher_is_sensor_landscape(self):
-        self.assertEqual(verify_launcher_orientation(activity("0x6")), "sensorLandscape")
+    def test_actual_launcher_is_user_landscape(self):
+        self.assertEqual(verify_launcher_orientation(activity("0xb")), "userLandscape")
 
     def test_unrestricted_or_portrait_launch_is_rejected(self):
-        for value in ["0xa", "0x1", "0x7"]:
+        for value in ["0xa", "0xd", "0x1", "0x7"]:
             with self.subTest(value=value), self.assertRaises(RuntimeError):
                 verify_launcher_orientation(activity(value))
 
     def test_other_landscape_activity_does_not_hide_bad_launcher(self):
         with self.assertRaises(RuntimeError):
-            verify_launcher_orientation(activity("0x6",False) + activity("0xa"))
+            verify_launcher_orientation(activity("0xb",False) + activity("0xa"))
 
     def test_missing_attribute_or_ambiguous_launcher_is_rejected(self):
-        for tree in ["", activity("0x6") * 2, activity("0x6").replace("android:screenOrientation", "android:other")]:
+        for tree in ["", activity("0xb") * 2, activity("0xb").replace("android:screenOrientation", "android:other")]:
             with self.subTest(tree=tree), self.assertRaises(RuntimeError):
                 verify_launcher_orientation(tree)
 

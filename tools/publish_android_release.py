@@ -21,7 +21,7 @@ def validate_bundle(folder, revision):
     expected = {"passed": True, "debug": False, "working_tree_dirty": False, "revision": revision,
                 "package": RELEASE_PACKAGE, "version": RELEASE_VERSION, "version_code": 1,
                 "abi": "arm64-v8a", "min_sdk": 24, "target_sdk": 36, "page_alignment": 16384,
-                "launch_orientation": "sensorLandscape", "file": apk.name}
+                "launch_orientation": "userLandscape", "file": apk.name}
     if any(info.get(key) != value for key, value in expected.items()):
         raise ValueError("Release bundle does not match the verified release build and source")
     if not re.fullmatch(r"[0-9a-f]{64}", info.get("signing_certificate_sha256", "")):

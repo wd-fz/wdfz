@@ -73,10 +73,12 @@ def verify_launcher_orientation(tree):
         if not target or len(targets) != 1:
             raise RuntimeError("Launcher alias must resolve to exactly one declared activity")
         launcher = targets[0]
+    # Pinned Godot 4.6.3 maps SCREEN_SENSOR_LANDSCAPE to Android USER_LANDSCAPE (11).
+    # See platform/android/export/gradle_export_util.cpp in the official engine tag.
     orientation = re.search(r"android:screenOrientation\([^)]*\)=\(type 0x10\)(0x[0-9a-fA-F]+)", launcher["attributes"])
-    if not orientation or int(orientation[1], 16) != 6:
-        raise RuntimeError("APK launcher must declare sensorLandscape (6) before Godot starts")
-    return "sensorLandscape"
+    if not orientation or int(orientation[1], 16) != 11:
+        raise RuntimeError("APK launcher must declare userLandscape (11) before Godot starts")
+    return "userLandscape"
 
 
 def main():

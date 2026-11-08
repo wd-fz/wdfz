@@ -21,7 +21,7 @@ class PublicReleaseTests(unittest.TestCase):
         self.info = {"passed": True, "debug": False, "working_tree_dirty": False, "revision": self.sha,
                      "package": "org.wdfz.godot", "version": "0.1.0", "version_code": 1,
                      "abi": "arm64-v8a", "min_sdk": 24, "target_sdk": 36, "page_alignment": 16384,
-                     "launch_orientation": "sensorLandscape", "file": self.apk.name,
+                     "launch_orientation": "userLandscape", "file": self.apk.name,
                      "signing_certificate_sha256": "2"*64, "sha256": digest, "bytes": self.apk.stat().st_size}
         self.meta = self.apk.with_suffix(".build.json")
         self.meta.write_text(json.dumps(self.info))
