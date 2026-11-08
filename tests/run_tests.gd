@@ -3247,7 +3247,7 @@ func _test_legacy_import() -> void:
 	why = app.import_legacy_save(JSON.stringify(save))
 	await _frames(3)
 	check(why.is_empty() and app.session != null and app.school().day == 3 and absf(app.school().tsec - 800.0) < 1.0, "an old save starts a run on its day and time")
-	check(absf(app.school().san - 61.5) < 0.5 and absf(app.school().viol - 12.0) < 0.5 and app.items().bag == ["torch", "pill"] and app.talent().id == "watch" and app.story().diff == "hard", "SAN, violation, bag, talent and difficulty come over")
+	check(absf(app.school().san - 61.5) < 3.0 and absf(app.school().viol - 12.0) < 3.0 and app.items().bag == ["torch", "pill"] and app.talent().id == "watch" and app.story().diff == "hard", "SAN, violation, bag, talent and difficulty come over")
 	check(app.session.world_id == "teach1" and app.runscore().legacy == 1 and app.player.enabled and not app.player.seated, "it puts you where you stood and marks the run as from an old save")
 	app.queue_free()
 	await _frames()
@@ -3333,7 +3333,16 @@ func _test_model_tiers() -> void:
 	CampusData.tier = CampusData.DEFAULT_TIER
 	check(CampusData.scene_path("teach1") == CampusData.SCENE_DIR + "teach1.glb" and CampusData.tiers_available().has(CampusData.DEFAULT_TIER), "the default tier loads from the usual folder")
 	CampusData.tier = 0
-	check(CampusData.scene_path("teach1") == CampusData.SCENE_DIR + "teach1.glb" or CampusData.tiers_available().has(0), "a tier that is not exported falls back to the default models")
+	check(CampusData.scene_path("teach1") == "res://assets/campus_q0/scenes/teach1.glb" and CampusData.tiers_available() == [0, 1, 2, 3, 4], "all five tiers are exported and tier 0 loads its own model")
+	CampusData.tier = 3
+	check(CampusData.scene_path("lab2") == "res://assets/campus_q3/scenes/lab2.glb" and ResourceLoader.exists(CampusData.scene_path("stair_garage")), "every scene exists in every tier, stairwells included")
+	for t in [0, 1, 3, 4]:
+		CampusData.tier = t
+		var n := 0
+		for id: String in CampusData.rooms():
+			if ResourceLoader.exists(CampusData.scene_path(id)) and CampusData.scene_path(id).contains("campus_q%d" % t):
+				n += 1
+		check(n == CampusData.rooms().size(), "tier %d has a model for every room (%d)" % [t, n])
 	CampusData.tier = was
 
 

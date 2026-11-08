@@ -63,3 +63,4 @@
 | [楼梯井互看](楼梯井互看/) 续 | 2026-11-08，同上，`tools/capture_shaft.gd`：站在楼梯井二层平台，门洞外是教学楼二层走廊（随所在层只摆当前层与相邻一层） |
 | [外廊看校园](外廊看校园/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture_gallery.gd`：站在教学楼三楼敞开的外廊，红栏杆外是真实的校园与对面的楼 |
 | [雨与蛾群](雨与蛾群/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture_weather.gd`：异象「下雨」的雨丝（线段）、落地水圈与积水；「蛾群」的身子加两片会扑的翅膀 |
+| [画质档](画质档/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture_tier.gd`：第 0 档（流畅）模型下的教学楼一楼教室 |
