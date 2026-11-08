@@ -1,14 +1,15 @@
 class_name DeathGeometry
 extends RefCounted
-## Small original primitive meshes whose partial spheres / tetrahedron differ from Godot primitives.
-## Exported directly from death-cg.js by tools/export_reference.py --death-timelines-only.
+## Original primitive and merged meshes, exported by tools/export_reference.py.
+const MAIN := "res://assets/campus/death_geometry.json"
 static var _cache: Dictionary = {}
 static var _source: Dictionary = {}
 
-static func mesh(key: String) -> ArrayMesh:
-	if _cache.has(key): return _cache[key]
-	if _source.is_empty(): _source = JSON.parse_string(FileAccess.get_file_as_string("res://assets/campus/death_geometry.json"))
-	var data: Dictionary = _source[key]
+static func mesh(key: String, source_path: String = MAIN) -> ArrayMesh:
+	var cache_key := source_path+":"+key
+	if _cache.has(cache_key): return _cache[cache_key]
+	if not _source.has(source_path): _source[source_path] = JSON.parse_string(FileAccess.get_file_as_string(source_path))
+	var data: Dictionary = _source[source_path][key]
 	var points := PackedVector3Array()
 	var normals := PackedVector3Array()
 	for i in range(0,data["vertices"].size(),3):
@@ -25,7 +26,12 @@ static func mesh(key: String) -> ArrayMesh:
 	arrays[Mesh.ARRAY_VERTEX] = points
 	arrays[Mesh.ARRAY_NORMAL] = normals
 	arrays[Mesh.ARRAY_INDEX] = indices
+	if data.has("colors"):
+		var colors := PackedColorArray()
+		for i in range(0,data["colors"].size(),3):
+			colors.append(Color(data["colors"][i],data["colors"][i+1],data["colors"][i+2]))
+		arrays[Mesh.ARRAY_COLOR] = colors
 	var result := ArrayMesh.new()
 	result.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
-	_cache[key] = result
+	_cache[cache_key] = result
 	return result

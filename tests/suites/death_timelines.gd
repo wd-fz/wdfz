@@ -31,6 +31,7 @@ func compare(actual: Variant, expected: Variant, label: String, errors: Array) -
 		var material := actual.material_override as BaseMaterial3D
 		if material==null or absf(material.albedo_color.a-float(expected["alpha"]))>.00001: errors.append(label+" alpha")
 		if material!=null and (material.disable_fog==expected["fog"] or material.no_depth_test==expected["depthTest"]): errors.append(label+" fog/depth")
+		if material!=null and expected.has("vertexColors") and material.vertex_color_use_as_albedo!=expected["vertexColors"]: errors.append(label+" vertex tint")
 		if material!=null and expected.has("color"):
 			var color := material.albedo_color.srgb_to_linear()
 			if not near(Vector3(color.r,color.g,color.b),expected["color"],.00001): errors.append(label+" color")
