@@ -53,6 +53,7 @@ var _next := 0
 var _next3 := 0
 var _beds: Dictionary = {}      # name → {player, gain}
 var _delayed: Array = []        # [time, id, opts]
+var _voice_fades: Dictionary = {} # pooled voice -> cancellable fade; reuse must revoke it
 var _rng := RandomNumberGenerator.new()
 var _t := 0.0
 var _foot := 0
@@ -259,6 +260,7 @@ func play(id: String, opts: Dictionary = {}) -> bool:
 	if cam != null and (pos is Vector3 or absf(pan) > 0.01):
 		var p3 := _pool3[_next3]
 		_next3 = (_next3 + 1) % _pool3.size()
+		_own_voice(p3,String(opts.get("owner","")))
 		p3.stop()
 		p3.stream = stream
 		p3.bus = bus
@@ -279,6 +281,7 @@ func play(id: String, opts: Dictionary = {}) -> bool:
 		return true
 	var p := _pool[_next]
 	_next = (_next + 1) % _pool.size()
+	_own_voice(p,String(opts.get("owner","")))
 	p.stop()
 	p.stream = stream
 	p.bus = bus
@@ -288,13 +291,39 @@ func play(id: String, opts: Dictionary = {}) -> bool:
 	return true
 
 
-## Fade out every playing one-shot of a category (or all): SoundPlayer.stop.
+func _own_voice(voice: Node, owner_id: String) -> void:
+	if _voice_fades.has(voice):
+		(_voice_fades[voice] as Tween).kill()
+		_voice_fades.erase(voice)
+	voice.set_meta("sound_owner",owner_id)
+
+
+## Original SoundPlayer.fade uses an exponential gain decay with a 0.04-second time constant.
+## Stop after eight constants (-69.5 dB); a pool reuse cancels this voice's old fade first.
+func fade_owned(owner_id: String) -> void:
+	if owner_id.is_empty(): return
+	_delayed = _delayed.filter(func(e: Array) -> bool: return String(e[2].get("owner",""))!=owner_id)
+	for pool: Array in [_pool,_pool3]:
+		for voice: Node in pool:
+			if not voice.playing or voice.get_meta("sound_owner","")!=owner_id or _voice_fades.has(voice): continue
+			var fade := create_tween().set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+			_voice_fades[voice] = fade
+			fade.tween_property(voice,"volume_db",float(voice.volume_db)-20.0*8.0/log(10),.32)
+			fade.tween_callback(func() -> void:
+				voice.stop()
+				voice.set_meta("sound_owner","")
+				_voice_fades.erase(voice))
+
+
+## Stop every one-shot of a category (or all), revoking pending fades and delayed plays.
 func stop(cat: String = "") -> void:
 	for p in _pool:
-		if p.playing and (cat == "" or _cat_of(p.stream) == cat):
+		if cat == "" or _cat_of(p.stream) == cat:
+			_own_voice(p,"")
 			p.stop()
 	for p3 in _pool3:
-		if p3.playing and (cat == "" or _cat_of(p3.stream) == cat):
+		if cat == "" or _cat_of(p3.stream) == cat:
+			_own_voice(p3,"")
 			p3.stop()
 	_delayed = _delayed.filter(func(e: Array) -> bool: return cat != "" and String((_index["sfx"][e[1]] as Dictionary)["cat"]) != cat)
 

@@ -65,6 +65,7 @@ var _sc_clock := 0.0
 var _sc_next := 85.0
 var _sc_event: Dictionary = {}
 var _sc_doors: Dictionary = {}
+var _sc_has_sounds := false
 
 
 func _init(rooms: Dictionary = {}, outdoor: Dictionary = {}) -> void:
@@ -118,6 +119,7 @@ func _reset_run() -> void:
 	_sc_next = 85.0
 	_sc_event = {}
 	_sc_doors = {}
+	_sc_has_sounds = false
 
 
 func capture() -> Dictionary:
@@ -460,16 +462,27 @@ func tick(dt: float) -> void:
 
 ## Entering a room: the per-room trackers start over.
 func enter(room: String) -> void:
+	cancel_scene()
 	_last_cls = ""
 	_last_win = ""
 	_in_cls = ""
 	if not window.is_empty() and window["room"] != room:
 		window = {}
 	stare = {}
-	_sc_event = {}
 
 
 # ---- timed small scenes (sensory/scenes.js) ----
+
+func cancel_scene() -> void:
+	_sc_event = {}
+	if _sc_has_sounds:
+		_emit("scene_stop")
+		_sc_has_sounds = false
+
+
+func _scene_sound(cue: String, place: Dictionary) -> void:
+	_sc_has_sounds = true
+	_emit("dread",{"cue":cue,"place":place,"owner":"atmos.scene"})
 
 func _place_at(w: Vector2) -> Dictionary:
 	var d := _dread()
@@ -494,7 +507,7 @@ func _scene_lamp() -> bool:
 	doors.sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.distance_to(lamp) < b.distance_to(lamp))
 	_sc_event = {"kind": "lamp", "at": _sc_clock, "room": _c.get("scene"), "index": i, "door": doors[0], "moved": false}
 	_note("lamp-hum", 1)
-	_emit("dread", {"cue": "hum", "place": _place_at(lamp)})
+	_scene_sound("hum",_place_at(lamp))
 	return true
 
 
@@ -506,7 +519,7 @@ func door_action(room: String, c: int, row: int, open: bool) -> void:
 	var pos := CampusGeometry.tile_center(r, c, row)
 	if open:
 		if _sc_event.get("kind", "") == "door" and _sc_event["room"] == room and (_sc_event["pos"] as Vector2).is_equal_approx(pos):
-			_sc_event = {}
+			cancel_scene()
 		return
 	if _busy() or float(_c.get("age", 0.0)) < 60.0 or not _allow(1) or not _sc_event.is_empty():
 		return
@@ -522,23 +535,23 @@ func door_action(room: String, c: int, row: int, open: bool) -> void:
 
 func _scene_tick(dt: float) -> void:
 	if _busy():
-		_sc_event = {}
+		cancel_scene()
 		return
 	_sc_clock += minf(0.25, dt)
 	if not _sc_event.is_empty():
 		if _sc_event["room"] != _c.get("scene"):
-			_sc_event = {}
+			cancel_scene()
 			return
 		var elapsed := _sc_clock - float(_sc_event["at"])
 		if _sc_event["kind"] == "door" and elapsed >= 1.4:
-			_emit("dread", {"cue": "knock", "place": _place_at(_sc_event["pos"])})
+			_scene_sound("knock",_place_at(_sc_event["pos"]))
 			_sc_event = {}
 		elif _sc_event["kind"] == "lamp":
 			if elapsed >= 3.0 and not bool(_sc_event["moved"]):
 				_sc_event["moved"] = true
-				_emit("dread", {"cue": "hum", "place": _place_at(_sc_event["door"])})
+				_scene_sound("hum",_place_at(_sc_event["door"]))
 			if elapsed >= 7.0:
-				_sc_event = {}
+				cancel_scene()
 	elif _sc_clock >= _sc_next:
 		_sc_next = _sc_clock + 85.0 / (1.0 + 0.08 * float(_c.get("stage", 0))) + _rng.randf() * 40.0
 		_scene_lamp()

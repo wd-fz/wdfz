@@ -755,6 +755,13 @@ func pause_game() -> void:
 	# Game.pause: no pause menu once dead (a death cannot be saved around).
 	if session == null or not session.running or _dead():
 		return
+	if atmos()!=null:
+		atmos().cancel_scene()
+		_apply_atmos_events()
+		var world := _campus_world()
+		if world!=null and world.lighting!=null:
+			world.lighting.lamp_mul = atmos().lamp_mul()
+			world.lighting.update(0,school().tsec,player.camera)
 	player.enabled = false
 	player.clear_input()
 	get_tree().paused = true
@@ -2353,7 +2360,9 @@ func _apply_atmos_events() -> void:
 				audio.note_caption("world.silence")
 			"dread":
 				var pl: Dictionary = e["place"]
-				audio.play("dread." + String(e["cue"]), {"pan": float(pl["pan"]), "k": float(pl["k"]), "lp": 0.7 if bool(pl["behind"]) else 1.0, "place": pl})
+				audio.play("dread." + String(e["cue"]), {"pan": float(pl["pan"]), "k": float(pl["k"]), "lp": 0.7 if bool(pl["behind"]) else 1.0, "place": pl,"owner":String(e.get("owner",""))})
+			"scene_stop":
+				audio.fade_owned("atmos.scene")
 			"say":
 				ui.show_notice(String(e["text"]))
 
@@ -4945,6 +4954,7 @@ func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
 		_apply_dread_events()
 	if atmos() != null and from_world != world_id:
 		atmos().enter(world_id)
+		_apply_atmos_events()
 	if runscore() != null and from_world != world_id:
 		runscore().enter_room(world_id)
 		_runlog_room(world_id)
