@@ -29,6 +29,7 @@ func paper(file: String, emission: String, extent: Vector2, position: Vector3) -
 	var mat := material("ffffff",emission)
 	mat.albedo_texture = load("res://assets/campus/checkup/"+file+".png")
 	mat.emission_texture = mat.albedo_texture
+	mat.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
 	var quad := QuadMesh.new()
 	quad.size = extent
 	return add_mesh(self,quad,mat,position)

@@ -18,6 +18,8 @@ func compare(node: Node3D, sample: Dictionary, label: String) -> void:
 		check(near(bounds.position,sample["bounds"][0]) and near(bounds.end,sample["bounds"][1]),label+" original geometry bounds")
 		check(mat.albedo_color.to_html(false)==sample["color"] and (sample.get("emission")==null or mat.emission.to_html(false)==sample["emission"]),label+" original colour and emission")
 		check((mat.albedo_texture!=null)==sample["texture"],label+" original mapped surface")
+		if sample["emissionMap"]:
+			check(mat.emission_texture==mat.albedo_texture and mat.emission_operator==BaseMaterial3D.EMISSION_OP_MULTIPLY,label+" original emissive texture multiplication")
 	for i in mini(node.get_child_count(),sample["children"].size()): compare(node.get_child(i),sample["children"][i],label+"/"+str(i))
 
 func test_original_props() -> void:

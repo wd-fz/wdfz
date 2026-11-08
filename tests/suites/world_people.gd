@@ -45,6 +45,16 @@ func test_app() -> void:
 		visit.s["prog"] = sample["progress"]
 		visit.s["search"] = [{"x":1000,"y":800},{"x":1040,"y":700},{"x":900,"y":500}] if sample["phase"]=="escort" else []
 		app._show_visit(visit)
+		var sign: Node3D = app._visit_nodes.get_node("ExchangeSign")
+		var panel: MeshInstance3D = sign.get_node("Panel")
+		var post: MeshInstance3D = sign.get_node("Post")
+		var original_sign: Dictionary = old["sign"]
+		var panel_material := panel.material_override as BaseMaterial3D
+		var texture := panel_material.albedo_texture
+		check(panel.global_position.distance_to(v3(original_sign["panel"]["p"]))<.00001 and (panel.mesh as QuadMesh).size.is_equal_approx(Vector2(original_sign["panel"]["size"][0],original_sign["panel"]["size"][1])),"reception panel retains the original location and dimensions")
+		check(texture.resource_path=="res://assets/campus/exchange/exchange-sign.png" and texture.get_width()==original_sign["textureSize"][0] and texture.get_height()==original_sign["textureSize"][1],"original multilingual reception canvas")
+		check(panel_material.albedo_color.is_equal_approx(Color(original_sign["panel"]["color"])) and panel_material.emission.is_equal_approx(Color(original_sign["panel"]["emission"])) and (panel_material.emission_texture==texture)==original_sign["panel"]["emissionMap"] and panel_material.emission_operator==BaseMaterial3D.EMISSION_OP_MULTIPLY,"reception glow multiplies the original texture instead of adding a white wash")
+		check(panel_material.cull_mode==BaseMaterial3D.CULL_DISABLED and not panel_material.disable_fog and post.global_position.distance_to(v3(original_sign["post"]["p"])-Vector3(0,0,.06))<.00001 and (post.mesh as BoxMesh).size.is_equal_approx(v3(original_sign["post"]["size"])) and post.position.z+.03<panel.position.z,"original two-sided panel and support moved behind the printed face")
 		for i in 7:
 			var fig := app._visit_nodes.get_child(i) as Node3D
 			var expected: Dictionary = sample["figures"][i]

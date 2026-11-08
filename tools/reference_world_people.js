@@ -16,6 +16,11 @@
       RT.exchange.search=phase==='escort'?[{x:1000,y:800},{x:1040,y:700},{x:900,y:500}]:[];
       frame();const group=GLR.scene.getObjectByName('exchange');
       if(!group)throw Error('exchange group missing');
+      if(!result.sign){
+        const panel=group.children[7],post=group.children[8],canvas=panel.material.map.image;
+        result.sign={panel:{p:panel.position.toArray(),size:[panel.geometry.parameters.width,panel.geometry.parameters.height],color:'#'+panel.material.color.getHexString(),emission:'#'+panel.material.emissive.getHexString(),fog:panel.material.fog,side:panel.material.side,emissionMap:panel.material.emissiveMap===panel.material.map},post:{p:post.position.toArray(),size:[post.geometry.parameters.width,post.geometry.parameters.height,post.geometry.parameters.depth],color:'#'+post.material.color.getHexString()},textureSize:[canvas.width,canvas.height]};
+        result.textures={'exchange-sign':canvas.toDataURL('image/png')};
+      }
       result.exchange.push({phase,progress,player:[S.x,S.y],path:JSON.parse(JSON.stringify(Exchange.route())),members:Exchange.members(),figures:group.children.slice(0,7).map(snap)});
     }
     RT.exchange.phase='over';frame();

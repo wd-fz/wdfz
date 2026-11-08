@@ -6,7 +6,7 @@
   DayEvents.is=id=>id==='checkup';
   const snap=o=>{
     const a={name:o.name,p:o.position.toArray(),q:o.quaternion.toArray(),s:o.scale.toArray(),children:o.children.map(snap)};
-    if(o.geometry){o.geometry.computeBoundingBox();a.bounds=[o.geometry.boundingBox.min.toArray(),o.geometry.boundingBox.max.toArray()];a.color=o.material.color?.getHexString();a.emission=o.material.emissive?.getHexString();a.texture=!!o.material.map;}
+    if(o.geometry){o.geometry.computeBoundingBox();a.bounds=[o.geometry.boundingBox.min.toArray(),o.geometry.boundingBox.max.toArray()];a.color=o.material.color?.getHexString();a.emission=o.material.emissive?.getHexString();a.texture=!!o.material.map;a.emissionMap=!!o.material.emissiveMap;}
     return a;
   };
   try{

@@ -42,6 +42,13 @@ func _run() -> void:
 	app.travel("out",_pose(null,stand,look.angle()),false)
 	app._show_visit(visit)
 	await _shot("交流团登记")
+	# Controlled close inspection of the original canvas; this is not a walking route.
+	var sign: MeshInstance3D = app._visit_nodes.get_node("ExchangeSign/Panel")
+	app.player.global_position = sign.global_position+Vector3(0,-1.2,2)
+	app.player.rotation.y = 0
+	app.player.camera.position.y = CameraMotion.EYE
+	app.player.camera.rotation = Vector3(atan2(1.2-CameraMotion.EYE,2),0,0)
+	await _shot("接待登记牌")
 	visit.s["phase"] = "escort"
 	visit.s["prog"] = 250
 	visit.s["search"] = [{"x":1000,"y":800},{"x":1040,"y":700},{"x":900,"y":500}]

@@ -87,8 +87,8 @@ def main():
                     (ROOT / "assets/campus/maze_death_geometry.json").write_text(json.dumps(result.pop("geometry"),separators=(",",":"))+"\n")
                 if args.death_timelines_only:
                     (ROOT / "assets/campus/death_geometry.json").write_text(json.dumps(result.pop("geometry"),separators=(",",":"))+"\n")
-                if args.checkup_only or args.atmos_props_only or args.crowd_props_only:
-                    texture_dir = ROOT / ("assets/campus/crowd" if args.crowd_props_only else "assets/campus/atmos" if args.atmos_props_only else "assets/campus/checkup")
+                if args.checkup_only or args.atmos_props_only or args.crowd_props_only or args.world_people_only:
+                    texture_dir = ROOT / ("assets/campus/exchange" if args.world_people_only else "assets/campus/crowd" if args.crowd_props_only else "assets/campus/atmos" if args.atmos_props_only else "assets/campus/checkup")
                     texture_dir.mkdir(parents=True,exist_ok=True)
                     for name,data in result.pop("textures").items():
                         (texture_dir / (name+".png")).write_bytes(base64.b64decode(data.split(",",1)[1]))
