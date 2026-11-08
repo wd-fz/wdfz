@@ -8,6 +8,10 @@ extends Node
 ##   dismissal (《放学》) — 18 s on four stages of its own: the broadcast room (the speakers light up one by one),
 ##   the classroom (dozens of chairs slide back at once), the stairwell seen from above (a stream of people and one
 ##   tall figure that does not move), the north gate and the teaching building behind it whose windows go dark.
+##   cyber (《网安仙人》) — 16 s on four stages: the server room (the racks' lights go out one by one, the console
+##   prints the shutdown log, the wall speaker breaks off), the corridor (the tube lights flicker two short one long, then
+##   settle; the tall figure drops its shoulders and stands still), the archive (the company report against the original
+##   record, three contradictions circled, "签发节点：未知"), the campus at dawn (the camera rises, ordinary morning).
 ##   portal (《门》) — 10 s in front of the demonstration bench's device (a simplified model of the old one): it
 ##   charges, the three rails close one by one, the door opens; the camera steps back half a pace, then pushes in
 ##   and through the ring, white at the end.
@@ -18,8 +22,8 @@ extends Node
 
 signal finished(skipped: bool)
 
-const DEFS := {"face": {"dur": 10.0, "outdoor": true}, "international": {"dur": 20.0, "outdoor": false}, "dismissal": {"dur": 18.0, "outdoor": false}, "portal": {"dur": 10.0, "outdoor": false}}
-const STAGED := ["international", "dismissal", "portal"]
+const DEFS := {"face": {"dur": 10.0, "outdoor": true}, "international": {"dur": 20.0, "outdoor": false}, "dismissal": {"dur": 18.0, "outdoor": false}, "portal": {"dur": 10.0, "outdoor": false}, "cyber": {"dur": 16.0, "outdoor": false}}
+const STAGED := ["international", "dismissal", "portal", "cyber"]
 const COAT := [Color("#3a4a6a"), Color("#7a5a3a"), Color("#5a6a4a"), Color("#8a6a6a")]
 const SC := 2.0
 
@@ -52,6 +56,15 @@ var _windows: Array = []
 var _ledger: Label3D
 var _dis_said := {}
 var _rails: Array = []
+var _leds: Array = []
+var _log: Label3D
+var _arch: Label3D
+var _lamps: Node3D
+var _tall: Node3D
+var _sky: MeshInstance3D
+var _sky_mat: StandardMaterial3D
+var _log_n := -1
+var _arch_n := -1
 var _door: MeshInstance3D
 var _flash: ColorRect
 
@@ -149,6 +162,11 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	cam.far = player.camera.far
 	_root.add_child(cam)
 	cam.current = true
+	if id == "cyber":
+		_setup_cyber()
+		_ui.cut_fade(0.0)
+		_apply(0.0)
+		return
 	if id == "portal":
 		_setup_portal()
 		_ui.cut_fade(0.0)
@@ -186,6 +204,8 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 
 
 func _look(from: Vector3, to: Vector3) -> void:
+	if _sky != null:
+		_sky.global_position = from
 	cam.global_position = from
 	if from.distance_to(to) > 0.01:
 		cam.look_at(to, Vector3.UP)
@@ -200,6 +220,9 @@ func _apply(kk: float) -> void:
 		return
 	if kind == "portal":
 		_apply_portal(kk)
+		return
+	if kind == "cyber":
+		_apply_cyber(kk)
 		return
 	_ui.cut_fade(clampf(face_fade(kk), 0.0, 1.0))
 	if kk < 0.3:
@@ -277,6 +300,7 @@ func _box(g: Node3D, w: float, h: float, d: float, c: Color, x: float, y: float,
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.albedo_color = c
+	mat.disable_fog = true
 	m.material_override = mat
 	m.position = Vector3(x, y, z)
 	g.add_child(m)
@@ -655,3 +679,227 @@ func _apply_portal(kk: float) -> void:
 	var flash := (kk - 0.88) / 0.12 * 0.9 if kk > 0.88 else 0.0
 	_ui.cut_fade(0.0)
 	_ui.cut_flash(flash)
+
+
+# ---- 《网安仙人》 ----
+
+const CY_LOG := [[0.25, "$ campusctl shutdown --confirm"], [0.75, "stop attendance ............ OK"], [1.35, "stop doors ................. OK"],
+	[1.95, "broadcast: 全体同学请注——"], [2.25, "stop observation ........... OK"], [2.75, "stop control ............... OK"]]
+const CY_PAIRS := [["首次部署：2026-09-01", "部署前：无任何异常记录", "纸质档案扫描：1987 年", "走廊里出现不在值班表上的人"],
+	["巡察行为：全部由控制器产生", "断链即全部停止", "断链故障记录：控制链离线后", "仍收到回执（签发节点：——）"],
+	["退出身份：已注销", "数据已删除", "「注销」字段原始定义：", "转交上层保管"]]
+const CY_FLICKER := [0.10, 0.08, 0.10, 0.08, 0.10, 0.30, 0.55, 0.08, 0.10, 0.08, 0.10, 0.30]
+const CY_B0 := 3.2
+
+
+## The corridor tube lights: "two short one long" (on / off alternating, seconds), steady after the pattern.
+static func cy_flicker_on(t: float) -> bool:
+	var x := t - CY_B0
+	var on := true
+	for d: float in CY_FLICKER:
+		if x < d:
+			return on
+		x -= d
+		on = not on
+	return true
+
+
+static func cy_flicker_end() -> float:
+	var e := CY_B0
+	for d: float in CY_FLICKER:
+		e += d
+	return e
+
+
+static func cy_stage(t: float) -> int:
+	return 0 if t < 3.2 else (1 if t < 7.2 else (2 if t < 11.2 else 3))
+
+
+## How many console lines are out at time t.
+static func cy_log_lines(t: float) -> int:
+	var n := 0
+	for l: Array in CY_LOG:
+		if t >= float(l[0]):
+			n += 1
+	return n
+
+
+## The archive's state: header (7.35), columns (7.6), three rows (7.9 8.6 9.3), three circles (8.25 8.95 9.65), last line (10.25).
+static func cy_archive_steps(t: float) -> int:
+	var s := 0
+	if t >= 7.35:
+		s += 1
+	if t >= 7.6:
+		s += 1
+	for r: float in [7.9, 8.6, 9.3, 8.25, 8.95, 9.65, 10.25]:
+		if t >= r:
+			s += 1
+	return s
+
+
+static func cy_fade(t: float) -> float:
+	var f := 0.0
+	for b: float in [3.2, 7.2, 11.2]:
+		f = maxf(f, 1.0 - absf(t - b) / 0.22)
+	if t > 11.2:
+		f = maxf(f, 1.0 - clampf((t - 11.2) / 0.5, 0.0, 1.0))
+	return clampf(maxf(f, clampf((t - 15.1) / 0.85, 0.0, 1.0)), 0.0, 1.0)
+
+
+func _cy_archive_text(t: float) -> String:
+	var steps := cy_archive_steps(t)
+	var out := ""
+	if steps >= 1:
+		out += "AnthroPrank AI · 安抄派智能　校园试点档案\n控制系统：已终止\n\n"
+	if steps >= 2:
+		out += "公司报告　　　　　　↔　　　　　　原始记录（扫描件）\n\n"
+	var rows := 0
+	for r: float in [7.9, 8.6, 9.3]:
+		if t >= r:
+			rows += 1
+	var marks := 0
+	for r: float in [8.25, 8.95, 9.65]:
+		if t >= r:
+			marks += 1
+	for i in rows:
+		var p: Array = CY_PAIRS[i]
+		out += "%s　%s　%s\n%s　　%s　　%s\n\n" % [p[0], "≠" if i < marks else "　", p[2], p[1], "　", p[3]]
+	if t >= 10.25:
+		out += "签发节点：未知" + ("" if int((t - 10.25) / 0.45) % 2 == 1 else " ▌")
+	return out
+
+
+func _setup_cyber() -> void:
+	for i in 4:
+		var g := Node3D.new()
+		g.position.x = float(i) * 40.0
+		_root.add_child(g)
+		_st.append(g)
+	_sky = MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 70.0
+	sm.height = 140.0
+	_sky.mesh = sm
+	_sky_mat = StandardMaterial3D.new()
+	_sky_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_sky_mat.cull_mode = BaseMaterial3D.CULL_FRONT
+	_sky_mat.disable_fog = true
+	_sky_mat.albedo_color = Color(0.02, 0.026, 0.03)
+	_sky.material_override = _sky_mat
+	_sky.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_root.add_child(_sky)
+	var a: Node3D = _st[0]
+	_box(a, 7, 0.1, 11, Color("#3d4446"), 0, -0.05, 0)
+	_box(a, 0.12, 3.2, 11, Color("#3c4644"), -3.5, 1.6, 0)
+	_box(a, 0.12, 3.2, 11, Color("#3c4644"), 3.5, 1.6, 0)
+	_box(a, 7, 3.2, 0.12, Color("#36403e"), 0, 1.6, -5.5)
+	_box(a, 7, 0.1, 11, Color("#2a3130"), 0, 3.2, 0)
+	for i in 10:
+		var side := 1.0 if i % 2 == 1 else -1.0
+		var row := float(i / 2)
+		_box(a, 0.6, 2.1, 0.9, Color("#242a2d"), side * 1.45, 1.05, -4.0 + row * 1.25)
+		var rack_leds: Array = []
+		for j in 10:
+			var led := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(0.04, 0.035, 0.03)
+			led.mesh = bm
+			var mat := StandardMaterial3D.new()
+			mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			mat.albedo_color = Color("#6ff09a")
+			led.material_override = mat
+			led.position = Vector3(side * (1.45 - 0.32), 1.85 - float(j / 2) * 0.3, -4.0 + row * 1.25 - 0.25 + float(j % 2) * 0.1)
+			a.add_child(led)
+			rack_leds.append(led)
+		_leds.append({"rack": i, "leds": rack_leds, "off": 0.55 + float((i / 2) * 2 + i % 2) * 0.22 * 0.5})
+	_box(a, 1.0, 1.1, 0.5, Color("#2f3638"), 0, 0.55, -4.75)
+	_log = _label("", 0.13, Color("#5fbf86"))
+	_log.position = Vector3(0, 1.45, -4.75 + 0.4)
+	_log.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	a.add_child(_log)
+	var b: Node3D = _st[1]
+	_box(b, 3.2, 0.1, 24, Color("#8e9690"), 0, -0.05, -6)
+	_box(b, 0.12, 2.3, 24, Color("#b3b8ad"), -1.66, 1.95, -6)
+	_box(b, 0.12, 2.3, 24, Color("#b3b8ad"), 1.66, 1.95, -6)
+	_box(b, 0.12, 1.2, 24, Color("#5d7267"), -1.65, 0.6, -6)
+	_box(b, 0.12, 1.2, 24, Color("#5d7267"), 1.65, 0.6, -6)
+	_box(b, 3.2, 0.1, 24, Color("#a9aea4"), 0, 3.12, -6)
+	_box(b, 3.2, 3.1, 0.12, Color("#9fa59a"), 0, 1.55, -18)
+	_lamps = Node3D.new()
+	b.add_child(_lamps)
+	for i in 6:
+		_box(_lamps, 1.2, 0.03, 0.18, Color("#e8f0ea"), 0, 3.01, 4.0 - float(i) * 4.0)
+	_tall = FigureModel.make("teacher", Color("#050607"), true, 1.12)
+	_tall.position = Vector3(0, 0, -3)
+	_tall.rotation.y = PI          # faces +z, towards the camera
+	b.add_child(_tall)
+	var c: Node3D = _st[2]
+	_box(c, 6, 0.1, 6, Color("#4e5553"), 0, -0.05, 0)
+	_box(c, 6, 3.2, 0.12, Color("#434b49"), 0, 1.6, -1.2)
+	_box(c, 1.3, 0.04, 0.7, Color("#6c5a46"), 0, 0.74, -0.62)
+	_box(c, 0.62, 0.372, 0.035, Color("#14181a"), 0, 1.05, -0.75)
+	_arch = _label("", 0.05, Color("#9fd6b4"))
+	_arch.position = Vector3(-0.29, 1.2, -0.73)
+	_arch.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	_arch.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_arch.pixel_size = 0.00018
+	_arch.font_size = 64
+	c.add_child(_arch)
+	var d: Node3D = _st[3]
+	_box(d, 120, 0.05, 120, Color("#4a5a46"), 0, 0, -20)
+	_box(d, 36, 14, 10, Color("#6a5448"), 0, 7, -28)
+	for i in 5:
+		_box(d, 33, 0.9, 0.05, Color("#d8dfe3"), 0, 2.2 + float(i) * 2.4, -22.95)
+
+
+func _apply_cyber(kk: float) -> void:
+	var t := kk * 16.0
+	var s := cy_stage(t)
+	var ox := float(s) * 40.0
+	for i in _st.size():
+		(_st[i] as Node3D).visible = i == s
+	_ui.cut_fade(cy_fade(t))
+	if s == 0:
+		for r: Dictionary in _leds:
+			var off := float(r["off"])
+			var blink := t > off - 0.09 and t < off - 0.05
+			var on := t < off and not blink
+			for led: MeshInstance3D in r["leds"]:
+				(led.material_override as StandardMaterial3D).albedo_color = Color("#6ff09a") if on else Color("#0e1712")
+		var n := cy_log_lines(t)
+		if n != _log_n:
+			_log_n = n
+			var txt := ""
+			for i in n:
+				txt += String(CY_LOG[i][1]) + "\n"
+			_log.text = txt
+		var dolly := phase(kk, 0.0, 0.2)
+		_look(Vector3(ox + 0.18, 1.5, 1.6 - 1.7 * dolly), Vector3(ox, 1.3, -4.75))
+		_sky_mat.albedo_color = Color(0.02, 0.026, 0.03)
+	elif s == 1:
+		var on2 := cy_flicker_on(t)
+		var settled := t >= cy_flicker_end()
+		_lamps.visible = on2
+		var slump := phase(t, cy_flicker_end() + 0.1, cy_flicker_end() + 1.3)
+		_tall.rotation = Vector3(0.12 * slump, PI, 0.0)
+		_tall.position.y = -0.05 * slump
+		var go := phase(t, 3.2, 7.2)
+		_look(Vector3(ox + 0.35 - 0.15 * go, 1.6, 4.6 - 3.2 * go), Vector3(ox, 1.75 - 0.25 * slump, -3.0))
+		var red := 0.32 * (1.0 - phase(t, cy_flicker_end() - 0.2, cy_flicker_end() + 0.6)) * (1.0 if on2 else 0.6)
+		_sky_mat.albedo_color = Color(0.03 + red * 0.3, 0.035, 0.036)
+		if settled:
+			_lamps.visible = true
+	elif s == 2:
+		var n2 := cy_archive_steps(t)
+		var blink_key := int((t - 10.25) / 0.45) if t >= 10.25 else -1
+		var key := n2 * 10 + (blink_key % 2 if blink_key >= 0 else 0)
+		if key != _arch_n:
+			_arch_n = key
+			_arch.text = _cy_archive_text(t)
+		var push := phase(t, 7.2, 10.4)
+		_look(Vector3(ox + 0.12 * (1.0 - push), 1.12 * (1.0 - push) + 1.05 * push, -0.75 + lerpf(1.7, 0.62, push)), Vector3(ox, 1.05, -0.75))
+		_sky_mat.albedo_color = Color(0.01, 0.012, 0.014)
+	else:
+		var rise := phase(t, 11.2, 16.0)
+		_sky_mat.albedo_color = Color(0.02, 0.026, 0.03).lerp(Color(0.62, 0.72, 0.8), phase(t, 11.6, 14.2))
+		_look(Vector3(40.0 * 3.0 + 2.0 * rise, 1.5 + 8.5 * rise, 6.0 + 12.0 * rise), Vector3(120.0, 3.0 + 19.0 * rise, -28.0))
