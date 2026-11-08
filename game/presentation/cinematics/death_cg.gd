@@ -21,6 +21,7 @@ var cam: Camera3D
 var veil_mesh: MeshInstance3D
 var shk := 1.0
 var rand := RandomNumberGenerator.new()
+var _original_random_state := 7
 var d: Dictionary = {}                 # per-scene state
 var remaining_props: RemainingDeathProps
 var _player: PlayerController
@@ -67,6 +68,9 @@ func begin(cause: String, player: PlayerController, world: Node3D, ui: GameUI, d
 	cam = player.camera if camera_override == null else camera_override
 	shk = 0.0 if reduce_shake else 1.0
 	rand.seed = hash(cause)
+	_original_random_state = 7
+	for ch in cause.length():
+		_original_random_state = (_original_random_state*31+cause.unicode_at(ch))&0xffffffff
 	_base_pitch = cam.rotation.x
 	_base_y = cam.position.y
 	F = Node3D.new()
@@ -265,6 +269,11 @@ func inst(m: Mesh, mat: Material, count: int) -> MultiMeshInstance3D:
 ## Place instance i; a scale of 0 hides it.
 func set_i(im: MultiMeshInstance3D, i: int, pos: Vector3, rot: Vector3 = Vector3.ZERO, scl: Vector3 = Vector3.ONE) -> void:
 	im.multimesh.set_instance_transform(i, Transform3D(Basis.from_euler(rot, EULER_ORDER_XYZ).scaled(scl), pos))
+
+
+func _original_random() -> float:
+	_original_random_state = (_original_random_state*1664525+1013904223)&0xffffffff
+	return _original_random_state/4294967296.0
 
 
 func disc(radius: float, col: Color, op: float, x: float, y: float, z: float, sides: int = 24) -> MeshInstance3D:
@@ -1041,22 +1050,17 @@ func _update_deep(kk: float) -> void:
 
 
 # ---- floor: the water cup. A whistle overhead, you look up and see it fall, it hits, you lie on the floor watching it roll away ----
-# (a plain white cup with a pale-purple lid here; the old one also carries the picture of the second gate)
 
 func _build_floor() -> void:
 	var cup := Node3D.new()
+	cup.rotation_order = EULER_ORDER_XYZ
 	put(cup, 0.0, _base_y + 9.0, 0.15)
-	var body := CylinderMesh.new()
-	body.top_radius = 0.045
-	body.bottom_radius = 0.04
-	body.height = 0.22
-	mesh(body, _mat(Color("#ece8e0")), 0.0, 0.0, 0.0, cup)
+	var body := FallingProps.model("cup",CampusData.tier)
+	put(body,0,-.170/2,0,cup)
 	d["cup"] = cup
-	var lid_m := CylinderMesh.new()
-	lid_m.top_radius = 0.045
-	lid_m.bottom_radius = 0.045
-	lid_m.height = 0.03
-	var lid := mesh(lid_m, _mat(Color("#b8a8d8")), 0.0, 0.0, 0.0)
+	var lid := FallingProps.model("lid",CampusData.tier)
+	lid.rotation_order = EULER_ORDER_XYZ
+	put(lid,0,0,0)
 	d["lid"] = lid
 	veil(Color("#050000"))
 
@@ -1072,12 +1076,12 @@ func _update_floor(kk: float) -> void:
 	if kk < 1.15:
 		cup.position = Vector3(0.0, _base_y + h, 0.15 + h * 0.5)
 		cup.rotation = Vector3(kk * 14.0, 0.0, 0.3)
-		lid.position = cup.position + cup.basis * Vector3(0.0, 0.125, 0.0)
+		lid.position = cup.position + cup.basis * Vector3(0.0, .166-.170/2, 0.0)
 		lid.basis = cup.basis
 	else:
 		cup.position = Vector3(-0.22 - 0.15 * lie, 0.045, 0.75 + 0.3 * lie)
 		cup.rotation = Vector3(lie * 9.0, 0.0, PI / 2.0)
-		lid.position = Vector3(0.25 + 0.6 * lie, 0.045, 0.75 + 0.1 * lie)
+		lid.position = Vector3(0.25 + 0.6 * lie, 0.0462, 0.75 + 0.1 * lie)
 		lid.rotation = Vector3(PI / 2.0, lie * 12.0, 0.0)
 	if kk >= 1.15 and not _flashed.has("hit"):
 		_flashed["hit"] = true
@@ -1291,15 +1295,14 @@ func _update_laugh(kk: float) -> void:
 
 func _build_swarm() -> void:
 	var n := 70
-	var wing := QuadMesh.new()
-	wing.size = Vector2(0.07, 0.04)
+	var wing := MothShape.wing()
 	var body := BoxMesh.new()
 	body.size = Vector3(0.016, 0.016, 0.06)
 	d["wingIM"] = inst(wing, _mat(Color("#111111"), -1.0, true), n * 2)
 	d["bodyIM"] = inst(body, _mat(Color("#080808")), n)
 	var moths: Array = []
 	for i in n:
-		moths.append({"a": rand.randf() * TAU, "r": 0.35 + rand.randf() * 1.3, "h": rand.randf() * 0.9, "sp": (-1.0 if rand.randf() < 0.5 else 1.0) * (1.6 + rand.randf() * 1.8), "ph": rand.randf() * TAU, "fl": 26.0 + rand.randf() * 16.0})
+		moths.append({"a": _original_random() * 6.283, "r": 0.35 + _original_random() * 1.3, "h": _original_random() * 0.9, "sp": (-1.0 if _original_random() < 0.5 else 1.0) * (1.6 + _original_random() * 1.8), "ph": _original_random() * 6.283, "fl": 26.0 + _original_random() * 16.0})
 	d["moths"] = moths
 	box(0.008, 0.5, 0.008, Color("#111111"), -1.0, 0.0, 2.55, 4.5)
 	var sm := SphereMesh.new()
@@ -1308,8 +1311,15 @@ func _build_swarm() -> void:
 	sm.radial_segments = 10
 	sm.rings = 8
 	mesh(sm, _mat(Color("#ffe9c0")), 0.0, 2.26, 4.5)
-	d["glow"] = disc(0.75, Color("#ffd9a0"), 0.7, 0.0, 2.26, 4.5)
-	((d["glow"] as Node3D) as MeshInstance3D).rotation.x = PI / 2.0
+	var glow := QuadMesh.new()
+	glow.size = Vector2.ONE
+	var light := _mat(Color("ffd9a0"),.7)
+	light.albedo_texture = load("res://assets/campus/anomalies/moth-glow.png")
+	light.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	light.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	light.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	d["glow"] = mesh(glow,light,0,2.26,4.5)
+	(d["glow"] as Node3D).scale = Vector3(1.5,1.5,1)
 	veil(Color("#0c0905"))
 
 
@@ -1332,9 +1342,9 @@ func _update_swarm(kk: float) -> void:
 			q = q.lerp(Vector3(cos(ang2) * 0.18, cy + sin(ang2 * 1.3) * 0.1, 0.16 + 0.08 * sin(ang2)), cover * 0.9)
 		var head := -ang2 if float(m["sp"]) > 0.0 else PI - ang2
 		var flap := sin(kk * float(m["fl"]) + float(m["ph"])) * 1.1 + 0.25
-		set_i(d["bodyIM"], i, q, Vector3(0.0, head, 0.0), Vector3.ONE * sc)
-		set_i(d["wingIM"], i * 2, q, Vector3(-PI / 2.0, head, flap), Vector3.ONE * sc)
-		set_i(d["wingIM"], i * 2 + 1, q, Vector3(-PI / 2.0, head, -flap), Vector3(-sc, sc, sc))
+		(d["bodyIM"] as MultiMeshInstance3D).multimesh.set_instance_transform(i,MothShape.pose(q,head,0,Vector3.ONE*sc))
+		(d["wingIM"] as MultiMeshInstance3D).multimesh.set_instance_transform(i*2,MothShape.pose(q,head,flap,Vector3.ONE*sc))
+		(d["wingIM"] as MultiMeshInstance3D).multimesh.set_instance_transform(i*2+1,MothShape.pose(q,head,-flap,Vector3(-sc,sc,sc)))
 		i += 1
 	var fl := 0.8 + 0.2 * sin(kk * 23.0) * sin(kk * 7.3)
 	((d["glow"] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color.a = 0.7 * fl * (1.0 - 0.4 * close) * (1.0 - 0.6 * cover)
@@ -1346,21 +1356,12 @@ func _update_swarm(kk: float) -> void:
 func _build_gaze() -> void:
 	d["smile"] = fxm("smile", 1.0, 0.0, _base_y - 1.7, -1.0)
 	var eyes: Array = []
-	var em := CylinderMesh.new()
-	em.top_radius = 0.5
-	em.bottom_radius = 0.5
-	em.height = 0.003
-	em.radial_segments = 12
-	em.rings = 1
 	for i in 18:
-		var col := Color("#d23a2e") if rand.randf() < 0.4 else Color("#e8bd4a")
-		var mat := _mat(col, 0.0)
-		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-		var a := PI * (0.25 + rand.randf() * 0.5) + PI
-		var dd := 1.8 + rand.randf() * 2.4
-		var e := mesh(em, mat, cos(a) * dd, 0.5 + rand.randf() * 2.1, sin(a) * dd)
-		e.rotation.x = PI / 2.0
-		e.set_meta("e", {"x": e.position.x, "z": e.position.z, "y": e.position.y, "s": 0.4 + rand.randf() * 0.6, "d": rand.randf() * 0.5})
+		var e := GazeEye.make(1,"red" if _original_random()<.4 else "gold")
+		var a := PI * (0.25 + _original_random() * 0.5) + PI
+		var dd := 1.8 + _original_random() * 2.4
+		put(e,cos(a)*dd,.5+_original_random()*2.1,sin(a)*dd)
+		e.set_meta("e", {"x": e.position.x, "z": e.position.z, "y": e.position.y, "s": 0.4 + _original_random() * 0.6, "d": _original_random() * 0.5})
 		eyes.append(e)
 	d["eyes"] = eyes
 	veil(Color("#050203"))
@@ -1382,7 +1383,7 @@ func _update_gaze(kk: float) -> void:
 		e.position = Vector3(float(u["x"]) * sh, float(u["y"]) + (_base_y - float(u["y"])) * 0.3 * close, float(u["z"]) * sh)
 		(e.material_override as StandardMaterial3D).albedo_color.a = o
 		var sc := float(u["s"]) * (0.3 + 0.7 * o) * (1.0 + 0.4 * close)
-		e.scale = Vector3(sc * 0.3, 1.0, sc * 0.3 * 0.6875)
+		e.scale = Vector3(sc,float(u["s"])*.6875*o*(1+.4*close),1)
 	shade(0.9 * ss(kk, 3.0, 3.4))
 
 

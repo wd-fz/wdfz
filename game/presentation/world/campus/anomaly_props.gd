@@ -232,15 +232,9 @@ func _feast(p: Vector3, room: Variant) -> void:
 
 
 func _eye(size: float) -> MeshInstance3D:
-	var eye:=_plane("ffffff",0,Vector2.ONE,Vector3.ZERO)
 	var color:="red" if _rand()<.4 else "gold"
-	eye.material_override.albedo_texture=load("res://assets/campus/anomalies/eye-"+color+".png")
-	eye.material_override.billboard_mode=BaseMaterial3D.BILLBOARD_ENABLED
-	eye.material_override.no_depth_test=true
-	eye.material_override.depth_draw_mode=BaseMaterial3D.DEPTH_DRAW_DISABLED
-	eye.material_override.disable_fog=true
-	eye.material_override.render_priority=5
-	eye.scale=Vector3(size,size*.6875,1)
+	var eye := GazeEye.make(size,color)
+	add_child(eye)
 	items.append(eye)
 	return eye
 

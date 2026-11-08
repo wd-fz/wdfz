@@ -33,6 +33,8 @@ var _dust: MultiMeshInstance3D
 var _dust_p: Array = []
 var _dust_life: Array = []
 var _dust_i := 0
+var _dust_count := DUST
+var _moth_random := 909
 var _center := Vector3.ZERO
 var distance := 99.0                 # the swarm's mean distance from the camera, for the sound
 
@@ -174,25 +176,30 @@ func update_rain(dt: float, cam: Vector3, floor_y: float) -> void:
 
 func setup_moths(source: Vector3, quality: int = -1) -> void:
 	kind = "moth"
-	_rng.seed = 909
-	var wing := QuadMesh.new()
-	wing.size = Vector2(0.07, 0.04)
-	wing.center_offset = Vector3(0.035, 0, 0)
+	_moth_random = 909
+	var wing := MothShape.wing()
 	var body := BoxMesh.new()
 	body.size = Vector3(0.016, 0.016, 0.06)
-	var count := int(MOTH_COUNTS[CampusData.tier if quality < 0 else clampi(quality, 0, 4)])
+	var tier := CampusData.tier if quality<0 else clampi(quality,0,4)
+	var count := int(MOTH_COUNTS[tier])
+	_dust_count = 60 if tier==0 else DUST
 	_wings = _multi(wing, _mat(Color("#111111"), 1.0, true), count * 2)
 	_bodies = _multi(body, _mat(Color("#080808")), count)
 	_center = Vector3(source.x, 1.9, source.z)
 	for i in count:
-		_moths.append({"p": Vector3(source.x + (_rng.randf() - 0.5) * 2.4, 1.2 + _rng.randf() * 1.6, source.z + (_rng.randf() - 0.5) * 2.4), "v": Vector3.ZERO, "a": _rng.randf() * TAU,
-			"r": 0.35 + _rng.randf() * 1.5, "sp": (-1.0 if _rng.randf() < 0.5 else 1.0) * (1.0 + _rng.randf() * 1.4), "ph": _rng.randf() * TAU, "fl": 26.0 + _rng.randf() * 16.0, "h": 1.3 + _rng.randf() * 1.4})
+		_moths.append({"p": Vector3(source.x + (_moth_rand() - 0.5) * 2.4, 1.2 + _moth_rand() * 1.6, source.z + (_moth_rand() - 0.5) * 2.4), "v": Vector3.ZERO, "a": _moth_rand() * TAU,
+			"r": 0.35 + _moth_rand() * 1.5, "sp": (-1.0 if _moth_rand() < 0.5 else 1.0) * (1.0 + _moth_rand() * 2.2), "ph": _moth_rand() * TAU, "fl": 26.0 + _moth_rand() * 16.0, "h": 1.3 + _moth_rand() * 1.4})
 	var dm := BoxMesh.new()
 	dm.size = Vector3(0.012, 0.012, 0.012)
-	_dust = _multi(dm, _mat(Color("#303030"), 0.65), DUST)
-	for i in DUST:
+	_dust = _multi(dm, _mat(Color("#303030"), 0.65), _dust_count)
+	for i in _dust_count:
 		_dust_p.append(Vector3(0, -9, 0))
 		_dust_life.append(0.0)
+
+
+func _moth_rand() -> float:
+	_moth_random = (_moth_random*1664525+1013904223)&0xffffffff
+	return _moth_random/4294967296.0
 
 
 func _multi(m: Mesh, mat: Material, n: int) -> MultiMeshInstance3D:
@@ -224,9 +231,9 @@ func update_moths(dt: float, cam: Vector3, t: float, hard: bool) -> void:
 		var tg := Vector3(c.x + cos(a) * float(m["r"]) * shrink, c.y + (float(m["h"]) - 1.9) * shrink * 0.6 + sin(a * 1.7 + float(m["ph"])) * 0.3, c.z + sin(a) * float(m["r"]) * shrink)
 		var p: Vector3 = m["p"]
 		var v: Vector3 = m["v"]
-		v.x += ((tg.x - p.x) * 5.0 - v.x * 1.9 + (_rng.randf() - 0.5) * 9.0) * dt
-		v.y += ((tg.y - p.y) * 5.0 - v.y * 1.9 + (_rng.randf() - 0.5) * 9.0) * dt
-		v.z += ((tg.z - p.z) * 5.0 - v.z * 1.9 + (_rng.randf() - 0.5) * 9.0) * dt
+		v.x += ((tg.x - p.x) * 5.0 - v.x * 1.9 + (_moth_rand() - 0.5) * 9.0) * dt
+		v.y += ((tg.y - p.y) * 5.0 - v.y * 1.9 + (_moth_rand() - 0.5) * 9.0) * dt
+		v.z += ((tg.z - p.z) * 5.0 - v.z * 1.9 + (_moth_rand() - 0.5) * 9.0) * dt
 		var vl := v.length()
 		if vl > 4.5:
 			v *= 4.5 / vl
@@ -240,19 +247,19 @@ func update_moths(dt: float, cam: Vector3, t: float, hard: bool) -> void:
 		m["v"] = v
 		var head := atan2(v.x, v.z)
 		var flap := sin(_t * float(m["fl"]) + float(m["ph"])) * 1.1 + 0.25
-		_bodies.multimesh.set_instance_transform(i, Transform3D(Basis.from_euler(Vector3(0, head, 0), EULER_ORDER_YZX), p))
-		_wings.multimesh.set_instance_transform(i * 2, Transform3D(Basis.from_euler(Vector3(-PI / 2.0, head, flap), EULER_ORDER_YZX), p))
-		_wings.multimesh.set_instance_transform(i * 2 + 1, Transform3D(Basis.from_euler(Vector3(-PI / 2.0, head, -flap), EULER_ORDER_YZX).scaled(Vector3(-1, 1, 1)), p))
+		_bodies.multimesh.set_instance_transform(i,MothShape.pose(p,head,0,Vector3.ONE))
+		_wings.multimesh.set_instance_transform(i*2,MothShape.pose(p,head,flap,Vector3.ONE))
+		_wings.multimesh.set_instance_transform(i*2+1,MothShape.pose(p,head,-flap,Vector3(-1,1,1)))
 		sum += p.distance_to(cam)
 		i += 1
 	distance = sum / float(_moths.size())
 	var emit := int(floor(dt * 60.0 * (1.0 + thr))) + 1
 	for _k in emit:
-		var src: Dictionary = _moths[_rng.randi() % _moths.size()]
+		var src: Dictionary = _moths[floori(_moth_rand()*_moths.size())]
 		_dust_p[_dust_i] = src["p"]
-		_dust_life[_dust_i] = 2.5 + _rng.randf() * 1.5
-		_dust_i = (_dust_i + 1) % DUST
-	for j in DUST:
+		_dust_life[_dust_i] = 2.5 + _moth_rand() * 1.5
+		_dust_i = (_dust_i + 1) % _dust_count
+	for j in _dust_count:
 		var life := float(_dust_life[j])
 		if life > 0.0:
 			life -= dt
@@ -261,7 +268,6 @@ func update_moths(dt: float, cam: Vector3, t: float, hard: bool) -> void:
 			dp.x += sin(_t * 1.3 + float(j)) * dt * 0.08
 			if life <= 0.0 or dp.y < 0.01:
 				dp.y = -9.0
-				life = 0.0
 			_dust_p[j] = dp
 			_dust_life[j] = life
 		_dust.multimesh.set_instance_transform(j, Transform3D(Basis.IDENTITY, _dust_p[j]))

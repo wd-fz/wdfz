@@ -46,6 +46,7 @@ def main():
     parser.add_argument("--cyber-only", action="store_true", help="capture original ending monitor, text layout and camera in both orientations")
     parser.add_argument("--world-people-only", action="store_true", help="capture original exchange, gaze, inspection and checkup figures")
     parser.add_argument("--paper-only", action="store_true", help="capture original paper geometry, camera and flight rules")
+    parser.add_argument("--death-models-only", action="store_true", help="capture original cup, gaze and moth death models and weather frames")
     args = parser.parse_args()
     source = args.source.resolve()
     tree = subprocess.check_output(["git", "rev-parse", "HEAD:game3d"], cwd=source, text=True).strip()
@@ -64,12 +65,12 @@ def main():
             page = browser.new_page(viewport={"width": 640, "height": 480})
             # Ground-ray comparison needs the same q2 asset pack as the exported
             # campus, not q0 placeholders with QUALITY changed after assets load.
-            initial_quality=2 if args.falling_props_only or args.traces_only or args.remaining_death_only else 0
+            initial_quality=2 if args.falling_props_only or args.traces_only or args.remaining_death_only or args.death_models_only else 0
             page.add_init_script("localStorage.setItem('wdfz_pro','1');localStorage.setItem('zw3d_set',JSON.stringify({q:%d,amb:0,vol:0,renderer:'webgl',rv:1}));" % initial_quality)
             page.goto(f"http://127.0.0.1:{server.server_port}/")
             page.wait_for_function("Engine.ready() && Assets.ready(Assets.want())", timeout=180000)
-            if args.save_only or args.story_only or args.grading_only or args.crowd_only or args.secret_items_only or args.inception_only or args.maze_patrol_only or args.anomaly_fx_only or args.falling_props_only or args.traces_only or args.remaining_death_only or args.rules_dlc_only or args.archive_only or args.classmates_only or args.map_only or args.cyber_only or args.world_people_only or args.paper_only:
-                stem = "paper" if args.paper_only else "world_people" if args.world_people_only else "cyber" if args.cyber_only else "map" if args.map_only else "classmates" if args.classmates_only else "archive" if args.archive_only else "rules_dlc" if args.rules_dlc_only else "remaining_death" if args.remaining_death_only else "traces" if args.traces_only else "falling_props" if args.falling_props_only else "anomaly_fx" if args.anomaly_fx_only else "maze_patrol" if args.maze_patrol_only else "inception" if args.inception_only else "secret_items" if args.secret_items_only else "crowd" if args.crowd_only else "grading" if args.grading_only else "routes" if args.story_only else "saves"
+            if args.save_only or args.story_only or args.grading_only or args.crowd_only or args.secret_items_only or args.inception_only or args.maze_patrol_only or args.anomaly_fx_only or args.falling_props_only or args.traces_only or args.remaining_death_only or args.rules_dlc_only or args.archive_only or args.classmates_only or args.map_only or args.cyber_only or args.world_people_only or args.paper_only or args.death_models_only:
+                stem = "death_models" if args.death_models_only else "paper" if args.paper_only else "world_people" if args.world_people_only else "cyber" if args.cyber_only else "map" if args.map_only else "classmates" if args.classmates_only else "archive" if args.archive_only else "rules_dlc" if args.rules_dlc_only else "remaining_death" if args.remaining_death_only else "traces" if args.traces_only else "falling_props" if args.falling_props_only else "anomaly_fx" if args.anomaly_fx_only else "maze_patrol" if args.maze_patrol_only else "inception" if args.inception_only else "secret_items" if args.secret_items_only else "crowd" if args.crowd_only else "grading" if args.grading_only else "routes" if args.story_only else "saves"
                 if args.rules_dlc_only:
                     page.evaluate("() => {window.__rulesHooks={};window.__modRegister=GameModules.mod;GameModules.mod=def=>def.init({on:(name,fn)=>window.__rulesHooks[name]=fn,store:spec=>window.__rulesStore=spec,toast:()=>{}});}")
                     page.add_script_tag(path=str(source / "game3d/mods/campus-rules.js"))
@@ -81,6 +82,9 @@ def main():
                     (ROOT / "assets/campus/archive.json").write_text(json.dumps(result.pop("content"),ensure_ascii=False,indent=2)+"\n")
                 if args.rules_dlc_only:
                     (ROOT / "assets/campus/rules_dlc.json").write_text(json.dumps(result.pop("content"),ensure_ascii=False,indent=2)+"\n")
+                if args.death_models_only:
+                    for name,data in result.pop("textures").items():
+                        (ROOT / "assets/campus/anomalies" / (name+".png")).write_bytes(base64.b64decode(data.split(",",1)[1]))
                 if args.anomaly_fx_only:
                     texture_dir=ROOT / "assets/campus/anomalies"
                     texture_dir.mkdir(parents=True,exist_ok=True)
