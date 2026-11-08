@@ -37,6 +37,7 @@ const ENDS := [["international", "《外国语学生》", "队尾的人回头看
 
 ## record: the death log's "sources" counts; ends: the ending record ({id: 1}).
 const SECRET_DEATHS := [
+	["crowd","满员","门合上，蜂鸣停了。肩膀上搭上来的手越来越多，楼层灯一路往上跳。门再打开时，轿厢里只有一张学生证。"],
 	["void_lost", "迷失", "白墙上的门一扇接一扇亮起来，又一扇接一扇暗下去。我想不起来时的那一扇。"],
 	["void_fall", "下面的我", "那块画着箭头的方块第三次从面前飞过去。下面站着的人，抬起了手电。"]]
 const SECRET_ENDS := [["beast","《先辈》","隔间的门缝里漏出光。穿旧校服的人看了你一眼就往外跑，你跟了出去，学校有了颜色。"]]

@@ -30,6 +30,7 @@ def main():
     parser.add_argument("--save-only", action="store_true", help="capture original save/restore scenarios instead")
     parser.add_argument("--story-only", action="store_true", help="capture original route triggers and cinematic paths")
     parser.add_argument("--grading-only", action="store_true", help="render the original post shader and lighting transitions")
+    parser.add_argument("--crowd-only", action="store_true", help="capture original lift-crowd rules and death timeline")
     args = parser.parse_args()
     source = args.source.resolve()
     tree = subprocess.check_output(["git", "rev-parse", "HEAD:game3d"], cwd=source, text=True).strip()
@@ -49,8 +50,8 @@ def main():
             page.add_init_script("localStorage.setItem('wdfz_pro','1');localStorage.setItem('zw3d_set',JSON.stringify({q:0,amb:0,vol:0,renderer:'webgl',rv:1}));")
             page.goto(f"http://127.0.0.1:{server.server_port}/")
             page.wait_for_function("Engine.ready() && Assets.ready(Assets.want())", timeout=180000)
-            if args.save_only or args.story_only or args.grading_only:
-                stem = "grading" if args.grading_only else "routes" if args.story_only else "saves"
+            if args.save_only or args.story_only or args.grading_only or args.crowd_only:
+                stem = "crowd" if args.crowd_only else "grading" if args.grading_only else "routes" if args.story_only else "saves"
                 result = page.evaluate((ROOT / f"tools/reference_{stem}.js").read_text())
                 result["game3d_tree"] = tree
                 target = ROOT / f"tests/fixtures/{stem if stem != 'saves' else 'save'}-reference.json.gz" if args.output == ROOT / "tests/fixtures/web-reference.json.gz" else args.output

@@ -2,9 +2,8 @@ class_name StoryModule
 extends FeatureModule
 ## Death and difficulty, ported from the Web version (reference wd-fz.github.io@0bf508a): story.js
 ## (kill, DFX_EPI, DEATH_SOURCES, DEATH_HINTS, deathHints, elixirSave, survivalReset, dreamWake)
-## and fx/death-timeline.js durations. The death CG scenes (fx/death-cg.js) are not ported: the
-## presentation holds a red fade for the same duration. Talents (immunity) are not ported.
-## Endings (triggerEnding / ENDINGS) arrive with their routes.
+## and fx/death-timeline.js durations. DeathCG owns the visual scenes; TalentModule and
+## inventory supply fatal protection, while RoutesModule supplies ending cards.
 
 const STATE_VERSION := 1
 const MAX_WAKES := 3
@@ -12,7 +11,7 @@ const DIFFICULTIES := ["easy", "hard"]
 const DURATIONS := {"vignette": 2.0, "floor": 3.0, "grip": 3.2, "neck": 3.4, "shadow": 3.2, "swarm": 3.2, "drown": 3.4,
 	"water": 3.4, "freeze": 3.4, "gaze": 3.4, "stare": 3.2, "voice": 3.2, "bell": 3.4, "follow": 3.4, "shatter": 3.2,
 	"deep": 3.4, "ring": 3.4, "names": 2.0, "chalk": 2.0, "loop": 3.4, "twin": 3.2, "lamps": 3.4, "slit": 3.6,
-	"squeeze": 3.6, "face": 3.0, "wall": 2.0, "laugh": 3.2, "mirror": 2.0, "hand": 2.0, "trash": 3.6, "liftdoor": 4.4, "void": 3.6, "abyss": 3.6}
+	"squeeze": 3.6, "face": 3.0, "wall": 2.0, "laugh": 3.2, "mirror": 2.0, "hand": 2.0, "trash": 3.6, "liftdoor": 4.4, "crowd": 4.2, "void": 3.6, "abyss": 3.6}
 const EPITAPH := {"misread": "你念的那份通知，是给你的。", "laugh": "你自己也觉得好笑。", "gaze": "你终于看清了。",
 	"swarm": "它们很轻。", "water": "你没有挣扎。", "shadow": "它等了你一整天。", "hand": "那只手是温的。",
 	"face": "它一直在等你先动。", "ring": "圈合上了。正中那个位置，从此有人了。", "shatter": "你碎成了很多个自己。每一个都在找回去的路。",
@@ -22,8 +21,9 @@ const EPITAPH := {"misread": "你念的那份通知，是给你的。", "laugh":
 	"chalk": "这一次写的是你的名字。", "loop": "走廊没有尽头 —— 因为你一直在同一段里。", "twin": "他转过来的时候，你正在转过去。",
 	"lamps": "灯停在你站的那一格上。", "neck": "他根本没打算绕路。", "mirror": "镜子里那个，先动的手。",
 	"floor": "下面很宽敞。还有很多张课桌。", "wall": "你比墙软。", "vignette": "有人替你应了一声\"到\"。",
-	"trash": "外面又敲了两下。这次更近了。", "liftdoor": "门缝很窄。它的手指更窄。", "void": "你从那扇门前走过了很多次。", "abyss": "下面站着的，是刚进来的你。"}
+	"trash": "外面又敲了两下。这次更近了。", "liftdoor": "门缝很窄。它的手指更窄。", "crowd":"最后进来的，是我。", "void": "你从那扇门前走过了很多次。", "abyss": "下面站着的，是刚进来的你。"}
 const SOURCES := {
+	"crowd": {"cause":"电梯超载的时候，最后进来的人留在了里面。轿厢里明明只有自己。","hint":"满员的时候，最后进来的人要出去。"},
 	"void_lost": {"cause": "在白色的迷宫里待得太久，理智被一点点耗尽了：待得越久，掉得越快。", "hint": "迷宫里不能久留。出口是门缝漏着淡蓝色光的暗门，都不在出发的那一层，要走楼梯上下；用粉笔在拐角做记号，免得兜回原地。"},
 	"void_fall": {"cause": "理智所剩无几的时候又掉进了虚空。每掉下去一次，都会再扣一点理智。", "hint": "理智低的时候别走没有栏杆的窄梁和断口，宁可绕远路；走窄的地方先停下转好方向，再一步步往前走。"},
 	"san": {"cause": "你的理智已经耗尽；此前的危险与消耗累积到了极限。", "hint": "留意呼吸和画面变化。恢复前先离开危险区域，再选择吃饭、药片或其他恢复活动。"},

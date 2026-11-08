@@ -55,6 +55,11 @@ func convert(plan: Dictionary, defaults: Dictionary, rooms: Dictionary, campus: 
 	_module(data, "campus.world")["open_doors"] = doors.keys().filter(func(k: String) -> bool: return _flag(doors[k]))
 	var lift := _module(data, "campus.elevator")
 	_copy(lift, rt, {"elevators":"lifts", "elevatorRide":"ride"})
+	var crowd := _module(data, "campus.lift_crowd")
+	crowd["run"] = _object(mods.get("lift-crowd"), "lift-crowd").get("run",60.0)
+	crowd["state"] = _object(rt.get("liftCrowd"), "liftCrowd").duplicate(true)
+	if not crowd["state"].is_empty():
+		crowd["state"]["said"] = _flag(crowd["state"].get("said",false))
 	var fac := _module(data, "campus.facilities")
 	_copy(fac, s, {"actCool":"act_cool", "spots":"spots"})
 	for pair: Array in [["vialTaken","vial"],["lensTaken","lens"],["coilTaken","coil"],["geoCompass","compass"],["adminDesk","admin_desk"],["labReagent","goggles"],["geoMaps","geo_maps"],["altarCoin","altar_coin"],["guardKeysTold","guard_told"]]:

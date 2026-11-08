@@ -28,6 +28,7 @@ var _notices: PackedStringArray = []
 var unsafe_check := Callable()
 ## Called when a floor's doors finish closing (PatrolWorld.elevatorClosed): (host, floor).
 var closed_hook := Callable()
+var crowd: LiftCrowdModule
 
 
 func _init(rooms: Dictionary = {}) -> void:
@@ -303,6 +304,8 @@ func use_at(room_id: String, w: Vector2) -> Dictionary:
 
 ## Cabin panel: doors close first when open; choosing the current floor opens them.
 func controls(room_id: String, w: Vector2) -> Dictionary:
+	if crowd != null and crowd.active():
+		return {"notice":"〔操纵盘〕按下去没有反应。显示屏上还是「满员」。"}
 	if ride.is_empty():
 		ride = {"host": "lab" if room_id == "lift_lab" else "teach", "origin": 1, "target": 1, "phase": "dream" if room_id == "lift_dream" else "cabin", "rare": false, "remaining": 0.0, "pending": null}
 	if ride["phase"] == "moving":
@@ -324,6 +327,8 @@ func controls(room_id: String, w: Vector2) -> Dictionary:
 
 
 func press(target: Variant, room_id: String, pose: Dictionary) -> Dictionary:
+	if crowd != null and crowd.active():
+		return {"notice":"〔操纵盘〕按下去没有反应。显示屏上还是「满员」。"}
 	if ride.is_empty() or ride["phase"] != "cabin":
 		return {}
 	var host: String = ride["host"]
@@ -343,12 +348,17 @@ func close_door(room_id: String, w: Vector2) -> bool:
 	var hf := _host_floor(room_id)
 	if hf.is_empty() or not in_cabin(room_id, w):
 		return false
+	if crowd != null and crowd.active():
+		_say("〔操纵盘〕按下去没有反应。显示屏上还是「满员」。")
+		return true
 	_close(hf[0])
 	return true
 
 
 func _depart(room_id: String, pose: Dictionary) -> Dictionary:
 	if ride.is_empty() or ride["phase"] != "cabin" or ride.get("pending") == null:
+		return {}
+	if crowd != null and crowd.depart(ride,lifts[ride["host"]],ride["host"]):
 		return {}
 	var target: Variant = ride["pending"]
 	ride["pending"] = null
@@ -507,6 +517,9 @@ func _enter_cabin(host: String, floor: int) -> void:
 		ride["origin"] = floor
 		return
 	ride = {"host": host, "origin": floor, "target": floor, "phase": "cabin", "rare": _rng.randf() < CFG["rare_chance"], "remaining": 0.0, "pending": null}
+	ride["crowd"]=0
+	if crowd != null and crowd.eligible(ride,_unsafe()):
+		crowd.board(ride,_rng.randf())
 
 
 func show_close_button(room_id: String, pose: Dictionary) -> bool:

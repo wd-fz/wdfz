@@ -15,6 +15,7 @@ static func create() -> GameSession:
 		DemoModule.new(),
 		CampusData.make_module(),
 		ElevatorModule.new(rooms),
+		LiftCrowdModule.new(),
 		MazeModule.new(CampusData.maze_geometry(), CampusData.maze_data()),
 		SchoolModule.new(rooms, outdoor, campus),
 		InventoryModule.new(rooms, campus),

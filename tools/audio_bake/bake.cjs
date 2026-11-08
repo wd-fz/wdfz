@@ -13,9 +13,10 @@ const SRC = process.argv[2] || path.join(__dirname, '../../../wd-fz/wd-fz.github
 const OUT = process.argv[3] || path.join(__dirname, '../../assets/audio');
 const SR = 22050, VARIANTS = 3;
 // Only the cabin crowd event is still pending. The maze's sounds are part of its playable port.
-const SKIP = /^(death\.crowd$|event\.liftOverload$|threat\.crowd$)/;
+const CROWD = /^(death\.crowd$|event\.liftOverload$|threat\.crowd$)/;
 const MAZE = /^(void\.|step\.void$|death\.(void|abyss)$)/;
 const ONLY_MAZE = process.argv.includes('--maze-only');
+const ONLY_CROWD = process.argv.includes('--crowd-only');
 
 // ---- load the old data unchanged ----
 const pub = {};
@@ -166,10 +167,10 @@ const check = {};
 
 // ---- one-shots ----
 fs.mkdirSync(path.join(OUT, 'sfx'), {recursive: true});
-const index = ONLY_MAZE ? JSON.parse(fs.readFileSync(path.join(OUT, 'index.json'), 'utf8')) : {rate: SR, cats: {}, sfx: {}, beds: {}};
+const index = ONLY_MAZE || ONLY_CROWD ? JSON.parse(fs.readFileSync(path.join(OUT, 'index.json'), 'utf8')) : {rate: SR, cats: {}, sfx: {}, beds: {}};
 for (const c in CATS) index.cats[c] = {target: CATS[c].target, wet: CAT_WET[c] || 0.3};
 for (const id of Object.keys(BANK).sort()) {
-  if (SKIP.test(id) || (ONLY_MAZE && !MAZE.test(id))) continue;
+  if ((ONLY_MAZE && !MAZE.test(id)) || (ONLY_CROWD && !CROWD.test(id))) continue;
   const D = BANK[id], vars = []; let stereo = false, len = 0;
   // Every play re-rolls the recipe's ranges in the Web version; here short sounds get three baked
   // takes, middle ones two and long ones (bells, scenes) one, plus pitch and gain variation at play time.
@@ -194,6 +195,7 @@ for (const id of Object.keys(BANK).sort()) {
 // ---- continuous beds (audio.js buildLayers), baked as seamless loops ----
 fs.mkdirSync(path.join(OUT, 'beds'), {recursive: true});
 function loopBake(name, seconds, rate, gen) {
+  if (ONLY_CROWD) return;
   const fade = Math.min(1.5, seconds * 0.25), n = Math.round(seconds * rate), m = Math.round(fade * rate), raw = new Float32Array(n + m);
   for (let k = 0; k < n + m; k++) raw[k] = gen(k / rate);
   const out = new Float32Array(n);   // the tail crossfades into the head (equal power) so the loop has no seam

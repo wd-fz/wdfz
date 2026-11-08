@@ -3198,6 +3198,62 @@
      "db": -18.62
     }
    ]
+  },
+  "death.crowd": {
+   "cat": "death",
+   "len": 6,
+   "stereo": true,
+   "vary": {
+    "p": 0,
+    "g": 0
+   },
+   "wet": 0.4,
+   "files": [
+    {
+     "file": "death.crowd.0.ogg",
+     "db": -17.85
+    }
+   ]
+  },
+  "event.liftOverload": {
+   "cat": "event",
+   "len": 1.23,
+   "stereo": false,
+   "vary": {
+    "p": 0,
+    "g": 0
+   },
+   "wet": 0.5,
+   "files": [
+    {
+     "file": "event.liftOverload.0.ogg",
+     "db": -20.06
+    },
+    {
+     "file": "event.liftOverload.1.ogg",
+     "db": -20.06
+    },
+    {
+     "file": "event.liftOverload.2.ogg",
+     "db": -20.06
+    }
+   ]
+  },
+  "threat.crowd": {
+   "cat": "threat",
+   "len": 6.93,
+   "stereo": true,
+   "vary": {
+    "p": 0,
+    "g": 0
+   },
+   "wet": 0.4,
+   "files": [
+    {
+     "file": "threat.crowd.0.ogg",
+     "db": -25.34
+    }
+   ]
   }
  },
  "beds": {

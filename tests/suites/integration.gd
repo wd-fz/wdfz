@@ -168,7 +168,7 @@ func _test_stair_walk(app: GameApp) -> void:
 
 func _test_audio(app: GameApp) -> void:
 	var fx := app.audio
-	check(fx.ids().size() == 147, "the baked bank includes 139 public and eight maze recipes (%d)" % fx.ids().size())
+	check(fx.ids().size() == 150, "the baked bank includes all 150 original recipes, including maze and crowd (%d)" % fx.ids().size())
 	check(fx.ids().has("void.ping") and fx.ids().has("death.void") and fx.ids().has("step.void"), "the playable maze has its own soundscape and death cues")
 	for id: String in ["step.tile", "step.garage", "threat.heartLow", "event.bellEnd", "event.dismissal", "death.generic", "ui.click", "anomaly.bell13", "music.box"]:
 		var stream := fx.stream_of(id)

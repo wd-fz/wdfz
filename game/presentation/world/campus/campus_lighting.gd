@@ -44,6 +44,7 @@ var world_normal := 0.0
 var fake_normal := 0.0
 var post_exposure := 1.0
 var gaze := 0.0
+var crowd_state: Dictionary = {}
 var terms := {}  # lightState terms before physical-unit mapping and overcast
 var lamp_dark: Dictionary = {}     # A2: corridor lamps whose tubes are dead (AtmosModule.dark_lamps)
 var lamp_mul: Dictionary = {}      # lamp index → multiplier (the timed lamp scene)
@@ -205,6 +206,9 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 		pt_k = 1.0
 	var sun_col := Color(0.86, 0.88, 0.90).lerp(Color(0.92, 0.66, 0.50), sun["gold"])
 	terms={"day":day,"amb":amb,"hemi":hemi,"dir":dirv,"pt":pt_k}
+	var crowd_here: bool = LiftCrowdFx.here(crowd_state,scene_id) and crowd_state.get("phase") != "gone"
+	if crowd_here:
+		pt_k *= LiftCrowdFx.light_mul(float(crowd_state.get("age",0)),reduce_flash)
 	var gaze_mul := 1.0-.88*gaze
 	var dc := Color(0.55, 0.66, 0.86).lerp(sun_col, smooth01(0.0, 0.35, day))
 	var hs := Color(0.16, 0.21, 0.30).lerp(Color(0.70, 0.74, 0.78), day).lerp(Color(0.86, 0.62, 0.50), float(sun["gold"]) * 0.5)
@@ -267,7 +271,7 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var sum := 0.0
 	for i in room_lights.size():
 		var flick := 0.94 if reduce_flash else room_flicker(i, time, day) * lamp_health(i)
-		if scene_id == "lift_dream":
+		if scene_id == "lift_dream" or crowd_here:
 			flick = 1.0
 		# A revisit's broken lamp (fx/dread-fx.js lampMul): a glimmer, now and then a twitch.
 		if dread_lamp >= 0 and i == dread_lamp % room_lights.size():

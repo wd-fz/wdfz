@@ -7,7 +7,7 @@ extends Node
 ## a turn and a lift change (and are put back at the end); a veil sphere on it closes the scene.
 ## Not every cause has a scene yet (CAUSES lists the ported ones); the others keep the screen-effect fade.
 
-const CAUSES := ["trash", "liftdoor", "grip", "neck", "shadow", "twin", "shatter", "drown", "water", "freeze", "stare", "voice", "bell", "follow", "deep", "floor", "ring", "loop", "lamps", "laugh", "swarm", "gaze", "window_gaze", "paper_sender", "misread", "campus_fall", "void", "abyss"]
+const CAUSES := ["trash", "liftdoor", "crowd", "grip", "neck", "shadow", "twin", "shatter", "drown", "water", "freeze", "stare", "voice", "bell", "follow", "deep", "floor", "ring", "loop", "lamps", "laugh", "swarm", "gaze", "window_gaze", "paper_sender", "misread", "campus_fall", "void", "abyss"]
 ## Scenes that carry their own length (seconds) when the cause is not one of StoryModule.DURATIONS.
 const LENGTH := {"window_gaze": 7.0, "paper_sender": 8.0, "misread": 4.1, "campus_fall": 6.0}
 
@@ -294,6 +294,14 @@ func cue(id: String, kk: float, at: float, fn: Callable) -> void:
 
 func update(kk: float) -> void:
 	call("_update_" + fx, kk)
+
+
+func _build_crowd() -> void:
+	CrowdDeath.build(self)
+
+
+func _update_crowd(kk: float) -> void:
+	CrowdDeath.update(self,kk)
 
 
 # ---- trash: the third bin. Looking up from inside: the lid shuts, a ring of light leaks round the rim, two knocks outside ----

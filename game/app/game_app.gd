@@ -289,6 +289,13 @@ func elevator() -> ElevatorModule:
 	return session.modules.get_module(&"campus.elevator") as ElevatorModule if session != null else null
 
 
+func lift_crowd() -> LiftCrowdModule:
+	return session.modules.get_module(&"campus.lift_crowd") as LiftCrowdModule if session != null else null
+
+
+var _lift_crowd_fx: LiftCrowdFx
+
+
 ## The prologue: the game waits (paused) until the pages are read or skipped.
 var _opening_cut: OpeningCut
 var _ending_cut: EndingCut
@@ -533,6 +540,7 @@ func _unwire(old: GameSession) -> void:
 	if lift != null:
 		lift.unsafe_check = Callable()
 		lift.closed_hook = Callable()
+		lift.crowd = null
 	var watcher := old.modules.get_module(&"patrol.world") as PatrolModule
 	if watcher != null:
 		watcher.elevator = null
@@ -591,6 +599,8 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	var day_rules := school()
 	player.seated = day_rules != null and day_rules.seated
 	var lift_rules := elevator()
+	if lift_rules != null:
+		lift_rules.crowd = lift_crowd()
 	var watcher := patrol()
 	var radio_now := broadcast()
 	if watcher != null and radio_now != null:
@@ -702,6 +712,8 @@ func resume_game() -> void:
 
 
 func _cancel_cinematics() -> void:
+	if is_instance_valid(_lift_crowd_fx):
+		_lift_crowd_fx.clear()
 	if is_instance_valid(maze_flow):
 		maze_flow.cancel()
 	if is_instance_valid(debug_panel):
@@ -858,6 +870,7 @@ func _campus_step(delta: float) -> void:
 		ui.set_lift_close(lift.show_close_button(session.world_id, player.capture_pose()) and not ui.choice_open())
 		if player.enabled and Input.is_action_just_pressed("lift_close"):
 			_lift_close()
+	_lift_crowd_step(delta)
 	if not player.enabled:
 		return
 	var crossing := rules.crossing(session.world_id, player.capture_pose())
@@ -886,6 +899,38 @@ func _campus_step(delta: float) -> void:
 			exchange().set_context(_exchange_context())
 			radio_hint = exchange().hint()
 		ui.show_prompt(radio_hint if radio_hint != "" else rules.hint(session.world_id, player.capture_pose()))
+
+
+func _lift_crowd_step(delta: float) -> void:
+	var crowd := lift_crowd()
+	var lift := elevator()
+	if crowd == null or lift == null:
+		return
+	_lift_crowd_events()
+	if _dead():
+		return
+	var p: Array = player.capture_pose()["position"]
+	var room: Variant = campus().room(session.world_id)
+	var w := CampusGeometry.to_world(room,float(p[0]),float(p[2]))
+	var here := not crowd.state.is_empty() and session.world_id == String(crowd.state["host"])+str(int(crowd.state["floor"]))
+	crowd.tick(delta,lift.lifts,lift.ride,here and lift.in_cabin(session.world_id,w),session.world_id)
+	_lift_crowd_events()
+	if not is_instance_valid(_lift_crowd_fx):
+		_lift_crowd_fx = LiftCrowdFx.new()
+		add_child(_lift_crowd_fx)
+	_lift_crowd_fx.update(delta,crowd.state,session.world_id,_campus_world(),lift,audio,_dead(),settings.get_int("reduce_flash")==1)
+
+
+func _lift_crowd_events() -> void:
+	var crowd := lift_crowd()
+	for event: Dictionary in crowd.take_events():
+		match event["kind"]:
+			"notice": ui.show_notice(event["text"])
+			"fact": fact(event["fact"])
+			"kill":
+				kill(event["text"],event["fx"],event["source"])
+				if not _dead():
+					fact({"kind":"anomaly","phase":"end","id":"crowd","name":"满员","survived":false,"saved":true,"public":false})
 
 
 func _campus_interact() -> void:
@@ -1231,6 +1276,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 			lit.lighting.world_normal = ui.scene_post().world_normal
 			lit.lighting.fake_normal = ui.scene_post().fake_normal
 			lit.lighting.gaze = ui.scene_post().gaze_level
+			lit.lighting.crowd_state = lift_crowd().state if lift_crowd() != null else {}
 		lit.update_lighting(delta, day_rules.tsec, player.camera, watcher.flick if watcher != null else 0.0, watcher.red if watcher != null else 0.0,
 			weird_light != null and weird_light.blackout_now(), weird_light.overcast_target() if weird_light != null else 0.0)
 		if lit.lighting != null:
@@ -1485,6 +1531,8 @@ func kill(msg: String, fx: String, source: String) -> void:
 	player.enabled = false
 	player.clear_input()
 	audio.stop_all()
+	if is_instance_valid(_lift_crowd_fx):
+		_lift_crowd_fx.clear()
 	audio.death(fx)
 	ui.hide_choice()
 	ui.hide_bag()
@@ -2519,7 +2567,7 @@ func _camera_context() -> Dictionary:
 	var weird := anomaly()
 	var bag := items()
 	return {"an": String(weird.an["id"]) if weird != null and bool(weird.an["active"]) else "", "gaze": gaze() != null and not gaze().current().is_empty(),
-		"crowd": false, "day": school().day, "tsec": school().tsec, "place": school().place_name(session.world_id, float(player.capture_pose()["position"][1])),
+		"crowd": lift_crowd() != null and lift_crowd().active(), "day": school().day, "tsec": school().tsec, "place": school().place_name(session.world_id, float(player.capture_pose()["position"][1])),
 		"clock": (bag != null and bag.has_clock()) or (talent() != null and talent().has("watch"))}
 
 
