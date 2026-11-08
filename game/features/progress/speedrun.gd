@@ -2,7 +2,8 @@ class_name Speedrun
 extends RefCounted
 ## Speedrun mode, ported from the Web version (reference wd-fz.github.io@0bf508a, speedrun.js):
 ## idle → ready (difficulty and talent chosen) → running (from the first frame the player can act)
-## → finished / failed / abandoned. The clock keeps running through pauses, the bag and cutscenes;
+## → finished / invalid / failed / abandoned. Invalidating a run leaves the clock running.
+## The clock keeps running through pauses, the bag and cutscenes;
 ## the larger of the monotonic and the wall clock is used. Records: the last 20 runs and the
 ## personal best per rules version · difficulty · route, in a side file next to the save. Speedruns
 ## do not write the normal save slot. Hidden routes appear in the table only after a record exists.
@@ -24,11 +25,20 @@ func active() -> bool:
 
 
 func arm(diff: String) -> void:
-	run = {"id": "%x%x" % [Time.get_ticks_usec(), randi() % 1000000], "diff": "hard" if diff == "hard" else "easy", "status": "ready", "route": "", "ms": 0, "p0": 0, "w0": 0.0}
+	run = {"id": "%x%x" % [Time.get_ticks_usec(), randi() % 1000000], "diff": "hard" if diff == "hard" else "easy", "status": "ready", "route": "", "reason": "", "ms": 0, "p0": 0, "w0": 0.0}
 
 
 func disarm() -> void:
 	run = {}
+
+
+func invalidate(reason: String) -> void:
+	if active() and String(run.get("reason", "")).is_empty():
+		run["reason"] = reason
+
+
+static func reason_text(reason: String) -> String:
+	return {"debug": "用了调试面板", "ending_direct": "没有经过正常路线", "load": "读了存档"}.get(reason, reason)
 
 
 func start() -> void:
@@ -52,7 +62,7 @@ func finish(route: String, record: Dictionary) -> Dictionary:
 		return {}
 	run["ms"] = elapsed()
 	run["route"] = route
-	run["status"] = "finished"
+	run["status"] = "finished" if String(run.get("reason", "")).is_empty() else "invalid"
 	return _save(record)
 
 
@@ -77,7 +87,7 @@ func _save(record: Dictionary) -> Dictionary:
 		record["version"] = 1
 		record["recent"] = []
 		record["best"] = {}
-	var rec := {"runId": run["id"], "diff": run["diff"], "route": run["route"], "ms": int(run["ms"]), "status": run["status"], "rules": RULES, "at": int(Time.get_unix_time_from_system())}
+	var rec := {"runId": run["id"], "diff": run["diff"], "route": run["route"], "ms": int(run["ms"]), "status": run["status"], "reason": run.get("reason", ""), "rules": RULES, "at": int(Time.get_unix_time_from_system())}
 	var recent: Array = record["recent"]
 	recent.push_front(rec)
 	record["recent"] = recent.slice(0, 20)
@@ -102,5 +112,7 @@ static func rows(record: Dictionary) -> Array:
 			out.append({"text": "%s · %s　%s" % [DIFF_NAME[diff], ROUTES[route], fmt(int(b["ms"])) if b != null else "—"], "on": b != null, "memo": ""})
 	for r: Dictionary in record.get("recent", []):
 		var what: String = {"finished": "完成", "failed": "失败", "abandoned": "放弃"}.get(String(r["status"]), String(r["status"]))
+		if r["status"] == "invalid":
+			what = "无效（%s）" % reason_text(String(r.get("reason", "")))
 		out.append({"text": "最近 · %s · %s · %s · %s" % [DIFF_NAME.get(r["diff"], r["diff"]), ROUTES.get(r["route"], "—"), what, fmt(int(r["ms"]))], "on": r["status"] == "finished", "memo": ""})
 	return out

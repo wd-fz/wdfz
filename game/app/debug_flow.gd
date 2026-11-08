@@ -25,9 +25,7 @@ func report(message: String) -> String:
 
 func dirty() -> void:
 	if app.runscore()!=null: app.runscore().trusted=false
-	if app.speedrun.active():
-		var records:=app._read_speedrun()
-		app._speedrun_result(app.speedrun.fail("debug",records),records)
+	app.speedrun.invalidate("debug")
 
 func clear_modifiers() -> void:
 	fast=false
@@ -38,7 +36,7 @@ func clear_modifiers() -> void:
 func session_started() -> void:
 	_death_view={}
 	if app.speedrun.active(): clear_modifiers()
-	elif fast or god or instant_search: dirty()
+	if fast or god or instant_search or (is_instance_valid(app.debug_panel) and app.debug_panel.visible): dirty()
 	refresh()
 
 func set_frozen(value: bool) -> void:
@@ -92,7 +90,7 @@ func preview_death(cause: String) -> String:
 	app.audio.preview_play("death.base")
 	app.audio.preview_play("death."+cause if app.audio.has("death."+cause) else "death.generic")
 	add_child(preview)
-	preview.begin(cause,app.player,app._campus_world(),app.ui,DeathCG.duration(cause,StoryModule.duration(cause)),app.settings.get_int("reduce_flash")==1,preview_camera)
+	preview.begin(cause,app.player,app._campus_world(),app.ui,maxf(3.5,DeathCG.duration(cause,StoryModule.duration(cause))+.2),app.settings.get_int("reduce_flash")==1,preview_camera)
 	return report("预览 %s；结束后自动清理，不触发死亡结算。" % cause)
 
 func _process(dt: float) -> void:

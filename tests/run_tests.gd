@@ -47,6 +47,8 @@ func _run() -> void:
 	debug_tools.test_reference_time()
 	print("CASE: debug_tools.test_commands")
 	await debug_tools.test_commands()
+	print("CASE: debug_tools.test_record_trust")
+	await debug_tools.test_record_trust()
 	print("CASE: debug_tools.test_preview_lifecycle")
 	await debug_tools.test_preview_lifecycle()
 	var remaining_death:=preload("res://tests/suites/remaining_death.gd").new(self)

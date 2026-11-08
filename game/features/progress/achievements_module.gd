@@ -214,7 +214,7 @@ func points() -> int:
 ## day {day}, anomaly {phase: start|end, id, survived, lethal, public}, patrol {what: lost|locker},
 ## inspection {day, slot, compliant}, room {id}, wake, protect, ending {id, day, diff, permanent},
 ## garage {what: torch|drive, tried}.
-func fact(f: Dictionary) -> Array[String]:
+func fact(f: Dictionary, trusted: bool = true) -> Array[String]:
 	var got: Array[String] = []
 	match String(f["kind"]):
 		"room":
@@ -225,14 +225,6 @@ func fact(f: Dictionary) -> Array[String]:
 			insp[str(int(f["day"]))] = d
 		"protect":
 			saved = true
-		"rest":
-			sets["rest"][String(f["key"])] = true
-		"lesson":
-			if bool(f.get("correct", false)):
-				sets["notes"][str(int(f["task"]))] = true
-		"ending":
-			if _public_end_id(String(f.get("id", ""))) and TalentModule.KEYS.has(String(f.get("talent", ""))):
-				sets["talents"][String(f["talent"])] = true
 		"exam":
 			if f["phase"] == "paper":
 				var x: Dictionary = exams.get(str(int(f.get("day", 1))), {"pass": 0, "fail": 0})
@@ -241,6 +233,21 @@ func fact(f: Dictionary) -> Array[String]:
 		"anomaly":
 			if f["phase"] == "start":
 				started = String(f["id"])
+	# Run-local tracking remains accurate in debug runs; profile progress and unlocks
+	# share one sticky trust boundary (old achievements.js onFact/trusted).
+	if not trusted:
+		return got
+	match String(f["kind"]):
+		"rest":
+			sets["rest"][String(f["key"])] = true
+		"lesson":
+			if bool(f.get("correct", false)):
+				sets["notes"][str(int(f["task"]))] = true
+		"ending":
+			if _public_end_id(String(f.get("id", ""))) and TalentModule.KEYS.has(String(f.get("talent", ""))):
+				sets["talents"][String(f["talent"])] = true
+		"anomaly":
+			if f["phase"] == "start":
 				if bool(f.get("public", true)):
 					sets["anomalies"][String(f["id"])] = true
 			elif bool(f.get("survived", false)) and bool(f.get("lethal", false)) and started == String(f["id"]):

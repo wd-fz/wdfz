@@ -131,7 +131,50 @@ func test_commands() -> void:
 	check(not dev.fast and not dev.god and not dev.instant_search,"speedrun clears retained modifiers")
 	app.speedrun.start()
 	dev.command("god")
-	check(app.speedrun.run["status"]!="running" and not app.runscore().trusted,"enabling a modifier mid-speedrun invalidates timer and score")
+	check(app.speedrun.run["status"]=="running" and app.speedrun.run["reason"]=="debug" and not app.runscore().trusted,"debug speedrun keeps counting but invalidates its result")
+	app.speedrun.run["p0"]=Time.get_ticks_msec()-6000
+	app.speedrun.run["w0"]=Time.get_unix_time_from_system()-6
+	app.speedrun.invalidate("load")
+	var records: Dictionary={}
+	var result:=app.speedrun.finish("face",records)
+	check(result.rec.status=="invalid" and result.rec.reason=="debug" and result.rec.ms>=6000 and not result.pb and records.best.is_empty(),"invalid speedrun retains elapsed time and first reason without a personal best")
+	check("用了调试面板" in app._speedrun_result(result,records) and "无效" in Speedrun.rows(records)[-1].text,"invalid result and history explain the reason")
+	app.return_to_menu()
+	app.queue_free()
+	await _frames(3)
+	CampusData.clear_caches()
+
+func test_record_trust() -> void:
+	var app:=await _app()
+	app.achievements().load_profile({})
+	app._save_profile(app.achievements())
+	var profile:=app.achievements().profile()
+	app._toggle_debug()
+	check(not app.runscore().trusted,"opening tools alone marks the run, as in the original")
+	app.debug_panel.dismiss()
+	for f: Dictionary in [{"kind":"room","id":"lab1"},{"kind":"rest","key":"garden"},{"kind":"lesson","correct":true,"task":1},
+		{"kind":"anomaly","phase":"start","id":"rain"},{"kind":"anomaly","phase":"end","id":"rain","survived":true,"lethal":true},
+		{"kind":"protect"},{"kind":"inspection","day":1,"slot":0,"compliant":true},{"kind":"exam","phase":"paper","day":1,"pass":true},
+		{"kind":"ending","id":"face","day":1,"diff":"hard","talent":"none","permanent":false}]:
+		app.fact(f)
+	check(same_json(profile,app.achievements().profile()),"debug facts change no unlocks or cross-run achievement progress after closing tools")
+	check(app.achievements().rooms.has("lab1") and app.achievements().saved and app.achievements().exams["1"]["pass"]==1 and app.achievements().insp["1"]["0"]==1,"debug run-local counters remain accurate")
+	app.save_game()
+	app.load_game()
+	app.set_physics_process(false)
+	app.player.set_physics_process(false)
+	app.fact({"kind":"wake"})
+	check(not app.runscore().trusted and same_json(profile,app.achievements().profile()),"saving and loading keeps the debug achievement boundary")
+	app.start_new_game("hard","none")
+	app.set_physics_process(false)
+	app.player.set_physics_process(false)
+	app.fact({"kind":"wake"})
+	check(app.runscore().trusted and app.achievements().unlocked.has("n.wake"),"a clean new run with closed tools still awards normal achievements")
+	app._toggle_debug()
+	app.start_new_game("hard","none")
+	app.set_physics_process(false)
+	app.player.set_physics_process(false)
+	check(not app.runscore().trusted,"a new run with the panel retained open starts untrusted")
 	app.return_to_menu()
 	app.queue_free()
 	await _frames(3)
@@ -148,7 +191,7 @@ func test_preview_lifecycle() -> void:
 		var state:=app.session.capture(app.player.capture_pose())
 		var view:=app.player.camera.transform
 		dev.preview_death(cause)
-		check(is_instance_valid(dev.preview) and dev.preview.cam!=app.player.camera,"isolated display camera for "+cause)
+		check(is_instance_valid(dev.preview) and dev.preview.cam!=app.player.camera and dev.preview.dur>=3.5,"isolated display camera for "+cause)
 		for at: float in [0.0,.5,1.2,2.4]:
 			dev.preview.update(at)
 			check(same_json(state,app.session.capture(app.player.capture_pose())) and view.is_equal_approx(app.player.camera.transform),"preview preserves saved state, input pitch and real camera: %s at %.1f" % [cause,at])

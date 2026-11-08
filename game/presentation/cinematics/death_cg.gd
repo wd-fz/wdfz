@@ -5,7 +5,8 @@ extends Node
 ## rate). The props live in the "view frame": the origin at the player's feet, +z the way the player was looking at
 ## the moment of death, +y up (+x is on the left of the picture). The camera is the player's own: only its pitch,
 ## a turn and a lift change (and are put back at the end); a veil sphere on it closes the scene.
-## Not every cause has a scene yet (CAUSES lists the ported ones); the others keep the screen-effect fade.
+## CAUSES includes the base game's staged scenes and its original anfx death props.
+## Unknown extension causes keep the screen-effect fade until their own stage is available.
 
 const CAUSES := ["trash", "liftdoor", "crowd", "grip", "neck", "shadow", "twin", "shatter", "drown", "water", "freeze", "stare", "voice", "bell", "follow", "deep", "floor", "ring", "loop", "lamps", "laugh", "swarm", "gaze", "window_gaze", "paper_sender", "misread", "campus_fall", "void", "abyss", "vignette", "hand", "names", "chalk", "mirror", "face", "squeeze", "slit", "wall"]
 ## Scenes that carry their own length (seconds) when the cause is not one of StoryModule.DURATIONS.

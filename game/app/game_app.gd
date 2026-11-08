@@ -252,7 +252,7 @@ func fact(f: Dictionary) -> void:
 		return
 	_score_fact(f)
 	playtest.event("事实", String(f.get("kind", "")), _playtest_state())
-	ach.fact(f)
+	ach.fact(f, runscore() != null and runscore().trusted)
 	for e: Dictionary in ach.take_events():
 		ui.show_notice("成就：%s" % e["name"])
 		audio.achieve(String(e.get("tier", "n")))
@@ -412,7 +412,10 @@ func _speedrun_result(res: Dictionary, record: Dictionary) -> String:
 	_write_speedrun(record)
 	var rec: Dictionary = res["rec"]
 	fact({"kind": "speedrun", "status": rec["status"], "route": rec["route"], "ms": rec["ms"], "diff": rec["diff"]})
-	return "速通 %s%s" % [Speedrun.fmt(int(rec["ms"])), "（个人最佳）" if bool(res["pb"]) else ""]
+	var suffix := "（个人最佳）" if bool(res["pb"]) else ""
+	if rec["status"] == "invalid":
+		suffix = "（无效：%s）" % Speedrun.reason_text(String(rec.get("reason", "")))
+	return "速通 %s%s" % [Speedrun.fmt(int(rec["ms"])), suffix]
 
 
 func _speedrun_menu() -> void:
@@ -854,7 +857,7 @@ func _physics_process(delta: float) -> void:
 		session.advance(delta, router.current.advances_calendar)
 		if school() == null or campus() == null or not campus().knows(session.world_id):
 			ui.show_location(_location_name())
-		ui.speedrun_text = Speedrun.fmt(speedrun.elapsed()) if speedrun.active() and speedrun.run["status"] == "running" else ""
+		ui.speedrun_text = ("无效 · " if speedrun.run.get("reason", "") != "" else "") + Speedrun.fmt(speedrun.elapsed()) if speedrun.active() and speedrun.run["status"] == "running" else ""
 		ui.show_runtime(session.clock.active_seconds)
 		_campus_step(delta)
 		if days() != null and days().waiting != null:
@@ -5015,8 +5018,8 @@ func _toggle_debug() -> void:
 		debug_panel.clear_debug_records.connect(func() -> void: debug_panel.say("已清除 %d 条调试记录" % runs().remove_debug()))
 		debug_panel.mark_untrusted.connect(func() -> void:
 			if runscore() != null:
-				runscore().trusted = false
-				debug_panel.say("本局已标为调试局：不计分，不进真实评级")
+				debug_flow.dirty()
+				debug_panel.say("本局已标为调试局：不计成就、真实评级与速通最佳")
 			else:
 				debug_panel.say("没有进行中的一局"))
 	if debug_panel.visible:
@@ -5028,6 +5031,7 @@ func _toggle_debug() -> void:
 	else:
 		debug_panel.show()
 	if debug_panel.visible:
+		debug_flow.dirty()
 		player.clear_input()
 		ui.clear_touch()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

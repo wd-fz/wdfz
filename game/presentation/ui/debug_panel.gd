@@ -24,6 +24,7 @@ var _toggle: Button
 var _note: LineEdit
 var _msg: Label
 var _pages: Dictionary = {}
+var _tabs: Dictionary = {}
 var _selectors: Dictionary = {}
 var _live: Label
 var _bag_info: Label
@@ -281,16 +282,23 @@ func selected(key: String) -> String:
 
 func select_page(title: String) -> void:
 	_active_page=title
-	for key: String in _pages: _pages[key].visible=key==title
+	for key: String in _pages:
+		_pages[key].visible=key==title
+		(_tabs[key] as Button).set_pressed_no_signal(key==title)
+	_scroll.scroll_vertical=0
 
 func _make_pages(parent: VBoxContainer) -> VBoxContainer:
 	var tabs:=_row(parent)
+	tabs.reparent(_frame,false)
+	_frame.move_child(tabs,1)
 	for title: String in ["状态","场景","物品","事件","工具"]:
 		var page:=VBoxContainer.new()
 		page.name="DevPage"+title
 		parent.add_child(page)
 		_pages[title]=page
-		_button(tabs,title,"DevTab"+title,select_page.bind(title))
+		var tab:=_button(tabs,title,"DevTab"+title,select_page.bind(title))
+		tab.toggle_mode=true
+		_tabs[title]=tab
 	var status: VBoxContainer=_pages["状态"]
 	_live=_label(status,"没有进行中的一局")
 	var switches:=_row(status)
@@ -376,6 +384,7 @@ func set_runtime(state: Dictionary) -> void:
 	for key: String in _switches: (_switches[key] as Button).set_pressed_no_signal(bool(state[key]))
 	if state.has("room"):
 		_live.text="第 %d 天 %s · %s\nSAN %.1f · 违规 %.1f · 同化 %.1f · 体力 %.1f / %.1f\n异象 %s · 检查 %s / 排队 %d · 巡察 %s\n%s" % [state.day,state.time,state.room,state.san,state.viol,state.tt,state.stam,state.cap,state.anomaly,"进行中" if state.inspection else "无",state.queued,state.patrol,"真实局" if state.trusted else "调试局（不计真实成绩）"]
+		_live.text+="\n位置 %.2f, %.2f, %.2f m" % state.pose.position
 		var names: Array=[]
 		for id: String in state.bag: names.append(CampusData.campus()["items"].get(id,{}).get("n",id))
 		_bag_info.text="背包 %d / 8：%s\n快捷栏：%s" % [names.size(),"、".join(names),str(state.hot)]
