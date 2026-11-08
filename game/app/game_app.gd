@@ -546,7 +546,7 @@ func _unwire(old: GameSession) -> void:
 
 
 func _install_session(candidate: GameSession, pose: Dictionary) -> void:
-	_cancel_ending_cut()
+	_cancel_cinematics()
 	if session != null:
 		_unwire(session)
 		session.stop()
@@ -680,7 +680,11 @@ func resume_game() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
 
 
-func _cancel_ending_cut() -> void:
+func _cancel_cinematics() -> void:
+	if is_instance_valid(_opening_cut):
+		_opening_cut.cancel()
+		_opening_cut.queue_free()
+	_opening_cut = null
 	if is_instance_valid(_ending_cut):
 		_ending_cut.cancel()
 		_ending_cut.queue_free()
@@ -688,7 +692,7 @@ func _cancel_ending_cut() -> void:
 
 
 func return_to_menu() -> void:
-	_cancel_ending_cut()
+	_cancel_cinematics()
 	_last_result = {}
 	_fake_people_clear()
 	_stop_snake(true)
@@ -4780,7 +4784,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _exit_tree() -> void:
-	_cancel_ending_cut()
+	_cancel_cinematics()
 	if session != null:
 		_unwire(session)
 		session.stop()

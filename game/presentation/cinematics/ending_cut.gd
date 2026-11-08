@@ -366,7 +366,7 @@ func _finish(skipped: bool, notify: bool) -> void:
 		audio.stop("scene")
 	if STAGED.has(kind) and is_instance_valid(_world):
 		_world.visible = _world_was_visible
-	if is_instance_valid(_player) and _player.camera != null:
+	if is_instance_valid(_player) and is_instance_valid(_player.camera):
 		_player.camera.current = true
 	if is_instance_valid(_root):
 		_root.queue_free()

@@ -341,3 +341,17 @@ func _skip_cut(app: GameApp) -> void:
 	Input.parse_input_event(key)
 	await _frames(2)
 	check(not app._ending_cut.on, "Space skips the live ending through real input")
+
+
+func _skip_opening(app: GameApp) -> void:
+	var key := InputEventKey.new()
+	key.keycode = KEY_ESCAPE
+	key.physical_keycode = KEY_ESCAPE
+	key.pressed = true
+	Input.parse_input_event(key)
+	await _frames(2)
+	key.pressed = false
+	Input.parse_input_event(key)
+	await _frames(2)
+	check(not app.opening_busy() and not paused and app.player.enabled,
+		"Escape hands control back from a live or text opening")

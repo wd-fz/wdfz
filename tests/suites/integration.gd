@@ -736,8 +736,8 @@ func _test_speedrun_app(app: GameApp) -> void:
 	app._choice_made(0)
 	app._choice_made(4)
 	await _frames(2)
-	check(app.speedrun.active() and app.ui.opening_on(), "speedrun: talent, prologue")
-	app.ui._end_opening(true)
+	check(app.speedrun.active() and app.opening_busy(), "speedrun: talent, prologue")
+	await _skip_opening(app)
 	await _frames(2)
 	check(app.speedrun.run["status"] == "running" and app.ui.speedrun_text != "", "the clock starts at the first move and shows")
 	app.save_game()
@@ -1015,23 +1015,27 @@ func _test_spiral_walk(app: GameApp) -> void:
 func _test_cut_lifecycle(app: GameApp) -> void:
 	if DisplayServer.get_name() == "headless":
 		return # Live cinematics are intentionally disabled by the app in this mode.
-	for action: String in ["menu", "new_game"]:
-		app.start_new_game()
-		app.travel("out", {"position": [0.0, 0.05, 0.0], "yaw": 0.0, "pitch": 0.0}, false)
-		await _frames(2)
-		app._reach_ending("face")
-		await _frames(2)
-		var old_cut := app._ending_cut
-		check(is_instance_valid(old_cut) and old_cut.on, "a visible ending starts before " + action)
-		var completed := [0]
-		old_cut.finished.connect(func(_skipped: bool) -> void: completed[0] += 1)
-		if action == "menu":
-			app.return_to_menu()
-		else:
+	for kind: String in ["ending", "opening"]:
+		for action: String in ["menu", "new_game"]:
 			app.start_new_game()
-		await _frames(3)
-		check(app._ending_cut == null and not is_instance_valid(old_cut) and completed[0] == 0,
-			"leaving an ending cancels props and callbacks on " + action)
-		check(not paused and (app.ui.ending_panel == null or not app.ui.ending_panel.visible),
-			"an abandoned ending cannot reopen its card or pause the next run")
+			if kind == "ending":
+				app.travel("out", {"position": [0.0, 0.05, 0.0], "yaw": 0.0, "pitch": 0.0}, false)
+				await _frames(2)
+				app._reach_ending("face")
+			else:
+				app._play_opening()
+			await _frames(2)
+			var old_cut: Node = app._ending_cut if kind == "ending" else app._opening_cut
+			check(is_instance_valid(old_cut) and bool(old_cut.get("on")), "a visible " + kind + " starts before " + action)
+			var completed := [0]
+			old_cut.connect("finished", func(_skipped: bool) -> void: completed[0] += 1)
+			if action == "menu":
+				app.return_to_menu()
+			else:
+				app.start_new_game()
+			await _frames(3)
+			check(app._ending_cut == null and app._opening_cut == null and not is_instance_valid(old_cut) and completed[0] == 0,
+				"leaving " + kind + " cancels props and callbacks on " + action)
+			check(not paused and (app.ui.ending_panel == null or not app.ui.ending_panel.visible),
+				"an abandoned scene cannot reopen its card or pause the next run")
 	app.return_to_menu()

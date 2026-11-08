@@ -299,8 +299,8 @@ func _unhandled_input(event: InputEvent) -> void:
 func tick(delta: float) -> void:
 	if not on:
 		return
-	if not is_instance_valid(_root) or not is_instance_valid(_dust):
-		end(true)           # the world went away (back to the menu, a load)
+	if not is_instance_valid(_root) or not _root.is_inside_tree() or not is_instance_valid(_dust) or not is_instance_valid(cam) or not cam.is_inside_tree():
+		cancel()
 		return
 	k += delta / duration(short)
 	if k >= 1.0:
@@ -312,18 +312,28 @@ func tick(delta: float) -> void:
 
 
 func end(skipped: bool) -> void:
+	_finish(skipped, true)
+
+
+func cancel() -> void:
+	_finish(true, false)
+
+
+func _finish(skipped: bool, notify: bool) -> void:
 	if not on:
 		return
 	on = false
-	_ui.cut_mode(false)
+	if is_instance_valid(_ui):
+		_ui.cut_mode(false)
+		_ui.cut_fade(0.0)
+		_ui.cut_caption("")
 	for m: Dictionary in _mates:
 		if is_instance_valid(m["node"]):
 			(m["node"] as Node3D).rotation = Vector3(0.0, float(m["base_y"]), 0.0)
 	_mates = []
-	_ui.cut_fade(0.0)
-	_ui.cut_caption("")
-	if is_instance_valid(_player) and _player.camera != null:
+	if is_instance_valid(_player) and is_instance_valid(_player.camera):
 		_player.camera.current = true
 	if is_instance_valid(_root):
 		_root.queue_free()
-	finished.emit(skipped)
+	if notify:
+		finished.emit(skipped)
