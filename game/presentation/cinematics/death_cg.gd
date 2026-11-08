@@ -8,9 +8,9 @@ extends Node
 ## CAUSES includes the base game's staged scenes and its original anfx death props.
 ## Unknown extension causes keep the screen-effect fade until their own stage is available.
 
-const CAUSES := ["trash", "liftdoor", "crowd", "grip", "neck", "shadow", "twin", "shatter", "drown", "water", "freeze", "stare", "voice", "bell", "follow", "deep", "floor", "ring", "loop", "lamps", "laugh", "swarm", "gaze", "window_gaze", "paper_sender", "misread", "campus_fall", "void", "abyss", "vignette", "hand", "names", "chalk", "mirror", "face", "squeeze", "slit", "wall"]
+const CAUSES := ["trash", "liftdoor", "crowd", "grip", "neck", "shadow", "twin", "shatter", "drown", "water", "freeze", "stare", "voice", "bell", "follow", "deep", "floor", "ring", "loop", "lamps", "laugh", "swarm", "gaze", "window_gaze", "paper_sender", "misread", "campus_fall", "void", "abyss", "vignette", "hand", "names", "chalk", "mirror", "face", "squeeze", "slit", "wall", "rules_knock"]
 ## Scenes that carry their own length (seconds) when the cause is not one of StoryModule.DURATIONS.
-const LENGTH := {"window_gaze": 7.0, "paper_sender": 8.0, "misread": 4.1, "campus_fall": 6.0}
+const LENGTH := {"rules_knock":7.0, "window_gaze": 7.0, "paper_sender": 8.0, "misread": 4.1, "campus_fall": 6.0}
 
 var on := false
 var fx := ""
@@ -1606,3 +1606,29 @@ func _build_abyss() -> void:
 
 func _update_abyss(t: float) -> void:
 	MazeDeath.update_fall(self, t)
+
+
+# Bundled campus-rules.js: the name outside the door (seven seconds).
+func _build_rules_knock() -> void:
+	hide_world()
+	var floor_mesh:=QuadMesh.new()
+	floor_mesh.size=Vector2(4,4)
+	var floor_node:=mesh(floor_mesh,_mat(Color("191b1c")),0,.002,1)
+	floor_node.rotation.x=-PI/2
+	box(4,3,.1,Color("3a3f40"),-1,0,1.5,2)
+	box(.9,2.05,.05,Color("4c3e30"),-1,0,1.03,1.95)
+	box(.88,.02,.01,Color("cfc8b0"),-1,0,.01,1.92)
+	d["feet"]=[box(.1,.05,.22,Color("15181a"),-1,-.1,.025,2.1),box(.1,.05,.22,Color("15181a"),-1,.1,.025,2.1)]
+	box(.3,.1,.01,Color("e8e2cc"),-1,0,1.75,1.92)
+	d["ink"]=box(.02,.05,.012,Color("101010"),-1,-.12,1.75,1.915)
+	veil(Color.BLACK)
+
+func _update_rules_knock(kk: float) -> void:
+	cue("a",kk,.3,func() -> void: _ui.show_notice("门外：「在。」——是我的声音。"))
+	for foot: Node3D in d["feet"]: foot.visible=kk>2
+	(d["ink"] as Node3D).scale.x=1+11*ss(kk,4,5.6)
+	(d["ink"] as Node3D).position.x=-.12+.11*ss(kk,4,5.6)
+	var look:=-.05 if kk<2 else (-.55*ss(kk,2,2.8) if kk<4 else .12*ss(kk,4,4.6))
+	view(kk,0,look,-.5 if kk<2 else 0)
+	shade(.2+.75*ss(kk,5.8,7))
+	cue("b",kk,4.2,func() -> void: _ui.show_notice("门牌上的名字，被人又描了一遍。"))

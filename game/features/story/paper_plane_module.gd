@@ -42,6 +42,7 @@ var _rooms: Dictionary = {}
 var _windows: WindowGazeModule
 var _c: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
+var text_override: Callable
 
 
 func _init(rooms: Dictionary = {}) -> void:
@@ -144,6 +145,9 @@ func start(kind: String) -> bool:
 	s["used"] = true
 	s["ev"] = {"kind": kind, "room": scene, "c": w["c"], "r": w["r"], "phase": "fly", "t": 0.0, "lx": land.x, "ly": land.y,
 		"text": DANGER_TEXT if kind == "danger" else TIPS[_rng.randi() % TIPS.size()]}
+	if text_override.is_valid():
+		var replacement: Variant=text_override.call(kind)
+		if replacement is String: s["ev"]["text"]=replacement
 	_emit("fact", {"what": "delivery", "kind": kind})
 	_say("（窗那边 · 两下拍窗）" if kind == "danger" else "（纸擦过地面的轻响）")
 	return true

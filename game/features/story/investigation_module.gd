@@ -11,7 +11,7 @@ extends FeatureModule
 ## continue (the supply choice was declined: go on with the facility), record is silent.
 
 const STATE_VERSION := 1
-const KINDS := ["事实", "推测", "验证", "线索"]
+const KINDS := ["事实", "推测", "验证", "线索", "规则"]
 const RECENT_MAX := 8
 
 var entries: Dictionary = {}   # id → {text, kind, source, day}

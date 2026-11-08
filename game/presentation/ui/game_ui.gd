@@ -42,6 +42,7 @@ signal torch_requested
 signal hot_requested(index: int)
 signal bag_closed
 signal debug_requested
+signal dlc_requested
 signal school_tapped
 signal ending_wake_requested
 
@@ -164,6 +165,13 @@ func _ready() -> void:
 	gear2.custom_minimum_size = Vector2(0, 48)
 	gear2.pressed.connect(func() -> void: settings_requested.emit())
 	%Save.add_sibling(gear2)
+	for anchor: Node in [gear,gear2]:
+		var dlc:=Button.new()
+		dlc.name="DlcMenu"
+		dlc.text="DLC 与模块"
+		dlc.custom_minimum_size.y=48
+		dlc.pressed.connect(func() -> void: dlc_requested.emit())
+		anchor.add_sibling(dlc)
 	var notes_btn := Button.new()
 	notes_btn.name = "NotesPause"
 	notes_btn.text = "笔记"

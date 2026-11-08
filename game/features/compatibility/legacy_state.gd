@@ -13,12 +13,19 @@ func convert(plan: Dictionary, defaults: Dictionary, rooms: Dictionary, campus: 
 	_layout(plan, rooms, campus)
 	var rt := _object(s.get("rt"), "rt")
 	var mods := _object(s.get("mods"), "mods")
-	if rt.get("rulesMode") != null:
-		return {"error": "这份存档使用规则怪谈 DLC，当前尚不能恢复它的规则；本局没有被替换"}
+	var rules_mode:=_object(rt.get("rulesMode"),"rulesMode")
+	if not rules_mode.is_empty() and rules_mode.get("ver","1.0.0") not in ["1.0.0",RulesDlcModule.VERSION]:
+		return {"error":"这份存档的规则怪谈版本尚不支持；本局没有被替换"}
 	var result := defaults.duplicate(true)
 	var world: String = plan["world"]
 	result["world_id"] = world
 	var data: Dictionary = result["modules"]
+	var dlc:=_module(data,"dlc.campus_rules")
+	var original_rules:=_object(mods.get("mod:campus-rules"),"mod:campus-rules")
+	_copy(dlc,original_rules,{})
+	if not rules_mode.is_empty():
+		dlc["on"]=1
+		if not original_rules.has("bundle"): dlc["bundle"]=rules_mode.get("bundle","A")
 	var school := _module(data, "school.day")
 	_copy(school, plan, {"day":"day", "tsec":"tsec", "san":"san", "viol":"viol", "stam":"stam", "tt":"tt"})
 	_copy(school, s, {"tired":"tired", "ttTier":"tt_tier", "exam":"exam", "examCur":"exam_cur", "examSeat":"exam_seat", "examTot":"exam_tot"})
@@ -142,8 +149,9 @@ func convert(plan: Dictionary, defaults: Dictionary, rooms: Dictionary, campus: 
 	var ach := _module(data, "profile.achievements")
 	_copy(ach, achievement, {"insp":"insp", "faceWrong":"face_wrong", "saved":"saved", "exams":"exams", "fresh":"run_new"})
 	ach["rooms"] = _object(achievement.get("rooms"), "achievements.rooms").keys()
-	if _flag(achievement.get("debug", false)) or _flag(achievement.get("mod", false)):
+	if _flag(achievement.get("debug", false)) or (_flag(achievement.get("mod", false)) and not _flag(dlc.get("on",false))):
 		score["trusted"] = false
+	if _flag(achievement.get("debug",false)): dlc["tainted"]=1
 	_copy(_module(data, "story.fake_normal"), achievement, {"laughs":"laughs"})
 	var maze := _module(data, "campus.maze")
 	var old_maze := _object(mods.get("void-maze"), "void-maze")

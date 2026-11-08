@@ -38,6 +38,7 @@ var debug_flow: DebugFlow
 var maze_flow: MazeFlow
 var knife_flow: KnifeFlow
 var inception_flow: InceptionFlow
+var rules_dlc_flow: RulesDlcFlow
 var wuda_roll: Callable = func() -> float: return randf()
 var _school_taps: Array = []
 
@@ -58,6 +59,9 @@ func _ready() -> void:
 	debug_flow=DebugFlow.new()
 	debug_flow.app=self
 	add_child(debug_flow)
+	rules_dlc_flow=RulesDlcFlow.new()
+	rules_dlc_flow.app=self
+	add_child(rules_dlc_flow)
 	settings.load_file(DisplayServer.is_touchscreen_available())
 	ui.set_wuda_armed(settings.wuda_armed)
 	ui.school_tapped.connect(_school_tapped)
@@ -73,6 +77,7 @@ func _ready() -> void:
 	ui.hot_requested.connect(_touch_hot)
 	ui.bag_closed.connect(_close_bag)
 	ui.debug_requested.connect(_toggle_debug)
+	ui.dlc_requested.connect(rules_dlc_flow.menu)
 	ui.fullscreen_requested.connect(func() -> void: _setting_changed("full_screen", 1 - settings.get_int("full_screen")))
 	ui.notes_requested.connect(_show_notes)
 	ui.results_requested.connect(_open_results)
@@ -252,7 +257,8 @@ func fact(f: Dictionary) -> void:
 		return
 	_score_fact(f)
 	playtest.event("事实", String(f.get("kind", "")), _playtest_state())
-	ach.fact(f, runscore() != null and runscore().trusted)
+	rules_dlc_flow.fact(f)
+	ach.fact(f, runscore() != null and runscore().trusted and not rules_dlc_flow.module().active())
 	for e: Dictionary in ach.take_events():
 		ui.show_notice("成就：%s" % e["name"])
 		audio.achieve(String(e.get("tier", "n")))
@@ -553,6 +559,8 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 		if mood != null:
 			mood.set_seed(net.run_seed)
 	var scoring := candidate.modules.get_module(&"progress.score") as RunScoreModule
+	var dlc:=candidate.modules.get_module(&"dlc.campus_rules") as RulesDlcModule
+	dlc.start(settings.rules_armed,net.run_seed)
 	if scoring != null:
 		scoring.begin("s%d%04d" % [int(Time.get_unix_time_from_system()), randi() % 10000])
 		_write_side("runlog_cur.json", null)
@@ -582,6 +590,8 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 func _unwire(old: GameSession) -> void:
 	if old == null:
 		return
+	var old_paper:=old.modules.get_module(&"story.paper_plane") as PaperPlaneModule
+	if old_paper!=null: old_paper.text_override=Callable()
 	var fac := old.modules.get_module(&"campus.facilities") as FacilitiesModule
 	if fac!=null: fac.rest_intercept=Callable()
 	var lift := old.modules.get_module(&"campus.elevator") as ElevatorModule
@@ -674,6 +684,7 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	_sync_world()
 	player.restore_pose(pose)
 	debug_flow.session_started()
+	rules_dlc_flow.install()
 	maze_flow.changed_world(true)
 	inception_flow.changed_world()
 	player.show()
@@ -763,6 +774,7 @@ func resume_game() -> void:
 
 
 func _cancel_cinematics() -> void:
+	if is_instance_valid(rules_dlc_flow): rules_dlc_flow.cancel()
 	if is_instance_valid(debug_flow): debug_flow.cancel()
 	if is_instance_valid(inception_flow): inception_flow.cancel()
 	if is_instance_valid(_lift_crowd_fx):
@@ -915,6 +927,7 @@ func _campus_step(delta: float) -> void:
 	if _dead(): return
 	_school_step(delta, rules, calendar_before)
 	knife_flow.step(delta)
+	rules_dlc_flow.step(delta)
 	_handle_deaths()
 	if _dead():
 		return
@@ -942,7 +955,8 @@ func _campus_step(delta: float) -> void:
 		if maze_flow.here():
 			ui.show_prompt(maze_flow.hint())
 			return
-		var radio_hint := knife_flow.hint()
+		var radio_hint := rules_dlc_flow.hint()
+		if radio_hint=="": radio_hint=knife_flow.hint()
 		if radio_hint=="": radio_hint=inception_flow.hint()
 		if radio_hint=="" and broadcast()!=null: radio_hint=broadcast().hint()
 		if radio_hint == "" and marks() != null:
@@ -999,6 +1013,7 @@ func _campus_interact() -> void:
 	var rules := campus()
 	if session == null or get_tree().paused or rules == null or not rules.knows(session.world_id):
 		return
+	if rules_dlc_flow.interact(): return
 	if knife_flow.captured() or knife_flow.interact() or inception_flow.interact():
 		return
 	if maze_flow.here():
@@ -1609,6 +1624,7 @@ func kill(msg: String, fx: String, source: String) -> void:
 		return
 	debug_flow.before_death()
 	fact({"kind": "death", "source": source, "fx": fx, "wake": bool(result["wake"])})
+	rules_dlc_flow.cancel()
 	if not bool(result["wake"]):
 		_score_death()
 	if not result["wake"] and not (session.world_id in ["lift_dream", "portal_tunnel"]):
@@ -2994,6 +3010,13 @@ func _score_ending(id: String, title: String) -> Dictionary:
 	var ctx := _score_context()
 	ctx["route_name"] = title.replace(" ", "")
 	var res := sm.finish({"id": id, "legit": true}, ctx)
+	var dlc:=rules_dlc_flow.module()
+	if dlc.active():
+		dlc.set_context(rules_dlc_flow.context())
+		res["rated"]=bool(res["rated"]) and not bool(dlc.state["tainted"])
+		res["debug"]=not bool(res["rated"])
+		if res["rated"]:
+			res.merge({"variant":RulesDlcModule.VARIANT,"variantName":"规则怪谈","variantGroup":dlc.state["bundle"]})
 	if bool(res.get("rated", false)):
 		var pack := _runlog.finish()
 		if exploration() != null:
@@ -4676,7 +4699,7 @@ func _reach_ending(id: String) -> void:
 	if achievements() != null and routes() != null:
 		achievements().face_wrong = maxi(0, routes().wrong_answers())
 	if not fake: _write_side("last_life.json", null)
-	fact({"kind": "ending", "id": id, "fake":fake, "day": school().day, "diff": story().diff, "talent": talent().id if talent() != null else "none"})
+	fact({"kind": "ending", "id": id, "fake":fake, "legit":not fake, "day": school().day, "diff": story().diff, "talent": talent().id if talent() != null else "none"})
 	_last_result = {} if fake else _score_ending(id, String(card["title"]))
 	var meta := "第 %d 天" % school().day
 	if (items() != null and items().has_clock()) or (talent() != null and talent().has("watch")):
@@ -4928,6 +4951,7 @@ func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
 		ui.show_notice(error)
 		return error
 	var from_world := session.world_id
+	rules_dlc_flow.cancel()
 	if patrol() != null and from_world != world_id and school() != null:
 		var pp: Array = player.capture_pose()["position"]
 		var from_room: Variant = campus().room(from_world)
