@@ -7,7 +7,7 @@ extends Node
 ## a turn and a lift change (and are put back at the end); a veil sphere on it closes the scene.
 ## Not every cause has a scene yet (CAUSES lists the ported ones); the others keep the screen-effect fade.
 
-const CAUSES := ["trash", "liftdoor", "grip", "neck", "shadow", "twin", "shatter", "drown", "water", "freeze"]
+const CAUSES := ["trash", "liftdoor", "grip", "neck", "shadow", "twin", "shatter", "drown", "water", "freeze", "stare", "voice", "bell", "follow", "deep", "floor"]
 
 var on := false
 var fx := ""
@@ -760,3 +760,271 @@ func _update_freeze(kk: float) -> void:
 		pn.rotation = Vector3(PI / 2.0, 0.0, 0.0)
 		pn.visible = cover > 0.0
 	shade(0.85 * ss(kk, 2.9, 3.4))
+
+
+# ---- stare: everyone turns round. Rows of classmates sit with their backs to you; the heads turn one by one, the necks stretch, they lean into your face ----
+
+func _build_stare() -> void:
+	var spots: Array = []
+	for i in 3:
+		for j in 5:
+			spots.append({"x": -1.6 + float(j) * 0.8 + (rand.randf() - 0.5) * 0.1, "z": 1.5 + float(i), "i": i, "j": j})
+	var heads: Array = []
+	for p: Dictionary in spots:
+		box(0.44, 0.5, 0.26, Color("#090a0b"), -1.0, float(p["x"]), 0.95, float(p["z"]))
+		box(0.42, 0.04, 0.4, Color("#1a140e"), -1.0, float(p["x"]), 0.46, float(p["z"]) - 0.05)
+		var h := fxm("head", 1.25, float(p["x"]), 1.38, float(p["z"]))
+		h.set_meta("h", {"x": p["x"], "z": p["z"], "d": float(int(p["i"]) * 5 + (int(p["j"]) * 3) % 5) * 0.045, "row": p["i"]})
+		heads.append(h)
+	d["heads"] = heads
+	veil(Color("#020203"))
+
+
+func _update_stare(kk: float) -> void:
+	view(kk, 0.0, -0.14 + 0.1 * ss(kk, 1.8, 2.6), 0.0)
+	var rise := ss(kk, 1.8, 2.6)
+	var end := ss(kk, 2.6, 3.2)
+	var cy := cam_y()
+	var i := 0
+	for h: Node3D in d["heads"]:
+		var u: Dictionary = h.get_meta("h")
+		var t := ss(kk, 0.6 + float(u["d"]), 1.1 + float(u["d"]))
+		var px := float(u["x"])
+		var py := 1.38 + rise * (0.35 + float(u["row"]) * 0.2)
+		var pz := float(u["z"]) - rise * 0.4
+		if (i % 5 == 2 and int(u["row"]) < 2) or i == 6:
+			px += (0.0 - px) * end * 0.8
+			py += (cy - py) * end
+			pz += (0.55 + float(u["row"]) * 0.15 - pz) * end
+		h.position = Vector3(px, py, pz)
+		h.rotation.y = atan2(-px, -pz) * t
+		h.rotation.x = 0.2 * rise
+		i += 1
+	shade(0.9 * ss(kk, 2.9, 3.2))
+
+
+# ---- voice: the roll call on the speakers. The speaker says your name, rings of sound come, you crouch with hands over your ears, the speaker comes up to your face ----
+
+func _build_voice() -> void:
+	var spk := Node3D.new()
+	put(spk, 0.0, 2.55, 2.6)
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.55, 0.38, 0.22)
+	mesh(bm, _mat(Color("#3a3f42")), 0.0, 0.0, 0.0, spk)
+	var gr := disc(0.15, Color("#0a0c0e"), -1.0, 0.0, 0.0, -0.115, 16)
+	gr.get_parent().remove_child(gr)
+	spk.add_child(gr)
+	gr.rotation.x = PI / 2.0
+	d["spk"] = spk
+	var rings: Array = []
+	for i in 8:
+		rings.append(torus(0.3, 0.012, _mat(Color("#9aa4ac"), 0.5), 0.0, 2.55, 2.5))
+		(rings[i] as Node3D).rotation.x = PI / 2.0
+	d["rings"] = rings
+	veil(Color("#060606"))
+
+
+func _update_voice(kk: float) -> void:
+	var cover := ss(kk, 1.6, 2.6)
+	var end := ss(kk, 2.6, 3.2)
+	view(kk, 0.0, 0.3 * ss(kk, 0.0, 0.6) * (1.0 - cover) - 0.3 * cover * (1.0 - end) + 0.03 * sin(kk * 40.0) * shk * cover * (1.0 - end), -0.35 * cover)
+	var cy := cam_y()
+	var from := Vector3(0.0, 2.55, 2.5)
+	var to := Vector3(0.0, cy, 0.15)
+	var spk := d["spk"] as Node3D
+	spk.position = Vector3(0.01 * sin(kk * 50.0) * seg(kk, 0.4, 3.0), 2.55 + (cy + 0.05 - 2.55) * end, 2.6 - 2.15 * end)
+	spk.scale = Vector3.ONE * (1.0 + 0.5 * end)
+	var i := 0
+	for rr: MeshInstance3D in d["rings"]:
+		var ph := kk * 1.1 + pow(maxf(0.0, kk - 1.6), 2.0) * 1.2 - 0.4 - float(i) * 0.28
+		rr.visible = ph > 0.0 and ph < 1.0 and end < 0.6
+		var t := clampf(ph, 0.0, 1.0)
+		rr.position = from.lerp(to, t)
+		rr.scale = Vector3.ONE * (1.0 + t * 4.0)
+		(rr.material_override as StandardMaterial3D).albedo_color.a = 0.55 * (1.0 - t * 0.6)
+		i += 1
+	shade(0.9 * ss(kk, 2.95, 3.2))
+
+
+# ---- bell: thirteen strokes. The bell overhead swings; on the thirteenth it unhooks and comes down over you, humming ----
+
+func _build_bell() -> void:
+	d["bell"] = fxm("bell", 1.0, 0.0, 1.4, 0.0)
+	d["spot"] = disc(1.0, Color("#050608"), 0.6, 0.0, 0.012, 0.0)
+	veil(Color("#020202"))
+
+
+func _update_bell(kk: float) -> void:
+	var drop := pow(seg(kk, 1.0, 1.45), 2.0)
+	var ring := exp(-maxf(0.0, kk - 1.45) * 1.6) if kk > 1.45 else 0.0
+	var sink_t := ss(kk, 2.6, 3.4)
+	var pitch := 0.95 * ss(kk, 0.0, 0.6) * (1.0 - ss(kk, 1.2, 1.6)) + 0.04 * sin(kk * 45.0) * ring * shk
+	view(kk, 0.6 * sin(maxf(0.0, kk - 1.7) * 1.2) * seg(kk, 1.7, 2.6), pitch, -0.45 * sink_t)
+	var b := d["bell"] as Node3D
+	b.position.y = 1.4 * (1.0 - drop) - 0.25 * sink_t
+	b.rotation.z = 0.22 * sin(kk * 4.0) * (1.0 - drop) + 0.03 * sin(kk * 50.0) * ring
+	(d["spot"] as Node3D).scale = Vector3.ONE * (0.3 + 0.8 * seg(kk, 0.0, 1.45))
+	(d["spot"] as Node3D).visible = kk < 1.5
+	if kk >= 1.45 and not _flashed.has("hit"):
+		_flashed["hit"] = true
+		_ui.cut_flash(0.3)
+	elif kk >= 1.55:
+		_ui.cut_flash(0.0)
+	shade(0.4 * ss(kk, 1.5, 1.7) + 0.5 * ss(kk, 3.0, 3.4))
+
+
+# ---- follow: the exercise on the playground. They do it in step with their backs to you, stop and turn at once, close in on the beat, lean over ----
+
+func _build_follow() -> void:
+	var ppl: Array = []
+	for i in 3:
+		for j in 5:
+			var x := -2.4 + float(j) * 1.2
+			var z := 3.2 + float(i) * 1.3
+			var f := fig("person", Color("#2e333a"), 1.0, x, z)
+			f.set_meta("f", {"x": x, "z": z})
+			ppl.append(f)
+	d["ppl"] = ppl
+	veil(Color("#030303"))
+
+
+func _update_follow(kk: float) -> void:
+	var beat := sin(kk * 4.4)
+	var turn := ss(kk, 1.0, 1.3)
+	var march := ss(kk, 1.3, 2.6)
+	var lean := ss(kk, 2.6, 3.2)
+	var nod := 0.18 * sin(kk * 4.4) * seg(kk, 1.3, 2.0) * (1.0 if shk > 0.0 else 0.3) * (1.0 - lean)
+	view(kk, 0.0, -0.04 + nod + 0.25 * lean, -0.1 * march)
+	for p: Node3D in d["ppl"]:
+		var u: Dictionary = p.get_meta("f")
+		var z := float(u["z"]) + (0.9 + (float(u["z"]) - 3.2) * 0.35 - float(u["z"])) * march
+		var x := float(u["x"]) * (1.0 - 0.6 * march)
+		p.position = Vector3(x, 0.05 * absf(beat) * (1.0 - turn * (1.0 - march)), z)
+		p.rotation.y = PI * turn
+		p.rotation.x = (1.0 - turn) * 0.3 * maxf(0.0, beat) + 0.35 * lean
+	shade(0.9 * ss(kk, 3.0, 3.4))
+
+
+# ---- deep: the canteen feast. The dishes tremble, the floor under the table splits into a black pit that runs to your feet, you fall, the light overhead gets smaller ----
+
+func _ring_mesh(inner: float, outer: float, segs: int) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in segs:
+		var a0 := float(i) / float(segs) * TAU
+		var a1 := float(i + 1) / float(segs) * TAU
+		var p0 := Vector3(cos(a0) * inner, 0.0, sin(a0) * inner)
+		var p1 := Vector3(cos(a0) * outer, 0.0, sin(a0) * outer)
+		var p2 := Vector3(cos(a1) * outer, 0.0, sin(a1) * outer)
+		var p3 := Vector3(cos(a1) * inner, 0.0, sin(a1) * inner)
+		for v: Vector3 in [p0, p1, p2, p0, p2, p3]:
+			st.add_vertex(v)
+	return st.commit()
+
+
+func _build_deep() -> void:
+	var table := Node3D.new()
+	put(table, 0.0, 0.0, 1.5)
+	d["table"] = table
+	var wood := _mat(Color("#4a3626"))
+	var tm := BoxMesh.new()
+	tm.size = Vector3(2.4, 0.08, 0.9)
+	mesh(tm, wood, 0.0, 0.78, 0.0, table)
+	var lm := BoxMesh.new()
+	lm.size = Vector3(0.06, 0.76, 0.06)
+	for l: Array in [[-1.1, -0.38], [1.1, -0.38], [-1.1, 0.38], [1.1, 0.38]]:
+		mesh(lm, wood, float(l[0]), 0.38, float(l[1]), table)
+	var dishes: Array = []
+	var pm := CylinderMesh.new()
+	pm.top_radius = 0.16
+	pm.bottom_radius = 0.13
+	pm.height = 0.03
+	var fm := SphereMesh.new()
+	fm.radius = 0.1
+	fm.height = 0.1
+	fm.is_hemisphere = true
+	for i in 6:
+		var g := Node3D.new()
+		mesh(pm, _mat(Color("#d8d0c0")), 0.0, 0.0, 0.0, g)
+		mesh(fm, _mat(Color("#8a2a1e")), 0.0, 0.015, 0.0, g)
+		put(g, -0.9 + float(i) * 0.36, 0.83, 0.18 if i % 2 == 1 else -0.15, table)
+		g.set_meta("ph", rand.randf() * 6.0)
+		dishes.append(g)
+	d["dishes"] = dishes
+	d["pit"] = disc(1.0, Color("#010203"), -1.0, 0.0, 0.014, 1.4, 32)
+	var shaft := CylinderMesh.new()
+	shaft.top_radius = 1.2
+	shaft.bottom_radius = 1.2
+	shaft.height = 14.0
+	shaft.cap_top = false
+	shaft.cap_bottom = false
+	d["shaft"] = mesh(shaft, _mat(Color("#0a0c0e"), -1.0, true), 0.0, -7.0, 0.0)
+	d["mouth"] = mesh(_ring_mesh(1.2, 9.0, 32), _mat(Color("#6c7176"), -1.0, true), 0.0, 0.0, 0.0)
+	veil(Color.BLACK)
+
+
+func _update_deep(kk: float) -> void:
+	var open := ss(kk, 0.8, 1.6)
+	var fall := seg(kk, 1.6, 2.9)
+	view(kk, 0.0, -0.38 * (1.0 - ss(kk, 1.6, 1.9)) - 0.7 * ss(kk, 1.6, 1.9) * (1.0 - ss(kk, 1.95, 2.5)) + 1.25 * ss(kk, 2.0, 2.6), -9.0 * fall * fall)
+	for g: Node3D in d["dishes"]:
+		g.position.y = 0.83 + 0.012 * absf(sin(kk * 20.0 + float(g.get_meta("ph")))) * seg(kk, 0.0, 1.0)
+	var pit := d["pit"] as Node3D
+	pit.position.z = 1.4 - 1.4 * open
+	pit.scale = Vector3.ONE * (0.05 + 1.15 * open)
+	pit.visible = kk < 1.6
+	var tip := ss(kk, 1.0, 1.6)
+	var table := d["table"] as Node3D
+	table.position.y = -2.4 * tip * tip
+	table.rotation.x = 0.6 * tip
+	table.visible = kk < 1.9
+	(d["shaft"] as Node3D).visible = kk >= 1.6
+	(d["mouth"] as Node3D).visible = kk >= 1.6
+	shade(0.92 * ss(kk, 2.9, 3.4))
+
+
+# ---- floor: the water cup. A whistle overhead, you look up and see it fall, it hits, you lie on the floor watching it roll away ----
+# (a plain white cup with a pale-purple lid here; the old one also carries the picture of the second gate)
+
+func _build_floor() -> void:
+	var cup := Node3D.new()
+	put(cup, 0.0, _base_y + 9.0, 0.15)
+	var body := CylinderMesh.new()
+	body.top_radius = 0.045
+	body.bottom_radius = 0.04
+	body.height = 0.22
+	mesh(body, _mat(Color("#ece8e0")), 0.0, 0.0, 0.0, cup)
+	d["cup"] = cup
+	var lid_m := CylinderMesh.new()
+	lid_m.top_radius = 0.045
+	lid_m.bottom_radius = 0.045
+	lid_m.height = 0.03
+	var lid := mesh(lid_m, _mat(Color("#b8a8d8")), 0.0, 0.0, 0.0)
+	d["lid"] = lid
+	veil(Color("#050000"))
+
+
+func _update_floor(kk: float) -> void:
+	var hit := ss(kk, 1.15, 1.55)
+	var lie := seg(kk, 1.6, 2.6)
+	view(kk, 0.35 * hit, 1.1 * ss(kk, 0.1, 0.7) * (1.0 - hit) - 0.3 * hit, -1.45 * hit)
+	var f := pow(seg(kk, 0.2, 1.15), 2.0)
+	var h := 9.0 * (1.0 - f)
+	var cup := d["cup"] as Node3D
+	var lid := d["lid"] as Node3D
+	if kk < 1.15:
+		cup.position = Vector3(0.0, _base_y + h, 0.15 + h * 0.5)
+		cup.rotation = Vector3(kk * 14.0, 0.0, 0.3)
+		lid.position = cup.position + cup.basis * Vector3(0.0, 0.125, 0.0)
+		lid.basis = cup.basis
+	else:
+		cup.position = Vector3(-0.22 - 0.15 * lie, 0.045, 0.75 + 0.3 * lie)
+		cup.rotation = Vector3(lie * 9.0, 0.0, PI / 2.0)
+		lid.position = Vector3(0.25 + 0.6 * lie, 0.045, 0.75 + 0.1 * lie)
+		lid.rotation = Vector3(PI / 2.0, lie * 12.0, 0.0)
+	if kk >= 1.15 and not _flashed.has("hit"):
+		_flashed["hit"] = true
+		_ui.cut_flash(0.4)
+	elif kk >= 1.25:
+		_ui.cut_flash(0.0)
+	shade(0.3 * ss(kk, 1.15, 1.3) * (1.0 - ss(kk, 1.3, 1.8)) + 0.9 * ss(kk, 2.5, 3.0))
