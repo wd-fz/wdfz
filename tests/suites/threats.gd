@@ -174,9 +174,15 @@ func _test_garage_rules() -> void:
 	# The coin lures it.
 	var coin := GarageModule.new(g)
 	coin.reset()
+	coin.set_seed(5) # Throw angle and distance are random; this scenario must be reproducible.
 	coin.set_context(_gctx(east.x, east.y, {"ang": PI}))
 	coin.tick(0.1)
-	check(coin.throw_coin() and coin.lure != null and float(coin.lure["x"]) < east.x - 50.0, "the coin rolls ahead and lies there for 8 s")
+	check(coin.throw_coin() and coin.lure != null and float(coin.lure["x"]) < east.x - 50.0 and float(coin.lure["t"]) == 8.0,
+		"the seeded coin rolls ahead and starts an eight-second lure")
+	coin.tick(7.9)
+	check(coin.lure != null, "the coin still attracts the shadow before eight seconds")
+	coin.tick(0.2)
+	check(coin.lure == null, "the coin lure expires after eight seconds")
 	coin.set_context(_gctx(0, 0, {"scene": "canteen1"}))
 	check(not coin.throw_coin() and _notices(coin.take_events()).has("我：要买饭就去打饭窗口，要买东西就去售货机。"), "outside the garage the coin is kept")
 	# Trying cars: the thing nearby kills, a wrong car is remembered, the right one starts the drive.

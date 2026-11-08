@@ -58,6 +58,10 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if not enabled:
 		return
+	var typing := editing_text()
+	if typing:
+		_touch_move = Vector2.ZERO
+		_touch_sprint = false
 	if seated or hiding:
 		# The seated body overlaps its chair (old S.seated skips moveBy entirely).
 		velocity = Vector3.ZERO
@@ -65,7 +69,7 @@ func _physics_process(delta: float) -> void:
 		sprinting = false
 		_update_focus()
 		return
-	var direction := (Input.get_vector("move_left", "move_right", "move_forward", "move_back") + _touch_move).limit_length()
+	var direction := Vector2.ZERO if typing else (Input.get_vector("move_left", "move_right", "move_forward", "move_back") + _touch_move).limit_length()
 	var world_direction := global_basis * Vector3(direction.x, 0.0, direction.y)
 	var want_run := (Input.is_action_pressed("sprint") or _touch_sprint or _touch_move.length() > 0.96) and direction.length() > 0.08
 	sprinting = want_run and can_sprint
@@ -87,9 +91,14 @@ func _physics_process(delta: float) -> void:
 
 ## Movement input this frame (old updatePlayer: a seated player stands up when it exceeds 0.08).
 func wants_move() -> bool:
-	if not enabled:
+	if not enabled or editing_text():
 		return false
 	return (Input.get_vector("move_left", "move_right", "move_forward", "move_back") + _touch_move).length() > 0.08
+
+
+func editing_text() -> bool:
+	var focus := get_viewport().gui_get_focus_owner()
+	return focus is LineEdit or focus is TextEdit
 
 
 func _update_focus() -> void:

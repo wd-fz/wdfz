@@ -190,8 +190,8 @@ func _test_app() -> void:
 	for viewport_size: Vector2i in [Vector2i(1280, 720), Vector2i(390, 844), Vector2i(844, 390)]:
 		root.size = viewport_size
 		await _frames()
-		var content: Control = app.ui.menu.get_node("Margin/Center/Content")
-		check(root.get_visible_rect().encloses(content.get_global_rect()), "menu fits viewport %s" % viewport_size)
+		var content: ScrollContainer = app.ui.menu.get_node("Margin/Center/MenuScroll")
+		check(root.get_visible_rect().encloses(content.get_global_rect()), "scrollable menu fits viewport %s" % viewport_size)
 		await _tap(app.ui.get_node("%NewGame"))
 		check(app.ui.choice_open(), "the talent pick opens after resize %s" % viewport_size)
 		check(root.get_visible_rect().encloses(app.ui.choice_panel.get_global_rect()), "the talent pick fits viewport %s" % viewport_size)
@@ -222,7 +222,7 @@ func _test_touch(app: GameApp) -> void:
 	look_press.index = 3
 	look_press.pressed = true
 	look_press.position = app.ui.look_pad.get_global_rect().get_center()
-	app.ui.look_pad._input(look_press)
+	app.ui.look_pad._unhandled_input(look_press)
 	var yaw := app.player.rotation.y
 	var drag := InputEventScreenDrag.new()
 	drag.index = 4

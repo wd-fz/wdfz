@@ -72,7 +72,7 @@ horizontal_alignment = 1
 
 [node name="Description" type="Label" parent="Root/Menu/Margin/Center/Content"]
 layout_mode = 2
-text = "移植工作台 · 框架演示\n正式校园、异象与结局尚待移植"
+text = "武大附中 · 里世界\n遵守规则，寻找出口。"
 horizontal_alignment = 1
 autowrap_mode = 2
 [node name="NewGame" type="Button" parent="Root/Menu/Margin/Center/Content"]
@@ -85,13 +85,13 @@ text = "预知梦 · 新游戏"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-text = "继续测试进度"
+text = "继续游戏"
 
 [node name="TouchToggle" type="CheckButton" parent="Root/Menu/Margin/Center/Content"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
-text = "显示触屏控件（触屏设备自动启用）"
+text = "触屏控件（自动识别）"
 
 [node name="Help" type="Label" parent="Root/Menu/Margin/Center/Content"]
 layout_mode = 2
@@ -152,7 +152,7 @@ horizontal_alignment = 1
 
 [node name="Description" type="Label" parent="Root/PausePanel/Margin/Center/Content"]
 layout_mode = 2
-text = "世界模拟与输入已暂停\n测试进度保存在本机 user://saves/"
+text = "时间已暂停，进度保存在本机。"
 horizontal_alignment = 1
 autowrap_mode = 2
 
@@ -166,13 +166,13 @@ text = "继续"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-text = "保存测试进度"
+text = "保存进度"
 
 [node name="Reload" type="Button" parent="Root/PausePanel/Margin/Center/Content"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-text = "读取测试进度"
+text = "读取进度"
 
 [node name="BackToMenu" type="Button" parent="Root/PausePanel/Margin/Center/Content"]
 unique_name_in_owner = true

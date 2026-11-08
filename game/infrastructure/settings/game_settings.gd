@@ -8,8 +8,8 @@ extends RefCounted
 ## sub 0/1/2 caption size · distortion 0 off / 1 reduced / 2 full · reduce_flash 1/0 · bright 50–150 ·
 ## grain 1/0 · mouse, touch 25–250 look sensitivity % · text 85–150 % · touch_size 85–125 % ·
 ## quality 0–4 (流畅、均衡、精细、超精细、真实) · auto_land 1/0 · full_screen 1/0.
-## The Web "graphics mode" (WebGL / WebGPU) is replaced by Godot's renderer. The draggable
-## touch layout remains a separate migration item.
+## The Web "graphics mode" (WebGL / WebGPU) is replaced by Godot's renderer. Touch layout is
+## stored separately from numeric settings and from gameplay saves.
 
 const VERSION := 1
 const DEFAULTS := {"vol": 70, "amb": 1, "captions": 1, "sub": 1, "distortion": 2, "reduce_flash": 0, "bright": 100, "grain": 1,
@@ -27,6 +27,7 @@ const SUB_MULT := [0.6, 1.0, 1.6]
 
 var path: String
 var values: Dictionary = DEFAULTS.duplicate()
+var touch_layout: Dictionary = {}
 
 
 func _init(file: String = "user://settings.json") -> void:
@@ -49,6 +50,7 @@ static func normalize(raw: Dictionary) -> Dictionary:
 
 ## First run on a touch device: performance first (quality 流畅), as the Web version did.
 func load_file(touch_device: bool = false) -> bool:
+	touch_layout = {}
 	if not FileAccess.file_exists(path):
 		values = DEFAULTS.duplicate()
 		if touch_device:
@@ -56,6 +58,7 @@ func load_file(touch_device: bool = false) -> bool:
 		return false
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
 	values = normalize(parsed.get("values", {}) if parsed is Dictionary else {})
+	touch_layout = TouchLayout.normalize(parsed.get("touch_layout", {}) if parsed is Dictionary else {})
 	return parsed is Dictionary
 
 
@@ -64,7 +67,7 @@ func save_file() -> bool:
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
 		return false
-	file.store_string(JSON.stringify({"version": VERSION, "values": values}))
+	file.store_string(JSON.stringify({"version": VERSION, "values": values, "touch_layout": touch_layout}))
 	file.close()
 	return true
 
@@ -83,5 +86,6 @@ func set_value(key: String, value: float) -> int:
 
 
 func reset_comfort() -> void:
+	touch_layout = {}
 	for k: String in ["mouse", "touch", "text", "touch_size"]:
 		values[k] = DEFAULTS[k]
