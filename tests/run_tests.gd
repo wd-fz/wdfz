@@ -85,6 +85,8 @@ func _run() -> void:
 	await death_models.test_deaths()
 	print("CASE: death_models.test_weather")
 	death_models.test_weather()
+	print("CASE: death_models.test_dust_pixels")
+	await death_models.test_dust_pixels()
 	var cyber_screen := preload("res://tests/suites/cyber_screen.gd").new(self)
 	print("CASE: cyber_screen.test_original_layout")
 	cyber_screen.test_original_layout()

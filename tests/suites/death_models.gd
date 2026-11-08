@@ -111,6 +111,11 @@ func test_weather() -> void:
 		var source := Vector3(1000*CampusGeometry.U2M,0,400*CampusGeometry.U2M)
 		weather.setup_moths(source,sample["quality"])
 		check(weather._moths.size()==sample["count"] and weather._dust_count==sample["dust"],"original moth and dust budgets at quality "+str(sample["quality"]))
+		check(weather._dust.mesh.surface_get_primitive_type(0)==Mesh.PRIMITIVE_POINTS,"wing dust uses point sprites rather than solid geometry")
+		var dust_material := weather._dust.material_override as ShaderMaterial
+		var dust_color: Color = dust_material.get_shader_parameter("dust_color")
+		var linear := dust_color.srgb_to_linear()
+		check(near(Vector3(linear.r,linear.g,linear.b),sample["material"]["color"],.00001) and absf(dust_color.a-float(sample["material"]["alpha"]))<.00001 and is_equal_approx(dust_material.get_shader_parameter("point_size"),sample["material"]["size"]),"original point size, colour and opacity")
 		var okay := true
 		for i in weather._moths.size():
 			var actual: Dictionary = weather._moths[i]
@@ -127,4 +132,63 @@ func test_weather() -> void:
 			for i in weather._dust_count:
 				okay = okay and near(weather._dust_p[i],frame["dust"].slice(i*3,i*3+3)) and absf(float(weather._dust_life[i])-float(frame["life"][i]))<.00001
 			check(okay,"original dust emission, lifetime and drift")
+			if DisplayServer.get_name()!="headless":
+				var uploaded: PackedVector3Array = weather._dust.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+				var same := uploaded.size()==weather._dust_count
+				for i in uploaded.size(): same=same and near(uploaded[i],frame["dust"].slice(i*3,i*3+3))
+				check(same,"actual point vertex upload follows the original falling dust")
 		weather.free()
+
+func test_dust_pixels() -> void:
+	if DisplayServer.get_name()=="headless": return
+	var viewport := SubViewport.new()
+	viewport.own_world_3d = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	root.add_child(viewport)
+	var environment := WorldEnvironment.new()
+	environment.environment = Environment.new()
+	environment.environment.background_mode = Environment.BG_COLOR
+	environment.environment.background_color = Color.BLACK
+	viewport.add_child(environment)
+	var camera := Camera3D.new()
+	camera.near = .01
+	camera.current = true
+	viewport.add_child(camera)
+	var dust := DustPoints.new()
+	dust.setup(PackedVector3Array([Vector3(0,0,-1)]))
+	viewport.add_child(dust)
+	for sample: Dictionary in _original_data()["raster"]:
+		viewport.size = Vector2i(sample["size"][0],sample["size"][1])
+		camera.fov = sample["fov"]
+		dust.update_points(PackedVector3Array([Vector3(0,0,-sample["distance"])]))
+		await _frames(2)
+		await RenderingServer.frame_post_draw
+		var image := viewport.get_texture().get_image()
+		var bounds := _lit_bounds(image)
+		check(bounds.x>0 and absi(bounds.x-int(sample["width"]))<=1 and absi(bounds.y-int(sample["height"]))<=1,"original point footprint across landscape, distance and FOV: %s / %s / %s: %s vs %s" % [sample["size"],sample["distance"],sample["fov"],bounds,Vector2i(sample["width"],sample["height"])])
+	# Opaque geometry must occlude the transparent powder; it is not an overlay.
+	var wall := MeshInstance3D.new()
+	var quad := QuadMesh.new()
+	quad.size = Vector2(2,2)
+	wall.mesh = quad
+	wall.position.z = -.1
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color.BLACK
+	wall.material_override = mat
+	viewport.add_child(wall)
+	await _frames(2)
+	await RenderingServer.frame_post_draw
+	check(_lit_bounds(viewport.get_texture().get_image())==Vector2i.ZERO,"opaque wall occludes dust")
+	viewport.queue_free()
+	await _frames(2)
+
+func _lit_bounds(image: Image) -> Vector2i:
+	var low := Vector2i(image.get_width(),image.get_height())
+	var high := Vector2i(-1,-1)
+	for y in image.get_height():
+		for x in image.get_width():
+			if image.get_pixel(x,y).r>.001:
+				low=low.min(Vector2i(x,y))
+				high=high.max(Vector2i(x,y))
+	return high-low+Vector2i.ONE if high.x>=0 else Vector2i.ZERO

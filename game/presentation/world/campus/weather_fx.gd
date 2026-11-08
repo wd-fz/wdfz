@@ -29,7 +29,7 @@ var _rip_t := 0.0
 var _wings: MultiMeshInstance3D
 var _bodies: MultiMeshInstance3D
 var _moths: Array = []
-var _dust: MultiMeshInstance3D
+var _dust: DustPoints
 var _dust_p: Array = []
 var _dust_life: Array = []
 var _dust_i := 0
@@ -189,12 +189,12 @@ func setup_moths(source: Vector3, quality: int = -1) -> void:
 	for i in count:
 		_moths.append({"p": Vector3(source.x + (_moth_rand() - 0.5) * 2.4, 1.2 + _moth_rand() * 1.6, source.z + (_moth_rand() - 0.5) * 2.4), "v": Vector3.ZERO, "a": _moth_rand() * TAU,
 			"r": 0.35 + _moth_rand() * 1.5, "sp": (-1.0 if _moth_rand() < 0.5 else 1.0) * (1.0 + _moth_rand() * 2.2), "ph": _moth_rand() * TAU, "fl": 26.0 + _moth_rand() * 16.0, "h": 1.3 + _moth_rand() * 1.4})
-	var dm := BoxMesh.new()
-	dm.size = Vector3(0.012, 0.012, 0.012)
-	_dust = _multi(dm, _mat(Color("#303030"), 0.65), _dust_count)
 	for i in _dust_count:
 		_dust_p.append(Vector3(0, -9, 0))
 		_dust_life.append(0.0)
+	_dust = DustPoints.new()
+	_dust.setup(PackedVector3Array(_dust_p))
+	add_child(_dust)
 
 
 func _moth_rand() -> float:
@@ -270,4 +270,4 @@ func update_moths(dt: float, cam: Vector3, t: float, hard: bool) -> void:
 				dp.y = -9.0
 			_dust_p[j] = dp
 			_dust_life[j] = life
-		_dust.multimesh.set_instance_transform(j, Transform3D(Basis.IDENTITY, _dust_p[j]))
+	_dust.update_points(PackedVector3Array(_dust_p))
