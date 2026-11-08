@@ -4365,6 +4365,28 @@ func _chalk_step(delta: float, weird: AnomalyModule, day_rules: SchoolModule, ro
 	return shown
 
 
+## The seen-but-harmless things (world/campus/phantoms.gd): the low-SAN figure at the edge of the view, the far figure, the smile.
+func _phantom_step(delta: float, day_rules: SchoolModule, room: Variant, pose: Dictionary, weird: AnomalyModule) -> void:
+	var world := _campus_world()
+	if world == null or world.phantoms == null:
+		return
+	var ph := world.phantoms
+	var p: Array = pose["position"]
+	var cam := player.camera.global_position
+	var ang := CampusGeometry.ang_from_yaw(float(pose["yaw"]))
+	var h := float(p[1])
+	var playing := not story().dead and not get_tree().paused and not opening_busy() and not ui.choice_open() and not ui.terminal_open() and not phone_open() and not driving()
+	var stand := func(w: Vector2) -> bool: return _can_stand(w, room, h)
+	var busy_anomaly := weird != null and weird.is_active()
+	ph.hallucinate(delta, playing and not busy_anomaly, day_rules.san, cam, ang, room, h, stand)
+	var watcher := patrol()
+	var dark: bool = room != null or SchoolClock.is_night(day_rules.tsec)
+	var calm := playing and not busy_anomaly and not (watcher != null and watcher.local_chase()) and not player.hiding
+	var inv := items()
+	ph.apparition(delta, calm, dark, inv != null and inv.torch_on, day_rules.san, cam, ang, room, h, stand, _line_clear.bind(room))
+	ph.tick_smile(delta, cam)
+
+
 func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: Dictionary) -> void:
 	var weird := anomaly()
 	if weird == null:
@@ -4372,6 +4394,7 @@ func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 	var ctx := _anomaly_context(room, pose)
 	weird.set_context(ctx)
 	weird.warning_seen(_chalk_step(delta, weird, day_rules, room, pose))
+	_phantom_step(delta, day_rules, room, pose, weird)
 	weird.tick(delta)
 	for e: Dictionary in weird.take_events():
 		match e["kind"]:
@@ -4381,6 +4404,12 @@ func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 			"notice":
 				ui.show_notice(String(e["text"]))
 			"smile":
+				var sw := _campus_world()
+				if sw != null and sw.phantoms != null:
+					var cp := player.camera.global_position
+					sw.phantoms.show_smile(String(e["mode"]), cp, CampusGeometry.ang_from_yaw(player.rotation.y))
+					if e["mode"] == "jump":
+						ui.flash_hurt(0.6)
 				# SFX.smile: behind you a held-in giggle; in your face a scream at the ear.
 				if e["mode"] == "jump":
 					audio.play("threat.smileJump")

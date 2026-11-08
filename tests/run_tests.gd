@@ -115,6 +115,7 @@ func _run() -> void:
 	_test_day_banner()
 	_test_chalk_notes()
 	_test_chalk_texture()
+	_test_phantoms()
 	_test_inspection_scatter()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
@@ -3198,6 +3199,43 @@ func _test_inspection_scatter() -> void:
 	var cw := CampusWorld.new()
 	check(not cw.scattering(), "no scatter before a check")
 	cw.free()
+
+
+func _test_phantoms() -> void:
+	var ph := Phantoms.new()
+	root.add_child(ph)
+	var room: Dictionary = CampusData.rooms()["teach1"]
+	var cam := Vector3(17.3, 1.7, 1.4)
+	var stand := func(_w: Vector2) -> bool: return true
+	ph.hallucinate(1.0, true, 80.0, cam, 0.0, room, 0.0, stand)
+	check(not ph.hallu_visible(), "no hallucination while SAN is above 32")
+	var seen := false
+	for i in 120:
+		ph.hallucinate(1.0, true, 10.0, cam, 0.0, room, 0.0, stand)
+		seen = seen or ph.hallu_visible()
+	check(seen, "a low SAN brings the figure at the edge of the view")
+	# Turning to it takes it away at once.
+	ph._hallu.visible = true
+	var a_to := atan2(ph._hallu.position.z - cam.z, ph._hallu.position.x - cam.x)
+	ph.hallucinate(0.01, true, 10.0, cam, a_to, room, 0.0, stand)
+	check(not ph.hallu_visible(), "looking at it makes it gone")
+	ph.apparition(1.0, false, true, false, 50.0, cam, 0.0, room, 0.0, stand, func(_a: Vector2, _b: Vector2) -> bool: return true)
+	check(not ph.appar_visible(), "no apparition when something else is going on")
+	var shown := false
+	for i in 200:
+		ph.apparition(1.0, true, true, false, 50.0, cam, 0.0, room, 0.0, stand, func(_a: Vector2, _b: Vector2) -> bool: return true)
+		shown = shown or ph.appar_visible()
+	check(shown, "the far figure appears in the dark")
+	ph.apparition(0.1, true, true, true, 50.0, cam, atan2(ph._appar.position.z - cam.z, ph._appar.position.x - cam.x), room, 0.0, stand, func(_a: Vector2, _b: Vector2) -> bool: return true)
+	check(not ph.appar_visible() or ph._appar_life > 0.0, "the torch on it can send it away")
+	ph.show_smile("behind", cam, 0.0)
+	check(ph.smile_mode() == "behind" and absf(ph._smile.position.x - (cam.x + 1.7)) < 0.001, "the smile stands 1.7 m behind")
+	ph.tick_smile(3.0, cam)
+	check(ph.smile_mode() == "", "and fades after 2 s")
+	ph.show_smile("jump", cam, 0.0)
+	ph.tick_smile(0.2, cam)
+	check(ph._smile.scale.x > 0.9 and ph._smile.scale.x < 0.93, "the jump smile fills the view within 0.18 s")
+	ph.queue_free()
 
 
 func _test_chalk_texture() -> void:

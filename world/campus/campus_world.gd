@@ -13,6 +13,7 @@ const BOUNDARY := 1.0
 var layout: Dictionary = {}
 var banner: DayBanner
 var chalk: ChalkNotes
+var phantoms: Phantoms
 var lighting: CampusLighting
 var _door_bodies: Dictionary = {}   # key -> CollisionShape3D
 var _door_leaves: Dictionary = {}   # key -> {"closed": Node3D, "open": Node3D}
@@ -34,6 +35,8 @@ func _ready() -> void:
 	add_child(anomaly_fx)
 	chalk = ChalkNotes.new()
 	add_child(chalk)
+	phantoms = Phantoms.new()
+	add_child(phantoms)
 	if not is_room():
 		_ready_banner()
 	if is_room():
