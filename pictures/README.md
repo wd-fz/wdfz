@@ -47,4 +47,4 @@
 | [结局分镜](结局分镜/) 续三 | 2026-11-08，同上，`tools/capture_endings_portal.gd`：公开结局《门》（简化的装置：充能、导轨闭合、门开、推进环面发白） |
 | [结局分镜](结局分镜/) 续四 | 2026-11-08，同上，`tools/capture_endings_cyber.gd`：公开结局《网安仙人》（简化布景：机柜指示灯与停机日志、走廊灯管闪与高个子垂肩、档案对照屏、天亮） |
 | [结局分镜](结局分镜/) 续五 | 2026-11-08，同上，`tools/capture_endings_car.gd`：《闸门》开车前的片头（车库里车灯闪、门外黑影追出来；简化布景） |
-| [死亡CG](死亡CG/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_death.gd`：按死因的死亡演出各取 25%／55%／85% 三帧（trash 垃圾桶、liftdoor 电梯门缝、grip 脚下伸手、neck 长脖子、shadow 影子、twin 另一个你、shatter 车铃炸开、drown 溺水、water 天花板渗水、freeze 冷库、stare 全体回头、voice 广播点名、bell 十三下钟、follow 做操的人、deep 食堂盛宴坠坑、floor 水杯） |
+| [死亡CG](死亡CG/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_death.gd`：按死因的死亡演出各取 25%／55%／85% 三帧（trash 垃圾桶、liftdoor 电梯门缝、grip 脚下伸手、neck 长脖子、shadow 影子、twin 另一个你、shatter 车铃炸开、drown 溺水、water 天花板渗水、freeze 冷库、stare 全体回头、voice 广播点名、bell 十三下钟、follow 做操的人、deep 食堂盛宴坠坑、floor 水杯、ring 圈、loop 无尽走廊、lamps 熄灯、laugh 笑、swarm 蛾群、gaze 拍肩） |

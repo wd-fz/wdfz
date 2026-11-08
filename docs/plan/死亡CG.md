@@ -4,12 +4,11 @@
 
 ## 待办与进度
 
-旧版共 29 种（22 种在 `death-cg.js`，7 种在各模块里注册）。公开死因对应关系见 `StoryModule.DURATIONS`／`EPITAPH`。
+旧版共 29 种（22 种在 `death-cg.js`，7 种在各模块里注册）；`death-cg.js` 里的 22 种已全部移植。公开死因对应关系见 `StoryModule.DURATIONS`／`EPITAPH`。
 
 | 死因 | 状态 |
 | --- | --- |
-| trash 垃圾桶、liftdoor 电梯门缝、grip 脚下伸手、neck 长脖子、shadow 影子、twin 另一个你、shatter 车铃炸开、drown 溺水、water 天花板渗水、freeze 冷库、stare 全体回头、voice 广播点名、bell 十三下钟、follow 做操的人、deep 食堂盛宴坠坑、floor 水杯 | 已完成（floor 的杯子是简化的白杯＋淡紫盖，没有旧版杯身上的二校门图案） |
-| swarm、gaze、ring、loop、lamps、laugh | 未做 |
+| trash 垃圾桶、liftdoor 电梯门缝、grip 脚下伸手、neck 长脖子、shadow 影子、twin 另一个你、shatter 车铃炸开、drown 溺水、water 天花板渗水、freeze 冷库、stare 全体回头、voice 广播点名、bell 十三下钟、follow 做操的人、deep 食堂盛宴坠坑、floor 水杯、ring 圈、loop 无尽走廊、lamps 熄灯、laugh 笑、swarm 蛾群、gaze 拍肩 | 已完成（gaze 的眼睛是平的圆片，旧版有贴图精灵；swarm 的蛾翅是方片；floor 的杯子是简化的白杯＋淡紫盖，没有旧版杯身上的二校门图案） |
 | void、abyss（虚空迷宫）、campus_fall（坠落）、window_gaze（窗内视线）、crowd（电梯人群）、paper_sender（纸飞机）、misread（念错通知） | 未做 |
 | 其余的「画面特效渐隐」（vignette、names、chalk、slit、squeeze、face、wall、mirror、hand 等） | 旧版也没有独立分镜 |
 

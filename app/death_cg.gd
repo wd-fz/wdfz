@@ -7,7 +7,7 @@ extends Node
 ## a turn and a lift change (and are put back at the end); a veil sphere on it closes the scene.
 ## Not every cause has a scene yet (CAUSES lists the ported ones); the others keep the screen-effect fade.
 
-const CAUSES := ["trash", "liftdoor", "grip", "neck", "shadow", "twin", "shatter", "drown", "water", "freeze", "stare", "voice", "bell", "follow", "deep", "floor"]
+const CAUSES := ["trash", "liftdoor", "grip", "neck", "shadow", "twin", "shatter", "drown", "water", "freeze", "stare", "voice", "bell", "follow", "deep", "floor", "ring", "loop", "lamps", "laugh", "swarm", "gaze"]
 
 var on := false
 var fx := ""
@@ -150,12 +150,18 @@ func torus(radius: float, tube: float, mat: Material, x: float, y: float, z: flo
 
 
 ## A figure of the old build (front +z, the old rotations apply).
-func fig(kind: String, col: Color, scale: float, x: float, z: float) -> Node3D:
+func fig(kind: String, col: Color, scale: float, x: float, z: float, over: bool = false) -> Node3D:
 	var g := Node3D.new()
 	g.rotation_order = EULER_ORDER_YXZ
 	var fm := FigureModel.make(kind, col, true, scale)
 	fm.rotation.y = PI
 	g.add_child(fm)
+	if over:
+		for mi: Node in fm.find_children("*", "MeshInstance3D", true, false):
+			var m := (mi as MeshInstance3D).material_override as StandardMaterial3D
+			if m != null:
+				m.no_depth_test = true
+				m.render_priority = 101
 	put(g, x, 0.0, z)
 	return g
 
@@ -1028,3 +1034,295 @@ func _update_floor(kk: float) -> void:
 	elif kk >= 1.25:
 		_ui.cut_flash(0.0)
 	shade(0.3 * ss(kk, 1.15, 1.3) * (1.0 - ss(kk, 1.3, 1.8)) + 0.9 * ss(kk, 2.5, 3.0))
+
+
+# ---- ring: a circle of candles and stones; robed figures rise round it, the stones lengthen into the bars of a cage ----
+
+func _build_ring() -> void:
+	var cm := _mat(Color("#d8d4cc"), 0.85, true)
+	mesh(_ring_mesh(2.0, 2.06, 48), cm, 0.0, 0.012, 0.0)
+	var flames: Array = []
+	var fm := SphereMesh.new()
+	fm.radius = 0.03
+	fm.height = 0.06
+	fm.radial_segments = 6
+	fm.rings = 4
+	for i in 5:
+		var a := float(i) / 5.0 * TAU + 0.3
+		var x := cos(a) * 1.7
+		var z := sin(a) * 1.7
+		box(0.05, 0.2, 0.05, Color("#e8e0cc"), -1.0, x, 0.1, z)
+		var fl := mesh(fm, _mat(Color("#ffc860")), x, 0.24, z)
+		fl.set_meta("f", {"x": x, "z": z, "i": i})
+		flames.append(fl)
+	d["flames"] = flames
+	var stones: Array = []
+	for i in 16:
+		var st := box(0.08, 0.08, 0.08, Color("#d8d4cc"), -1.0, 0.0, 0.0, 0.0)
+		st.set_meta("s", {"a": float(i) / 16.0 * TAU, "d": rand.randf() * 0.5, "h": 0.4 + float(i % 4) * 0.45})
+		stones.append(st)
+	d["stones"] = stones
+	var robes: Array = []
+	for i in 6:
+		var ra := float(i) / 6.0 * TAU + 0.5
+		var f := fig("tall", Color("#050607"), 1.0, cos(ra) * 3.3, sin(ra) * 3.3)
+		f.rotation.y = atan2(-f.position.x, -f.position.z)
+		robes.append(f)
+	d["robes"] = robes
+	veil(Color.BLACK)
+
+
+func _update_ring(kk: float) -> void:
+	view(kk, 0.9 * ss(kk, 1.8, 3.2), -0.45 * ss(kk, 0.0, 0.6) * (1.0 - ss(kk, 1.6, 2.2)) + 0.05, 0.0)
+	var lean := ss(kk, 0.2, 0.8)
+	var cage := ss(kk, 1.8, 2.6)
+	for fl: MeshInstance3D in d["flames"]:
+		var u: Dictionary = fl.get_meta("f")
+		fl.position = Vector3(float(u["x"]) * (1.0 - 0.06 * lean), 0.24, float(u["z"]) * (1.0 - 0.06 * lean))
+		fl.scale = Vector3(1.0, 1.8 + 0.3 * sin(kk * 13.0 + float(u["i"])), 1.0)
+		fl.visible = kk < 2.7 + float(u["i"]) * 0.12
+	for st: MeshInstance3D in d["stones"]:
+		var u: Dictionary = st.get_meta("s")
+		var up := ss(kk, 0.8 + float(u["d"]), 1.4 + float(u["d"]))
+		var ang := float(u["a"]) + maxf(0.0, kk - 0.8) * 1.4 * up + cage * 1.2
+		var rad := 2.2 - 1.3 * cage
+		st.position = Vector3(cos(ang) * rad, 0.05 + up * float(u["h"]), sin(ang) * rad)
+		st.scale = Vector3(1.0, 1.0 + 10.0 * cage, 1.0)
+	var stand := ss(kk, 1.6, 2.4)
+	var bow := ss(kk, 2.7, 3.3)
+	for f: Node3D in d["robes"]:
+		f.position.y = -1.9 * (1.0 - stand)
+		f.rotation.x = 0.3 * bow
+	shade(0.92 * ss(kk, 3.0, 3.4))
+
+
+# ---- loop: the endless corridor. Door frames slide at you without end, the corridor narrows, the lights go out from far to near, a man in the nearest frame ----
+
+func _build_loop() -> void:
+	var wall := _mat(Color("#4a4f55"))
+	var wm := BoxMesh.new()
+	wm.size = Vector3(0.1, 2.8, 26.0)
+	d["walls"] = [mesh(wm, wall, -1.3, 1.4, 13.0), mesh(wm, wall, 1.3, 1.4, 13.0)]
+	var frames: Array = []
+	var dark := Color("#24180f")
+	for i in 10:
+		var g := Node3D.new()
+		for b: Array in [[-0.62, 1.1, 0.1, 2.2], [0.62, 1.1, 0.1, 2.2], [0.0, 2.25, 1.34, 0.1]]:
+			var bm := BoxMesh.new()
+			bm.size = Vector3(float(b[2]), float(b[3]), 0.12)
+			mesh(bm, _mat(dark), float(b[0]), float(b[1]), 0.0, g)
+		var lm := BoxMesh.new()
+		lm.size = Vector3(0.5, 0.04, 0.12)
+		var lamp := mesh(lm, _mat(Color("#fff4dc")), 0.0, 2.72, 1.2, g)
+		g.set_meta("lamp", lamp)
+		put(g, 0.0, 0.0, 2.0 + float(i) * 2.4)
+		frames.append(g)
+	d["frames"] = frames
+	var man := fig("person", Color("#07090b"), 1.0, 0.0, 1.6)
+	man.rotation.y = PI
+	man.visible = false
+	d["man"] = man
+	veil(Color.BLACK)
+
+
+func _update_loop(kk: float) -> void:
+	view(kk, 0.0, -0.04, 0.0)
+	var scroll := maxf(0.0, kk - 0.8) * 3.0 - maxf(0.0, kk - 2.8) * 3.0
+	var narrow := ss(kk, 2.2, 2.8)
+	var len := 24.0
+	var i := 0
+	for g: Node3D in d["frames"]:
+		var z := fposmod(fposmod(float(i) * 2.4 - scroll, len), len) * (1.0 - 0.45 * narrow) + 0.8
+		g.position.z = z
+		g.scale.x = 1.0 - 0.35 * narrow
+		(g.get_meta("lamp") as Node3D).visible = not (kk > 2.2 and z > len * (1.0 - seg(kk, 2.2, 2.8)) * 0.6)
+		i += 1
+	(d["walls"][0] as Node3D).position.x = -1.3 + 0.5 * narrow
+	(d["walls"][1] as Node3D).position.x = 1.3 - 0.5 * narrow
+	(d["man"] as Node3D).visible = kk > 2.95
+	if kk >= 2.95 and not _flashed.has("man"):
+		_flashed["man"] = true
+		_ui.cut_flash(0.2)
+	elif kk >= 3.05:
+		_ui.cut_flash(0.0)
+	shade(0.9 * ss(kk, 3.1, 3.4))
+
+
+# ---- lamps: lights out. The row overhead flickers, goes out from far to near; in the dark the last one lights twice more, each time the figure is closer ----
+
+func _build_lamps() -> void:
+	var lamps: Array = []
+	var lm := BoxMesh.new()
+	lm.size = Vector3(0.9, 0.05, 0.16)
+	for i in 8:
+		lamps.append(mesh(lm, _mat(Color("#fff2d0"), -1.0, false, true), 0.0, 2.75, 0.5 + float(i) * 1.2))
+	d["lamps"] = lamps
+	var pale := fig("tall", Color("#a8aeb0"), 1.0, 0.0, 2.2, true)
+	pale.rotation.y = PI
+	pale.visible = false
+	d["pale"] = pale
+	veil(Color.BLACK)
+
+
+func _update_lamps(kk: float) -> void:
+	view(kk, 0.0, 0.12 * ss(kk, 0.0, 0.5) - 0.12 * ss(kk, 1.0, 2.0), 0.0)
+	var i := 0
+	for l: Node3D in d["lamps"]:
+		var lit := not (kk >= 0.35 and kk < 0.42 and i % 2 == 1) and not (kk >= 0.7 and kk < 0.78) and kk < 1.0 + float(7 - i) * 0.15
+		if i == 0:
+			lit = lit or (kk >= 2.35 and kk < 2.45) or (kk >= 2.6 and kk < 2.66) or kk >= 3.05
+		l.visible = lit
+		i += 1
+	var blink := 1 if (kk >= 2.35 and kk < 2.45) else (2 if (kk >= 2.6 and kk < 2.66) else (3 if kk >= 3.05 else 0))
+	var pale := d["pale"] as Node3D
+	pale.visible = blink > 0
+	pale.position.z = [2.2, 2.2, 1.3, 0.55][blink]
+	if kk >= 3.05 and not _flashed.has("last"):
+		_flashed["last"] = true
+		_ui.cut_flash(0.25)
+	elif kk >= 3.15:
+		_ui.cut_flash(0.0)
+	shade(0.9 * ss(kk, 1.4, 2.3))
+
+
+# ---- laugh: the faces round you start to laugh one by one, closer, circling; you shake with them; a huge laughing face at last ----
+
+func _build_laugh() -> void:
+	var faces: Array = []
+	for i in 7:
+		var a := -1.2 + float(i) * 0.4 + (rand.randf() - 0.5) * 0.15
+		var dd := 2.2 + rand.randf() * 1.0
+		var f := fxm("smile", 0.35, sin(a) * dd, 0.0, cos(a) * dd)
+		f.set_meta("l", {"a": a, "d": dd, "t": float(i) * 0.1 + rand.randf() * 0.1})
+		faces.append(f)
+	d["faces"] = faces
+	var big := fxm("smile", 0.8, 0.0, 0.0, 0.9)
+	big.visible = false
+	d["big"] = big
+	veil(Color("#0a0505"))
+
+
+func _face_me(o: Node3D) -> void:
+	o.rotation.y = atan2(-o.position.x, -o.position.z)
+
+
+func _update_laugh(kk: float) -> void:
+	var near := ss(kk, 0.8, 1.8)
+	var swirl := ss(kk, 1.8, 2.6)
+	var end := ss(kk, 2.6, 3.2)
+	view(kk, 0.0, -0.02 + 0.06 * sin(kk * 16.0) * shk * seg(kk, 1.0, 2.6) * (1.0 - end), -0.15 * absf(sin(kk * 8.0)) * seg(kk, 1.0, 2.6) * (1.0 if shk > 0.0 else 0.3))
+	var cy := cam_y()
+	for f: Node3D in d["faces"]:
+		var u: Dictionary = f.get_meta("l")
+		var sc := 0.35 + 0.35 * near
+		var dd := float(u["d"]) * (1.0 - 0.4 * near) - (float(u["d"]) * 0.6 - 0.9) * swirl
+		var a := float(u["a"]) + (kk - 1.8) * 0.8 * swirl
+		f.visible = kk > float(u["t"]) and end < 0.5
+		f.scale = Vector3.ONE * sc
+		f.position = Vector3(sin(a) * dd, cy - 1.7 * sc + 0.02 * sin(kk * 14.0 + float(u["a"]) * 5.0), cos(a) * dd)
+		_face_me(f)
+	var big := d["big"] as Node3D
+	big.visible = end > 0.0
+	var bs := 0.8 + 0.6 * end
+	big.scale = Vector3.ONE * bs
+	big.position = Vector3(0.0, cy - 1.7 * bs, 0.9 - 0.2 * end)
+	_face_me(big)
+	shade(0.85 * ss(kk, 2.95, 3.2))
+
+
+# ---- swarm: the moths. A black cloud under the lamp winds into a column round you and finally fills the view ----
+
+func _build_swarm() -> void:
+	var n := 70
+	var wing := QuadMesh.new()
+	wing.size = Vector2(0.07, 0.04)
+	var body := BoxMesh.new()
+	body.size = Vector3(0.016, 0.016, 0.06)
+	d["wingIM"] = inst(wing, _mat(Color("#111111"), -1.0, true), n * 2)
+	d["bodyIM"] = inst(body, _mat(Color("#080808")), n)
+	var moths: Array = []
+	for i in n:
+		moths.append({"a": rand.randf() * TAU, "r": 0.35 + rand.randf() * 1.3, "h": rand.randf() * 0.9, "sp": (-1.0 if rand.randf() < 0.5 else 1.0) * (1.6 + rand.randf() * 1.8), "ph": rand.randf() * TAU, "fl": 26.0 + rand.randf() * 16.0})
+	d["moths"] = moths
+	box(0.008, 0.5, 0.008, Color("#111111"), -1.0, 0.0, 2.55, 4.5)
+	var sm := SphereMesh.new()
+	sm.radius = 0.06
+	sm.height = 0.12
+	sm.radial_segments = 10
+	sm.rings = 8
+	mesh(sm, _mat(Color("#ffe9c0")), 0.0, 2.26, 4.5)
+	d["glow"] = disc(0.75, Color("#ffd9a0"), 0.7, 0.0, 2.26, 4.5)
+	((d["glow"] as Node3D) as MeshInstance3D).rotation.x = PI / 2.0
+	veil(Color("#0c0905"))
+
+
+func _update_swarm(kk: float) -> void:
+	var gather := ss(kk, 0.4, 1.4)
+	var close := ss(kk, 1.4, 2.5)
+	var cover := ss(kk, 2.5, 3.2)
+	view(kk, 0.0, 0.22 * gather * (1.0 - close) - 0.1 * close + 0.05 * sin(kk * 17.0) * close * shk, -0.35 * cover)
+	var cy := cam_y()
+	var sc := 1.5 + 1.0 * cover
+	var i := 0
+	for m: Dictionary in d["moths"]:
+		var ang := float(m["a"]) + kk * float(m["sp"])
+		var a := Vector3(cos(ang) * float(m["r"]) * 0.6, 2.2 + (float(m["h"]) - 0.45) * 0.9 + sin(ang * 1.7 + float(m["ph"])) * 0.12, 4.5 + sin(ang) * float(m["r"]) * 0.6)
+		var rr := 2.2 * (1.0 - close) + 0.3 + 0.15 * float(m["r"])
+		var ang2 := float(m["a"]) + kk * float(m["sp"]) * 1.6
+		var b := Vector3(cos(ang2) * rr, 0.6 + float(m["h"]) * 2.0 + (cy - 0.6 - float(m["h"]) * 2.0) * close * 0.7, sin(ang2) * rr)
+		var q := a.lerp(b, gather)
+		if cover > 0.0:
+			q = q.lerp(Vector3(cos(ang2) * 0.18, cy + sin(ang2 * 1.3) * 0.1, 0.16 + 0.08 * sin(ang2)), cover * 0.9)
+		var head := -ang2 if float(m["sp"]) > 0.0 else PI - ang2
+		var flap := sin(kk * float(m["fl"]) + float(m["ph"])) * 1.1 + 0.25
+		set_i(d["bodyIM"], i, q, Vector3(0.0, head, 0.0), Vector3.ONE * sc)
+		set_i(d["wingIM"], i * 2, q, Vector3(-PI / 2.0, head, flap), Vector3.ONE * sc)
+		set_i(d["wingIM"], i * 2 + 1, q, Vector3(-PI / 2.0, head, -flap), Vector3(-sc, sc, sc))
+		i += 1
+	var fl := 0.8 + 0.2 * sin(kk * 23.0) * sin(kk * 7.3)
+	((d["glow"] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color.a = 0.7 * fl * (1.0 - 0.4 * close) * (1.0 - 0.6 * cover)
+	shade(0.85 * ss(kk, 2.9, 3.2))
+
+
+# ---- gaze: someone taps your shoulder. A glance, then your head is slowly turned: behind you a smiling face, eyes opening one by one in the dark ----
+
+func _build_gaze() -> void:
+	d["smile"] = fxm("smile", 1.0, 0.0, _base_y - 1.7, -1.0)
+	var eyes: Array = []
+	var em := CylinderMesh.new()
+	em.top_radius = 0.5
+	em.bottom_radius = 0.5
+	em.height = 0.003
+	em.radial_segments = 12
+	em.rings = 1
+	for i in 18:
+		var col := Color("#d23a2e") if rand.randf() < 0.4 else Color("#e8bd4a")
+		var mat := _mat(col, 0.0)
+		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		var a := PI * (0.25 + rand.randf() * 0.5) + PI
+		var dd := 1.8 + rand.randf() * 2.4
+		var e := mesh(em, mat, cos(a) * dd, 0.5 + rand.randf() * 2.1, sin(a) * dd)
+		e.rotation.x = PI / 2.0
+		e.set_meta("e", {"x": e.position.x, "z": e.position.z, "y": e.position.y, "s": 0.4 + rand.randf() * 0.6, "d": rand.randf() * 0.5})
+		eyes.append(e)
+	d["eyes"] = eyes
+	veil(Color("#050203"))
+
+
+func _update_gaze(kk: float) -> void:
+	var turn := 0.22 * ss(kk, 0.15, 0.5) * (1.0 - ss(kk, 0.5, 0.8)) + PI * ss(kk, 0.8, 1.7)
+	view(kk, turn, -0.04, 0.0)
+	var close := ss(kk, 2.0, 2.9)
+	var sm := d["smile"] as Node3D
+	sm.position.z = -1.0 + 0.55 * close
+	sm.scale = Vector3.ONE * (1.0 + 0.5 * close)
+	sm.position.y = _base_y - 1.7 * (1.0 + 0.5 * close)
+	for e: MeshInstance3D in d["eyes"]:
+		var u: Dictionary = e.get_meta("e")
+		var o := ss(kk, 1.5 + float(u["d"]), 1.9 + float(u["d"]))
+		var sh := 1.0 - 0.5 * close
+		e.position = Vector3(float(u["x"]) * sh, float(u["y"]) + (_base_y - float(u["y"])) * 0.3 * close, float(u["z"]) * sh)
+		(e.material_override as StandardMaterial3D).albedo_color.a = o
+		var sc := float(u["s"]) * (0.3 + 0.7 * o) * (1.0 + 0.4 * close)
+		e.scale = Vector3(sc * 0.3, 1.0, sc * 0.3 * 0.6875)
+	shade(0.9 * ss(kk, 3.0, 3.4))
