@@ -19,17 +19,17 @@ static func light_mul(t: float, reduce_flash: bool) -> float:
 	return .3 if ph>.82 and ph<.95 else .85
 
 
-static func display_label(width: float) -> Label3D:
-	var text := Label3D.new()
-	text.text = "满 员"
-	text.font_size = 58
-	text.pixel_size = width/256.0
-	text.modulate = Color("#ff4a2a")
-	text.outline_modulate = Color("#5c1005")
-	text.outline_size = 5
-	text.no_depth_test = false
-	text.shaded = false
-	return text
+static func display_face(width: float, height: float) -> MeshInstance3D:
+	var face := MeshInstance3D.new()
+	var plane := QuadMesh.new()
+	plane.size = Vector2(width,height)
+	face.mesh = plane
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_texture = load("res://assets/campus/crowd/full.png")
+	face.material_override = material
+	face.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return face
 
 
 func clear() -> void:
@@ -96,17 +96,7 @@ func _build(scene: String, world: Node3D, lift: ElevatorModule) -> void:
 	mesh.material_override=mat
 	mesh.position.z=-.017
 	sign.add_child(mesh)
-	var face := MeshInstance3D.new()
-	var plane := QuadMesh.new()
-	plane.size=Vector2(.26,.1)
-	face.mesh=plane
-	var black := StandardMaterial3D.new()
-	black.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
-	black.albedo_color=Color("#070808")
-	face.material_override=black
+	var face := display_face(.26,.1)
 	sign.add_child(face)
-	var label := display_label(.26)
-	label.position.z=.001
-	sign.add_child(label)
 	world.add_child(sign)
 	key=scene

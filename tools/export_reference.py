@@ -53,6 +53,7 @@ def main():
     parser.add_argument("--bell-tails-only", action="store_true", help="capture original bell-tune parameters and eight-note recipes")
     parser.add_argument("--scene-audio-only", action="store_true", help="capture original sensory-scene sound ownership and cancellation")
     parser.add_argument("--maze-death-only", action="store_true", help="capture original maze death meshes and frame matrices")
+    parser.add_argument("--crowd-props-only", action="store_true", help="capture original crowd death materials, hands and display texture")
     args = parser.parse_args()
     source = args.source.resolve()
     tree = subprocess.check_output(["git", "rev-parse", "HEAD:game3d"], cwd=source, text=True).strip()
@@ -71,12 +72,12 @@ def main():
             page = browser.new_page(viewport={"width": 640, "height": 480})
             # Ground-ray comparison needs the same q2 asset pack as the exported
             # campus, not q0 placeholders with QUALITY changed after assets load.
-            initial_quality=2 if args.falling_props_only or args.traces_only or args.remaining_death_only or args.death_models_only or args.atmos_props_only or args.maze_death_only else 0
+            initial_quality=2 if args.falling_props_only or args.traces_only or args.remaining_death_only or args.death_models_only or args.atmos_props_only or args.maze_death_only or args.crowd_props_only else 0
             page.add_init_script("localStorage.setItem('wdfz_pro','1');localStorage.setItem('zw3d_set',JSON.stringify({q:%d,amb:0,vol:0,renderer:'webgl',rv:1}));" % initial_quality)
             page.goto(f"http://127.0.0.1:{server.server_port}/")
             page.wait_for_function("Engine.ready() && Assets.ready(Assets.want())", timeout=180000)
-            if args.save_only or args.story_only or args.grading_only or args.crowd_only or args.secret_items_only or args.inception_only or args.maze_patrol_only or args.anomaly_fx_only or args.falling_props_only or args.traces_only or args.remaining_death_only or args.rules_dlc_only or args.archive_only or args.classmates_only or args.map_only or args.cyber_only or args.world_people_only or args.paper_only or args.death_models_only or args.checkup_only or args.death_timelines_only or args.atmos_props_only or args.bell_tails_only or args.scene_audio_only or args.maze_death_only:
-                stem = "maze_death" if args.maze_death_only else "scene_audio" if args.scene_audio_only else "bell_tails" if args.bell_tails_only else "atmos_props" if args.atmos_props_only else "death_timelines" if args.death_timelines_only else "checkup" if args.checkup_only else "death_models" if args.death_models_only else "paper" if args.paper_only else "world_people" if args.world_people_only else "cyber" if args.cyber_only else "map" if args.map_only else "classmates" if args.classmates_only else "archive" if args.archive_only else "rules_dlc" if args.rules_dlc_only else "remaining_death" if args.remaining_death_only else "traces" if args.traces_only else "falling_props" if args.falling_props_only else "anomaly_fx" if args.anomaly_fx_only else "maze_patrol" if args.maze_patrol_only else "inception" if args.inception_only else "secret_items" if args.secret_items_only else "crowd" if args.crowd_only else "grading" if args.grading_only else "routes" if args.story_only else "saves"
+            if args.save_only or args.story_only or args.grading_only or args.crowd_only or args.secret_items_only or args.inception_only or args.maze_patrol_only or args.anomaly_fx_only or args.falling_props_only or args.traces_only or args.remaining_death_only or args.rules_dlc_only or args.archive_only or args.classmates_only or args.map_only or args.cyber_only or args.world_people_only or args.paper_only or args.death_models_only or args.checkup_only or args.death_timelines_only or args.atmos_props_only or args.bell_tails_only or args.scene_audio_only or args.maze_death_only or args.crowd_props_only:
+                stem = "crowd_props" if args.crowd_props_only else "maze_death" if args.maze_death_only else "scene_audio" if args.scene_audio_only else "bell_tails" if args.bell_tails_only else "atmos_props" if args.atmos_props_only else "death_timelines" if args.death_timelines_only else "checkup" if args.checkup_only else "death_models" if args.death_models_only else "paper" if args.paper_only else "world_people" if args.world_people_only else "cyber" if args.cyber_only else "map" if args.map_only else "classmates" if args.classmates_only else "archive" if args.archive_only else "rules_dlc" if args.rules_dlc_only else "remaining_death" if args.remaining_death_only else "traces" if args.traces_only else "falling_props" if args.falling_props_only else "anomaly_fx" if args.anomaly_fx_only else "maze_patrol" if args.maze_patrol_only else "inception" if args.inception_only else "secret_items" if args.secret_items_only else "crowd" if args.crowd_only else "grading" if args.grading_only else "routes" if args.story_only else "saves"
                 if args.rules_dlc_only:
                     page.evaluate("() => {window.__rulesHooks={};window.__modRegister=GameModules.mod;GameModules.mod=def=>def.init({on:(name,fn)=>window.__rulesHooks[name]=fn,store:spec=>window.__rulesStore=spec,toast:()=>{}});}")
                     page.add_script_tag(path=str(source / "game3d/mods/campus-rules.js"))
@@ -86,8 +87,8 @@ def main():
                     (ROOT / "assets/campus/maze_death_geometry.json").write_text(json.dumps(result.pop("geometry"),separators=(",",":"))+"\n")
                 if args.death_timelines_only:
                     (ROOT / "assets/campus/death_geometry.json").write_text(json.dumps(result.pop("geometry"),separators=(",",":"))+"\n")
-                if args.checkup_only or args.atmos_props_only:
-                    texture_dir = ROOT / ("assets/campus/atmos" if args.atmos_props_only else "assets/campus/checkup")
+                if args.checkup_only or args.atmos_props_only or args.crowd_props_only:
+                    texture_dir = ROOT / ("assets/campus/crowd" if args.crowd_props_only else "assets/campus/atmos" if args.atmos_props_only else "assets/campus/checkup")
                     texture_dir.mkdir(parents=True,exist_ok=True)
                     for name,data in result.pop("textures").items():
                         (texture_dir / (name+".png")).write_bytes(base64.b64decode(data.split(",",1)[1]))

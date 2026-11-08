@@ -8,20 +8,23 @@ const SPOTS := [[.27,-.26,.06],[-.27,-.24,.04],[.32,-.12,.14],[-.33,-.1,.16],[.2
 
 static func build(c: DeathCG) -> void:
 	c.hide_world()
-	c.box(1.6,.004,1.6,Color("#15191a"),-1,0,0,D-.8)
+	var floor_shape := QuadMesh.new()
+	floor_shape.size = Vector2(1.6,1.6)
+	c.d["floor"] = c.mesh(floor_shape,c._mat(Color("#15191a")),0,.002,D-.8)
+	c.d["floor"].rotation.x = -PI/2
 	c.d["walls"]=[
 		c.box(.04,2.3,1.6,Color("#5e6766"),-1,-.8,1.15,D-.8),c.box(.04,2.3,1.6,Color("#5e6766"),-1,.8,1.15,D-.8),
 		c.box(1.6,2.3,.04,Color("#545c5b"),-1,0,1.15,D-1.6),c.box(1.6,.04,1.6,Color("#2c3231"),-1,0,2.32,D-.8),
 		c.box(.35,2.3,.05,Color("#5e6766"),-1,-.625,1.15,D+.02),c.box(.35,2.3,.05,Color("#5e6766"),-1,.625,1.15,D+.02),
 		c.box(.9,.2,.05,Color("#5e6766"),-1,0,2.2,D+.02)]
 	for wall: MeshInstance3D in c.d["walls"]:
-		wall.set_meta("base_color",wall.material_override.albedo_color)
+		wall.set_meta("base_color",wall.material_override.albedo_color.srgb_to_linear())
 	c.d["lamp"]=c.box(.6,.012,.4,Color("#d8ddd6"),-1,0,2.29,D-.8,false)
 	c.box(.04,.82,.19,Color("#262c2e"),-1,-.77,1.42,D-.4)
 	c.box(.2,.12,.008,Color("#070808"),-1,0,2.2,D-.008)
-	var text := LiftCrowdFx.display_label(.19)
+	var text := LiftCrowdFx.display_face(.19,.07)
 	text.rotation.y=PI
-	c.put(text,0,2.2,D-.014)
+	c.put(text,0,2.2,D-.013)
 	c.d["full"]=text
 	c.d["segs"]={}
 	for key: String in DeathCG.LIFT_SEG:
@@ -38,8 +41,10 @@ static func build(c: DeathCG) -> void:
 	for i in SPOTS.size():
 		var h := c.fxm("hand",.8,0,-5,0)
 		for mesh: Node in h.find_children("*","MeshInstance3D",true,false):
-			var mat := c._mat(Color(.03,.03,.03),-1,true)
+			var mat := (mesh as MeshInstance3D).material_override.duplicate() as StandardMaterial3D
+			mat.albedo_color=Color(.03,.03,.03).linear_to_srgb()
 			(mesh as MeshInstance3D).material_override=mat
+		h.hide()
 		c.d["hands"].append(h)
 	c.d["edges"]=[]
 	for i in 4:
@@ -74,7 +79,9 @@ static func update(c: DeathCG, t: float) -> void:
 	c.d["out"].visible=bool(f["end"]) and float(f["gap"])>.02
 	c.d["lamp"].visible=not bool(f["end"]) and float(f["lit"])>.25
 	for wall: MeshInstance3D in c.d["walls"]:
-		wall.material_override.albedo_color=(wall.get_meta("base_color") as Color)*(.25+.75*float(f["lit"]))
+		var color: Color = wall.get_meta("base_color")
+		var level := .25+.75*float(f["lit"])
+		wall.material_override.albedo_color=Color(color.r*level,color.g*level,color.b*level).linear_to_srgb()
 	c.d["full"].visible=f["full"]
 	for key: String in c.d["segs"]:
 		c.d["segs"][key].visible=String(f["segments"]).contains(key)
@@ -103,7 +110,8 @@ static func update(c: DeathCG, t: float) -> void:
 		var h: Node3D=c.d["hands"][i]
 		var s: Array=SPOTS[i]
 		var at := .9+i*.2
+		h.visible=not f["end"] and t>at
+		if not h.visible: continue
 		var g := c.ss(t,at,at+.35)
-		h.visible=not f["end"] and g>.02
 		h.position=base+lf*(.24+float(s[2])*.5)+lr*(-float(s[0])*(1.3-.3*g))+lu*(float(s[1])*(1.25-.25*g))
 		h.look_at(c.F.to_global(base+lf*1.2+lu*float(s[1])),Vector3.UP,true)

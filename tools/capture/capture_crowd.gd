@@ -17,11 +17,13 @@ func _run() -> void:
 	root.size=Vector2i(1280,720)
 	DirAccess.make_dir_recursive_absolute("res://build/previews/crowd")
 	var app: GameApp=APP.instantiate()
-	app.saves=SaveStore.new("user://capture-crowd/save.json")
-	app.settings=GameSettings.new("user://capture-crowd/settings.json")
+	app.saves=SaveStore.new("user://capture-crowd-%d/save.json" % Time.get_ticks_usec())
+	app.settings=GameSettings.new(app.saves.side_path("settings.json"))
 	root.add_child(app)
 	await process_frame
+	app.wuda_roll=func() -> float: return 1
 	app.start_new_game("hard","code")
+	app.set_process(false)
 	app.set_physics_process(false)
 	app._stand_up()
 	var lift := app.elevator()
@@ -49,8 +51,12 @@ func _run() -> void:
 	app._lift_crowd_fx.clear()
 	app.player.set_pitch(0)
 	app.kill("满员的时候，最后进来的人留在了里面。","crowd","crowd")
-	for frame: Array in [[.4,"满员-门关闭"],[2.4,"满员-楼层跳动"],[3.9,"满员-学生证"]]:
-		app._death_cg.update(frame[0])
+	var sampled := 0.0
+	for frame: Array in [[.4,"满员-门关闭",1280,720],[1.7,"满员-手部",1280,800],[2.4,"满员-楼层跳动",1280,720],[3.9,"满员-学生证",1600,720]]:
+		root.size=Vector2i(frame[2],frame[3])
+		while sampled<float(frame[0]):
+			sampled=minf(frame[0],sampled+1.0/60)
+			app._death_cg.update(sampled)
 		await _shot(frame[1])
 	app._stop_death_cg()
 	app.queue_free()

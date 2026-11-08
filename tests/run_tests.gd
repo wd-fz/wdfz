@@ -42,6 +42,9 @@ func same_json(a: Variant, b: Variant) -> bool:
 
 
 func _run() -> void:
+	var crowd_props := preload("res://tests/suites/crowd_props.gd").new(self)
+	print("CASE: crowd_props.test_frames")
+	await crowd_props.test_frames()
 	var maze_death := preload("res://tests/suites/maze_death.gd").new(self)
 	print("CASE: maze_death.test_shapes")
 	maze_death.test_shapes()
