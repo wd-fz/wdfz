@@ -11,10 +11,13 @@ const BOUNDARY := 1.0
 @export var scene_id := "out"
 
 var layout: Dictionary = {}
+## The anomaly module's leftovers at the moment a world is built (set by the app before the world exists).
+static var pending_traces: Array = []
 var banner: DayBanner
 var chalk: ChalkNotes
 var phantoms: Phantoms
 var traces: Traces
+var _traces_seen := -1
 var broadcast_props: BroadcastProps
 var mirror_view: MirrorView
 var canteen_view: CanteenView
@@ -44,7 +47,8 @@ func _ready() -> void:
 	traces = Traces.new()
 	traces.name = "Traces"
 	add_child(traces)
-	traces.build(scene_id, layout if is_room() else null)
+	traces.build(scene_id, layout if is_room() else null, CampusWorld.pending_traces)
+	_traces_seen = CampusWorld.pending_traces.size()
 	if is_room():
 		broadcast_props = BroadcastProps.new()
 		broadcast_props.name = "BroadcastProps"
@@ -279,6 +283,14 @@ func _process(delta: float) -> void:
 	if _scatter_t >= SCATTER_SECONDS:
 		_scatter.queue_free()
 		_scatter = null
+
+
+## Rebuild the leftovers when an anomaly has just left one (the list of AnomalyModule.traces).
+func sync_traces(list: Array) -> void:
+	if traces == null or list.size() == _traces_seen:
+		return
+	_traces_seen = list.size()
+	traces.build(scene_id, layout if is_room() else null, list)
 
 
 func scattering() -> bool:

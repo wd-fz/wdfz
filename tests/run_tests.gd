@@ -117,6 +117,7 @@ func _run() -> void:
 	_test_chalk_texture()
 	_test_phantoms()
 	_test_traces()
+	_test_anomaly_traces()
 	_test_chase_dash()
 	_test_canteen_view()
 	_test_mirror_view()
@@ -3308,6 +3309,21 @@ func _test_canteen_view() -> void:
 func _test_chase_dash() -> void:
 	check(not CarChaseView.shade_state(0.0, 0, 0.0)["visible"] and CarChaseView.shade_state(0.1, 0, 0.0)["visible"] and not CarChaseView.shade_state(0.1, 1, 0.0)["visible"] and CarChaseView.shade_state(0.9, 4, 0.0)["visible"], "the shadows in the mirror come one by one as the pursuit closes")
 	check(CarChaseView.shade_state(1.0, 0, 0.0)["scale"].x > CarChaseView.shade_state(0.1, 0, 0.0)["scale"].x, "and grow")
+
+
+func _test_anomaly_traces() -> void:
+	var an := AnomalyModule.new(CampusData.rooms(), {})
+	var me := Vector2(100, 200)
+	check(an.trace_for("rain", {}, me, "teach1", 0.0) == {"k": "puddle", "x": 100.0, "y": 200.0, "room": "teach1"} and an.trace_for("rain", {}, me, "out", 0.0)["room"] == "", "the rain leaves a puddle where you stood, outdoors it is room-less")
+	check(an.trace_for("moth", {"src": {"x": 5.0, "y": 6.0}}, me, "teach1", 0.0)["k"] == "moths" and an.trace_for("moth", {}, me, "teach1", 0.0).is_empty(), "moths leave the dead ones at their source, none without a source")
+	check(an.trace_for("cup", {"phase": 2, "lx": 1.0, "ly": 2.0}, me, "teach1", 0.0)["room"] == "" and an.trace_for("cup", {"phase": 1}, me, "out", 0.0).is_empty(), "the cup lands outdoors and only after it fell")
+	check(an.trace_for("necker", {}, me, "out", 300.0)["x"] == 300.0 and an.trace_for("blackout", {}, me, "out", 0.0).is_empty(), "the necker leaves marks on the fence, a blackout leaves none")
+	for i in 45:
+		an.traces.append({"k": "dust", "x": 0.0, "y": 0.0, "room": ""})
+		while an.traces.size() > AnomalyModule.TRACE_MAX:
+			an.traces.pop_front()
+	check(an.traces.size() == 40, "at most 40 are kept")
+	check(Traces.dynamic_for([{"k": "dust", "room": "teach1"}, {"k": "dust", "room": ""}], "teach1").size() == 1 and Traces.dynamic_for([{"k": "dust", "room": ""}], "out").size() == 1, "each scene shows its own leftovers")
 
 
 func _test_traces() -> void:

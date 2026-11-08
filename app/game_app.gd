@@ -4407,7 +4407,7 @@ func _anomaly_context(room: Variant, pose: Dictionary) -> Dictionary:
 	var tile := ""
 	if room != null:
 		tile = CampusGeometry.tile_at(room, w)
-	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "tsec": day_rules.tsec, "day": day_rules.day,
+	return {"fence_x": float(CampusData.layout("out")["bound"]["x1"]) * 2.0 - 6.0, "scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "tsec": day_rules.tsec, "day": day_rules.day,
 		"diff": story().diff if story() != null else "easy", "san": day_rules.san, "viol": day_rules.viol, "moving": player.moving, "running": player.sprinting,
 		"seated": day_rules.seated, "night": SchoolClock.is_night(day_rules.tsec), "need_where": SchoolClock.need_where(day_rules.tsec), "tile": tile,
 		"on_field": day_rules.on_field(session.world_id, w), "in_classroom": day_rules.in_classroom_here(session.world_id, w),
@@ -4481,6 +4481,10 @@ func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 	var ctx := _anomaly_context(room, pose)
 	weird.set_context(ctx)
 	weird.warning_seen(_chalk_step(delta, weird, day_rules, room, pose))
+	CampusWorld.pending_traces = weird.traces
+	var tw := _campus_world()
+	if tw != null:
+		tw.sync_traces(weird.traces)
 	_phantom_step(delta, day_rules, room, pose, weird)
 	weird.tick(delta)
 	for e: Dictionary in weird.take_events():
