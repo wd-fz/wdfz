@@ -70,6 +70,7 @@ func _ready() -> void:
 	else:
 		_build_link_preview()
 	_build_stair_preview()
+	_build_door_preview()
 	if is_room():
 		atmos_fx = AtmosFx.new()
 		atmos_fx.name = "AtmosFx"
@@ -127,6 +128,52 @@ func _build_clinic() -> void:
 ## Visual only: no collision, nothing advances. Standing at the west end of the second floor you see the whole bridge.
 var link_previews: Array[Node3D] = []
 var stair_previews: Array[Node3D] = []
+var door_previews: Array[Node3D] = []
+
+
+func _load_visual(id: String) -> Node3D:
+	var path := CampusData.SCENE_DIR + id + ".glb"
+	if not ResourceLoader.exists(path):
+		return null
+	var model := (load(path) as PackedScene).instantiate() as Node3D
+	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
+			_to_multimesh(mesh)
+	return model
+
+
+## The campus doors seen through (modules/campus-link/doors.js views): from outside the ground-floor room behind each door of
+## the building, from a room the outdoors through its door; placed by the same shift as the seamless crossing. Visual only.
+func _build_door_preview() -> void:
+	var rooms := CampusData.rooms()
+	var doors: Array = CampusData.campus().get("campus_doors", {}).get("doors", [])
+	if scene_id == "out":
+		for d: Dictionary in doors:
+			var rid := String(d["room"])
+			if not rooms.has(rid):
+				continue
+			var r: Dictionary = rooms[rid]
+			var model := _load_visual(rid)
+			if model == null:
+				continue
+			var c := Vector2(float(r["cx"]), float(r["cy"])) + CampusGeometry.shift_of(r)
+			model.name = "DoorPreview_" + rid
+			model.position = Vector3(c.x * CampusGeometry.U2M, 0.0, c.y * CampusGeometry.U2M)
+			add_child(model)
+			door_previews.append(model)
+		return
+	for d: Dictionary in doors:
+		if String(d["room"]) != scene_id:
+			continue
+		var model := _load_visual("out")
+		if model == null:
+			return
+		var c := Vector2(float(layout["cx"]), float(layout["cy"])) + CampusGeometry.shift_of(layout)
+		model.name = "DoorPreview_out"
+		model.position = Vector3(-c.x * CampusGeometry.U2M, 0.0, -c.y * CampusGeometry.U2M)
+		add_child(model)
+		door_previews.append(model)
+		return
 
 
 ## The stairwell shafts seen through their doorways (fx/stairwell-view.js): every stair that serves this scene, its shaft model placed
