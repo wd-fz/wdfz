@@ -7,7 +7,9 @@ extends Node
 ## a turn and a lift change (and are put back at the end); a veil sphere on it closes the scene.
 ## Not every cause has a scene yet (CAUSES lists the ported ones); the others keep the screen-effect fade.
 
-const CAUSES := ["trash", "liftdoor", "grip", "neck", "shadow", "twin", "shatter", "drown", "water", "freeze", "stare", "voice", "bell", "follow", "deep", "floor", "ring", "loop", "lamps", "laugh", "swarm", "gaze"]
+const CAUSES := ["trash", "liftdoor", "grip", "neck", "shadow", "twin", "shatter", "drown", "water", "freeze", "stare", "voice", "bell", "follow", "deep", "floor", "ring", "loop", "lamps", "laugh", "swarm", "gaze", "window_gaze", "paper_sender", "misread", "campus_fall"]
+## Scenes that carry their own length (seconds) when the cause is not one of StoryModule.DURATIONS.
+const LENGTH := {"window_gaze": 7.0, "paper_sender": 8.0, "misread": 4.1, "campus_fall": 6.0}
 
 var on := false
 var fx := ""
@@ -33,6 +35,10 @@ var _ui: GameUI
 
 static func has(cause: String) -> bool:
 	return CAUSES.has(cause)
+
+
+static func duration(cause: String, fallback: float) -> float:
+	return float(LENGTH.get(cause, fallback))
 
 
 static func seg(kk: float, a: float, b: float) -> float:
@@ -1326,3 +1332,208 @@ func _update_gaze(kk: float) -> void:
 		var sc := float(u["s"]) * (0.3 + 0.7 * o) * (1.0 + 0.4 * close)
 		e.scale = Vector3(sc * 0.3, 1.0, sc * 0.3 * 0.6875)
 	shade(0.9 * ss(kk, 3.0, 3.4))
+
+
+# ---- window_gaze: the eyes in the window (7 s). Omen: a window ahead, a pair of eyes in the pane that never blink. Contact: your
+# reflection turns to face you. The last view, from inside the window looking out: someone with their back to you — you. Closing: that
+# one looks up, the glass shows the same eyes; dark. ----
+
+func _build_window_gaze() -> void:
+	hide_world()
+	var dd := 2.2
+	var fl := mesh(QuadMesh.new(), _mat(Color("#1a1d1f")), 0.0, 0.002, 1.0)
+	(fl.mesh as QuadMesh).size = Vector2(4, 5)
+	fl.rotation.x = -PI / 2.0
+	var wall: Array = [box(4, 1.0, 0.12, Color("#4a5052"), -1.0, 0.0, 0.5, dd), box(4, 0.6, 0.12, Color("#4a5052"), -1.0, 0.0, 2.55, dd),
+		box(1.25, 1.25, 0.12, Color("#4a5052"), -1.0, -1.375, 1.625, dd), box(1.25, 1.25, 0.12, Color("#4a5052"), -1.0, 1.375, 1.625, dd)]
+	wall.append(box(1.5, 1.25, 0.01, Color("#0b1013"), -1.0, 0.0, 1.625, dd + 0.02))
+	wall.append(box(0.04, 1.25, 0.05, Color("#8b9192"), -1.0, 0.0, 1.625, dd - 0.02))
+	wall.append(box(1.5, 0.04, 0.05, Color("#8b9192"), -1.0, 0.0, 1.625, dd - 0.02))
+	wall.append(box(0.045, 0.022, 0.01, Color("#e8e4d4"), -1.0, -0.05, 1.86, dd - 0.012))
+	wall.append(box(0.045, 0.022, 0.01, Color("#e8e4d4"), -1.0, 0.05, 1.86, dd - 0.012))
+	d["wall"] = wall
+	var refl := fig("person", Color("#3a4246"), 1.0, 0.12, dd - 0.03)
+	refl.scale = Vector3(0.98, 0.98, 0.05)
+	d["refl"] = refl
+	d["frameB"] = [box(0.08, 2.4, 0.06, Color("#8b9192"), -1.0, -0.5, 1.2, 0.42), box(0.08, 2.4, 0.06, Color("#8b9192"), -1.0, 0.5, 1.2, 0.42),
+		box(1.1, 0.08, 0.06, Color("#8b9192"), -1.0, 0.0, 0.95, 0.42), box(1.1, 0.08, 0.06, Color("#8b9192"), -1.0, 0.0, 2.3, 0.42)]
+	var myself := fig("person", Color("#2c3337"), 1.0, 0.0, 2.4)
+	myself.rotation.y = 0.0
+	d["self"] = myself
+	d["selfEyes"] = [box(0.04, 0.02, 0.01, Color("#e8e4d4"), -1.0, -0.045, 1.66, 2.25), box(0.04, 0.02, 0.01, Color("#e8e4d4"), -1.0, 0.045, 1.66, 2.25)]
+	veil(Color.BLACK)
+
+
+func _update_window_gaze(kk: float) -> void:
+	var rev := kk >= 3.6
+	for m: Node3D in d["wall"]:
+		m.visible = not rev
+	(d["refl"] as Node3D).visible = not rev and kk > 1.2
+	for m: Node3D in d["frameB"]:
+		m.visible = rev
+	(d["self"] as Node3D).visible = rev
+	for m: Node3D in d["selfEyes"]:
+		m.visible = rev and kk > 6.0
+	if not rev:
+		(d["refl"] as Node3D).rotation.y = PI * (1.0 - ss(kk, 2.0, 3.2))
+		view(kk, 0.0, 0.02 * ss(kk, 0.0, 2.0), 0.0)
+		shade(0.1 + 0.25 * ss(kk, 2.6, 3.5))
+	else:
+		view(kk, 0.0, 0.03, 0.0)
+		(d["self"] as Node3D).rotation.x = -0.25 * ss(kk, 5.6, 6.3)
+		shade(0.55 - 0.4 * ss(kk, 3.6, 4.1) + 0.6 * ss(kk, 6.3, 7.0))
+	cue("line", kk, 5.8, func() -> void: _ui.show_notice("原来里面那个，一直是我。"))
+
+
+# ---- paper_sender: the one who flies paper planes (8 s). Footsteps stop outside the door; a flattened paper plane slides in under it to
+# your feet; the door opens a crack, a hand comes in and unfolds it — the one you just read; the picture is folded into the page; dark. ----
+
+func _build_paper_sender() -> void:
+	hide_world()
+	var dd := 1.6
+	var fl := mesh(QuadMesh.new(), _mat(Color("#1b1e1f")), 0.0, 0.002, 0.8)
+	(fl.mesh as QuadMesh).size = Vector2(4, 4)
+	fl.rotation.x = -PI / 2.0
+	box(4, 3, 0.1, Color("#3d4446"), -1.0, 0.0, 1.5, dd + 0.05)
+	d["gap"] = box(0.9, 0.02, 0.01, Color("#d8d2b8"), -1.0, 0.0, 0.01, dd - 0.02)
+	var door := Node3D.new()
+	put(door, 0.45, 0.0, dd - 0.03)
+	d["door"] = door
+	var lm := BoxMesh.new()
+	lm.size = Vector3(0.9, 2.05, 0.04)
+	mesh(lm, _mat(Color("#5b4a38")), -0.45, 1.035, 0.0, door)
+	d["plane"] = box(0.24, 0.006, 0.16, Color("#e9e5d8"), -1.0, 0.0, 0.005, dd - 0.05)
+	d["sheet"] = box(0.34, 0.46, 0.004, Color("#efebde"), -1.0, 0.0, 1.25, dd - 0.6)
+	d["hand"] = box(0.09, 0.12, 0.03, Color("#cdbca6"), -1.0, 0.12, 1.2, dd - 0.55)
+	var lines: Array = []
+	for i in 5:
+		lines.append(box(0.24, 0.008, 0.002, Color("#3a3530"), -1.0, 0.0, 1.38 - float(i) * 0.06, dd - 0.602))
+	d["lines"] = lines
+	for n: String in ["plane", "sheet", "hand"]:
+		(d[n] as Node3D).visible = false
+	for l: Node3D in lines:
+		l.visible = false
+	veil(Color.BLACK)
+
+
+func _update_paper_sender(kk: float) -> void:
+	var dd := 1.6
+	cue("steps", kk, 0.2, func() -> void: _ui.show_notice("（门外的脚步声停了。）"))
+	var plane := d["plane"] as Node3D
+	plane.visible = kk > 2.0 and kk < 4.4
+	plane.position.z = dd - 0.05 - 0.6 * ss(kk, 2.0, 3.6)
+	plane.rotation.y = 0.4 * ss(kk, 2.0, 3.6)
+	var open := ss(kk, 4.2, 4.8)
+	(d["door"] as Node3D).rotation.y = -0.35 * open
+	(d["gap"] as Node3D).visible = kk < 4.2
+	(d["hand"] as Node3D).visible = kk > 4.4
+	var sheet := d["sheet"] as Node3D
+	sheet.visible = kk > 4.4
+	for l: Node3D in d["lines"]:
+		l.visible = kk > 4.9
+	sheet.scale.y = 0.2 + 0.8 * ss(kk, 4.4, 5.2)
+	var fold := 0.55 * ss(kk, 5.4, 8.0)
+	sheet.position.z = dd - 0.6 - fold
+	(d["hand"] as Node3D).position.z = dd - 0.55 - fold
+	for l: Node3D in d["lines"]:
+		l.position.z = dd - 0.602 - fold
+	view(kk, 0.0, -0.35 + 0.35 * ss(kk, 1.6, 2.2) - 0.62 * ss(kk, 2.2, 3.6) + 0.62 * ss(kk, 4.0, 4.6), 0.0)
+	shade(0.15 + 0.75 * ss(kk, 6.6, 8.0))
+	cue("knock", kk, 7.2, func() -> void: _ui.show_notice("他来取回没有送到的东西。"))
+
+
+# ---- misread: the notice you read was meant for you (4.1 s). The broadcast room: the doors close, the speakers swell, "高二（二）班 请留在原地". ----
+
+func _build_misread() -> void:
+	hide_world()
+	box(3.6, 0.05, 4.5, Color("#272e2b"), -1.0, 0.0, -0.025, 1.2)
+	box(3.6, 2.8, 0.08, Color("#3c4843"), -1.0, 0.0, 1.4, 3.4)
+	box(0.08, 2.8, 4.5, Color("#34403c"), -1.0, -1.8, 1.4, 1.2)
+	box(1.3, 0.12, 0.6, Color("#4b4438"), -1.0, 0.0, 0.88, 1.15)
+	box(0.08, 0.35, 0.08, Color("#151f1d"), -1.0, 0.0, 1.1, 1.2)
+	var doors: Array = []
+	for i in 4:
+		doors.append(box(0.72, 2.0, 0.06, Color("#26322e"), -1.0, -1.3 + float(i) * 0.86, 1.0, 3.28))
+	d["doors"] = doors
+	var sign_l := _label("播 音 中", 0.3, Color("#d86b51"))
+	put(sign_l, 0.0, 2.22, 3.2)
+	sign_l.rotation.y = PI
+	d["sign"] = sign_l
+	var demand := _label("高二（二）班\n请留在原地", 0.4, Color("#dddcc8"))
+	put(demand, 0.0, 1.6, 3.18)
+	demand.rotation.y = PI
+	d["demand"] = demand
+	var speakers: Array = []
+	for i in 6:
+		speakers.append(box(0.24, 0.2, 0.12, Color("#54625b"), -1.0, -1.35 + float(i % 3) * 1.35, 2.35, 1.0 + (1.4 if i >= 3 else 0.0)))
+	d["speakers"] = speakers
+	veil(Color("#020707"))
+
+
+func _label(text: String, size: float, color: Color) -> Label3D:
+	var l := Label3D.new()
+	l.text = text
+	l.font_size = 64
+	l.pixel_size = size / 64.0 * 0.45
+	l.modulate = color
+	l.shaded = false
+	l.double_sided = true
+	return l
+
+
+func _update_misread(kk: float) -> void:
+	var close := ss(kk, 0.35, 1.8)
+	var i := 0
+	for m: Node3D in d["doors"]:
+		m.position.x = -1.3 + float(i) * 0.86 + (1.0 if i % 2 == 1 else -1.0) * 0.3 * (1.0 - close)
+		i += 1
+	(d["demand"] as Node3D).visible = kk > 0.8
+	(d["sign"] as Node3D).visible = kk < 3.3
+	i = 0
+	for m: Node3D in d["speakers"]:
+		m.scale = Vector3.ONE * (1.0 + 0.04 * sin(kk * 5.0 + float(i)))
+		i += 1
+	view(kk, 0.0, 0.03 * shk * sin(kk * 5.0), -0.02 * close)
+	shade(minf(0.92, (kk - 3.3) * 1.4) if kk > 3.3 else 0.08)
+
+
+# ---- campus_fall: "Chinese people can fly" (6 s). The hand leaves the rail; the rail and the floor edge slide up out of the picture; rows of
+# window frames sweep past upward, the camera slowly turns down; the ground's shadow rises to meet you; black before contact; a muted thud. ----
+
+func _build_campus_fall() -> void:
+	hide_world()
+	var w := Node3D.new()
+	put(w, 0.0, 0.0, 0.0)
+	d["world"] = w
+	var add_box := func(bw: float, bh: float, bd: float, col: Color, x: float, y: float, z: float) -> void:
+		var bm := BoxMesh.new()
+		bm.size = Vector3(bw, bh, bd)
+		mesh(bm, _mat(col), x, y, z, w)
+	add_box.call(3.0, 0.12, 0.06, Color("#8a8f8c"), 0.0, 1.05, 0.35)
+	add_box.call(3.0, 0.1, 0.6, Color("#5c605e"), 0.0, 0.9, 0.05)
+	for i in 6:
+		var y := -3.2 * float(i) - 1.6
+		add_box.call(0.08, 3.2, 4.0, Color("#6c6e66"), -1.25, y, 1.2)
+		add_box.call(0.06, 1.3, 1.4, Color("#1d2326"), -1.2, y + 0.2, 0.7)
+		add_box.call(0.06, 1.3, 1.4, Color("#1d2326"), -1.2, y + 0.2, 2.3)
+		add_box.call(0.1, 0.12, 4.0, Color("#9a9c94"), -1.18, y - 1.3, 1.2)
+	var gm := QuadMesh.new()
+	gm.size = Vector2(8, 8)
+	var ground := mesh(gm, _mat(Color("#2b2a26")), 0.0, -19.5, 1.5, w)
+	ground.rotation.x = -PI / 2.0
+	var shadow := disc(0.5, Color("#080808"), -1.0, 0.0, -19.48, 1.5, 20)
+	shadow.get_parent().remove_child(shadow)
+	w.add_child(shadow)
+	shadow.position = Vector3(0.0, -19.48, 1.5)
+	d["shadow"] = shadow
+	veil(Color.BLACK)
+
+
+func _update_campus_fall(kk: float) -> void:
+	var fall := 0.6 * ss(kk, 0.3, 1.6) if kk < 1.6 else 0.6 + (kk - 1.6) * (kk - 1.6) * 2.6 + (kk - 1.6) * 2.0
+	(d["world"] as Node3D).position.y = minf(18.2, fall)
+	(d["shadow"] as Node3D).scale = Vector3.ONE * (0.5 + 2.5 * ss(kk, 3.6, 4.6))
+	view(kk, 0.04 * shk * sin(kk * 7.0) * ss(kk, 1.6, 3.0), -0.2 * ss(kk, 0.0, 1.6) - 1.0 * ss(kk, 1.6, 4.0), 0.0)
+	shade(0.05 + 0.9 * ss(kk, 4.3, 4.9))
+	cue("wind", kk, 1.7, func() -> void: _ui.show_notice("（风声。校园里的声音一下子远了。）"))
+	cue("hit", kk, 4.9, func() -> void: _ui.show_notice("（一声闷响。）"))
