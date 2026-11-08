@@ -57,7 +57,7 @@ func set_seed(value: int) -> void:
 
 
 func capture() -> Dictionary:
-	return {"next": s["next"], "n": s["n"], "escaped": s["escaped"]}
+	return {"random": RandomState.capture(_rng), "next": s["next"], "n": s["n"], "escaped": s["escaped"]}
 
 
 func validate(data: Dictionary) -> String:
@@ -66,6 +66,7 @@ func validate(data: Dictionary) -> String:
 
 func restore(data: Dictionary) -> void:
 	reset()
+	RandomState.restore(_rng, data)
 	s["next"] = float(data["next"])
 	s["n"] = int(data.get("n", 0))
 	s["escaped"] = int(data.get("escaped", 0))

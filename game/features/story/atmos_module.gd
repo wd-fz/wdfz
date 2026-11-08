@@ -115,7 +115,7 @@ func _reset_run() -> void:
 
 
 func capture() -> Dictionary:
-	return {"stares": stares.duplicate(), "shift": shift.duplicate(), "shift_pose": shift_pose.duplicate(true), "seats": seats.duplicate(), "said": said.duplicate(), "left": left.duplicate()}
+	return {"random": RandomState.capture(_rng), "stares": stares.duplicate(), "shift": shift.duplicate(), "shift_pose": shift_pose.duplicate(true), "seats": seats.duplicate(), "said": said.duplicate(), "left": left.duplicate()}
 
 
 func validate(data: Dictionary) -> String:
@@ -136,6 +136,7 @@ func validate(data: Dictionary) -> String:
 
 func restore(data: Dictionary) -> void:
 	reset()
+	RandomState.restore(_rng, data)
 	stares = (data.get("stares", {}) as Dictionary).duplicate()
 	shift = (data.get("shift", {}) as Dictionary).duplicate()
 	shift_pose = (data.get("shift_pose", {}) as Dictionary).duplicate(true)

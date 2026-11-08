@@ -56,7 +56,7 @@ func set_seed(value: int) -> void:
 
 func capture() -> Dictionary:
 	return {"run_seed": run_seed, "attempt_id": attempt_id, "device": device.duplicate(true), "puzzle": puzzle.duplicate(true),
-		"termination": termination.duplicate(), "rng": _rng.state}
+		"termination": termination.duplicate(), "random": RandomState.capture(_rng)}
 
 
 func validate(data: Dictionary) -> String:
@@ -72,6 +72,7 @@ func validate(data: Dictionary) -> String:
 
 
 func restore(data: Dictionary) -> void:
+	RandomState.restore(_rng, data)
 	run_seed = String(data["run_seed"])
 	attempt_id = int(data["attempt_id"])
 	var d := PhoneEnergy.fresh()
@@ -99,8 +100,6 @@ func restore(data: Dictionary) -> void:
 	var t: Dictionary = data["termination"]
 	if t.get("status") == "accepted":
 		termination = {"status": "accepted", "requestId": t["requestId"], "remaining": float(t["remaining"])}
-	if data.get("rng") is float or data.get("rng") is int:
-		_rng.state = int(data["rng"])
 	terminal_open = false
 
 

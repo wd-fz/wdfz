@@ -52,7 +52,7 @@ func set_seed(value: int) -> void:
 func capture() -> Dictionary:
 	var out := fn.duplicate(true)
 	out["laughs"] = laughs
-	out["rng"] = _rng.state
+	out["random"] = RandomState.capture(_rng)
 	return out
 
 
@@ -64,6 +64,7 @@ func validate(data: Dictionary) -> String:
 
 func restore(data: Dictionary) -> void:
 	reset()
+	RandomState.restore(_rng, data)
 	for k: String in fn:
 		if data.has(k):
 			fn[k] = data[k]
@@ -72,8 +73,6 @@ func restore(data: Dictionary) -> void:
 		used[int(k)] = true
 	fn["used"] = used
 	laughs = int(data.get("laughs", 0))
-	if data.get("rng") is float or data.get("rng") is int:
-		_rng.state = int(data["rng"])
 
 
 func take_events() -> Array:

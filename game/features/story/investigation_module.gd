@@ -47,7 +47,7 @@ func reset() -> void:
 
 
 func capture() -> Dictionary:
-	return {"entries": entries.duplicate(true), "recent": recent.duplicate(), "focus": focus, "supply": supply.duplicate()}
+	return {"random": RandomState.capture(_rng), "entries": entries.duplicate(true), "recent": recent.duplicate(), "focus": focus, "supply": supply.duplicate()}
 
 
 func validate(data: Dictionary) -> String:
@@ -61,6 +61,7 @@ func validate(data: Dictionary) -> String:
 
 func restore(data: Dictionary) -> void:
 	reset()
+	RandomState.restore(_rng, data)
 	entries = (data.get("entries", {}) as Dictionary).duplicate(true)
 	recent = (data.get("recent", []) as Array).filter(func(id: Variant) -> bool: return id is String and entries.has(id)).slice(-RECENT_MAX)
 	focus = String(data.get("focus", ""))

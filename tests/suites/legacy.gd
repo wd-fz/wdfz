@@ -18,6 +18,49 @@ func _convert(raw: Dictionary, session: GameSession) -> Dictionary:
 	return LegacyState.new().convert(plan,session.capture({"position":[0,0,0],"yaw":0,"pitch":0}),CampusData.rooms(),CampusData.campus(),CampusData.maze_geometry())
 
 
+func test_random_continuity() -> void:
+	for seed_value: int in [12345, -913740828377169125, 9223372036854775807]:
+		var session := SessionFactory.create()
+		session.start("teach1")
+		var expected := {}
+		for feature: FeatureModule in session.modules._modules.values():
+			var rng: Variant = feature.get("_rng")
+			if rng is RandomNumberGenerator:
+				rng.seed = seed_value
+				rng.randf()
+		var store := SaveStore.new(_test_path.get_base_dir()+"/random.json")
+		check(store.write(session.capture({"position":[0,0,0],"yaw":0,"pitch":0})).is_empty(),"random state writes through the real save adapter")
+		for feature: FeatureModule in session.modules._modules.values():
+			var rng: Variant = feature.get("_rng")
+			if rng is RandomNumberGenerator:
+				var sequence: Array = []
+				for i in 16:
+					sequence.append(rng.randi())
+				expected[String(feature.module_id())] = sequence
+		var loaded := store.read()
+		check(not loaded.has("error"),"random state reads after JSON round-trip")
+		var next := SessionFactory.create()
+		check(next.validate(loaded["data"],PackedStringArray(CampusData.rooms().keys()+["out"])).is_empty(),"exact random snapshots validate")
+		next.restore(loaded["data"])
+		for feature: FeatureModule in next.modules._modules.values():
+			var rng: Variant = feature.get("_rng")
+			if rng is RandomNumberGenerator:
+				var sequence: Array = []
+				for i in 16:
+					sequence.append(rng.randi())
+				check(sequence==expected[String(feature.module_id())],"next sixteen random outcomes survive save/load: %s / %s" % [feature.module_id(),seed_value])
+		var broken: Dictionary = loaded["data"].duplicate(true)
+		_data(broken,"garage.world")["random"]["state"]="9223372036854775808"
+		check(not next.validate(broken,PackedStringArray(CampusData.rooms().keys()+["out"])).is_empty(),"out-of-range random state is rejected")
+	var before := RandomNumberGenerator.new()
+	before.seed=123
+	before.state=456
+	var older := RandomNumberGenerator.new()
+	RandomState.restore(older,{"seed":123.0,"rng":456.0})
+	check(before.randi()==older.randi(),"older numeric random payloads remain readable")
+	CampusData.clear_caches()
+
+
 func test_reference() -> void:
 	for case: Dictionary in _fixtures():
 		var session := SessionFactory.create()

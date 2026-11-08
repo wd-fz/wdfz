@@ -84,7 +84,7 @@ func capture() -> Dictionary:
 	var out := s.duplicate(true)
 	out.erase("path")
 	out["multi"] = multilingual
-	out["rng"] = _rng.state
+	out["random"] = RandomState.capture(_rng)
 	return out
 
 
@@ -96,12 +96,11 @@ func validate(data: Dictionary) -> String:
 
 func restore(data: Dictionary) -> void:
 	reset()
+	RandomState.restore(_rng, data)
 	for k: String in s:
 		if data.has(k):
 			s[k] = data[k]
 	multilingual = bool(data.get("multi", false))
-	if data.get("rng") is float or data.get("rng") is int:
-		_rng.state = int(data["rng"])
 
 
 ## ctx: scene, x, y, day, tsec, dead, busy, clock.

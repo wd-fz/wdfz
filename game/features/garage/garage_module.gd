@@ -65,7 +65,7 @@ func _fresh_roam() -> Dictionary:
 
 func capture() -> Dictionary:
 	return {"roam": roam.duplicate(), "lure": lure, "car_right": car_right, "car_tried": car_tried.duplicate(), "car_used": car_used,
-		"chase": (chase as Dictionary).duplicate() if chase != null else null, "seed": _rng.seed, "rng": _rng.state}
+		"chase": (chase as Dictionary).duplicate() if chase != null else null, "random": RandomState.capture(_rng)}
 
 
 func validate(data: Dictionary) -> String:
@@ -85,6 +85,7 @@ func validate(data: Dictionary) -> String:
 
 func restore(data: Dictionary) -> void:
 	reset()
+	RandomState.restore(_rng, data)
 	roam = _fresh_roam()
 	for k: String in roam:
 		if (data["roam"] as Dictionary).has(k):
@@ -94,10 +95,6 @@ func restore(data: Dictionary) -> void:
 	car_tried = (data["car_tried"] as Dictionary).duplicate()
 	car_used = bool(data["car_used"])
 	chase = (data["chase"] as Dictionary).duplicate() if data.get("chase") is Dictionary else null
-	if data.get("seed") is float or data.get("seed") is int:
-		_rng.seed = int(data["seed"])
-	if data.get("rng") is float or data.get("rng") is int:
-		_rng.state = int(data["rng"])
 
 
 func set_context(ctx: Dictionary) -> void:

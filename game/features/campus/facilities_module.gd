@@ -90,7 +90,7 @@ func capture() -> Dictionary:
 		for floor_id: Variant in portal[field]:
 			values[str(floor_id)] = portal[field][floor_id]
 		saved_portal[field] = values
-	return {"act_cool": act_cool.duplicate(), "flags": flags.duplicate(), "spots": spots.duplicate(), "portal": saved_portal, "seed": _rng.seed, "rng": _rng.state}
+	return {"act_cool": act_cool.duplicate(), "flags": flags.duplicate(), "spots": spots.duplicate(), "portal": saved_portal, "random": RandomState.capture(_rng)}
 
 
 func validate(data: Dictionary) -> String:
@@ -116,6 +116,7 @@ func validate(data: Dictionary) -> String:
 
 func restore(data: Dictionary) -> void:
 	reset()
+	RandomState.restore(_rng, data)
 	act_cool = (data["act_cool"] as Dictionary).duplicate()
 	flags = (data["flags"] as Dictionary).duplicate()
 	spots = (data["spots"] as Dictionary).duplicate()
@@ -128,10 +129,6 @@ func restore(data: Dictionary) -> void:
 	for k: Variant in portal["work"]:
 		work[int(k)] = int(portal["work"][k])
 	portal["work"] = work
-	if data.get("seed") is float or data.get("seed") is int:
-		_rng.seed = int(data["seed"])
-	if data.get("rng") is float or data.get("rng") is int:
-		_rng.state = int(data["rng"])
 
 
 ## ctx: scene, x, y, ang, tsec, clock (game minutes), meal, rest_mul, night, has / add / remove (Callables),

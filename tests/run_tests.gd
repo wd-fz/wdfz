@@ -56,6 +56,8 @@ func _run() -> void:
 	var migration := preload("res://tests/suites/migration.gd").new(self)
 	var maze := preload("res://tests/suites/maze.gd").new(self)
 	var legacy := preload("res://tests/suites/legacy.gd").new(self)
+	print("CASE: legacy.test_random_continuity")
+	legacy.test_random_continuity()
 	print("CASE: legacy.test_reference")
 	legacy.test_reference()
 	print("CASE: legacy.test_atomic_import")

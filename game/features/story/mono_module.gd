@@ -196,7 +196,7 @@ func reset() -> void:
 
 
 func capture() -> Dictionary:
-	return {}
+	return {"random": RandomState.capture(_rng)}
 
 
 func validate(_data: Dictionary) -> String:
@@ -205,6 +205,7 @@ func validate(_data: Dictionary) -> String:
 
 func restore(_data: Dictionary) -> void:
 	reset()
+	RandomState.restore(_rng, _data)
 
 
 ## ctx: scene, x, y (world), tile (the tile under the player), san, night, busy (anomaly, choice, phone,

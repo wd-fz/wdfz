@@ -70,7 +70,7 @@ func roll(seed_value: int) -> void:
 
 
 func capture() -> Dictionary:
-	return {"roll": s["roll"], "used": s["used"], "calm_until": s["calm_until"], "rng": _rng.state}
+	return {"roll": s["roll"], "used": s["used"], "calm_until": s["calm_until"], "random": RandomState.capture(_rng)}
 
 
 func validate(_data: Dictionary) -> String:
@@ -79,11 +79,10 @@ func validate(_data: Dictionary) -> String:
 
 func restore(data: Dictionary) -> void:
 	reset()
+	RandomState.restore(_rng, data)
 	s["roll"] = data.get("roll")
 	s["used"] = bool(data.get("used", false))
 	s["calm_until"] = float(data.get("calm_until", 0.0))
-	if data.get("rng") is float or data.get("rng") is int:
-		_rng.state = int(data["rng"])
 
 
 ## ctx: scene, x, y, ang, now, busy, can_stand (Callable), dead, steer {l, r, u, d}.

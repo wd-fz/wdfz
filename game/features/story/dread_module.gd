@@ -72,7 +72,7 @@ func _reset_run() -> void:
 
 
 func capture() -> Dictionary:
-	return {"visits": visits.duplicate()}
+	return {"random": RandomState.capture(_rng), "visits": visits.duplicate()}
 
 
 func validate(data: Dictionary) -> String:
@@ -86,6 +86,7 @@ func validate(data: Dictionary) -> String:
 
 func restore(data: Dictionary) -> void:
 	reset()
+	RandomState.restore(_rng, data)
 	for k: String in (data.get("visits", {}) as Dictionary):
 		visits[k] = int(data["visits"][k])
 

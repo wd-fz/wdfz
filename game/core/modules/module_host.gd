@@ -61,6 +61,8 @@ func validate(data: Dictionary) -> String:
 		if not _modules.has(StringName(id)):
 			continue # Preserve inactive modules; do not execute or load code from saves.
 		var feature := _modules[StringName(id)]
+		if entry["data"].has("random") and not RandomState.valid(entry["data"]["random"]):
+			return "随机序列存档无效：%s" % id
 		if int(entry["version"]) != feature.state_version():
 			return "模块存档版本不兼容：%s" % id
 		var error := feature.validate(entry["data"])
