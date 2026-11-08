@@ -41,3 +41,4 @@
 | [结局分镜](结局分镜/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_endings.gd`：公开结局《白名单》的实时分镜（闸机灯红、变白、转身、门里站满看着你的人）；分镜某一时刻的静帧 |
 | [校庆横幅](校庆横幅/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_banner.gd`：校庆日教学楼正面二楼的红底黄字横幅（树挡了一部分） |
 | [粉笔预告与逃课字](粉笔预告与逃课字/) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_chalk.gd`：异象来临前写在黑板上的预告时刻（Label3D 粉笔白字）；违规高、在不对的地方时地上与墙上冒出的逃课警告字（右下角小字，较淡） |
+| [菜单照片](菜单照片/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_menu_photo.gd`：22:18 夜里的校园（菜单背景的原图），以及放进主菜单后的样子 |

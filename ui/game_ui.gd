@@ -66,6 +66,7 @@ func _ready() -> void:
 	stick.moved.connect(func(value: Vector2) -> void: touch_move.emit(value))
 	look_pad.looked.connect(func(value: Vector2) -> void: touch_look.emit(value))
 	%TouchToggle.toggled.connect(set_touch_enabled)
+	_build_menu_photo()
 	_build_choice()
 	_build_status()
 	_build_bag()
@@ -664,6 +665,45 @@ const OPENING := ["你是这学期转来的。", "高二（二）班。第四节
 	"你把脸埋进胳膊里。袖子上有一股不属于你的味道。", "……", "你睁开眼。\n教室里还是坐满了人。只是没有一个人在呼吸。",
 	"窗外的颜色不见了。走廊里很安静，安静得能听见灯管里的电流。", "下课铃没有响。\n你忽然很确定：这不是你转来的那个学校。\n而它，已经知道你醒了。"]
 const OPENING_PAGE := 3.4
+## The menu photo (menu-photo.js): the campus at 22:18 behind the menu, under a dark vignette
+## (radial gradient: clear-ish at 72% / 42%, nearly black at the edges). The picture is shot once by
+## tools/capture_menu_photo.gd and kept as assets/ui/menu_photo.jpg.
+func _build_menu_photo() -> void:
+	var path := "res://assets/ui/menu_photo.jpg"
+	if not ResourceLoader.exists(path):
+		return
+	var pic := TextureRect.new()
+	pic.name = "MenuPhoto"
+	pic.texture = load(path) as Texture2D
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pic.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	menu.add_child(pic)
+	menu.move_child(pic, 1)
+	if menu.has_node("Backdrop"):
+		(menu.get_node("Backdrop") as ColorRect).color = Color(0.016, 0.027, 0.039, 1.0)
+	var shade := TextureRect.new()
+	shade.name = "MenuPhotoShade"
+	var grad := Gradient.new()
+	grad.colors = PackedColorArray([Color(0.039, 0.07, 0.086, 0.34), Color(0.012, 0.024, 0.035, 0.92)])
+	grad.offsets = PackedFloat32Array([0.0, 0.62])
+	var gt := GradientTexture2D.new()
+	gt.gradient = grad
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.72, 0.42)
+	gt.fill_to = Vector2(1.4, 1.1)
+	gt.width = 256
+	gt.height = 256
+	shade.texture = gt
+	shade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	shade.stretch_mode = TextureRect.STRETCH_SCALE
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	menu.add_child(shade)
+	menu.move_child(shade, 2)
+
+
 var _cut_fade: ColorRect
 var _cut_caption: Label
 
