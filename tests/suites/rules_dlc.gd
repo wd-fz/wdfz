@@ -182,6 +182,13 @@ func test_app() -> void:
 		app.set_physics_process(false)
 		app.player.set_physics_process(false)
 		check(error=="" and flow.module().active() and flow.module().state["bundle"]==source["bundle"] and flow.module().state["nameT"]==14,"original DLC save restores bundle and unfinished name counter: "+error)
+	var disabled: Dictionary=fixture()["saves"][0]["save"].duplicate(true)
+	disabled["rt"]["rulesMode"]={"v":0,"ver":"unsupported"}
+	disabled["mods"]["mod:campus-rules"]["on"]=0
+	check(app.import_legacy_save(JSON.stringify(disabled))=="" and not flow.module().active(),"inactive legacy mode metadata never enables or rejects the base game")
+	var current:=app.session
+	disabled["rt"]["rulesMode"]["v"]=1
+	check(app.import_legacy_save(JSON.stringify(disabled))!="" and app.session==current,"unknown active DLC version rejects atomically")
 	app._stand_up()
 	app.player.set_pitch(0)
 	var cg:=DeathCG.new()

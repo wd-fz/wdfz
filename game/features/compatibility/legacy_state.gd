@@ -14,7 +14,7 @@ func convert(plan: Dictionary, defaults: Dictionary, rooms: Dictionary, campus: 
 	var rt := _object(s.get("rt"), "rt")
 	var mods := _object(s.get("mods"), "mods")
 	var rules_mode:=_object(rt.get("rulesMode"),"rulesMode")
-	if not rules_mode.is_empty() and rules_mode.get("ver","1.0.0") not in ["1.0.0",RulesDlcModule.VERSION]:
+	if rules_mode.get("v",false) and rules_mode.get("ver","1.0.0") not in ["1.0.0",RulesDlcModule.VERSION]:
 		return {"error":"这份存档的规则怪谈版本尚不支持；本局没有被替换"}
 	var result := defaults.duplicate(true)
 	var world: String = plan["world"]
@@ -23,7 +23,7 @@ func convert(plan: Dictionary, defaults: Dictionary, rooms: Dictionary, campus: 
 	var dlc:=_module(data,"dlc.campus_rules")
 	var original_rules:=_object(mods.get("mod:campus-rules"),"mod:campus-rules")
 	_copy(dlc,original_rules,{})
-	if not rules_mode.is_empty():
+	if rules_mode.get("v",false):
 		dlc["on"]=1
 		if not original_rules.has("bundle"): dlc["bundle"]=rules_mode.get("bundle","A")
 	var school := _module(data, "school.day")
