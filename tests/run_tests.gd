@@ -114,6 +114,8 @@ func _run() -> void:
 	await maze.test_death_scenes()
 	print("CASE: maze.test_app_flow")
 	await maze.test_app_flow()
+	print("CASE: maze.test_respawn_lifecycle")
+	await maze.test_respawn_lifecycle()
 	print("CASE: maze.test_physical_routes")
 	await maze.test_physical_routes()
 	var touch_ui := preload("res://tests/suites/touch_ui.gd").new(self)

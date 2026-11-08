@@ -5,6 +5,7 @@ extends Node
 var app: GameApp
 var cut: MazeCut
 var fx: MazeFx
+var fade: WorldFade
 var _fall_speed := 0.0
 
 
@@ -17,6 +18,7 @@ func here() -> bool:
 
 
 func changed_world(restoring: bool = false) -> void:
+	_cancel_respawn()
 	var maze := app.maze()
 	if here():
 		var pose := app.player.capture_pose()
@@ -76,16 +78,12 @@ func step(dt: float) -> void:
 			"sound":
 				app.audio.play(event["cue"], event["options"])
 			"respawn":
-				player.restore_pose(event["pose"])
-				app.audio.play("threat.deep")
-				app.save_game(true)
-				app.ui.show_notice(event["text"])
-				if is_instance_valid(fx):
-					fx.fall_fade()
+				_begin_respawn()
 			_:
 				if is_instance_valid(fx):
 					fx.event(event)
 	if app._dead():
+		_cancel_respawn()
 		clear_fx()
 		return
 	if player.is_on_floor() and _fall_speed < -7.0:
@@ -95,6 +93,33 @@ func step(dt: float) -> void:
 	_fall_speed = player.velocity.y
 	if is_instance_valid(fx):
 		fx.advance(dt, app.settings.get_int("shake") == 0 or app.settings.get_int("reduce_flash") != 0)
+
+
+func _begin_respawn() -> void:
+	if is_instance_valid(fade):
+		fade.cancel()
+	var run:=app.session
+	var maze:=app.maze()
+	app.audio.play("threat.deep")
+	fade=WorldFade.new()
+	add_child(fade)
+	fade.begin(func() -> void:
+		if app.session!=run or not here() or app._dead():
+			maze.respawning=false
+			return
+		var result:=maze.finish_respawn()
+		if result.is_empty(): return
+		app.player.restore_pose(result["pose"])
+		app.ui.clear_touch()
+		_fall_speed=0.0
+		app.ui.show_notice(result["text"])
+		app.save_game(true))
+
+
+func _cancel_respawn() -> void:
+	if is_instance_valid(fade): fade.cancel()
+	fade=null
+	if app.maze()!=null: app.maze().respawning=false
 
 
 func hint() -> String:
@@ -176,6 +201,7 @@ func chalk_presets() -> Array:
 
 
 func cancel() -> void:
+	_cancel_respawn()
 	if is_instance_valid(cut):
 		cut.cancel() # Cancellation must never perform a pending exit.
 		cut.queue_free()

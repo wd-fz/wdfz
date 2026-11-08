@@ -11,7 +11,6 @@ var _shadow_alpha := 0.0
 var _shadow_out := false
 var _invert_on := false
 var _invert_k := 0.0
-var _fade := 0.0
 
 
 func setup(owner_player: PlayerController, owner_audio: AudioFx) -> void:
@@ -74,14 +73,9 @@ func event(ev: Dictionary) -> void:
 				audio.play("void.gust", {"pan": _pan(shadow.position)})
 
 
-func fall_fade() -> void:
-	_fade = 1.0
-
-
 func advance(dt: float, soft: bool) -> void:
 	_invert_k = move_toward(_invert_k, (0.8 if soft else 1.0) if _invert_on else 0.0, dt / ((0.18 if soft else 0.05) if _invert_on else (0.45 if soft else 0.25)))
-	_fade = maxf(0.0, _fade - dt * 2.0)
-	screen.show_effect(_invert_k, -0.2, 0.0, -0.22, _fade)
+	screen.show_effect(_invert_k, -0.2, 0.0, -0.22)
 	if is_instance_valid(shadow):
 		_shadow_alpha = move_toward(_shadow_alpha, 0.0 if _shadow_out else 1.0, dt / (0.35 if _shadow_out else 0.5))
 		for mesh: Node in shadow.find_children("*", "MeshInstance3D", true, false):

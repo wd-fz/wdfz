@@ -9,6 +9,7 @@ var egg_cfg: Dictionary
 var active := false
 var elapsed := 0.0
 var falls := 0
+var respawning := false
 var told_long := false
 var sound_left := 20.0
 var eggs: Dictionary = {}
@@ -34,6 +35,7 @@ func reset() -> void:
 	active = false
 	elapsed = 0.0
 	falls = 0
+	respawning = false
 	told_long = false
 	sound_left = 20.0
 	_events.clear()
@@ -72,6 +74,7 @@ func restore(data: Dictionary) -> void:
 
 func enter(pose: Dictionary = {}, restoring: bool = false) -> Dictionary:
 	active = true
+	respawning = false
 	if not restoring:
 		elapsed = 0.0
 		told_long = false
@@ -83,6 +86,7 @@ func enter(pose: Dictionary = {}, restoring: bool = false) -> Dictionary:
 
 func leave() -> void:
 	active = false
+	respawning = false
 	elapsed = 0.0
 	told_long = false
 	_events.clear()
@@ -119,13 +123,24 @@ func step(dt: float, ctx: Dictionary) -> void:
 		var cues := ["steps", "knock", "door", "whisper"]
 		_emit("sound", {"cue": "dread." + String(cues[_rng.randi_range(0, 3)]), "options": {"pan": _rng.randf_range(-1.0, 1.0), "k": _rng.randf_range(0.25, 0.55), "lp": 0.35}})
 	var feet: Vector3 = ctx["feet"]
+	if respawning:
+		return # Pressure/ambience continue, but a pending fall can only be charged once.
 	if feet.y < float(geometry.cfg["voidY"]):
+		respawning = true
 		falls += 1
 		_emit("san", {"amount": -float(geometry.cfg["fallSan"])})
 		_emit("settle", {"source": "void_fall", "fx": "abyss", "text": "我一直往下掉，掉到忘了自己是从哪里开始掉的。"})
-		_emit("respawn", {"pose": geometry.spawn(_rng), "text": "我：又回到了这里。四面还是那几堵白墙。" if falls > 1 else "我：……我站在一开始的地方。身上没有伤，心跳得很快。"})
+		_emit("respawn")
 		return
 	_step_eggs(dt, ctx)
+
+
+func finish_respawn() -> Dictionary:
+	# The original chooses its random landing only at the black transition, not at the fall.
+	if not active or not respawning:
+		return {}
+	respawning = false
+	return {"pose":geometry.spawn(_rng), "text":"我：又回到了这里。四面还是那几堵白墙。" if falls>1 else "我：……我站在一开始的地方。身上没有伤，心跳得很快。"}
 
 
 func nearby_exit(feet: Vector3, airborne: bool) -> Dictionary:

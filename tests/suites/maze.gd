@@ -46,10 +46,15 @@ func test_rules() -> void:
 	var invalid := {"position": [20.0, 0.0, 0.0], "yaw": 0.0, "pitch": 0.0}
 	check(restored.geometry.valid_ground_pose(restored.enter(invalid, true)), "an old or blocked saved spawn is repaired before control returns")
 	ctx["feet"] = Vector3(0,-14,-20)
+	var rng_before: String=maze.capture()["rng_state"]
 	maze.step(0.1, ctx)
 	var events := maze.take_events()
 	check(maze.falls == 1 and events.any(func(e: Dictionary) -> bool: return e["kind"] == "san" and e["amount"] == -3.0)
-		and events.any(func(e: Dictionary) -> bool: return e["kind"] == "respawn" and maze.geometry.valid_ground_pose(e["pose"])), "falling into the void costs three SAN and returns to a safe point")
+		and events.any(func(e: Dictionary) -> bool: return e["kind"] == "respawn"), "falling into the void costs three SAN and schedules one respawn")
+	check(maze.respawning and maze.capture()["rng_state"]==rng_before,"the random landing is not selected before the black transition")
+	maze.step(.1,ctx)
+	check(maze.falls==1 and not maze.take_events().any(func(e: Dictionary) -> bool: return e["kind"]=="respawn"),"waiting under the void threshold cannot charge a second fall")
+	check(maze.geometry.valid_ground_pose(maze.finish_respawn()["pose"]) and not maze.respawning and maze.finish_respawn().is_empty(),"the black transition selects a safe point exactly once")
 	check(maze.nearby_exit(Vector3(-3,-8,37), false).get("id") == "exit1" and maze.nearby_exit(Vector3(-7,4,-37), false).get("id") == "exit2", "both exits require the correct position and height")
 	check(maze.nearby_exit(Vector3(-3,0,37), false).is_empty() and maze.nearby_exit(Vector3(-3,-8,37), true).is_empty(), "an exit cannot be used from the wrong floor or while falling")
 	check(maze.near_chalk(Vector3(2.2,0,1.6), false), "the half stick of chalk can be picked up at the spawn")
@@ -131,16 +136,28 @@ func test_app_flow() -> void:
 	app.school().san = 40.0
 	app.player.restore_pose({"position":[0,-14,-20],"yaw":0.0,"pitch":0.0})
 	app.maze_flow.step(.01)
-	check(app.maze().falls == 1 and app.school().san < 37 and app.school().san > 36.99 and app.maze().geometry.valid_ground_pose(app.player.capture_pose()), "falling really respawns the player with the original SAN cost")
+	var fade:=app.maze_flow.fade
+	fade.set_process(false)
+	check(app.maze().falls == 1 and app.school().san < 37 and app.school().san > 36.99 and app.player.position.y < -13,"falling charges the original SAN cost before changing position")
+	fade.advance(.169)
+	check(app.player.position.y < -13 and not fade.committed,"the player remains in the fall during the 160 ms fade to black")
+	fade.advance(.002)
+	check(app.maze().geometry.valid_ground_pose(app.player.capture_pose()) and not app.maze().respawning,"the player returns safely at the original 170 ms black transition")
+	fade.advance(.30)
 	app.items().add("elixir")
 	app.school().san = 2.0
 	app.player.position.y = -14
 	app.maze_flow.step(.01)
+	fade=app.maze_flow.fade
+	fade.set_process(false)
+	fade.advance(.17)
 	check(not app.story().dead and not app.items().has("elixir") and app.maze().geometry.valid_ground_pose(app.player.capture_pose()), "death protection still permits a safe fall respawn")
+	fade.advance(.30)
 	app.school().san = 2.0
 	app.player.position.y = -14
 	app.maze_flow.step(.01)
 	check(app.story().dead and app.story().death_source == "void_fall" and app.story().death_fx == "abyss", "fatal fall uses its own death scene instead of generic SAN death")
+	check(not app.maze().respawning and not is_instance_valid(app.maze_flow.fade),"a fatal fall cancels the pending return")
 	if DisplayServer.get_name() != "headless":
 		check(is_instance_valid(app._death_cg) and app._death_cg.fx == "abyss", "the displayed fatal fall actually starts its live scene")
 	app.return_to_menu()
@@ -158,6 +175,55 @@ func test_app_flow() -> void:
 	app.queue_free()
 	await _frames()
 	paused = false
+
+
+func test_respawn_lifecycle() -> void:
+	var app: GameApp=APP.instantiate()
+	app.saves=SaveStore.new(_test_path.get_base_dir()+"/maze-fall/save.json")
+	app.settings=GameSettings.new(_test_path.get_base_dir()+"/maze-fall/settings.json")
+	root.add_child(app)
+	await _frames()
+	for action: String in ["load","travel","menu","new","death","pause"]:
+		app.start_new_game("hard","none")
+		app._stand_up()
+		app.travel("lift_dream",_pose(),false)
+		app.set_physics_process(false)
+		app.player.set_physics_process(false)
+		app.player.restore_pose({"position":[0,-14,-20],"yaw":.7,"pitch":-.4})
+		app.maze_flow.step(.01)
+		var fade:=app.maze_flow.fade
+		fade.set_process(false)
+		app.maze_flow.step(.05)
+		check(app.maze().falls==1,"the real pending flow charges once: "+action)
+		var before: Dictionary=app.maze().capture()
+		match action:
+			"load":
+				app.save_game()
+				app.load_game()
+				app.set_physics_process(false)
+				app.player.set_physics_process(false)
+				check(app.maze().geometry.valid_ground_pose(app.player.capture_pose()) and app.maze().falls==1 and not app.maze().respawning,"loading mid-fall repairs unsupported height without charging SAN again")
+			"travel": app.travel("teach1",app.campus().default_spawn("teach1"),false)
+			"menu": app.return_to_menu()
+			"new": app.start_new_game("hard","none")
+			"death": app.kill("fall interrupted","vignette","test")
+			"pause": app.pause_game()
+		var expected:=app.player.capture_pose()
+		fade.advance(.17)
+		if action=="pause":
+			check(app.maze().geometry.valid_ground_pose(app.player.capture_pose()) and paused and app.maze().falls==1,"a real-time transition completes while the ordinary pause menu remains paused")
+			var settled:=app.player.capture_pose()
+			fade.advance(.30)
+			check(same_json(settled,app.player.capture_pose()),"fade-in never chooses another random landing")
+		else:
+			check(same_json(expected,app.player.capture_pose()),"a canceled old fade cannot move the current player: "+action)
+			if action=="death":
+				check(app.maze().capture()["rng_state"]==before["rng_state"] and not app.maze().respawning,"death before black does not consume a spawn or write a new save")
+		app.return_to_menu()
+		await _frames()
+	app.queue_free()
+	await _frames()
+	paused=false
 
 
 func test_chalk_and_archive() -> void:
