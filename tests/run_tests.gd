@@ -117,6 +117,7 @@ func _run() -> void:
 	_test_chalk_texture()
 	_test_phantoms()
 	_test_traces()
+	_test_model_tiers()
 	_test_anomaly_traces()
 	_test_chase_dash()
 	_test_canteen_view()
@@ -3324,6 +3325,15 @@ func _test_anomaly_traces() -> void:
 			an.traces.pop_front()
 	check(an.traces.size() == 40, "at most 40 are kept")
 	check(Traces.dynamic_for([{"k": "dust", "room": "teach1"}, {"k": "dust", "room": ""}], "teach1").size() == 1 and Traces.dynamic_for([{"k": "dust", "room": ""}], "out").size() == 1, "each scene shows its own leftovers")
+
+
+func _test_model_tiers() -> void:
+	var was := CampusData.tier
+	CampusData.tier = CampusData.DEFAULT_TIER
+	check(CampusData.scene_path("teach1") == CampusData.SCENE_DIR + "teach1.glb" and CampusData.tiers_available().has(CampusData.DEFAULT_TIER), "the default tier loads from the usual folder")
+	CampusData.tier = 0
+	check(CampusData.scene_path("teach1") == CampusData.SCENE_DIR + "teach1.glb" or CampusData.tiers_available().has(0), "a tier that is not exported falls back to the default models")
+	CampusData.tier = was
 
 
 func _test_traces() -> void:

@@ -1980,6 +1980,7 @@ func _apply_settings() -> void:
 	player.mouse_sensitivity = 0.0025 * float(settings.get_int("mouse")) / 100.0
 	player.touch_sensitivity = 0.004 * float(settings.get_int("touch")) / 100.0
 	var q := settings.get_int("quality")
+	CampusData.tier = q if CampusData.tiers_available().has(q) else CampusData.DEFAULT_TIER   # models of the chosen tier, if exported
 	var vp := get_viewport()
 	vp.scaling_3d_scale = float(GameSettings.QUALITY_SCALE[q])
 	vp.msaa_3d = int(GameSettings.QUALITY_MSAA[q]) as Viewport.MSAA

@@ -132,7 +132,7 @@ var door_previews: Array[Node3D] = []
 
 
 func _load_visual(id: String) -> Node3D:
-	var path := CampusData.SCENE_DIR + id + ".glb"
+	var path := CampusData.scene_path(id)
 	if not ResourceLoader.exists(path):
 		return null
 	var model := (load(path) as PackedScene).instantiate() as Node3D
@@ -187,7 +187,7 @@ func _build_stair_preview() -> void:
 		var level := (st["rooms"] as Array).find(scene_id)
 		if level < 0:
 			continue
-		var path := CampusData.SCENE_DIR + String(st["id"]) + ".glb"
+		var path := CampusData.scene_path(String(st["id"]))
 		if not ResourceLoader.exists(path):
 			continue
 		var port := CampusPortals.stair_port(st, level, rooms, outside)
@@ -217,9 +217,9 @@ func _build_link_preview() -> void:
 	var cfg: Dictionary = CampusData.campus().get("campus_link", {})
 	for v: Dictionary in CampusPortals.link_ports(cfg, rooms, scene_id):
 		var peer_id := String(v["peer"]["room"])
-		if not rooms.has(peer_id) or not ResourceLoader.exists(CampusData.SCENE_DIR + peer_id + ".glb"):
+		if not rooms.has(peer_id) or not ResourceLoader.exists(CampusData.scene_path(peer_id)):
 			continue
-		var model := (load(CampusData.SCENE_DIR + peer_id + ".glb") as PackedScene).instantiate() as Node3D
+		var model := (load(CampusData.scene_path(peer_id)) as PackedScene).instantiate() as Node3D
 		model.name = "LinkPreview_" + peer_id
 		for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 			if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
@@ -249,7 +249,7 @@ func _build_link_preview() -> void:
 # ---- model ----
 
 func _build_model() -> void:
-	var packed := load(CampusData.SCENE_DIR + scene_id + ".glb") as PackedScene
+	var packed := load(CampusData.scene_path(scene_id)) as PackedScene
 	if packed == null:
 		push_error("校园模型缺失：%s" % scene_id)
 		return
