@@ -1,6 +1,8 @@
 class_name GameUI
 extends CanvasLayer
 
+const BASE_THEME: Theme = preload("res://content/ui/theme.tres")
+
 signal new_requested
 signal new_hard_requested
 signal death_menu_requested
@@ -375,15 +377,18 @@ func _build_status() -> void:
 
 func show_status(place: String, period: String, state: String, clock: String) -> void:
 	_status_on = true
-	_location = clock
+	_clock_text = clock
 	_status_line.visible = true
-	_status_line.text = "%s\n%s" % [place, period]
-	_status_line.modulate = Color(0.95, 0.78, 0.4) if state == "warn" else Color(0.75, 0.95, 0.85)
+	_status_line.text = "%s\n%s" % [period, place]
+	_status_line.modulate = Color("#f0d6a0") if state == "warn" else (Color("#f0c4bc") if state == "exam" else Color("#ddd5c4"))
+	show_runtime(0)
 
 
 func reset_status() -> void:
 	_status_on = false
-	_location = "移植测试场景"
+	_location = ""
+	_clock_text = ""
+	%Runtime.text = ""
 	if _status_line != null:
 		_status_line.visible = false
 		_stamina.visible = false
@@ -1253,7 +1258,7 @@ func _fit_settings() -> void:
 
 
 func apply_text_scale(pct: int) -> void:
-	var theme := Theme.new()
+	var theme := BASE_THEME.duplicate() as Theme
 	theme.default_font_size = roundi(16.0 * float(pct) / 100.0)
 	$Root.theme = theme
 
@@ -1949,7 +1954,8 @@ func show_prompt(text: String) -> void:
 	%Prompt.text = ("交互 · " if _touch_enabled else "E · ") + text if not text.is_empty() else ""
 
 
-var _location := "移植测试场景"
+var _location := ""
+var _clock_text := ""
 var _status_line: Label
 var _stamina: ProgressBar
 var _status_on := false
@@ -1962,14 +1968,13 @@ var _hot_label: Label
 
 func show_location(text: String) -> void:
 	_location = text
+	if not _status_on: show_runtime(0)
 
 
-## The speedrun clock replaces the runtime line while a speedrun is on.
+## In-world time is only as precise as the player's watch; developer elapsed time stays in its panel.
 var speedrun_text := ""
 
 
-func show_runtime(seconds: float) -> void:
-	if speedrun_text != "":
-		%Runtime.text = "%s · 速通 %s" % [_location, speedrun_text]
-		return
-	%Runtime.text = _location if _status_on else "%s · 运行 %ds" % [_location, int(seconds)]
+func show_runtime(_seconds: float) -> void:
+	var shown := _clock_text if _status_on else _location
+	%Runtime.text = shown + (" · 速通 " + speedrun_text if speedrun_text != "" else "")
