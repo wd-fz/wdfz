@@ -111,6 +111,7 @@ func _run() -> void:
 	_test_hands()
 	_test_opening()
 	_test_ending_cut()
+	_test_death_cg()
 	_test_day_banner()
 	_test_chalk_notes()
 	await _test_campus_app()
@@ -3215,6 +3216,12 @@ func _test_day_banner() -> void:
 	var at := DayBanner.spot(CampusData.layout("out"))
 	check(at != Vector3.ZERO and is_equal_approx(at.y, 5.55) and is_equal_approx(at.x, (397.0 + 283.5 / 2.0) * 2.0 / 9.0) and is_equal_approx(at.z, (875.5 + 99.0) * 2.0 / 9.0 + 0.82), "the banner hangs on the front of the teaching building, second floor")
 	check(DayBanner.spot({}) == Vector3.ZERO, "no building, no banner")
+
+
+func _test_death_cg() -> void:
+	for c: String in DeathCG.CAUSES:
+		check(StoryModule.DURATIONS.has(c) and DeathCG.has(c), "death scene %s has a duration and a scene" % c)
+	check(not DeathCG.has("vignette") and DeathCG.seg(0.5, 0.0, 1.0) == 0.5 and DeathCG.seg(-1.0, 0.0, 1.0) == 0.0 and DeathCG.ss(0.5, 0.0, 1.0) == 0.5 and DeathCG.ss(2.0, 0.0, 1.0) == 1.0, "the easing helpers clamp")
 
 
 func _test_ending_cut() -> void:

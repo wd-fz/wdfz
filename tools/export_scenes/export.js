@@ -201,6 +201,11 @@
       hand.add(it);
       return exportScene(hand, 'hand_' + id);
     }
+    if(kind === 'fx'){   /* 异象／死亡演出里的东西（旧版 fxMesh）：手、头、突脸、笑脸、长脖子的头、钟…… */
+      var xg = new T.Group();
+      xg.add(window.fxMesh(id));
+      return exportScene(xg, 'fx_' + id);
+    }
     if(kind === 'figure'){   /* 旧版 figMesh 的人形（tall / roam / person / teacher / neck / sit），白色，颜色由 Godot 侧给 */
       var fg = new T.Group();
       fg.add(window.figMesh(id, new T.MeshBasicMaterial({color:0xffffff, vertexColors:true}), 1));

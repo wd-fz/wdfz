@@ -1365,6 +1365,7 @@ func kill(msg: String, fx: String, source: String) -> void:
 	_death_hold = float(result["hold"])
 	_death_wait = 0.0
 	_death_phase = "fade"
+	_start_death_cg(fx)
 	ui.show_notice(msg)
 	var updated := fate.log_death(_read_death_log(), school().day if school() != null else 1, session.world_id)
 	_write_death_log(updated)
@@ -1399,11 +1400,36 @@ func _write_death_log(record: Dictionary) -> void:
 		file.close()
 
 
+var _death_cg: DeathCG
+
+
+## The cause's own scene (death_cg.gd), when it has one and there is a picture to draw on; else the fade effect only.
+func _start_death_cg(fx: String) -> void:
+	_stop_death_cg()
+	var world := _campus_world()
+	if world == null or not DeathCG.has(fx) or DisplayServer.get_name() == "headless":
+		return
+	_death_cg = DeathCG.new()
+	_death_cg.name = "DeathCG"
+	add_child(_death_cg)
+	_death_cg.begin(fx, player, world, ui, StoryModule.duration(fx), settings.get_int("reduce_flash") == 1)
+
+
+func _stop_death_cg() -> void:
+	if _death_cg != null and is_instance_valid(_death_cg):
+		_death_cg.finish()
+		_death_cg.queue_free()
+	_death_cg = null
+
+
 func _death_step(delta: float) -> void:
 	if _death_phase != "fade":
 		return
 	_death_wait += delta
-	ui.show_death_scene(story().death_fx, minf(1.0, _death_wait / maxf(0.2, _death_hold)))
+	if _death_cg != null and is_instance_valid(_death_cg) and _death_cg.on:
+		_death_cg.tick(delta)
+	else:
+		ui.show_death_scene(story().death_fx, minf(1.0, _death_wait / maxf(0.2, _death_hold)))
 	# story.js deathSkip: at least 0.6 s of the scene, then a key skips to the result.
 	var skip := _death_wait >= 0.6 and (Input.is_action_just_pressed("interact") or Input.is_action_just_pressed("ui_accept"))
 	if _death_wait >= _death_hold or skip:
@@ -1411,6 +1437,7 @@ func _death_step(delta: float) -> void:
 
 
 func _finish_death() -> void:
+	_stop_death_cg()
 	var fate := story()
 	if fate.wake_pending:
 		var left := fate.finish_wake()

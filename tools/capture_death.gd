@@ -1,6 +1,6 @@
 extends SceneTree
-## Death scene styles over the corridor (needs a display): godot --path . --script res://tools/capture_death.gd
-## Output: build/previews/death/. The overlay is shown directly at a fixed progress; the death flow itself is covered by the tests.
+## The death scenes by cause (needs a display): godot --path . --script res://tools/capture_death.gd [-- grip neck ...]
+## Output: build/previews/deathcg/<cause>-<n>.png, frames at 25 / 55 / 85 % of the scene.
 
 const APP := preload("res://scenes/app.tscn")
 
@@ -9,23 +9,38 @@ func _initialize() -> void:
 	call_deferred("_run")
 
 
+func _shot(name: String) -> void:
+	for _i in 3:
+		await process_frame
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png("res://build/previews/deathcg/%s.png" % name)
+
+
 func _run() -> void:
 	root.size = Vector2i(1280, 720)
 	var app: GameApp = APP.instantiate()
-	app.saves = SaveStore.new("user://death-preview/unused.json")
+	app.saves = SaveStore.new("user://deathcg/save.json")
+	app.settings = GameSettings.new("user://deathcg/settings.json")
 	root.add_child(app)
 	await process_frame
-	app.start_new_game()
+	DirAccess.make_dir_recursive_absolute("res://build/previews/deathcg")
+	app.start_new_game("easy")
+	for _i in 10:
+		await process_frame
 	app._stand_up()
-	DirAccess.make_dir_recursive_absolute("res://build/previews/death")
-	var t1 := CampusData.layout("teach1")
-	var s := CampusGeometry.to_scene(t1, CampusGeometry.tile_center(t1, 30, 17))
-	app.travel("teach1", {"position": [s.x, 0.05, s.y], "yaw": CampusGeometry.yaw_from_ang(PI), "pitch": 0.0}, false)
-	app.patrol().pat["safety"] = 999.0
-	for fx: String in ["vignette", "drown", "swarm", "floor", "grip"]:
-		app.ui.show_death_scene(fx, 0.7)
-		for _i in 25:
+	app.player.enabled = false
+	var which: Array = OS.get_cmdline_user_args() if not OS.get_cmdline_user_args().is_empty() else DeathCG.CAUSES
+	for cause: String in which:
+		app._start_death_cg(cause)
+		var cg: DeathCG = app._death_cg
+		cg.set_process(false)
+		var n := 0
+		for frac: float in [0.25, 0.55, 0.85]:
+			n += 1
+			cg.k = cg.dur * frac
+			cg.update(cg.k)
+			await _shot("%s-%d" % [cause, n])
+		app._stop_death_cg()
+		for _i in 3:
 			await process_frame
-		await RenderingServer.frame_post_draw
-		root.get_texture().get_image().save_png("res://build/previews/death/%s.png" % fx)
 	quit()
