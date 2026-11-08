@@ -559,6 +559,7 @@ func _unwire(old: GameSession) -> void:
 
 func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	_cancel_cinematics()
+	_reset_sensory()
 	if session != null:
 		_unwire(session)
 		session.stop()
@@ -722,8 +723,7 @@ func return_to_menu() -> void:
 	_stop_snake(true)
 	_close_phone()
 	_audio_period = ""
-	ui.show_sensory({"tunnel": 0.0}, 0.0, 0.0)
-	_sense_body = -1.0
+	_reset_sensory()
 	if is_instance_valid(_mates_nodes):
 		_mates_nodes.queue_free()
 	_mates_nodes = null
@@ -1228,8 +1228,13 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 		if lit.lighting != null:
 			lit.lighting.reduce_flash = settings.get_int("reduce_flash") == 1
 			lit.lighting.brightness = float(settings.get_int("bright")) / 100.0
+			lit.lighting.world_normal = ui.scene_post().world_normal
+			lit.lighting.fake_normal = ui.scene_post().fake_normal
+			lit.lighting.gaze = ui.scene_post().gaze_level
 		lit.update_lighting(delta, day_rules.tsec, player.camera, watcher.flick if watcher != null else 0.0, watcher.red if watcher != null else 0.0,
 			weird_light != null and weird_light.blackout_now(), weird_light.overcast_target() if weird_light != null else 0.0)
+		if lit.lighting != null:
+			ui.scene_post().parameter("exposure",lit.lighting.post_exposure)
 		if watcher != null:
 			var fig_scene := Vector2.ZERO
 			if watcher.figure_visible():
@@ -1926,6 +1931,20 @@ var _ghost_a := 0.0
 var _ghost_spin := 0.0
 
 
+func _reset_sensory() -> void:
+	ui.reset_post()
+	_sense_body = -1.0
+	_sense_t = 0.0
+	_sense_view = {}
+	_blink_plan = []
+	_blink_t = 0.0
+	_blink_next = 0.0
+	_ghost_t = 9.0
+	_ghost_next = 0.0
+	_ghost_a = 0.0
+	_ghost_spin = 0.0
+
+
 func _sensory_step(delta: float) -> void:
 	_sense_t += delta
 	_sense_body = SensoryRules.step(_sense_body, school().san, delta)
@@ -1969,6 +1988,18 @@ func _sensory_step(delta: float) -> void:
 	else:
 		_blink_plan = []
 	ui.show_sensory(v, blink, _sense_t)
+	var post := ui.scene_post()
+	var fnm := fake_normal()
+	post.step(delta,fnm != null and fnm.active() and float(fnm.fn["v"])<72.0,school().san)
+	post.parameter("brightness",float(settings.get_int("bright"))/100.0)
+	post.parameter("red",watcher.red if watcher != null else 0.0)
+	var a: Dictionary = anomaly().an if anomaly() != null else {}
+	var gaze_target := 0.0
+	if a.get("active",false) and a.get("id")=="stare":
+		gaze_target=.35+.45*clampf(float(a.get("acc",0.0))/1.8,0,1)+(.2 if a.get("data",{}).get("hit",false) else 0.0)
+	post.gaze_level += (gaze_target-post.gaze_level)*minf(1.0,delta*2.4)
+	post.parameter("gaze",post.gaze_level)
+	post.quality = settings.get_int("quality")
 
 
 # ---- atmosphere (game/features/story/dread_module.gd) ----
@@ -2065,6 +2096,8 @@ func _apply_settings() -> void:
 	ui.apply_text_scale(settings.get_int("text"))
 	ui.apply_touch_scale(settings.get_int("touch_size"), settings.touch_layout)
 	ui.set_grain(settings.get_int("grain") == 1)
+	ui.scene_post().quality=settings.get_int("quality")
+	ui.scene_post().parameter("brightness",float(settings.get_int("bright"))/100.0)
 	player.mouse_sensitivity = 0.0025 * float(settings.get_int("mouse")) / 100.0
 	player.touch_sensitivity = 0.004 * float(settings.get_int("touch")) / 100.0
 	player.view_motion.shake_enabled = settings.get_int("shake") == 1
@@ -4534,7 +4567,7 @@ func _reach_ending(id: String) -> void:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 			show_card.call())
 		_ending_cut.audio = audio
-		_ending_cut.begin(id, world, CampusData.campus(), player, ui, func() -> void: audio.play("ui.click"), {"how": String(exchange().s.get("how", "exam")) if exchange() != null else "exam"})
+		_ending_cut.begin(id, world, CampusData.campus(), player, ui, func() -> void: audio.play("ui.click"), {"how": String(exchange().s.get("how", "exam")) if exchange() != null else "exam","tsec":school().tsec})
 		return
 	show_card.call()
 

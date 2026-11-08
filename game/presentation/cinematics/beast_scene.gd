@@ -6,10 +6,6 @@ extends Node3D
 var room: Dictionary
 var figure: Node3D
 var light: MeshInstance3D
-var _environment: Environment
-var _old_adjust := false
-var _old_saturation := 1.0
-var _restored := false
 
 
 static func cell(r: Dictionary, c: float, row: float) -> Vector3:
@@ -38,12 +34,8 @@ static func frame(k: float, r: Dictionary, shake: bool) -> Dictionary:
 		"normal":OpeningCut.phase(k,.5,.95),"fade":(k-.92)/.08 if k>.92 else 0.0}
 
 
-func begin(r: Dictionary, environment: Environment) -> void:
+func begin(r: Dictionary) -> void:
 	room = r
-	_environment = environment
-	if _environment != null:
-		_old_adjust = _environment.adjustment_enabled
-		_old_saturation = _environment.adjustment_saturation
 	figure = FigureModel.make("person",Color("#2a3a5a"),true)
 	add_child(figure)
 	light = MeshInstance3D.new()
@@ -72,20 +64,4 @@ func apply(k: float, camera: Camera3D, shake: bool) -> Dictionary:
 	material.albedo_color.a = state["light"]
 	camera.global_position = state["from"]
 	camera.look_at(state["to"],Vector3.UP)
-	if _environment != null:
-		_environment.adjustment_enabled = true
-		_environment.adjustment_saturation = lerpf(.46,1.0,state["normal"])
 	return state
-
-
-func cancel() -> void:
-	if _restored:
-		return
-	_restored = true
-	if _environment != null:
-		_environment.adjustment_enabled = _old_adjust
-		_environment.adjustment_saturation = _old_saturation
-
-
-func _exit_tree() -> void:
-	cancel()

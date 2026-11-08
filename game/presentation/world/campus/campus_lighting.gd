@@ -40,6 +40,11 @@ var crackles: Array = []
 var dread_lamp := -1
 static var shadows_on := false     # the quality setting (sun shadows from 精细 up)
 var brightness := 1.0              # the brightness setting (100 % = 1.0)
+var world_normal := 0.0
+var fake_normal := 0.0
+var post_exposure := 1.0
+var gaze := 0.0
+var terms := {}  # lightState terms before physical-unit mapping and overcast
 var lamp_dark: Dictionary = {}     # A2: corridor lamps whose tubes are dead (AtmosModule.dark_lamps)
 var lamp_mul: Dictionary = {}      # lamp index → multiplier (the timed lamp scene)
 var atmos_mods: Dictionary = {}    # A7: AtmosModule.light_mods, set each frame
@@ -64,7 +69,8 @@ func setup(id: String, room_data: Variant, model: Node, stair_rise: float) -> vo
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	# ScenePost owns the original curve; applying ACES twice destroys dark detail.
+	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	# The old sky is only a gradient backdrop (makeSky); a flat colour avoids a radiance Sky per scene.
 	env.background_mode = Environment.BG_COLOR
 	var we := WorldEnvironment.new()
@@ -160,6 +166,8 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var sun := sun_at(h)
 	var indoor := room != null and not _open_air()
 	var day := float(sun["day"])
+	day += (1.0-day)*.6*world_normal
+	day += (maxf(day,.85)-day)*fake_normal
 	var am: Dictionary = {} if scene_id == "portal_tunnel" or scene_id == "lift_dream" else atmos_mods
 	var dusk := float(am.get("dusk", 0.0))
 	var cold := float(am.get("cold", 1.0))
@@ -180,6 +188,10 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 			hemi = 0.1
 			dirv = 0.08
 			pt_k = 0.9
+		amb = lerpf(amb,.38,world_normal)
+		hemi = lerpf(hemi,.28,world_normal)
+		dirv = lerpf(dirv,.32,world_normal)
+		pt_k = lerpf(pt_k,1.0,world_normal)
 	else:
 		amb = 0.075 + 0.12 * day
 		hemi = 0.10 + 0.24 * day
@@ -192,6 +204,8 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 		dirv = 0.0
 		pt_k = 1.0
 	var sun_col := Color(0.86, 0.88, 0.90).lerp(Color(0.92, 0.66, 0.50), sun["gold"])
+	terms={"day":day,"amb":amb,"hemi":hemi,"dir":dirv,"pt":pt_k}
+	var gaze_mul := 1.0-.88*gaze
 	var dc := Color(0.55, 0.66, 0.86).lerp(sun_col, smooth01(0.0, 0.35, day))
 	var hs := Color(0.16, 0.21, 0.30).lerp(Color(0.70, 0.74, 0.78), day).lerp(Color(0.86, 0.62, 0.50), float(sun["gold"]) * 0.5)
 	var hg := Color(0.05, 0.05, 0.06).lerp(Color(0.34, 0.34, 0.31), day)
@@ -212,9 +226,9 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var ambient := ac * amb + (hs + hg) * 0.5 * hemi
 	var strength := maxf(ambient.r, maxf(ambient.g, ambient.b))
 	env.ambient_light_color = ambient / maxf(strength, 1e-4)
-	env.ambient_light_energy = strength * ENERGY_AMBIENT
+	env.ambient_light_energy = strength * ENERGY_AMBIENT * gaze_mul
 	sun_light.light_color = dc
-	sun_light.light_energy = dirv * ENERGY_DIR
+	sun_light.light_energy = dirv * ENERGY_DIR * gaze_mul
 	var d: Vector3 = sun["dir"] if day > 0.02 and not indoor else MOON_DIR
 	sun_light.look_at_from_position(d * 16.0, Vector3.ZERO, Vector3.UP if absf(d.normalized().y) < 0.99 else Vector3.FORWARD)
 	var sky := sky_colors(h)
@@ -233,19 +247,23 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	else:
 		var fnight := 1.0 - day
 		var fc := Color(0.032 - 0.02 * fnight, 0.040 - 0.024 * fnight, 0.042 - 0.024 * fnight)
+		var normal_fog := 0.0 if blackout else world_normal
+		fc = fc.lerp(Color(.32,.35,.36),normal_fog)
 		env.fog_light_color = fc
 		env.background_color = fc
 		env.fog_density = 0.09 if scene_id == "garage1" else (0.04 if scene_id == "portal_tunnel" else 0.072 + 0.03 * fnight)
+		env.fog_density = lerpf(env.fog_density,.024,normal_fog)
 	env.fog_density *= float(am.get("fog", 1.0))
 	if scene_id == "lift_dream":
 		var fog: Dictionary = CampusData.maze_data()["cfg"]["fog"]
 		env.fog_light_color = Color(float(fog["r"]), float(fog["g"]), float(fog["b"]))
 		env.background_color = env.fog_light_color
 		env.fog_density = float(fog["density"])
-	env.adjustment_enabled = absf(brightness - 1.0) > 0.001
-	env.adjustment_brightness = brightness
+	env.adjustment_enabled = false
+	env.adjustment_brightness = 1.0
 	# lighting.js dayExpo: outdoors the picture is pressed down to 0.6 at noon (DAY_K).
-	env.tonemap_exposure = 1.0 if indoor else 1.0 - (1.0 - 0.6) * day
+	post_exposure = 1.0 if indoor else 1.0 - .4*float(sun["day"])*(1.0-world_normal)
+	env.tonemap_exposure = 1.0
 	var sum := 0.0
 	for i in room_lights.size():
 		var flick := 0.94 if reduce_flash else room_flicker(i, time, day) * lamp_health(i)
@@ -269,7 +287,7 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 			if dl <= 9.0:
 				_crackle_last = time
 				crackles.append({"k": 1.0 - dl / 9.0, "pan": clampf(crackle_from.global_basis.x.dot(to_l.normalized()) * 0.8, -1.0, 1.0)})
-		room_lights[i].light_energy = room_base[i] * pt_k * maxf(0.05, flick) * (1.0 + 0.3 * patrol_red) * ENERGY_POINT
+		room_lights[i].light_energy = room_base[i] * pt_k * maxf(0.05, flick) * (1.0 + 0.3 * patrol_red) * ENERGY_POINT * gaze_mul
 		var bc := room_col[i]
 		var lr := bc.r * 0.86
 		var lg := bc.g * 0.98
@@ -282,7 +300,7 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var lcfg: Dictionary = campus.get("light_cfg", {})
 	if camera != null:
 		cam_light.global_position = camera.global_position
-	cam_light.light_energy = (float(lcfg.get("camI", 0.9)) + float(lcfg.get("camIk", 0.45)) * day) * ENERGY_POINT * 9.0 * (0.08 if blackout and indoor else 1.0)
+	cam_light.light_energy = (float(lcfg.get("camI", 0.9)) + float(lcfg.get("camIk", 0.45)) * day) * ENERGY_POINT * 9.0 * (0.08 if blackout and indoor else 1.0) * gaze_mul
 	_lamps(dt, 1.0 - day if not indoor else 0.0, camera, sky, day)
 
 

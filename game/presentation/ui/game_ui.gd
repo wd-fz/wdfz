@@ -198,8 +198,8 @@ func _input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	tick_opening(delta)
-	if _grain_rect != null and _grain_rect.visible:
-		(_grain_rect.material as ShaderMaterial).set_shader_parameter("t", Time.get_ticks_msec() / 1000.0)
+	if _sense != null and _sense.visible:
+		_sense.tick(delta)
 	if _bolt_rect != null and _bolt_level > 0.0:
 		_bolt_level = maxf(0.0, _bolt_level - delta * 3.0)
 		_bolt_rect.color.a = _bolt_level
@@ -987,107 +987,34 @@ func tick_opening(delta: float) -> void:
 		_next_opening()
 
 
-## The low-SAN picture (SensoryRules.view): tunnel, blur, colour drain, warp and black blinks,
-## drawn over the world (under the HUD text) with the screen texture.
-var _sense: ColorRect
+## One world pass under the HUD: original grading and low-SAN feedback.
+var _sense: ScenePost
+
+
+func scene_post() -> ScenePost:
+	if _sense == null:
+		_sense = ScenePost.new()
+		var world_layer := CanvasLayer.new()
+		world_layer.name = "WorldGrading"
+		world_layer.layer = -2
+		add_child(world_layer)
+		world_layer.add_child(_sense)
+		_sense.visible = _mode != "menu"
+	return _sense
 
 
 func show_sensory(v: Dictionary, blink: float, t: float) -> void:
-	if _sense == null:
-		_sense = ColorRect.new()
-		_sense.name = "Sensory"
-		_sense.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_sense.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		var shader := Shader.new()
-		# engine/three.js: warp (drift, rotation, breathing in), blur and focus, ghost, halo, drain,
-		# tunnel (narrowing with the heartbeat, a crawling edge) and black-out, in the old order.
-		shader.code = """shader_type canvas_item;
-uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
-uniform float tunnel = 0.0;
-uniform float blur = 0.0;
-uniform float focus = 0.0;
-uniform float drain = 0.0;
-uniform float warp = 0.0;
-uniform float breath = 0.0;
-uniform float pulse = 0.0;
-uniform float ghost = 0.0;
-uniform vec2 ghost_dir = vec2(1.0, 0.0);
-uniform float halo = 0.0;
-uniform float blink = 0.0;
-uniform float t = 0.0;
-void fragment() {
-	vec2 res = 1.0 / SCREEN_PIXEL_SIZE;
-	vec2 uv = SCREEN_UV;
-	vec2 c = uv - 0.5;
-	vec2 q = c * 2.0;
-	float e = length(q);
-	if (warp > 0.001) {
-		vec2 asp = vec2(res.x / res.y, 1.0);
-		vec2 p = c * asp;
-		float r = length(p);
-		float a = 0.045 * warp * sin(t * 0.31) * cos(t * 0.13 + 1.7);
-		p = vec2(p.x * cos(a) - p.y * sin(a), p.x * sin(a) + p.y * cos(a));
-		p *= 1.0 - 0.04 * warp * breath;
-		vec2 w = vec2(sin(p.y * 6.0 + t * 0.9) + 0.6 * sin((p.x + p.y) * 4.1 - t * 0.7), sin(p.x * 5.2 - t * 0.8) + 0.6 * sin((p.x - p.y) * 3.7 + t * 1.1));
-		p += w * 0.0125 * warp * smoothstep(0.03, 0.22, r);
-		uv = p / asp + 0.5;
-	}
-	uv = clamp(uv, vec2(0.001), vec2(0.999));
-	float bpx = mix(3.2 * blur * blur, 13.0 * blur, smoothstep(0.15, 0.85, e)) + 4.5 * focus;
-	float lod = log2(max(1.0, bpx * min(res.x, res.y) / 720.0 * 0.45));
-	vec3 col = textureLod(screen_tex, uv, bpx >= 0.3 ? lod : 0.0).rgb;
-	if (ghost > 0.001) {
-		vec2 go = ghost_dir * (10.0 * min(res.x, res.y) / 720.0) / res;
-		col = mix(col, texture(screen_tex, clamp(uv + go, vec2(0.001), vec2(0.999))).rgb, 0.5 * ghost * smoothstep(0.05, 0.3, e));
-	}
-	if (halo > 0.001) {
-		vec2 asp2 = vec2(res.y / res.x, 1.0);
-		vec3 hl = vec3(0.0);
-		for (int i = 0; i < 6; i++) {
-			float ang = float(i) * 1.0472 + 0.5;
-			vec2 o = vec2(cos(ang), sin(ang)) * asp2;
-			hl += max(texture(screen_tex, uv + o * 0.012).rgb - 0.62, 0.0);
-			hl += max(texture(screen_tex, uv + o * 0.026).rgb - 0.62, 0.0) * 0.6;
-		}
-		col += min(hl / 6.0 * halo * 0.9, vec3(0.5));
-	}
-	float g = dot(col, vec3(0.2126, 0.7152, 0.0722));
-	col = mix(col, vec3(g), 0.7 * drain);
-	if (tunnel > 0.001) {
-		float crawl = 0.0;
-		if (warp > 0.001) {
-			float th = atan(q.y, q.x + 0.000001);
-			crawl = (0.05 * sin(th * 3.0 + t * 0.6) + 0.035 * sin(th * 5.0 - t * 0.9)) * warp;
-		}
-		float rr = 1.6 - 1.15 * tunnel - 0.09 * pulse;
-		col *= 1.0 - smoothstep(rr - 0.12, rr + 0.42, e + crawl) * min(1.0, tunnel * 2.2) * 0.96;
-	}
-	col *= 1.0 - blink;
-	COLOR = vec4(col, 1.0);
-}"""
-		var mat := ShaderMaterial.new()
-		mat.shader = shader
-		_sense.material = mat
-		$Root.add_child(_sense)
-		$Root.move_child(_sense, 0)
-	var on := float(v.get("tunnel", 0.0)) > 0.01 or blink > 0.0 or float(v.get("halo", 0.0)) > 0.01 or float(v.get("ghost_env", 0.0)) > 0.01
-	_sense.visible = on
-	if not on:
-		return
-	var m := _sense.material as ShaderMaterial
-	m.set_shader_parameter("tunnel", float(v["tunnel"]))
-	m.set_shader_parameter("blur", float(v["blur"]))
-	m.set_shader_parameter("focus", float(v.get("focus", 0.0)))
-	m.set_shader_parameter("drain", float(v["drain"]))
-	m.set_shader_parameter("warp", float(v["warp"]))
-	m.set_shader_parameter("breath", float(v.get("inhale", 0.0)))
-	m.set_shader_parameter("pulse", float(v.get("pulse_env", 0.0)))
-	m.set_shader_parameter("ghost", float(v.get("ghost_env", 0.0)))
-	var gd: Array = v.get("ghost_dir", [1.0, 0.0])
-	m.set_shader_parameter("ghost_dir", Vector2(float(gd[0]), float(gd[1])))
-	m.set_shader_parameter("halo", float(v.get("halo", 0.0)))
-	m.set_shader_parameter("blink", blink)
-	m.set_shader_parameter("t", t)
+	scene_post().sensory(v,blink,t)
+
+
+func set_normal_world(value: float) -> void:
+	var post := scene_post()
+	post.world_normal = clampf(value,0.0,1.0)
+	post.parameter("normal",post.normal())
+
+
+func reset_post() -> void:
+	scene_post().reset()
 
 
 # ---- settings (settings.js): a panel over the menu or the pause screen ----
@@ -1116,7 +1043,6 @@ const SETTING_ROWS := [
 var settings_panel: PanelContainer
 var _settings_box: VBoxContainer
 var _settings_scroll: ScrollContainer
-var _grain_rect: ColorRect
 
 
 func show_settings(values: Dictionary) -> void:
@@ -1321,27 +1247,9 @@ func apply_caption_scale(mult: float) -> void:
 	%Toast.add_theme_font_size_override("font_size", roundi(18.0 * mult))
 
 
-## Film grain over the picture (Engine.grain): faint moving noise.
+## Film grain shares the world pass, so it never alters text or normal-world colours.
 func set_grain(on: bool) -> void:
-	if _grain_rect == null:
-		_grain_rect = ColorRect.new()
-		_grain_rect.name = "Grain"
-		_grain_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_grain_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		var shader := Shader.new()
-		shader.code = """shader_type canvas_item;
-uniform float t = 0.0;
-float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-void fragment() {
-	float n = h(floor(FRAGCOORD.xy / 2.0) + floor(t * 24.0) * 7.31) - 0.5;
-	COLOR = vec4(vec3(n < 0.0 ? 0.0 : 1.0), abs(n) * 0.07);
-}"""
-		var mat := ShaderMaterial.new()
-		mat.shader = shader
-		_grain_rect.material = mat
-		$Root.add_child(_grain_rect)
-		$Root.move_child(_grain_rect, 1)
-	_grain_rect.visible = on
+	scene_post().grain = on
 	set_process(true)
 
 
@@ -1517,7 +1425,7 @@ func open_map(options: Array, selected: String, head: String, note: String) -> M
 
 
 func sensory_on() -> bool:
-	return _sense != null and _sense.visible
+	return _sense != null and _sense.sensory_active
 
 
 ## The lab3 maintenance terminal (TerminalUI): output, a command line, help / hint buttons, exit.
@@ -1873,6 +1781,8 @@ func set_mode(mode: String) -> void:
 	if _mode != mode:
 		show_notice("")
 	_mode = mode
+	if _sense != null:
+		_sense.visible = mode != "menu"
 	if ach_panel != null:
 		ach_panel.visible = false
 	if mode != "play":

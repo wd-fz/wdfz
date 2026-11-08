@@ -93,6 +93,9 @@ var _arch_n := -1
 var _door: MeshInstance3D
 var _flash: ColorRect
 var _beast: BeastScene
+var _normal_before := 0.0
+var _cut_clock := 700.0
+var _live_lighting: CampusLighting
 
 
 static func has(id: String) -> bool:
@@ -161,6 +164,9 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	ui.cut_mode(true)
 	_campus = campus
 	_ui = ui
+	_normal_before = ui.scene_post().world_normal
+	_cut_clock = float(opts.get("tsec",700.0))
+	_live_lighting = world.lighting if world is CampusWorld else null
 	_player = player
 	_on_beep = on_beep
 	_dur = float(DEFS[id]["dur"])
@@ -208,8 +214,7 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	if id == "beast":
 		_beast = BeastScene.new()
 		_root.add_child(_beast)
-		var environment: Environment = world.lighting.env if world is CampusWorld else null
-		_beast.begin(CampusData.layout("teach1"),environment)
+		_beast.begin(CampusData.layout("teach1"))
 		_apply(0.0)
 		return
 	if id == "car":
@@ -285,6 +290,18 @@ func _look(from: Vector3, to: Vector3) -> void:
 
 
 func _apply(kk: float) -> void:
+	var norm := _normal_before
+	if kind=="beast":
+		norm=phase(kk,.5,.95)
+	elif kind=="portal":
+		norm=phase(kk,.6,.95)
+	elif kind=="cyber":
+		norm=phase(kk*16.0,11.4,13.8)
+	_ui.set_normal_world(norm)
+	if kind in ["beast","portal"] and is_instance_valid(_live_lighting):
+		_live_lighting.world_normal=norm
+		_live_lighting.update(0,_cut_clock,cam)
+		_ui.scene_post().parameter("exposure",_live_lighting.post_exposure)
 	if kind == "beast":
 		var state := _beast.apply(kk,cam,_player.view_motion.shake_enabled)
 		_ui.cut_fade(state["fade"])
@@ -369,9 +386,12 @@ func _finish(skipped: bool, notify: bool) -> void:
 	if not on:
 		return
 	on = false
-	if is_instance_valid(_beast):
-		_beast.cancel()
 	if is_instance_valid(_ui):
+		_ui.set_normal_world(_normal_before)
+		if is_instance_valid(_live_lighting):
+			_live_lighting.world_normal=_normal_before
+			_live_lighting.update(0,_cut_clock,_player.camera if is_instance_valid(_player) else null)
+			_ui.scene_post().parameter("exposure",_live_lighting.post_exposure)
 		_ui.cut_mode(false)
 		_ui.cut_caption("")
 		_ui.cut_flash(0.0)
@@ -1144,7 +1164,9 @@ func _apply_cyber(kk: float) -> void:
 		var rise := phase(t, 11.2, 16.0)
 		# Day breaks: sunrise to seven in the morning, the colours come back with the normal light.
 		if _campus_light != null:
+			_campus_light.world_normal=_ui.scene_post().world_normal
 			_campus_light.update(0.0, (6.0 + 1.1 * clampf((t - 11.2) / 4.8, 0.0, 1.0)) * 60.0, cam)
+			_ui.scene_post().parameter("exposure",_campus_light.post_exposure)
 		_look(_cy_base + Vector3(2.0 * rise, 1.5 + 8.5 * rise, 6.0 + 12.0 * rise), _cy_base + Vector3(0.0, 3.0 + 19.0 * rise, -28.0))
 
 

@@ -40,6 +40,8 @@ var _sounded := {}
 var k := 0.0
 var cam: Camera3D
 var _ui: GameUI
+var _lighting: CampusLighting
+var _normal_before := 0.0
 var _room: Dictionary = {}
 var _player: PlayerController
 var _root: Node3D
@@ -93,6 +95,8 @@ func begin(world: Node3D, room: Dictionary, player: PlayerController, ui: GameUI
 	_room = room
 	_player = player
 	_ui = ui
+	_lighting = world.lighting if world is CampusWorld else null
+	_normal_before = ui.scene_post().world_normal
 	short = is_short
 	ui.cut_mode(true)
 	k = 0.0
@@ -213,6 +217,11 @@ func _beats(kk: float) -> void:
 
 
 func _apply(kk: float) -> void:
+	var norm := 1.0-.45*phase(kk,.46,.58) if kk<.58 else .55*(1.0-phase(kk,.6,.7))
+	_ui.set_normal_world(norm)
+	if is_instance_valid(_lighting):
+		_lighting.world_normal=norm
+		_lighting.update(0,700.0,cam)
 	_beats(kk)
 	for m: Dictionary in _mates:
 		if is_instance_valid(m["node"]):
@@ -323,6 +332,11 @@ func _finish(skipped: bool, notify: bool) -> void:
 	if not on:
 		return
 	on = false
+	if is_instance_valid(_ui):
+		_ui.set_normal_world(_normal_before)
+	if is_instance_valid(_lighting):
+		_lighting.world_normal=_normal_before
+		_lighting.update(0,700.0,_player.camera if is_instance_valid(_player) else null)
 	if is_instance_valid(_ui):
 		_ui.cut_mode(false)
 		_ui.cut_fade(0.0)

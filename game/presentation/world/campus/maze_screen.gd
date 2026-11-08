@@ -4,10 +4,17 @@ extends CanvasLayer
 
 var material_fx: ShaderMaterial
 var pane: ColorRect
+var _copy: BackBufferCopy
 
 
 func _ready() -> void:
 	layer = -1
+	# ScenePost has already graded the 3D scene. Explicitly refresh the screen
+	# copy here; without it a second screen shader reads the ungraded buffer.
+	_copy = BackBufferCopy.new()
+	_copy.copy_mode = BackBufferCopy.COPY_MODE_VIEWPORT
+	add_child(_copy)
+	_copy.hide()
 	pane = ColorRect.new()
 	pane.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	pane.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -44,3 +51,4 @@ func show_effect(inversion: float = 0.0, hole: float = -0.2, glow: float = 0.0, 
 	material_fx.set_shader_parameter("glow_hole", glow_hole)
 	material_fx.set_shader_parameter("fade_k", fade)
 	pane.visible = inversion > 0.001 or glow > 0.001 or fade > 0.001
+	_copy.visible = pane.visible
