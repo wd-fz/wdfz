@@ -1,11 +1,11 @@
 class_name AtmosFx
 extends Node3D
 ## The pictures of the global atmosphere (fx/atmos-fx.js), read-only over AtmosModule's state:
-## · A2 emergency signs above the stair mouths of a teaching / office / lab floor (green, self-lit);
+## · A2 emergency signs above the stair mouths of a teaching / lab floor (green, self-lit);
 ## · A6 a mop and a bucket against the west corridor wall that move when not looked at;
 ## · A4 a still silhouette on a classroom's frosted north window.
-## Placeholder meshes in the style of the other placeholder figures; no colliders (nothing blocks a door,
-## a stair mouth or a lift).
+## Original sign canvas, prop dimensions and person silhouette. No colliders: nothing blocks a door,
+## a stair mouth or a lift.
 
 const SHIFT_MIN := 8.0
 
@@ -14,9 +14,9 @@ var props: Node3D
 var shifted: Variant = null   # null | "push" | "face"
 var _home := Vector2.ZERO
 var _face := false
-var _fig: MeshInstance3D
+var _fig: Node3D
 var _win_pos := Vector3.ZERO
-var _win_key := ""
+var _win_record: Dictionary = {}
 var signs: Array[MeshInstance3D] = []
 
 
@@ -34,26 +34,28 @@ static func last_door_row(r: Dictionary) -> int:
 	return d
 
 
-static func _exit_texture() -> ImageTexture:
-	var img := Image.create(128, 48, false, Image.FORMAT_RGBA8)
-	img.fill(Color("#1fd16a"))
-	var white := Color("#eafff1")
-	img.fill_rect(Rect2i(26, 18, 7, 14), white)       # the running figure: body and legs
-	img.fill_rect(Rect2i(25, 6, 10, 10), white)
-	img.fill_rect(Rect2i(22, 30, 5, 12), white)
-	img.fill_rect(Rect2i(33, 30, 5, 12), white)
-	img.fill_rect(Rect2i(66, 20, 38, 8), white)       # the arrow
-	img.fill_rect(Rect2i(94, 12, 8, 24), white)
-	return ImageTexture.create_from_image(img)
+func clear() -> void:
+	for child: Node in get_children():
+		remove_child(child)
+		child.queue_free()
+	room = {}
+	props = null
+	_fig = null
+	_win_record = {}
+	signs.clear()
+	shifted = null
+	_face = false
 
 
 func setup(r: Dictionary) -> void:
+	clear()
 	room = r
-	if r.is_empty() or r.get("host") not in ["teach", "admin", "lab"] or not dark_floor(r):
+	# The original frame hook is gated by Atmos.floorRoom (teaching / laboratory only).
+	if r.is_empty() or r.get("host") not in ["teach", "lab"] or not dark_floor(r):
 		return
 	var grid: Array = r["grid"]
 	var door := last_door_row(r)
-	var tex := _exit_texture()
+	var tex: Texture2D = load("res://assets/campus/atmos/exit-sign.png")
 	for y in range(door + 1, grid.size()):
 		var row := String(grid[y])
 		for x in row.length():
@@ -66,12 +68,29 @@ func setup(r: Dictionary) -> void:
 			sign_mesh.mesh = q
 			var m := StandardMaterial3D.new()
 			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			m.disable_fog = true
 			m.albedo_texture = tex
 			sign_mesh.material_override = m
 			sign_mesh.position = Vector3(p.x, 2.55, p.y - 0.06)
 			sign_mesh.name = "ExitSign"
 			add_child(sign_mesh)
 			signs.append(sign_mesh)
+			var glow := MeshInstance3D.new()
+			var plane := QuadMesh.new()
+			plane.size = Vector2(1.1,0.6)
+			glow.mesh = plane
+			var light := StandardMaterial3D.new()
+			light.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			light.albedo_color = Color("1fd16a")
+			light.albedo_color.a = .12
+			light.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			light.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+			light.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+			light.disable_fog = true
+			glow.material_override = light
+			glow.position = Vector3(p.x,2.5,p.y-.05)
+			glow.name = "ExitGlow"
+			add_child(glow)
 	_build_props(r, door)
 
 
@@ -99,6 +118,8 @@ func _build_props(r: Dictionary, door: int) -> void:
 	cyl.top_radius = 0.012
 	cyl.bottom_radius = 0.012
 	cyl.height = 1.3
+	cyl.radial_segments = 6
+	cyl.rings = 1
 	stick.mesh = cyl
 	stick.material_override = _lit(Color("#9a7a55"))
 	stick.position = Vector3(0, 0.72, 0)
@@ -108,6 +129,8 @@ func _build_props(r: Dictionary, door: int) -> void:
 	hc.top_radius = 0.12
 	hc.bottom_radius = 0.16
 	hc.height = 0.18
+	hc.radial_segments = 8
+	hc.rings = 1
 	head.mesh = hc
 	head.material_override = _lit(Color("#8d8a80"))
 	head.position = Vector3(-0.11, 0.09, 0)
@@ -116,6 +139,8 @@ func _build_props(r: Dictionary, door: int) -> void:
 	bc.top_radius = 0.16
 	bc.bottom_radius = 0.13
 	bc.height = 0.28
+	bc.radial_segments = 10
+	bc.rings = 1
 	bucket.mesh = bc
 	bucket.material_override = _lit(Color("#3d6c9a"))
 	bucket.position = Vector3(0.32, 0.14, 0.02)
@@ -199,29 +224,46 @@ func show_window(w: Dictionary, cam: Camera3D) -> bool:
 			_fig.visible = false
 		return false
 	if _fig == null:
-		_fig = MeshInstance3D.new()
-		var cap := CapsuleMesh.new()
-		cap.radius = 0.035
-		cap.height = 0.21
-		_fig.mesh = cap
-		var m := StandardMaterial3D.new()
-		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		m.albedo_color = Color(0.063, 0.075, 0.082, 0.82)
-		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		m.no_depth_test = false
-		_fig.material_override = m
-		_fig.scale = Vector3(1.0, 1.0, 0.05)
+		_fig = Node3D.new()
+		var person := FigureModel.make("person",Color("101315"),true,1,Color.BLACK,false)
+		person.rotation.y = PI # imported model faces -z; original silhouette faces +z
+		person.scale.z = .05
+		_fig.add_child(person)
+		for child: Node in person.find_children("*","MeshInstance3D",true,false):
+			var material := (child as MeshInstance3D).material_override as BaseMaterial3D
+			material.vertex_color_use_as_albedo = false
+			material.albedo_color.a = .82
+			material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+		_fig.scale = Vector3.ONE*.12
 		_fig.name = "WindowFigure"
 		add_child(_fig)
-	var key := "%s:%s" % [w["room"], w["cls"]]
-	if key != _win_key:
-		_win_key = key
+	if not is_same(w,_win_record):
+		_win_record = w
 		var ci := int(String(w["cls"]).split(":")[1])
-		var c0 := int(ClassmatesModule.SPANS[ci][0])
-		var c1 := int(ClassmatesModule.SPANS[ci][1])
+		var c0 := int(room["cols"])
+		var c1 := 0
+		var r0 := int(room["rows"])
+		var grid: Array = room["grid"]
+		for y in range(1,grid.size()):
+			for x in range(1,int(room["cols"])):
+				var cell := String(grid[y]).substr(x,1)
+				if cell!="#" and cell!="=" and AtmosModule.class_index(x,y)==ci:
+					c0 = mini(c0,x)
+					c1 = maxi(c1,x)
+					r0 = mini(r0,y)
 		var cx := float(room["ox"]) + (c0 + (c1 - c0 + 1) * (0.25 + 0.5 * float(w["seed"]))) * float(room["tw"])
-		var face := CampusGeometry.to_scene(room, Vector2(cx, float(room["oy"]) + 7.0 * float(room["th"])))
+		var face := CampusGeometry.to_scene(room, Vector2(cx, float(room["oy"]) + r0 * float(room["th"])))
 		_win_pos = Vector3(face.x, 1.18, face.y + 0.035)
+		if w.has("anchor"):
+			var anchor: Dictionary = w["anchor"]
+			var far := CampusGeometry.to_scene(room,Vector2(anchor["x"],anchor["y"]))
+			var eye := cam.global_position
+			var dz := far.y-eye.z
+			var t := (face.y-eye.z)/(dz if not is_zero_approx(dz) else -1.0)
+			if t>0 and t<1:
+				_win_pos.x = clampf(eye.x+(far.x-eye.x)*t,c0-float(room["cols"])/2+.7,c1-float(room["cols"])/2+.3)
+				_win_pos.y = clampf(eye.y+(float(anchor["height"])-(int(room["floor"])-1)*3.2-eye.y)*t,1.18,2.3)
 	_fig.visible = true
 	_fig.position = _win_pos
 	return in_view(cam, _win_pos.x, _win_pos.z, 0.22)

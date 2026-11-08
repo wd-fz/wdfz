@@ -1639,6 +1639,9 @@ func kill(msg: String, fx: String, source: String) -> void:
 	audio.stop_all()
 	if is_instance_valid(_lift_crowd_fx):
 		_lift_crowd_fx.clear()
+	var death_world := _campus_world()
+	if death_world!=null and death_world.atmos_fx!=null:
+		death_world.atmos_fx.clear()
 	audio.death(fx)
 	ui.hide_choice()
 	ui.hide_bag()
@@ -2325,6 +2328,7 @@ func _atmos_step(delta: float) -> void:
 	var fx: AtmosFx = cw.atmos_fx
 	if fx == null or player.camera == null:
 		return
+	if fx.room.is_empty(): fx.setup(cw.layout)
 	var r := a.floor_room()
 	if not r.is_empty():
 		var key := "%d:%s" % [school().day, r["id"]]

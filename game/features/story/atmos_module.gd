@@ -44,11 +44,12 @@ var left: Dictionary = {}       # cls → day it was last left
 
 var hush := 0.0
 var stare: Dictionary = {}      # {cls, room, t} while the class turns
-var window: Dictionary = {}     # {room, cls, seed, seen, gone}
+var window: Dictionary = {}     # {room, cls, seed, seen, gone, anchor}
 var window_look := false
 var events: Array = []
 
 var _rooms: Dictionary = {}
+var _window_anchor: Dictionary = {}
 var _c: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 var _campus_t := 12.0
@@ -66,8 +67,13 @@ var _sc_event: Dictionary = {}
 var _sc_doors: Dictionary = {}
 
 
-func _init(rooms: Dictionary = {}) -> void:
+func _init(rooms: Dictionary = {}, outdoor: Dictionary = {}) -> void:
 	_rooms = rooms
+	for object: Dictionary in outdoor.get("objects",[]):
+		if object.get("id")=="lab":
+			var scale := float(outdoor.get("SC",1))
+			_window_anchor = {"x":(float(object["x"])+float(object["w"])*.5)*scale,"y":(float(object["y"])+float(object["h"])*.5)*scale,"height":16.2}
+			break
 	_rng.randomize()
 
 
@@ -371,6 +377,7 @@ func _window_tick() -> void:
 	if _hash("win:%d:%s:%d" % [_day(), cls, visit]) >= float(CFG["window_chance"]) or not _allow(1):
 		return
 	window = {"room": r["id"], "cls": cls, "seed": _hash("winP:%d:%s:%d" % [_day(), cls, visit]), "seen": 0.0, "gone": false}
+	if not _window_anchor.is_empty(): window["anchor"] = _window_anchor.duplicate()
 	_note("window", 1)
 
 

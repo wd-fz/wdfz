@@ -43,7 +43,7 @@ static func create() -> GameSession:
 		MarksModule.new(rooms),
 		ClassmatesModule.new(rooms),
 		DreadModule.new(rooms, float(outdoor.get("SC", 1.0))),
-		AtmosModule.new(rooms),
+		AtmosModule.new(rooms, outdoor),
 		MonoModule.new(rooms),
 		InvestigationModule.new(),
 		ExplorationModule.new(rooms),
