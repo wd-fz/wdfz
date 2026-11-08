@@ -1,4 +1,4 @@
-"""由 assets/campus/layout/*.json 生成 content/worlds/campus/<场景>.tres，并把它们登记进 scenes/app.tscn 的 WorldRouter。
+"""由 assets/campus/layout/*.json 生成 content/worlds/campus/<场景>.tres，并把它们登记进 game/app/app.tscn 的 WorldRouter。
 
 用法：python3 tools/export_scenes/gen_worlds.py（导出布局之后运行；结果可重复生成）。
 落点取旧版 doEnterRoom 不带指定落点时的位置（export.js defaultSpawn）；noClock 的场景不推进日历。
@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 LAYOUT = ROOT / 'assets' / 'campus' / 'layout'
 OUT = ROOT / 'content' / 'worlds' / 'campus'
-APP = ROOT / 'scenes' / 'app.tscn'
+APP = ROOT / 'game' / 'app' / 'app.tscn'
 
 
 def world_ids():
@@ -33,8 +33,8 @@ def write_definition(i):
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / f'{i}.tres').write_text(f'''[gd_resource type="Resource" script_class="WorldDefinition" load_steps=3 format=3]
 
-[ext_resource type="Script" path="res://world/world_definition.gd" id="1"]
-[ext_resource type="PackedScene" path="res://world/campus/campus_world.tscn" id="2"]
+[ext_resource type="Script" path="res://game/presentation/world/world_definition.gd" id="1"]
+[ext_resource type="PackedScene" path="res://game/presentation/world/campus/campus_world.tscn" id="2"]
 
 [resource]
 script = ExtResource("1")

@@ -18,4 +18,4 @@
 
 ## 坐标
 
-1 Godot 单位 = 1 米，+Y 向上，与旧版 three.js 场景坐标一致。室内场景以房间中心为原点（旧版 `worldToScene`），室外以旧版世界原点为原点；换算见 `features/campus/campus_geometry.gd`。
+1 Godot 单位 = 1 米，+Y 向上，与旧版 three.js 场景坐标一致。室内场景以房间中心为原点（旧版 `worldToScene`），室外以旧版世界原点为原点；换算见 `game/features/campus/campus_geometry.gd`。

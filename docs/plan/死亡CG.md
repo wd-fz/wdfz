@@ -1,6 +1,6 @@
 # 死亡 CG
 
-旧版 `fx/death-cg.js` 与各模块的 `DeathCG.register`（`wd-fz/wd-fz.github.io@0bf508a`）：按死因分镜，每种都是「前兆 → 接触／失控 → 临终视角 → 收束」，位置与镜头只由经过的时间算出（帧率高低结果一样）。Godot 版框架是 `app/death_cg.gd`（`DeathCG`）：布景放在「视线坐标系」（原点在玩家脚下，+z 是死亡那一刻的视线方向），镜头就是玩家自己的相机（只改俯仰、转向和抬高，演完还原），收束用相机上的一层暗场球；没有自己场景的死因仍用原来的画面特效渐隐。导出的手、头、长脖子的头等来自旧版 `fxMesh`（`tools/export_scenes/export_scenes.py --only fx`）。
+旧版 `fx/death-cg.js` 与各模块的 `DeathCG.register`（`wd-fz/wd-fz.github.io@0bf508a`）：按死因分镜，每种都是「前兆 → 接触／失控 → 临终视角 → 收束」，位置与镜头只由经过的时间算出（帧率高低结果一样）。Godot 版框架是 `game/presentation/cinematics/death_cg.gd`（`DeathCG`）：布景放在「视线坐标系」（原点在玩家脚下，+z 是死亡那一刻的视线方向），镜头就是玩家自己的相机（只改俯仰、转向和抬高，演完还原），收束用相机上的一层暗场球；没有自己场景的死因仍用原来的画面特效渐隐。导出的手、头、长脖子的头等来自旧版 `fxMesh`（`tools/export_scenes/export_scenes.py --only fx`）。
 
 ## 待办与进度
 
