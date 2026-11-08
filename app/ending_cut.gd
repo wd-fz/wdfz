@@ -8,6 +8,9 @@ extends Node
 ##   dismissal (《放学》) — 18 s on four stages of its own: the broadcast room (the speakers light up one by one),
 ##   the classroom (dozens of chairs slide back at once), the stairwell seen from above (a stream of people and one
 ##   tall figure that does not move), the north gate and the teaching building behind it whose windows go dark.
+##   portal (《门》) — 10 s in front of the demonstration bench's device (a simplified model of the old one): it
+##   charges, the three rails close one by one, the door opens; the camera steps back half a pace, then pushes in
+##   and through the ring, white at the end.
 ##   international (《外国语学生》) — 20 s on four little stages of its own (the world is hidden): the visitors pass
 ##   the north gate, the guard checks the reception list while two searchers stop inside, outside the colours are
 ##   ordinary and a temporary reception pass is handed back, the pass names a school that sounds unfamiliar.
@@ -15,8 +18,8 @@ extends Node
 
 signal finished(skipped: bool)
 
-const DEFS := {"face": {"dur": 10.0, "outdoor": true}, "international": {"dur": 20.0, "outdoor": false}, "dismissal": {"dur": 18.0, "outdoor": false}}
-const STAGED := ["international", "dismissal"]
+const DEFS := {"face": {"dur": 10.0, "outdoor": true}, "international": {"dur": 20.0, "outdoor": false}, "dismissal": {"dur": 18.0, "outdoor": false}, "portal": {"dur": 10.0, "outdoor": false}}
+const STAGED := ["international", "dismissal", "portal"]
 const COAT := [Color("#3a4a6a"), Color("#7a5a3a"), Color("#5a6a4a"), Color("#8a6a6a")]
 const SC := 2.0
 
@@ -48,6 +51,9 @@ var _walkers: Array = []
 var _windows: Array = []
 var _ledger: Label3D
 var _dis_said := {}
+var _rails: Array = []
+var _door: MeshInstance3D
+var _flash: ColorRect
 
 
 static func has(id: String) -> bool:
@@ -143,6 +149,11 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	cam.far = player.camera.far
 	_root.add_child(cam)
 	cam.current = true
+	if id == "portal":
+		_setup_portal()
+		_ui.cut_fade(0.0)
+		_apply(0.0)
+		return
 	if id == "dismissal":
 		_setup_dis()
 		_ui.cut_fade(0.0)
@@ -186,6 +197,9 @@ func _apply(kk: float) -> void:
 		return
 	if kind == "dismissal":
 		_apply_dis(kk)
+		return
+	if kind == "portal":
+		_apply_portal(kk)
 		return
 	_ui.cut_fade(clampf(face_fade(kk), 0.0, 1.0))
 	if kk < 0.3:
@@ -244,6 +258,7 @@ func end(skipped: bool) -> void:
 	if STAGED.has(kind) and is_instance_valid(_world):
 		_world.visible = _world_was_visible
 	_ui.cut_caption("")
+	_ui.cut_flash(0.0)
 	_ui.cut_fade(0.0)
 	if is_instance_valid(_player) and _player.camera != null:
 		_player.camera.current = true
@@ -552,3 +567,91 @@ func _apply_dis(kk: float) -> void:
 			w.visible = v >= 0.6
 			(w.material_override as StandardMaterial3D).albedo_color = Color("#050909") if v > 0.68 + float(i) * 0.055 else Color("#aba17c")
 	_ui.cut_fade(clampf(dis_edge(t), 0.0, 1.0))
+
+
+# ---- 《门》 ----
+
+## The device's state by progress: charge fraction (0..1), door open, entering (0..1).
+static func portal_state(kk: float) -> Dictionary:
+	return {"charge": clampf(kk / 0.45, 0.0, 1.0), "open": kk >= 0.45, "enter": phase(kk, 0.62, 1.0) if kk >= 0.62 else 0.0}
+
+
+## The camera path: hesitates (steps back) between 0.5 and 0.7, pushes in from 0.62; the height follows the ring.
+static func portal_camera(kk: float, p: Vector3, ring_y: float) -> Dictionary:
+	var hes := phase(kk, 0.5, 0.6) * (1.0 - phase(kk, 0.62, 0.7))
+	var push := phase(kk, 0.62, 0.98)
+	var orbit := (1.0 - phase(kk, 0.0, 0.45)) * 0.9
+	var z := lerpf(p.z + 3.4, p.z + 0.05, push) + 0.6 * hes
+	var x := p.x + sin(orbit) * 1.2
+	return {"from": Vector3(x, lerpf(1.45, ring_y, push), z), "to": Vector3(p.x, ring_y, p.z)}
+
+
+func _setup_portal() -> void:
+	var g := Node3D.new()
+	_root.add_child(g)
+	_st.append(g)
+	_box(g, 30, 0.05, 30, Color("#2b2f31"), 0, 0, 0)
+	_box(g, 30, 4, 0.2, Color("#3a4244"), 0, 2, -8)
+	_box(g, 1.1, 0.05, 0.5, Color("#7d858d"), 0, 0.96, 0)           # the base on the bench top (0.935 m)
+	_box(g, 1.6, 0.935, 0.7, Color("#4a4f52"), 0, 0.4675, 0)         # the bench
+	var ring_y := 0.935 + 0.62 + 0.05
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color("#7d858d")
+	steel.emission_enabled = true
+	steel.emission = Color("#1a1d21")
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.585
+	tm.outer_radius = 0.655
+	ring.mesh = tm
+	ring.rotation.x = PI / 2.0
+	ring.position = Vector3(0, ring_y, 0)
+	ring.material_override = steel
+	g.add_child(ring)
+	for i in 3:
+		var r := MeshInstance3D.new()
+		var rm := TorusMesh.new()
+		rm.inner_radius = 0.50 + 0.03 * float(i)
+		rm.outer_radius = 0.515 + 0.03 * float(i)
+		r.mesh = rm
+		r.rotation = Vector3(PI / 2.0, 0.0, 0.0)
+		r.position = Vector3(0, ring_y, 0.002 * float(i))
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.albedo_color = Color("#70d0ff")
+		r.material_override = m
+		r.visible = false
+		g.add_child(r)
+		_rails.append(r)
+	_door = MeshInstance3D.new()
+	var dm := CylinderMesh.new()
+	dm.top_radius = 0.52
+	dm.bottom_radius = 0.52
+	dm.height = 0.01
+	_door.mesh = dm
+	_door.rotation.x = PI / 2.0
+	_door.position = Vector3(0, ring_y, 0)
+	var dmat := StandardMaterial3D.new()
+	dmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dmat.albedo_color = Color(0.45, 0.78, 1.0, 0.0)
+	dmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_door.material_override = dmat
+	g.add_child(_door)
+	_root.set_meta("ring_y", ring_y)
+
+
+func _apply_portal(kk: float) -> void:
+	var st := portal_state(kk)
+	var ring_y := float(_root.get_meta("ring_y"))
+	for i in _rails.size():
+		(_rails[i] as MeshInstance3D).visible = float(st["charge"]) > float(i) / 3.0
+	var dmat := _door.material_override as StandardMaterial3D
+	var a := 0.0
+	if bool(st["open"]):
+		a = 0.55 + 0.4 * float(st["enter"])
+	dmat.albedo_color = Color(0.45 + 0.4 * float(st["enter"]), 0.78 + 0.1 * float(st["enter"]), 1.0, a)
+	var cam_path := portal_camera(kk, Vector3.ZERO, ring_y)
+	_look(cam_path["from"], cam_path["to"])
+	var flash := (kk - 0.88) / 0.12 * 0.9 if kk > 0.88 else 0.0
+	_ui.cut_fade(0.0)
+	_ui.cut_flash(flash)

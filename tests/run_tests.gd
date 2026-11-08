@@ -3218,13 +3218,17 @@ func _test_day_banner() -> void:
 
 
 func _test_ending_cut() -> void:
-	check(EndingCut.has("face") and EndingCut.has("international") and EndingCut.has("dismissal") and not EndingCut.has("cyber"), "only the ported endings have a live scene")
+	check(EndingCut.has("face") and EndingCut.has("international") and EndingCut.has("dismissal") and EndingCut.has("portal") and not EndingCut.has("cyber"), "only the ported endings have a live scene")
 	check(EndingCut.needs_outdoor("face") and not EndingCut.needs_outdoor("international"), "the gate scene needs the outdoors, the stage scene does not")
 	check(EndingCut.intl_stage(3.9) == 0 and EndingCut.intl_stage(4.0) == 1 and EndingCut.intl_stage(9.0) == 2 and EndingCut.intl_stage(15.0) == 3 and EndingCut.intl_edge(4.0) == 1.0 and EndingCut.intl_edge(6.0) == 0.0 and is_equal_approx(EndingCut.intl_edge(19.6), 0.5), "the four stages and the fades between them")
 	check(EndingCut.intl_caption(0, "multilingual").begins_with("「Alle da?」") and EndingCut.intl_caption(0, "exam").begins_with("队尾的人回头") and EndingCut.intl_caption(3, "exam").contains("学校名字"), "the captions differ only in the first line by qualification")
 	check(EndingCut.face_lamp(0.1) == Color("#d23a2e") and EndingCut.face_lamp(0.2) == Color("#e8e4d2"), "the gate's lamp is red, then white")
 	check(EndingCut.face_fade(0.1) == 0.0 and EndingCut.face_fade(0.3) == 1.0 and is_equal_approx(EndingCut.face_fade(0.33), 0.5) and EndingCut.face_fade(0.6) == 0.0 and is_equal_approx(EndingCut.face_fade(0.95), 0.5), "black after the beep, clear outside, black at the end")
 	check(EndingCut.dis_stage(3.1) == 0 and EndingCut.dis_stage(7.8) == 2 and EndingCut.dis_stage(12.0) == 3 and EndingCut.dis_edge(3.2) == 1.0 and EndingCut.dis_edge(10.0) == 0.0 and EndingCut.dis_caption(14.0).begins_with("登记簿") and EndingCut.dis_caption(17.0).begins_with("你回过头"), "the four stages of the dismissal, fades and captions")
+	check(EndingCut.portal_state(0.2)["charge"] < 1.0 and not EndingCut.portal_state(0.2)["open"] and EndingCut.portal_state(0.5)["open"] and EndingCut.portal_state(0.5)["enter"] == 0.0 and EndingCut.portal_state(1.0)["enter"] == 1.0, "the device charges, opens, then is entered")
+	var pc := EndingCut.portal_camera(0.55, Vector3.ZERO, 1.6)
+	var pe := EndingCut.portal_camera(1.0, Vector3.ZERO, 1.6)
+	check(pc["from"].z > EndingCut.portal_camera(0.5, Vector3.ZERO, 1.6)["from"].z - 0.001 and pe["from"].z < 0.2 and is_equal_approx(pe["from"].y, 1.6), "the camera steps back half a pace, then pushes through the ring")
 	var g := EndingCut.gate_scene(CampusData.campus(), "w")
 	check(is_equal_approx(g.x, 200.0 * 2.0 / 9.0) and is_equal_approx(g.z, 624.0 * 2.0 / 9.0), "the gate is placed from the campus plan")
 

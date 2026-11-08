@@ -722,6 +722,23 @@ func cut_fade(v: float) -> void:
 	_cut_fade.visible = v > 0.001
 
 
+var _cut_flash: ColorRect
+
+
+## White flash over a cutscene (0 clear … 1 white).
+func cut_flash(v: float) -> void:
+	if _cut_flash == null:
+		_cut_flash = ColorRect.new()
+		_cut_flash.name = "CutFlash"
+		_cut_flash.color = Color.WHITE
+		_cut_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_cut_flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_cut_flash.process_mode = Node.PROCESS_MODE_ALWAYS
+		$Root.add_child(_cut_flash)
+	_cut_flash.modulate.a = clampf(v, 0.0, 1.0)
+	_cut_flash.visible = v > 0.001
+
+
 func cut_caption(text: String) -> void:
 	if _cut_caption == null:
 		_cut_caption = Label.new()
