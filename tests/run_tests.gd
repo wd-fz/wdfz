@@ -117,6 +117,7 @@ func _run() -> void:
 	_test_chalk_texture()
 	_test_phantoms()
 	_test_traces()
+	_test_canteen_view()
 	_test_mirror_view()
 	_test_legacy_save()
 	_test_link_view()
@@ -3283,6 +3284,24 @@ func _test_mirror_view() -> void:
 	mv.update(0.1, Vector2(1380, 1917.5), 0.0, 10.0, 1.0, true)
 	check(((mv._mirrors[0]["arm"]) as Node3D).visible, "at the lowest tier with the raise on, the arm shows")
 	mv.queue_free()
+
+
+func _test_canteen_view() -> void:
+	var room: Dictionary = CampusData.rooms()["canteen1"]
+	var ly := CanteenView.layout(room)
+	check(not ly.is_empty() and (ly["lamp"] as Vector2).x > (ly["server"] as Vector2).x, "the lamp is over the counter, the server at its west head")
+	check(CanteenView.layout(CampusData.rooms()["teach1"]).is_empty(), "a room without a counter has no layout")
+	var cv := CanteenView.new()
+	root.add_child(cv)
+	cv.build(room)
+	check(cv.built(), "the lamp, bowl and server are built")
+	cv.update(true, Vector2(0, 0), false)
+	check(cv.visible and cv._bowl.visible, "lit after lights out, with the bowl")
+	cv.update(true, Vector2(0, 0), true)
+	check(not cv._bowl.visible, "the bowl is gone once eaten tonight")
+	cv.update(false, Vector2(0, 0), false)
+	check(not cv.visible, "dark before lights out")
+	cv.queue_free()
 
 
 func _test_traces() -> void:

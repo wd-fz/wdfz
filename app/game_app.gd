@@ -4465,6 +4465,9 @@ func _phantom_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 	ph.apparition(delta, calm, dark, inv != null and inv.torch_on, day_rules.san, cam, ang, room, h, stand, _line_clear.bind(room))
 	ph.tick_smile(delta, cam)
 	var tl := tales()
+	if world.canteen_view != null and tl != null:
+		var csc := CampusGeometry.to_scene(room, CampusGeometry.to_world(room, float(p[0]), float(p[2])))
+		world.canteen_view.update(session.world_id == CanteenView.ROOM and tl.canteen_open(), csc, tl.ate())
 	if world.mirror_view != null and tl != null:
 		if world.mirror_view.count() == 0:
 			world.mirror_view.build(room if room is Dictionary else {}, tl.mirrors(session.world_id))

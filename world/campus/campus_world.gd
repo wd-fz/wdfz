@@ -17,6 +17,7 @@ var phantoms: Phantoms
 var traces: Traces
 var broadcast_props: BroadcastProps
 var mirror_view: MirrorView
+var canteen_view: CanteenView
 var lighting: CampusLighting
 var _door_bodies: Dictionary = {}   # key -> CollisionShape3D
 var _door_leaves: Dictionary = {}   # key -> {"closed": Node3D, "open": Node3D}
@@ -49,6 +50,11 @@ func _ready() -> void:
 		broadcast_props.name = "BroadcastProps"
 		add_child(broadcast_props)
 		broadcast_props.build(layout)
+		if scene_id == CanteenView.ROOM:
+			canteen_view = CanteenView.new()
+			canteen_view.name = "CanteenView"
+			add_child(canteen_view)
+			canteen_view.build(layout)
 		if String(layout.get("host", "")) == "teach":
 			mirror_view = MirrorView.new()
 			mirror_view.name = "MirrorView"
