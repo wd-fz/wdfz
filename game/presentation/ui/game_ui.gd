@@ -288,7 +288,7 @@ func _update_orient_hint() -> void:
 	if _orient_hint == null:
 		_orient_hint = Label.new()
 		_orient_hint.name = "OrientationHint"
-		_orient_hint.text = "横屏玩更舒服：触屏按钮在横屏下更宽松。设置里的「自动横屏」会在手机上替你锁定横屏。"
+		_orient_hint.text = "请横屏游玩。竖屏不受维护；设置里的「自动横屏」会在手机上替你锁定横屏。"
 		_orient_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_orient_hint.custom_minimum_size = Vector2(320, 0)
 		_orient_hint.modulate = Color(1, 1, 1, 0.6)
