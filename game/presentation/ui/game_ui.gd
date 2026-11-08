@@ -62,6 +62,10 @@ var _choice_box: VBoxContainer
 var _choice_scroll: ScrollContainer
 var _choice_text: Label
 var _touch_enabled := false
+var _paper_flying := false
+var _paper_pad: PaperFlightPad
+var _paper_read := false
+var _paper_progress: ProgressBar
 var _toast_seconds := 0.0
 
 
@@ -1898,6 +1902,8 @@ var _choice_cancellable := true
 
 
 func show_choice(text: String, labels: Array, cancellable: bool = true) -> void:
+	_paper_read = false
+	if is_instance_valid(_paper_progress): _paper_progress.hide()
 	_choice_cancellable = cancellable
 	for child in _choice_box.get_children():
 		child.queue_free()
@@ -1953,6 +1959,8 @@ func _refit_choice_later() -> void:
 
 func hide_choice() -> void:
 	choice_panel.visible = false
+	_paper_read = false
+	if is_instance_valid(_paper_progress): _paper_progress.hide()
 
 
 func choice_open() -> bool:
@@ -1981,7 +1989,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if not choice_open() or not event is InputEventKey or not event.pressed or event.echo:
 		return
 	var key := (event as InputEventKey).physical_keycode
-	if key >= KEY_1 and key <= KEY_9:
+	if _paper_read and key in [KEY_E,KEY_ENTER,KEY_KP_ENTER]:
+		choice_selected.emit(0)
+		get_viewport().set_input_as_handled()
+	elif key >= KEY_1 and key <= KEY_9:
 		var index := key - KEY_1
 		if index < _choice_box.get_child_count() - (1 if _choice_cancellable else 0):
 			choice_selected.emit(index)
@@ -1994,7 +2005,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 func set_touch_enabled(value: bool) -> void:
 	_touch_enabled = value
 	%TouchToggle.set_pressed_no_signal(value)
-	touch_controls.visible = value and _mode == "play"
+	touch_controls.visible = value and _mode == "play" and not _paper_flying
+	_refresh_paper_pad()
 	clear_touch()
 	if is_inside_tree():
 		_update_orient_hint()
@@ -2009,11 +2021,49 @@ func movement_touch() -> Vector2:
 	return stick._value if _touch_enabled and touch_controls.is_visible_in_tree() else Vector2.ZERO
 
 
+func set_paper_flight(on: bool) -> void:
+	if on==_paper_flying: return
+	_paper_flying = on
+	clear_touch()
+	if on and not is_instance_valid(_paper_pad):
+		_paper_pad = PaperFlightPad.new()
+		$Root.add_child(_paper_pad)
+		_paper_pad.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+		_paper_pad.offset_left = -128
+		_paper_pad.offset_right = 128
+		_paper_pad.offset_top = -82
+		_paper_pad.offset_bottom = -30
+	touch_controls.visible = _mode=="play" and _touch_enabled and not on
+	_refresh_paper_pad()
+
+
+func _refresh_paper_pad() -> void:
+	if is_instance_valid(_paper_pad): _paper_pad.visible = _paper_flying and _mode=="play" and _touch_enabled
+
+
+func paper_directions() -> Dictionary:
+	return _paper_pad.value() if is_instance_valid(_paper_pad) and _paper_pad.is_visible_in_tree() else {}
+
+
+func show_paper_time(seconds: float) -> void:
+	_paper_read = true
+	if is_instance_valid(_choice_timer_label): _choice_timer_label.hide()
+	if not is_instance_valid(_paper_progress):
+		_paper_progress = ProgressBar.new()
+		_paper_progress.show_percentage = false
+		_paper_progress.custom_minimum_size.y = 12
+		_choice_text.get_parent().add_child(_paper_progress)
+	_paper_progress.max_value = PaperPlaneModule.READ
+	_paper_progress.value = maxf(seconds,0)
+	_paper_progress.show()
+
+
 func clear_touch() -> void:
 	stick.clear()
 	look_pad.clear()
 	%TouchSprint.set_pressed_no_signal(false)
 	touch_sprint.emit(false)
+	if is_instance_valid(_paper_pad): _paper_pad.clear()
 
 
 func set_mode(mode: String) -> void:
@@ -2032,7 +2082,8 @@ func set_mode(mode: String) -> void:
 	menu.visible = mode == "menu"
 	pause_panel.visible = mode == "pause"
 	hud.visible = mode == "play"
-	touch_controls.visible = mode == "play" and _touch_enabled
+	touch_controls.visible = mode == "play" and _touch_enabled and not _paper_flying
+	_refresh_paper_pad()
 	clear_touch()
 	if mode == "menu":
 		%NewGame.grab_focus()

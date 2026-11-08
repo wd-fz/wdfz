@@ -768,13 +768,14 @@ func resume_game() -> void:
 	if session == null or not session.running or _dead():
 		return
 	get_tree().paused = false
-	player.enabled = not knife_flow.captured()
+	player.enabled = not knife_flow.captured() and not _paper_owns_input()
 	player.clear_input()
 	ui.set_mode("play")
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
 
 
 func _cancel_cinematics() -> void:
+	_clear_plane()
 	if is_instance_valid(archive_flow): archive_flow.stop()
 	if is_instance_valid(rules_dlc_flow): rules_dlc_flow.cancel()
 	if is_instance_valid(debug_flow): debug_flow.cancel()
@@ -811,10 +812,7 @@ func return_to_menu() -> void:
 		_marks_nodes.queue_free()
 	_marks_nodes = null
 	_marks_key = ""
-	if is_instance_valid(_plane_nodes):
-		_plane_nodes.queue_free()
-	_plane_nodes = null
-	_plane_pose = null
+	_clear_plane()
 	if is_instance_valid(_gaze_nodes):
 		_gaze_nodes.queue_free()
 	_gaze_nodes = null
@@ -1511,7 +1509,7 @@ func _open_bag() -> void:
 func _close_bag() -> void:
 	ui.hide_bag()
 	if session != null and session.running and not get_tree().paused:
-		player.enabled = not knife_flow.captured()
+		player.enabled = not knife_flow.captured() and not _paper_owns_input()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
 
 
@@ -1635,6 +1633,7 @@ func kill(msg: String, fx: String, source: String) -> void:
 		var lp: Array = player.capture_pose()["position"]
 		var lw := CampusGeometry.to_world(campus().room(session.world_id), float(lp[0]), float(lp[2]))
 		_write_side("last_life.json", {"v": 1, "scene": session.world_id, "x": lw.x, "y": lw.y, "tsec": roundi(school().tsec), "day": school().day})
+	_clear_plane()
 	player.enabled = false
 	player.clear_input()
 	audio.stop_all()
@@ -3356,8 +3355,10 @@ func _show_marks() -> void:
 
 # ---- paper planes (game/features/story/paper_plane_module.gd) ----
 
-var _plane_nodes: Node3D
-var _plane_pose: Variant = null
+var _plane_nodes: PaperPlaneView
+var _plane_input_owned := false
+var _plane_was_flying := false
+var _plane_blocked_keys: Dictionary = {}
 
 
 func _paper_context() -> Dictionary:
@@ -3368,9 +3369,9 @@ func _paper_context() -> Dictionary:
 	var weird := anomaly()
 	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "now": session.clock.active_seconds,
 		"dead": story().dead, "can_stand": _can_stand.bind(room, float(p[1])),
-		"busy": (weird != null and weird.is_active()) or player.hiding or school().seated or school().inspection_pending() or school().inspection_upcoming()
+		"busy": (weird != null and weird.is_active()) or phone_open() or player.hiding or school().seated or school().inspection_pending() or school().inspection_upcoming()
 			or (patrol() != null and patrol().local_chase()) or (gaze() != null and not gaze().current().is_empty()),
-		"steer": {"l": Input.get_action_strength("move_left"), "r": Input.get_action_strength("move_right"), "u": Input.get_action_strength("move_forward"), "d": Input.get_action_strength("move_back")}}
+		"steer": _paper_steer()}
 
 
 func _paper_step(delta: float) -> void:
@@ -3379,76 +3380,72 @@ func _paper_step(delta: float) -> void:
 		return
 	plane.set_context(_paper_context())
 	plane.tick(delta)
-	_show_plane(plane)
 	_apply_paper_events()
+	_show_plane(plane)
+
+
+func _paper_owns_input() -> bool:
+	var plane := paper()
+	return plane!=null and plane.s["ev"]!=null and session.world_id==plane.s["ev"]["room"] and plane.phase() in ["read","flight"] and not story().over()
+
+
+func _set_paper_input(owned: bool) -> void:
+	if owned:
+		player.enabled = false
+		if not _plane_input_owned: player.clear_input()
+	elif _plane_input_owned:
+		player.clear_input()
+		if session!=null and session.running and not get_tree().paused and not story().over() and not ui.choice_open() and not ui.bag_open() and not ui.terminal_open() and not phone_open() and not knife_flow.captured():
+			player.enabled = true
+	_plane_input_owned = owned
+
+
+func _paper_steer() -> Dictionary:
+	var result := ui.paper_directions()
+	for key: String in ["l","r","u","d"]:
+		var action: String = {"l":"move_left","r":"move_right","u":"move_forward","d":"move_back"}[key]
+		var strength := Input.get_action_strength(action)
+		if strength<=0: _plane_blocked_keys.erase(key)
+		result[key] = minf(1,float(result.get(key,0))+(0.0 if _plane_blocked_keys.has(key) else strength))
+	return result
+
+
+func _clear_plane() -> void:
+	if is_instance_valid(_plane_nodes):
+		_plane_nodes.cancel_camera()
+		_plane_nodes.queue_free()
+	_plane_nodes = null
+	_plane_was_flying = false
+	_plane_blocked_keys.clear()
+	ui.set_paper_flight(false)
+	_set_paper_input(false)
 
 
 func _show_plane(plane: PaperPlaneModule) -> void:
 	var e: Variant = plane.s["ev"]
-	var here: bool = e != null and session.world_id == String(e["room"]) and e["phase"] != "hunt"
+	var here: bool = e!=null and session.world_id==String(e["room"]) and e["phase"]!="hunt" and not story().over()
 	if not here:
-		if is_instance_valid(_plane_nodes):
-			_plane_nodes.queue_free()
-		_plane_nodes = null
-		if _plane_pose != null:
-			player.restore_pose(_plane_pose)
-			_plane_pose = null
-			player.enabled = true
+		_clear_plane()
 		return
 	var world := _campus_world()
-	if world == null:
+	var window := plane.window_of(e)
+	if world==null or window.is_empty():
+		_clear_plane()
 		return
 	if not is_instance_valid(_plane_nodes):
-		_plane_nodes = Node3D.new()
-		_plane_nodes.name = "PaperPlane"
-		var body := MeshInstance3D.new()
-		body.name = "Plane"
-		var prism := PrismMesh.new()
-		prism.size = Vector3(0.22, 0.04, 0.34)
-		body.mesh = prism
-		var white := StandardMaterial3D.new()
-		white.albedo_color = Color(0.95, 0.93, 0.88)
-		white.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		body.material_override = white
-		_plane_nodes.add_child(body)
-		var hand := MeshInstance3D.new()
-		hand.name = "Hand"
-		var palm := BoxMesh.new()
-		palm.size = Vector3(0.09, 0.16, 0.03)
-		hand.mesh = palm
-		var skin := StandardMaterial3D.new()
-		skin.albedo_color = Color(0.8, 0.74, 0.65)
-		skin.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		hand.material_override = skin
-		_plane_nodes.add_child(hand)
+		_plane_nodes = PaperPlaneView.new()
+		_plane_nodes.build()
 		world.add_child(_plane_nodes)
-	var room: Variant = campus().room(session.world_id)
-	var w := plane.window_of(e)
-	var body_n := _plane_nodes.get_node("Plane") as Node3D
-	var hand_n := _plane_nodes.get_node("Hand") as Node3D
-	if w.is_empty():
-		return
-	var wp := CampusGeometry.to_scene(room, w["p"])
-	var lp := CampusGeometry.to_scene(room, Vector2(float(e["lx"]), float(e["ly"])))
-	hand_n.visible = e["kind"] == "danger" and e["phase"] != "ground"
-	hand_n.position = Vector3(wp.x + 0.3, 1.55, wp.y + float(w["nz"]) * 0.14)
-	var ph := String(e["phase"])
-	body_n.visible = ph in ["fly", "ground", "wait", "flight"]
-	if ph == "fly":
-		var k := minf(1.0, float(e["t"]) / PaperPlaneModule.FLY_IN)
-		body_n.position = Vector3(lerpf(wp.x, lp.x, k), 1.7 - 1.67 * k + 0.3 * sin(k * PI), lerpf(wp.y, lp.y, k))
-	elif ph == "ground" or ph == "wait":
-		body_n.position = Vector3(lp.x, 0.03, lp.y)
-	elif ph == "flight":
-		var f: Dictionary = e["f"]
-		var fp := CampusGeometry.to_scene(room, Vector2(float(f["x"]), float(f["y"])))
-		body_n.position = Vector3(fp.x, float(f["h"]), fp.y)
-		body_n.rotation = Vector3(-float(f["pitch"]), -float(f["yaw"]) - PI * 0.5, 0.0)
-		if _plane_pose == null:
-			_plane_pose = player.capture_pose()
-		player.enabled = false
-		var back := Vector2(cos(float(f["yaw"])), sin(float(f["yaw"]))) * 0.9
-		player.place({"position": [fp.x - back.x, float(f["h"]) + 0.28 - player.camera.position.y, fp.y - back.y], "yaw": CampusGeometry.yaw_from_ang(float(f["yaw"])), "pitch": float(f["pitch"]) - 0.12})
+	var flying: bool = e["phase"]=="flight"
+	if flying and not _plane_was_flying:
+		for key: String in ["l","r","u","d"]:
+			var action: String = {"l":"move_left","r":"move_right","u":"move_forward","d":"move_back"}[key]
+			if Input.is_action_pressed(action): _plane_blocked_keys[key] = true
+	_plane_was_flying = flying
+	ui.set_paper_flight(flying)
+	_set_paper_input(_paper_owns_input())
+	_plane_nodes.show_event(e,campus().room(session.world_id),window,player.camera)
+	if e["phase"]=="read" and ui.choice_open(): ui.show_paper_time(PaperPlaneModule.READ-float(e["t"]))
 
 
 func _apply_paper_events() -> void:
@@ -3482,10 +3479,12 @@ func _apply_paper_events() -> void:
 					else:
 						pl.fail("drop")
 					_apply_paper_events()
+					_show_plane(pl)
 				player.enabled = false
 				player.clear_input()
 				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 				ui.show_choice("纸上的字：\n" + String(e["text"]), ["折好投回（E）", "扔掉"], false)
+				ui.show_paper_time(PaperPlaneModule.READ)
 			"kill":
 				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
 				return
@@ -4639,6 +4638,7 @@ func _reach_ending(id: String) -> void:
 	if card.is_empty():
 		return
 	var fake := bool(card.get("fake",false))
+	_clear_plane()
 	player.enabled = false
 	player.clear_input()
 	audio.stop_all()
@@ -4925,6 +4925,7 @@ func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
 		ui.show_notice(error)
 		return error
 	var from_world := session.world_id
+	_clear_plane()
 	rules_dlc_flow.cancel()
 	if patrol() != null and from_world != world_id and school() != null:
 		var pp: Array = player.capture_pose()["position"]

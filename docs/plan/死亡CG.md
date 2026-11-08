@@ -4,14 +4,15 @@
 
 ## 待办与进度
 
-旧版共 29 种（22 种在 `death-cg.js`，7 种在各模块里注册）；`death-cg.js` 里的 22 种与四种公开的模块分镜已移植。公开死因对应关系见 `StoryModule.DURATIONS`／`EPITAPH`。
+当前 `DeathCG.CAUSES` 接入 38 种本体效果与 1 种规则 DLC 效果：包括原分镜注册项及另外九种 `anfx` 死亡道具。接入数量不等于每种模型和画面均完成精确对照；下面保留已知的简化表现。死因对应关系见 `StoryModule.DURATIONS`／`EPITAPH`。
 
 | 死因 | 状态 |
 | --- | --- |
 | trash 垃圾桶、liftdoor 电梯门缝、grip 脚下伸手、neck 长脖子、shadow 影子、twin 另一个你、shatter 车铃炸开、drown 溺水、water 天花板渗水、freeze 冷库、stare 全体回头、voice 广播点名、bell 十三下钟、follow 做操的人、deep 食堂盛宴坠坑、floor 水杯、ring 圈、loop 无尽走廊、lamps 熄灯、laugh 笑、swarm 蛾群、gaze 拍肩 | 已完成（gaze 的眼睛是平的圆片，旧版有贴图精灵；swarm 的蛾翅是方片；floor 的杯子是简化的白杯＋淡紫盖，没有旧版杯身上的二校门图案） |
 | window_gaze 窗内视线（7 秒）、paper_sender 纸飞机（8 秒）、misread 念错通知（4.1 秒）、campus_fall 坠落（6 秒） | 已完成（按死因的来源名选分镜，时长取各自的；字幕走左上角提示） |
-| 旧版另有两处带隐藏内容的分镜 | 不在此表（按保密规则，只在内部计划里处理） |
-| 其余的「画面特效渐隐」（vignette、names、chalk、slit、squeeze、face、wall、mirror、hand 等） | 旧版也没有独立分镜 |
+| crowd 电梯满员、void 与 abyss 特殊空间 | 分镜与规则已由 `CrowdDeath`／`MazeDeath` 接入；原运行时样本见迁移一致性验证 |
+| vignette、names、chalk、slit、squeeze、face、wall、mirror、hand | 原版由 anfx 构建的九种死亡道具，现由 `RemainingDeathProps` 复现；不是只有渐隐。27 组机位、243 个状态逐项对照 |
+| rules_knock | 规则 DLC 七秒专属分镜；原运行时 141 帧对照 |
 
 ## 差异
 
@@ -26,3 +27,5 @@
 ## 成就、CG 与积分检查（CLAUDE.md）
 
 只换演出，不改死因、判定与结算；不新增成就、死法。
+
+调试预览使用独立相机与声音随机序列，真实死亡、关闭、传送、读取、新局和菜单清理；档案回放有独立会话与资料边界。验证覆盖见 `tests/suites/remaining_death.gd`、`debug_tools.gd`、`archive.gd` 与 `rules_dlc.gd`。历史 29 项的早期说明不能代表当前总量，自动化仍不代替实际听感和全部主体分镜的画面核对。

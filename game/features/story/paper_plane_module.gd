@@ -31,6 +31,7 @@ const WIN_LOW := 1.0
 const WIN_HIGH := 2.25
 const U2M := CampusGeometry.U2M
 const TALL := "#S=dKbf"
+const FURNITURE := "dTtkfblVqnRcpxKCNZYXDwBGQvAHM" # original FURN_SOLID keys, including patrol additions
 const TIPS := ["学生会十二点五十、五点五十各查一次座位。坐在自己的位子上就行。", "食堂饭点以外，打饭窗口要一枚硬币。", "熄灯以后别在走廊里待太久。巡察者夜里也在走。", "听见窗后有呼吸声，就别往窗那边看。"]
 const DANGER_TEXT := "他还在那扇窗后等。读完就折好，别留在手里。\n送回有缺角的那扇窗，转弯别碰墙。"
 const FAIL_LINES := {"wall": "纸飞机一头撞在墙上，折痕裂开了。", "floor": "纸飞机栽到了地上。", "ceiling": "纸飞机撞上了天花板。", "timeout": "纸飞机在半空里停了一下，掉了下来。",
@@ -262,7 +263,7 @@ func _solid(r: Dictionary, p: Vector2, h: float) -> bool:
 	var ch := String(grid[row]).substr(c, 1)
 	if TALL.contains(ch):
 		return true
-	return h < 0.85 and ch != "." and ch != "O" and ch != "L" and ch != "J"
+	return h < 0.85 and FURNITURE.contains(ch)
 
 
 func _fly_step(e: Dictionary, w: Dictionary, r: Dictionary, dt: float) -> String:
