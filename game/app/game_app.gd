@@ -47,6 +47,15 @@ func _ready() -> void:
 	settings.load_file(DisplayServer.is_touchscreen_available())
 	ui.settings_requested.connect(func() -> void: ui.show_settings(settings.values))
 	ui.setting_changed.connect(_setting_changed)
+	ui.touch_layout_changed.connect(func(layout: Dictionary) -> void:
+		settings.touch_layout = TouchLayout.normalize(layout)
+		settings.save_file()
+		ui.apply_touch_scale(settings.get_int("touch_size"),settings.touch_layout))
+	ui.manual_requested.connect(_open_manual)
+	ui.torch_requested.connect(_touch_torch)
+	ui.hot_requested.connect(_touch_hot)
+	ui.bag_closed.connect(_close_bag)
+	ui.debug_requested.connect(_toggle_debug)
 	ui.fullscreen_requested.connect(func() -> void: _setting_changed("full_screen", 1 - settings.get_int("full_screen")))
 	ui.notes_requested.connect(_show_notes)
 	ui.results_requested.connect(_open_results)
@@ -677,7 +686,7 @@ func pause_game() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	ui.set_mode("pause")
 	if talent() != null and session != null:
-		ui.show_notice(talent().pause_text())
+		ui.show_pause_detail(talent().pause_text())
 
 
 func resume_game() -> void:
@@ -693,6 +702,8 @@ func resume_game() -> void:
 func _cancel_cinematics() -> void:
 	if is_instance_valid(maze_flow):
 		maze_flow.cancel()
+	if is_instance_valid(debug_panel):
+		debug_panel.stop_audition()
 	if is_instance_valid(_opening_cut):
 		_opening_cut.cancel()
 		_opening_cut.queue_free()
@@ -1272,6 +1283,8 @@ func _can_stand_point(w: Vector2) -> bool:
 
 
 func _item_keys(bag: InventoryModule) -> void:
+	if player.editing_text():
+		return
 	if Input.is_action_just_pressed("bag"):
 		if ui.bag_open():
 			_close_bag()
@@ -1299,9 +1312,44 @@ func _bag_entries() -> Array:
 	return out
 
 
+func _touch_torch() -> void:
+	if session == null or not player.enabled or story().over():
+		return
+	if not items().has("torch"):
+		ui.show_notice("没有手电筒")
+	else:
+		_apply_result(items().use("torch",school().tsec))
+
+
+func _touch_hot(index: int) -> void:
+	if session != null and player.enabled and not story().over():
+		_apply_result(items().use_hot(index,school().tsec))
+
+
+func _open_manual() -> void:
+	if session == null or not player.enabled or story().over() or opening_busy():
+		return
+	player.enabled = false
+	player.clear_input()
+	ui.clear_touch()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_choice_handler = func(index: int) -> void:
+		match index:
+			0: _open_bag()
+			1: _show_notes("")
+			2: _show_map("")
+			3: _lesson_press()
+			4:
+				facilities().set_context(_facility_context())
+				facilities().think()
+				_apply_facility_events()
+	ui.show_choice("手册",["背包","笔记","地图","课堂互动","逃生思路"])
+
+
 func _open_bag() -> void:
 	player.enabled = false
 	player.clear_input()
+	ui.clear_touch()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	ui.show_bag(_bag_entries())
 
@@ -2006,7 +2054,7 @@ func _apply_settings() -> void:
 	audio.captions.mode = settings.get_int("captions")
 	ui.apply_caption_scale(float(GameSettings.SUB_MULT[settings.get_int("sub")]))
 	ui.apply_text_scale(settings.get_int("text"))
-	ui.apply_touch_scale(settings.get_int("touch_size"))
+	ui.apply_touch_scale(settings.get_int("touch_size"), settings.touch_layout)
 	ui.set_grain(settings.get_int("grain") == 1)
 	player.mouse_sensitivity = 0.0025 * float(settings.get_int("mouse")) / 100.0
 	player.touch_sensitivity = 0.004 * float(settings.get_int("touch")) / 100.0
@@ -4323,8 +4371,7 @@ func driving() -> bool:
 func _drive_step(delta: float) -> void:
 	var cars := garage()
 	cars.set_context(_garage_context())
-	var steer := Input.get_axis("move_left", "move_right")
-	cars.chase_step(delta, {"throttle": Input.is_action_pressed("move_forward"), "braking": Input.is_action_pressed("move_back"), "steering": steer})
+	cars.chase_step(delta, _drive_input())
 	if cars.chase != null:
 		var d: Dictionary = cars.chase
 		_drive_view.update(d)
@@ -4336,6 +4383,16 @@ func _drive_step(delta: float) -> void:
 		if not story().dead:
 			ui.show_death_scene("vignette", float(d["pursuit"]) / CarChaseRules.PURSUIT_LIMIT * 0.6)
 	_apply_garage_events()
+
+
+func _drive_input() -> Dictionary:
+	# car-chase.js: the same joystick controls the car, including reverse pull to brake.
+	if player.editing_text():
+		return {"throttle":false,"braking":false,"steering":0.0}
+	var touch := ui.movement_touch()
+	return {"throttle":Input.is_action_pressed("move_forward") or touch.y < -.25,
+		"braking":Input.is_action_pressed("move_back") or touch.y > .3,
+		"steering":clampf(Input.get_axis("move_left","move_right")+touch.x,-1,1)}
 
 
 ## Escape routes: delayed lines, terminals, gates, the face quiz and endings.
@@ -4738,8 +4795,11 @@ func _toggle_debug() -> void:
 	if debug_panel == null:
 		debug_panel = DebugPanel.new(audio._index)
 		ui.get_node("Root").add_child(debug_panel)
-		debug_panel.sound_play.connect(func(id: String) -> void: audio.play(id, {"k": 1.0}))
-		debug_panel.sound_stop.connect(func() -> void: audio.stop_all())
+		debug_panel.closed.connect(func() -> void:
+			if session != null and player.enabled and not get_tree().paused and not ui.touch_enabled():
+				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED)
+		debug_panel.sound_play.connect(func(id: String) -> void: audio.audition(id))
+		debug_panel.sound_stop.connect(audio.stop_audition)
 		debug_panel.playtest_toggled.connect(func() -> void:
 			if playtest.recording:
 				playtest.stop()
@@ -4756,8 +4816,18 @@ func _toggle_debug() -> void:
 				debug_panel.say("本局已标为调试局：不计分，不进真实评级")
 			else:
 				debug_panel.say("没有进行中的一局"))
-	debug_panel.visible = not debug_panel.visible
 	if debug_panel.visible:
+		if debug_panel.collapsed:
+			debug_panel.set_collapsed(false)
+		else:
+			debug_panel.dismiss()
+			return
+	else:
+		debug_panel.show()
+	if debug_panel.visible:
+		player.clear_input()
+		ui.clear_touch()
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		debug_panel.set_playtest(playtest.recording, playtest.data.get("events", []).size(), not playtest.data.is_empty())
 
 
@@ -4768,7 +4838,7 @@ func _playtest_state() -> Dictionary:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F9:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_F2,KEY_F9]:
 		_toggle_debug()
 		get_viewport().set_input_as_handled()
 		return

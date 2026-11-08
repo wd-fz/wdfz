@@ -1,9 +1,9 @@
 class_name DebugPanel
-extends PanelContainer
+extends FloatingPanel
 ## The developer tools (debug-tab.js, sound-board.js, playtest.js; reference wd-fz.github.io@0bf508a).
 ## Not part of the player's game: it only opens in a debug build or when the game is started with
-## `--dev`, with F9. Three pages: 声音试听 (public sounds only — the sound bank has none of the hidden
-## ones), 试玩记录, 工具 (clear debug records; mark the run as not rated).
+## `--dev`, with F9 or the menu button. Audition, playtest notes and developer actions remain
+## usable in a bounded movable window, or a small floating dot.
 
 signal sound_play(id: String)
 signal sound_stop
@@ -25,6 +25,7 @@ var _msg: Label
 var _cats: Array = []
 var _ids: Array = []
 var playing_all := false
+var _audition_generation := 0
 
 
 static func enabled() -> bool:
@@ -32,19 +33,11 @@ static func enabled() -> bool:
 
 
 func _init(index: Dictionary = {}) -> void:
+	super()
 	_index = index
 	name = "DebugPanel"
 	visible = false
-	set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	grow_horizontal = Control.GROW_DIRECTION_BOTH
-	grow_vertical = Control.GROW_DIRECTION_BOTH
-	var back := StyleBoxFlat.new()
-	back.bg_color = Color(0.04, 0.04, 0.06, 0.99)
-	back.set_content_margin_all(12)
-	back.set_corner_radius_all(6)
-	add_theme_stylebox_override("panel", back)
 	var box := VBoxContainer.new()
-	box.custom_minimum_size = Vector2(520, 0)
 	box.add_theme_constant_override("separation", 6)
 	var head := Label.new()
 	head.text = "开发工具（不属于玩家的游戏）"
@@ -77,6 +70,8 @@ func _init(index: Dictionary = {}) -> void:
 	var row2 := HBoxContainer.new()
 	_snd = OptionButton.new()
 	_snd.name = "SoundId"
+	_snd.fit_to_longest_item = false
+	_snd.clip_text = true
 	_snd.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_snd.item_selected.connect(func(_i: int) -> void: _show_info())
 	row2.add_child(_snd)
@@ -115,7 +110,7 @@ func _init(index: Dictionary = {}) -> void:
 	prow.add_child(add)
 	box.add_child(prow)
 	box.add_child(HSeparator.new())
-	var tools := HBoxContainer.new()
+	var tools := HFlowContainer.new()
 	var clear := Button.new()
 	clear.name = "ClearDebug"
 	clear.text = "清除调试记录"
@@ -133,12 +128,18 @@ func _init(index: Dictionary = {}) -> void:
 	var close := Button.new()
 	close.name = "DebugClose"
 	close.text = "关闭"
-	close.pressed.connect(func() -> void:
-		visible = false
-		sound_stop.emit()
-		closed.emit())
+	close.pressed.connect(dismiss)
 	box.add_child(close)
-	add_child(box)
+	set_body(box)
+	for label: Node in box.find_children("*", "Label", true, false):
+		(label as Label).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		(label as Label).custom_minimum_size.x = 0
+	dismissed.connect(func() -> void:
+		stop_audition()
+		closed.emit())
+	visibility_changed.connect(func() -> void:
+		if not visible:
+			stop_audition())
 	_fill()
 
 
@@ -156,6 +157,7 @@ func ids_of(cat: String) -> Array:
 
 
 func _fill() -> void:
+	stop_audition()
 	_snd.clear()
 	_ids = []
 	if _cat.selected >= 0 and _cat.selected < _cats.size():
@@ -173,23 +175,31 @@ func _show_info() -> void:
 	_info.text = "%s · 约 %.1f 秒 · %d 个变体" % [_ids[_snd.selected], float(d["len"]), (d["files"] as Array).size()]
 
 
+func stop_audition() -> void:
+	_audition_generation += 1
+	playing_all = false
+	if is_instance_valid(_all):
+		_all.text = "整类连放"
+	sound_stop.emit()
+
+
 func _play_all() -> void:
 	if playing_all:
-		playing_all = false
-		_all.text = "整类连放"
-		sound_stop.emit()
+		stop_audition()
 		return
+	_audition_generation += 1
+	var generation := _audition_generation
 	playing_all = true
 	_all.text = "停止"
 	var t := 0.0
-	for id: String in _ids:
+	for id: String in _ids.duplicate():
 		var sid := id
 		get_tree().create_timer(t).timeout.connect(func() -> void:
-			if playing_all:
+			if playing_all and generation == _audition_generation and visible:
 				sound_play.emit(sid))
 		t += float(sfx()[id]["len"]) + 0.6
 	get_tree().create_timer(t).timeout.connect(func() -> void:
-		if playing_all:
+		if playing_all and generation == _audition_generation:
 			playing_all = false
 			_all.text = "整类连放")
 

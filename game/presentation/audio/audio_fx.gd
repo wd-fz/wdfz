@@ -46,6 +46,8 @@ var _index: Dictionary = {}
 var _streams: Dictionary = {}
 var _pool: Array[AudioStreamPlayer] = []
 var _pool3: Array[AudioStreamPlayer3D] = []
+var _audition: AudioStreamPlayer
+var _audition_rng := RandomNumberGenerator.new()
 var _next := 0
 var _next3 := 0
 var _beds: Dictionary = {}      # name → {player, gain}
@@ -187,6 +189,33 @@ func stream_of(id: String) -> AudioStream:
 	return _stream("sfx/" + String((d["files"] as Array)[0]["file"]), false)
 
 
+## A separate voice and RNG keep developer audition out of world sounds and captions.
+func audition(id: String) -> bool:
+	var d: Dictionary = _index.get("sfx",{}).get(id,{})
+	if d.is_empty() or not is_inside_tree():
+		return false
+	if _audition == null:
+		_audition_rng.randomize()
+		_audition = AudioStreamPlayer.new()
+		_audition.process_mode = Node.PROCESS_MODE_ALWAYS
+		add_child(_audition)
+	var files: Array = d["files"]
+	var take: Dictionary = files[_audition_rng.randi()%files.size()]
+	var vary: Dictionary = d.get("vary",{})
+	_audition.stop()
+	_audition.stream = _stream("sfx/"+String(take["file"]),false)
+	_audition.bus = "Ui" if d["cat"] == "ui" else "Sfx"
+	_audition.volume_db = float(take["db"])+linear_to_db(maxf(.001,1+_audition_rng.randf_range(-1,1)*float(vary.get("g",0))))
+	_audition.pitch_scale = maxf(.05,1+_audition_rng.randf_range(-1,1)*float(vary.get("p",0)))
+	_audition.play()
+	return true
+
+
+func stop_audition() -> void:
+	if is_instance_valid(_audition):
+		_audition.stop()
+
+
 ## One recipe. opts (as in sound-player.js): k loudness, pan −1…1, lp muffled (1 = clear), pitch,
 ## at delay in seconds; pos (Vector3) plays it at a place in the world instead of a pan.
 func play(id: String, opts: Dictionary = {}) -> bool:
@@ -274,6 +303,7 @@ func _cat_of(s: AudioStream) -> String:
 
 func stop_all() -> void:
 	stop()
+	stop_audition()
 	captions.reset()
 	for name: String in _beds:
 		var b: Dictionary = _beds[name]

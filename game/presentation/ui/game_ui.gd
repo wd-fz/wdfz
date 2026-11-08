@@ -36,6 +36,12 @@ signal map_requested(id: String)
 signal notes_requested(query: String)
 signal notes_focus_requested(route: String)
 signal setting_changed(key: String, value: int)
+signal touch_layout_changed(layout: Dictionary)
+signal manual_requested
+signal torch_requested
+signal hot_requested(index: int)
+signal bag_closed
+signal debug_requested
 
 @onready var menu: Control = %Menu
 @onready var pause_panel: Control = %PausePanel
@@ -71,6 +77,7 @@ func _ready() -> void:
 	_build_choice()
 	_build_status()
 	_build_bag()
+	_build_touch_tools()
 	_build_death()
 	var hard := Button.new()
 	hard.name = "HardGame"
@@ -90,8 +97,8 @@ func _ready() -> void:
 	sound.button_pressed = true
 	sound.toggled.connect(func(on: bool) -> void: sound_toggled.emit(on))
 	# Same menu height as before: the load button shares a row with the list, the touch toggle with the sound toggle.
-	var load_row := HBoxContainer.new()
-	var option_row := HBoxContainer.new()
+	var load_row := HFlowContainer.new()
+	var option_row := HFlowContainer.new()
 	var load_button: Button = %LoadGame
 	var touch_toggle: CheckButton = %TouchToggle
 	load_button.add_sibling(load_row)
@@ -115,7 +122,7 @@ func _ready() -> void:
 	load_row.add_child(run)
 	touch_toggle.reparent(option_row, false)
 	option_row.add_child(sound)
-	var extra_row := HBoxContainer.new()
+	var extra_row := HFlowContainer.new()
 	option_row.add_sibling(extra_row)
 	var imp := Button.new()
 	imp.name = "ImportMenu"
@@ -166,8 +173,18 @@ func _ready() -> void:
 	map_btn.custom_minimum_size = Vector2(0, 48)
 	map_btn.pressed.connect(func() -> void: map_requested.emit(""))
 	%Save.add_sibling(map_btn)
+	if DebugPanel.enabled():
+		for anchor: Node in [gear, gear2]:
+			var dev := Button.new()
+			dev.name = "DebugTools"
+			dev.text = "开发工具"
+			dev.custom_minimum_size.y = 44
+			dev.pressed.connect(func() -> void: debug_requested.emit())
+			anchor.add_sibling(dev)
 	load_button.owner = self
 	touch_toggle.owner = self
+	_scroll_menu(menu)
+	_scroll_menu(pause_panel)
 	set_touch_enabled(DisplayServer.is_touchscreen_available())
 	get_tree().root.size_changed.connect(_resize)
 	_resize()
@@ -210,6 +227,40 @@ func _resize() -> void:
 	_update_orient_hint()
 	if choice_panel != null and choice_panel.visible:
 		_fit_choice.call_deferred()
+	_refit_touch.call_deferred()
+	_fit_bag.call_deferred()
+	_fit_settings.call_deferred()
+	_fit_menu_scrolls.call_deferred()
+
+
+var _menu_scrolls: Array[ScrollContainer] = []
+
+
+func _scroll_menu(panel: Control) -> void:
+	var content: VBoxContainer = panel.get_node("Margin/Center/Content")
+	var scroll := ScrollContainer.new()
+	scroll.name = "MenuScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true
+	content.add_sibling(scroll)
+	content.reparent(scroll,false)
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.custom_minimum_size.x = 0
+	_menu_scrolls.append(scroll)
+	for child: Node in content.find_children("*","Label",true,false):
+		(child as Label).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+
+
+func _fit_menu_scrolls() -> void:
+	var view := get_viewport().get_visible_rect().size
+	for scroll: ScrollContainer in _menu_scrolls:
+		scroll.custom_minimum_size = Vector2(minf(560,view.x-48),maxf(160,view.y-64))
+
+
+func show_pause_detail(text: String) -> void:
+	var description: Label = pause_panel.get_node("Margin/Center/MenuScroll/Content/Description")
+	description.text = "时间已暂停，进度保存在本机。\n" + text
+	show_notice("")
 
 
 func _update_orient_hint() -> void:
@@ -340,13 +391,24 @@ func _build_bag() -> void:
 	bag_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	bag_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	bag_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	bag_panel.custom_minimum_size = Vector2(460, 0)
+	bag_panel.custom_minimum_size = Vector2(440, 0)
 	var box := VBoxContainer.new()
 	var title := Label.new()
-	title.text = "背包（Tab 关闭）"
+	title.text = "背包"
 	box.add_child(title)
+	_bag_scroll = ScrollContainer.new()
+	_bag_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_bag_scroll.custom_minimum_size.y = 300
 	_bag_list = VBoxContainer.new()
-	box.add_child(_bag_list)
+	_bag_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_bag_scroll.add_child(_bag_list)
+	box.add_child(_bag_scroll)
+	var close := Button.new()
+	close.name = "BagClose"
+	close.text = "关闭背包"
+	close.custom_minimum_size.y = 44
+	close.pressed.connect(func() -> void: bag_closed.emit())
+	box.add_child(close)
 	bag_panel.add_child(box)
 	$Root.add_child(bag_panel)
 	_search_ring = ProgressBar.new()
@@ -381,14 +443,15 @@ func show_bag(entries: Array) -> void:
 		var desc := Label.new()
 		desc.text = String(e["text"])
 		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		desc.custom_minimum_size = Vector2(420, 0)
+		desc.custom_minimum_size.x = 0
 		desc.modulate = Color(0.8, 0.85, 0.82)
 		row.add_child(desc)
-		var buttons := HBoxContainer.new()
+		var buttons := HFlowContainer.new()
 		var id := String(e["id"])
 		for spec: Array in [["使用", -1], ["放到快捷栏 1", 0], ["放到快捷栏 2", 1], ["丢弃", -2]]:
 			var b := Button.new()
 			b.text = spec[0]
+			b.custom_minimum_size.y = 44
 			b.name = "Drop_" + id if spec[1] == -2 else "Item_%s_%d" % [id, int(spec[1])]
 			if spec[1] == -1:
 				b.pressed.connect(item_use_requested.emit.bind(id))
@@ -400,6 +463,18 @@ func show_bag(entries: Array) -> void:
 		row.add_child(buttons)
 		_bag_list.add_child(row)
 	bag_panel.visible = true
+	_fit_bag()
+
+
+func _fit_bag() -> void:
+	if bag_panel == null or not bag_panel.visible:
+		return
+	var view := get_viewport().get_visible_rect().size
+	var width := minf(560,view.x-24)
+	bag_panel.custom_minimum_size.x = width
+	_bag_scroll.custom_minimum_size.y = minf(420,view.y-150)
+	bag_panel.size = Vector2(width,0)
+	bag_panel.position = (view-bag_panel.size)*.5
 
 
 func hide_bag() -> void:
@@ -1040,6 +1115,7 @@ const SETTING_ROWS := [
 ]
 var settings_panel: PanelContainer
 var _settings_box: VBoxContainer
+var _settings_scroll: ScrollContainer
 var _grain_rect: ColorRect
 
 
@@ -1062,13 +1138,21 @@ func show_settings(values: Dictionary) -> void:
 		head.text = "设置"
 		outer.add_child(head)
 		var scroll := ScrollContainer.new()
-		scroll.custom_minimum_size = Vector2(410, 340)
+		_settings_scroll = scroll
+		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		scroll.custom_minimum_size.y = 340
 		_settings_box = VBoxContainer.new()
 		_settings_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_settings_box.add_theme_constant_override("separation", 6)
 		scroll.add_child(_settings_box)
 		outer.add_child(scroll)
-		var buttons := HBoxContainer.new()
+		var layout := Button.new()
+		layout.name = "EditTouchLayout"
+		layout.text = "调整触屏布局"
+		layout.custom_minimum_size.y = 44
+		layout.pressed.connect(show_touch_layout_editor)
+		outer.add_child(layout)
+		var buttons := HFlowContainer.new()
 		var wipe := Button.new()
 		wipe.name = "ClearLastLife"
 		wipe.text = "清除上一局的痕迹"
@@ -1096,7 +1180,7 @@ func show_settings(values: Dictionary) -> void:
 			title.modulate = Color(1, 1, 1, 0.6)
 			_settings_box.add_child(title)
 			continue
-		var line := HBoxContainer.new()
+		var line := VBoxContainer.new()
 		var name_label := Label.new()
 		name_label.text = String(row[1])
 		name_label.custom_minimum_size = Vector2(150, 0)
@@ -1121,18 +1205,32 @@ func show_settings(values: Dictionary) -> void:
 			line.add_child(slider)
 			line.add_child(value_label)
 		else:
+			var choices := HFlowContainer.new()
+			line.add_child(choices)
 			var group := ButtonGroup.new()
 			for opt: Array in row[3]:
 				var b := Button.new()
 				b.name = "O_%s_%d" % [key, int(opt[1])]
 				b.text = String(opt[0])
+				b.custom_minimum_size.y = 44
 				b.toggle_mode = true
 				b.button_group = group
 				b.button_pressed = int(opt[1]) == cur
 				b.pressed.connect(func() -> void: setting_changed.emit(key, int(opt[1])))
-				line.add_child(b)
+				choices.add_child(b)
 		_settings_box.add_child(line)
 	settings_panel.visible = true
+	_fit_settings()
+
+
+func _fit_settings() -> void:
+	if settings_panel == null or not settings_panel.visible:
+		return
+	var view := get_viewport().get_visible_rect().size
+	settings_panel.custom_minimum_size.x = minf(650,view.x-24)
+	_settings_scroll.custom_minimum_size.y = maxf(120,minf(340,view.y-190))
+	settings_panel.size = Vector2(settings_panel.custom_minimum_size.x,0)
+	settings_panel.position = (view-settings_panel.size)*.5
 
 
 func apply_text_scale(pct: int) -> void:
@@ -1141,10 +1239,79 @@ func apply_text_scale(pct: int) -> void:
 	$Root.theme = theme
 
 
-func apply_touch_scale(pct: int) -> void:
-	for c: Control in [%MovePad, %TouchInteract, %TouchSprint]:
-		c.pivot_offset = c.size / 2.0
-		c.scale = Vector2.ONE * float(pct) / 100.0
+var _touch_percent := 100
+var _touch_layout: Dictionary = {}
+var _touch_tools: HBoxContainer
+var _layout_editor: TouchLayoutEditor
+
+
+func _build_touch_tools() -> void:
+	_touch_tools = HBoxContainer.new()
+	_touch_tools.name = "TouchTools"
+	_touch_tools.add_theme_constant_override("separation",4)
+	_touch_tools.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for spec: Array in [["手册","Manual"],["手电","Torch"],["1","Hot1"],["2","Hot2"]]:
+		var b := Button.new()
+		b.name = spec[1]
+		b.text = spec[0]
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(44,44)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.pressed.connect(func() -> void:
+			match spec[1]:
+				"Manual": manual_requested.emit()
+				"Torch": torch_requested.emit()
+				"Hot1": hot_requested.emit(0)
+				"Hot2": hot_requested.emit(1)
+			)
+		_touch_tools.add_child(b)
+	touch_controls.add_child(_touch_tools)
+	%TouchInteract.focus_mode = Control.FOCUS_NONE
+	%TouchSprint.focus_mode = Control.FOCUS_NONE
+	look_pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	look_pad.anchor_left = .42
+	look_pad.offset_top = 70
+
+
+func apply_touch_scale(pct: int, layout: Dictionary = {}) -> void:
+	_touch_percent = pct
+	_touch_layout = TouchLayout.normalize(layout)
+	_refit_touch()
+
+
+func _refit_touch() -> void:
+	if _touch_tools == null:
+		return
+	clear_touch()
+	var view := get_viewport().get_visible_rect().size
+	var rects := TouchLayout.resolve(view,_touch_layout,_touch_percent,[Rect2(0,0,view.x,68)])
+	var controls := {"stick": stick,"tools": _touch_tools}
+	for id: String in controls:
+		var c: Control = controls[id]
+		c.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+		c.position = rects[id].position
+		c.size = rects[id].size
+	var act: Rect2 = rects["actions"]
+	for c: Control in [%TouchInteract,%TouchSprint]:
+		c.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+		c.size = Vector2(act.size.x,(act.size.y-8)*.5)
+	%TouchSprint.position = act.position
+	%TouchInteract.position = Vector2(act.position.x,act.end.y-%TouchInteract.size.y)
+	_hot_label.visible = not _touch_enabled
+
+
+func show_touch_layout_editor() -> void:
+	if is_instance_valid(_layout_editor):
+		return
+	clear_touch()
+	_layout_editor = TouchLayoutEditor.new()
+	_layout_editor.layout = _touch_layout.duplicate(true)
+	_layout_editor.percent = _touch_percent
+	$Root.add_child(_layout_editor)
+	_layout_editor.saved.connect(func(layout: Dictionary) -> void:
+		touch_layout_changed.emit(layout)
+		_layout_editor.queue_free())
+	_layout_editor.cancelled.connect(func() -> void: _layout_editor.queue_free())
 
 
 ## sub: the size of toast and caption lines (SUB_MULT 0.6 / 1.0 / 1.6 in the Web version).
@@ -1651,6 +1818,19 @@ func set_lift_close(visible_now: bool) -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		if is_instance_valid(_layout_editor):
+			_layout_editor.queue_free()
+			get_viewport().set_input_as_handled()
+			return
+		if settings_panel != null and settings_panel.visible:
+			settings_panel.hide()
+			get_viewport().set_input_as_handled()
+			return
+		if bag_open():
+			bag_closed.emit()
+			get_viewport().set_input_as_handled()
+			return
 	if not choice_open() or not event is InputEventKey or not event.pressed or event.echo:
 		return
 	var key := (event as InputEventKey).physical_keycode
@@ -1671,10 +1851,15 @@ func set_touch_enabled(value: bool) -> void:
 	clear_touch()
 	if is_inside_tree():
 		_update_orient_hint()
+		_refit_touch()
 
 
 func touch_enabled() -> bool:
 	return _touch_enabled
+
+
+func movement_touch() -> Vector2:
+	return stick._value if _touch_enabled and touch_controls.is_visible_in_tree() else Vector2.ZERO
 
 
 func clear_touch() -> void:
@@ -1732,6 +1917,7 @@ var _stamina: ProgressBar
 var _status_on := false
 var bag_panel: PanelContainer
 var _bag_list: VBoxContainer
+var _bag_scroll: ScrollContainer
 var _search_ring: ProgressBar
 var _hot_label: Label
 
