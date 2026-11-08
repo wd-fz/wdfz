@@ -16,6 +16,7 @@ var chalk: ChalkNotes
 var phantoms: Phantoms
 var traces: Traces
 var broadcast_props: BroadcastProps
+var mirror_view: MirrorView
 var lighting: CampusLighting
 var _door_bodies: Dictionary = {}   # key -> CollisionShape3D
 var _door_leaves: Dictionary = {}   # key -> {"closed": Node3D, "open": Node3D}
@@ -48,6 +49,10 @@ func _ready() -> void:
 		broadcast_props.name = "BroadcastProps"
 		add_child(broadcast_props)
 		broadcast_props.build(layout)
+		if String(layout.get("host", "")) == "teach":
+			mirror_view = MirrorView.new()
+			mirror_view.name = "MirrorView"
+			add_child(mirror_view)
 	if not is_room():
 		_ready_banner()
 	else:

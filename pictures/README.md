@@ -53,3 +53,4 @@
 | [广播站道具](广播站道具/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture_broadcast_props.gd`：行政楼二楼广播站的功放、话筒、记录本与「功放保险丝已烧」的牌子 |
 | [连廊互看](连廊互看/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_link_view.gd`：站在连廊一里朝两头看，对面那栋楼的模型按端口的刚性变换摆进来，门洞里补了一盏灯 |
 | [旧存档导入](旧存档导入/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_import.gd`：主菜单「导入旧存档」面板（粘贴旧版 JSON，不合法时显示原因） |
+| [镜中轮廓](镜中轮廓/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_mirror.gd`：教学楼洗手池上方的镜子，SAN 高时轮廓与你同步；SAN 极低时它先抬起一只手 |

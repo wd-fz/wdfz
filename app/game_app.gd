@@ -3500,10 +3500,45 @@ func _show_visit(visit: ExchangeModule) -> void:
 		for i in 7:
 			var fig := FigureModel.make("person", Color(0.2, 0.25, 0.4) if i == 0 else (Color(0.7, 0.62, 0.5) if i < 4 else Color(0.03, 0.03, 0.04)), i >= 4, 0.93)
 			_visit_nodes.add_child(fig)
+		# The bilingual reception sign outside the north gate of the administration building (exchange-fx.js sign()).
+		var gp: Vector2 = visit.members()[0]
+		var sp := CampusGeometry.to_scene(null, Vector2(gp.x + 30.0, gp.y + 4.0))
+		var plate := MeshInstance3D.new()
+		var pq := QuadMesh.new()
+		pq.size = Vector2(1.2, 0.75)
+		plate.mesh = pq
+		var pm := StandardMaterial3D.new()
+		pm.albedo_color = Color("#eef0ea")
+		pm.cull_mode = BaseMaterial3D.CULL_DISABLED
+		pm.emission_enabled = true
+		pm.emission = Color(0.33, 0.33, 0.33)
+		plate.material_override = pm
+		plate.position = Vector3(sp.x, 1.2, sp.y)
+		_visit_nodes.add_child(plate)
+		var lines := [["国际交流 · 接待登记", 0.13, 0.22], ["Austausch · Anmeldung", 0.085, 0.0], ["Échange · Inscription", 0.085, -0.17]]
+		for ln: Array in lines:
+			var tl := Label3D.new()
+			tl.text = String(ln[0])
+			tl.font_size = 48
+			tl.pixel_size = float(ln[1]) / 48.0 * 0.9
+			tl.modulate = Color("#22324a")
+			tl.shaded = false
+			tl.double_sided = true
+			tl.position = Vector3(0, float(ln[2]), 0.003)
+			plate.add_child(tl)
+		var leg := MeshInstance3D.new()
+		var lm := BoxMesh.new()
+		lm.size = Vector3(0.06, 1.2, 0.06)
+		leg.mesh = lm
+		var legm := StandardMaterial3D.new()
+		legm.albedo_color = Color("#555b5e")
+		leg.material_override = legm
+		leg.position = Vector3(sp.x, 0.6, sp.y + 0.02)
+		_visit_nodes.add_child(leg)
 	var spots: Array = visit.members()
 	for h: Dictionary in visit.s.get("search", []):
 		spots.append(Vector2(float(h["x"]), float(h["y"])))
-	for i in _visit_nodes.get_child_count():
+	for i in 7:
 		var fig := _visit_nodes.get_child(i) as Node3D
 		fig.visible = i < spots.size()
 		if fig.visible:
@@ -4429,6 +4464,11 @@ func _phantom_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 	var inv := items()
 	ph.apparition(delta, calm, dark, inv != null and inv.torch_on, day_rules.san, cam, ang, room, h, stand, _line_clear.bind(room))
 	ph.tick_smile(delta, cam)
+	var tl := tales()
+	if world.mirror_view != null and tl != null:
+		if world.mirror_view.count() == 0:
+			world.mirror_view.build(room if room is Dictionary else {}, tl.mirrors(session.world_id))
+		world.mirror_view.update(delta, CampusGeometry.to_world(room, float(p[0]), float(p[2])), ang, day_rules.san, tl.raise, playing)
 
 
 func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: Dictionary) -> void:

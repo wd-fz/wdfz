@@ -117,6 +117,7 @@ func _run() -> void:
 	_test_chalk_texture()
 	_test_phantoms()
 	_test_traces()
+	_test_mirror_view()
 	_test_legacy_save()
 	_test_link_view()
 	_test_broadcast_props()
@@ -3267,6 +3268,21 @@ func _test_legacy_save() -> void:
 	var bad_clock := good.duplicate()
 	bad_clock["clockVersion"] = 9
 	check(not String(LegacySave.plan(bad_clock, rooms, items, keys)["error"]).is_empty(), "an unknown clock version is refused")
+
+
+func _test_mirror_view() -> void:
+	check(MirrorView.tier_of(90.0) == 0 and MirrorView.tier_of(55.0) == 1 and MirrorView.tier_of(30.0) == 2 and MirrorView.tier_of(10.0) == 3, "the four tiers of the mirror by SAN")
+	check(is_equal_approx(MirrorView.facing(0.0, Vector2(-1, 0)), 1.0) and is_equal_approx(MirrorView.facing(PI, Vector2(-1, 0)), -1.0), "facing is 1 when squarely at the mirror")
+	check(is_equal_approx(MirrorView.lateral(Vector2(10, 20), Vector2(0, 0), Vector2(-1, 0)), -20.0 * CampusGeometry.U2M) or is_equal_approx(MirrorView.lateral(Vector2(10, 20), Vector2(0, 0), Vector2(-1, 0)), 20.0 * CampusGeometry.U2M), "the sideways offset is measured along the mirror")
+	var buf: Array = [[0.0, 0.1, 1.0], [0.4, 0.2, 1.0], [0.8, 0.3, 1.0], [1.2, 0.4, 1.0]]
+	check(MirrorView.lagged(buf, 1.2, 0.5)[1] == 0.2 and MirrorView.lagged(buf, 1.2, 0.0)[1] == 0.4 and MirrorView.lagged(buf, 0.1, 0.5)[1] == 0.1, "a beat behind replays the position from half a second ago")
+	var mv := MirrorView.new()
+	root.add_child(mv)
+	mv.build(CampusData.rooms()["teach1"], [{"w": Vector2(1392.0, 1917.5), "n": Vector2(-1, 0)}])
+	check(mv.count() == 1, "a mirror hangs over the basin")
+	mv.update(0.1, Vector2(1380, 1917.5), 0.0, 10.0, 1.0, true)
+	check(((mv._mirrors[0]["arm"]) as Node3D).visible, "at the lowest tier with the raise on, the arm shows")
+	mv.queue_free()
 
 
 func _test_traces() -> void:
