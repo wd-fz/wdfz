@@ -30,6 +30,9 @@ func _run() -> void:
 	_check(CampusData.room_ids().size() == 42, "dynamic layout JSON or models missing")
 	_check(CampusData.tiers_available().size() == 5, "quality tiers missing")
 	_check(FileAccess.file_exists("res://assets/audio/index.json"), "audio index missing")
+	_check(FileAccess.file_exists(MazeDeath.GEOMETRY) and DeathGeometry.mesh("hall",MazeDeath.GEOMETRY).get_surface_count()==1, "dynamic maze death geometry missing")
+	for resource: String in ["res://assets/campus/crowd/full.png","res://assets/campus/exchange/exchange-sign.png","res://game/presentation/world/campus/dust_points.gdshader"]:
+		_check(ResourceLoader.exists(resource), "presentation resource missing: " + resource)
 	app.return_to_menu()
 	for id: String in ["out", "lab3", "teach1"]:
 		_check(app.router.switch_to(id).is_empty(), "cannot load " + id)
