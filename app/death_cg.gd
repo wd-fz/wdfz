@@ -31,6 +31,7 @@ var _cued := {}
 var _flashed := {}
 var _fx_cache := {}
 var _ui: GameUI
+var audio: AudioFx  ## set by the caller; the beat sounds of the scenes (SFX.door, sting, ...) go through it
 
 
 static func has(cause: String) -> bool:
@@ -273,6 +274,12 @@ func view(kk: float, dang: float, pitch: float, lift: float) -> void:
 	cam.position.y = _base_y + lift
 
 
+## One beat sound (the old SFX.* calls inside the scenes). Silent when no audio is attached (tests).
+func snd(sound_id: String, opts: Dictionary = {}) -> void:
+	if audio != null and is_instance_valid(audio):
+		audio.play(sound_id, opts)
+
+
 func cue(id: String, kk: float, at: float, fn: Callable) -> void:
 	if kk >= at and not _cued.has(id):
 		_cued[id] = true
@@ -320,6 +327,8 @@ func _build_trash() -> void:
 
 
 func _update_trash(kk: float) -> void:
+	cue("k1", kk, 1.9, func() -> void: snd("foley.door"))
+	cue("k2", kk, 2.35, func() -> void: snd("foley.door"))
 	var close := ss(kk, 0.6, 1.25)
 	var kn := maxf(exp(-(kk - 1.9) * 8.0) if kk >= 1.9 else 0.0, exp(-(kk - 2.35) * 8.0) if kk >= 2.35 else 0.0)
 	view(kk, 0.0, 0.95 * ss(kk, 0.0, 0.4) + 0.05 * sin(kk * 60.0) * kn * shk, -0.85 * ss(kk, 0.2, 1.0))
@@ -327,7 +336,9 @@ func _update_trash(kk: float) -> void:
 	(d["lamp"] as Node3D).visible = close < 0.97
 	(d["slit"] as Node3D).visible = close > 0.9
 	((d["slit"] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color.a = (0.22 + 0.55 * kn) * (1.0 - ss(kk, 2.8, 3.4))
-	cue("shut", kk, 1.2, func() -> void: _ui.cut_flash(0.0))
+	cue("shut", kk, 1.2, func() -> void:
+		_ui.cut_flash(0.0)
+		snd("foley.door"))
 	shade(0.55 * ss(kk, 1.1, 1.3) * (1.0 - 0.5 * kn) + 0.4 * ss(kk, 3.0, 3.5))
 
 
@@ -434,6 +445,7 @@ func _build_grip() -> void:
 
 
 func _update_grip(kk: float) -> void:
+	cue("grab", kk, 1.5, func() -> void: snd("threat.sting"))
 	var sink := ss(kk, 1.5, 3.0)
 	view(kk, 0.0, -0.55 * ss(kk, 0.0, 0.6) * (1.0 - sink) + 0.3 * sink + 0.04 * sin(kk * 23.0) * shk * sink, -1.25 * sink)
 	(d["stain"] as Node3D).scale = Vector3(1, 1, 1) * (0.15 + 2.4 * ss(kk, 0.0, 1.4))
@@ -549,6 +561,7 @@ func _build_twin() -> void:
 
 
 func _update_twin(kk: float) -> void:
+	cue("in", kk, 2.6, func() -> void: snd("foley.vanish"))
 	var walk := ss(kk, 0.8, 2.0)
 	var reach := ss(kk, 2.0, 2.6)
 	var end := ss(kk, 2.6, 3.0)
@@ -867,6 +880,7 @@ func _build_bell() -> void:
 
 
 func _update_bell(kk: float) -> void:
+	cue("hit", kk, 1.45, func() -> void: snd("event.bigBell"))
 	var drop := pow(seg(kk, 1.0, 1.45), 2.0)
 	var ring := exp(-maxf(0.0, kk - 1.45) * 1.6) if kk > 1.45 else 0.0
 	var sink_t := ss(kk, 2.6, 3.4)
@@ -1132,6 +1146,7 @@ func _build_loop() -> void:
 
 
 func _update_loop(kk: float) -> void:
+	cue("man", kk, 2.95, func() -> void: snd("threat.sting"))
 	view(kk, 0.0, -0.04, 0.0)
 	var scroll := maxf(0.0, kk - 0.8) * 3.0 - maxf(0.0, kk - 2.8) * 3.0
 	var narrow := ss(kk, 2.2, 2.8)
@@ -1171,6 +1186,10 @@ func _build_lamps() -> void:
 
 
 func _update_lamps(kk: float) -> void:
+	for i in 8:
+		var lamp_i := i
+		cue("off%d" % i, kk, 1.0 + float(7 - i) * 0.15, func() -> void: snd("world.crackle", {"k": 0.5 + 0.06 * float(7 - lamp_i)}))
+	cue("last", kk, 3.05, func() -> void: snd("threat.sting"))
 	view(kk, 0.0, 0.12 * ss(kk, 0.0, 0.5) - 0.12 * ss(kk, 1.0, 2.0), 0.0)
 	var i := 0
 	for l: Node3D in d["lamps"]:
@@ -1213,6 +1232,7 @@ func _face_me(o: Node3D) -> void:
 
 
 func _update_laugh(kk: float) -> void:
+	cue("big", kk, 2.6, func() -> void: snd("threat.smileJump"))
 	var near := ss(kk, 0.8, 1.8)
 	var swirl := ss(kk, 1.8, 2.6)
 	var end := ss(kk, 2.6, 3.2)
@@ -1316,6 +1336,7 @@ func _build_gaze() -> void:
 
 
 func _update_gaze(kk: float) -> void:
+	cue("giggle", kk, 1.75, func() -> void: snd("threat.smileBack", {"pan": 0.3}))
 	var turn := 0.22 * ss(kk, 0.15, 0.5) * (1.0 - ss(kk, 0.5, 0.8)) + PI * ss(kk, 0.8, 1.7)
 	view(kk, turn, -0.04, 0.0)
 	var close := ss(kk, 2.0, 2.9)

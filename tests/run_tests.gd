@@ -110,6 +110,7 @@ func _run() -> void:
 	_test_dev_tools()
 	_test_hands()
 	_test_opening()
+	_test_scene_beats()
 	_test_ending_cut()
 	_test_death_cg()
 	_test_day_banner()
@@ -3465,6 +3466,25 @@ func _test_death_cg() -> void:
 		check((StoryModule.DURATIONS.has(c) or DeathCG.LENGTH.has(c)) and DeathCG.has(c), "death scene %s has a duration and a scene" % c)
 	check(DeathCG.duration("misread", 2.0) == 4.1 and DeathCG.duration("trash", 3.6) == 3.6 and DeathCG.has("window_gaze") and DeathCG.has("paper_sender") and DeathCG.has("campus_fall"), "scenes of the cause's own length (window gaze 7 s, paper sender 8 s, misread 4.1 s, fall 6 s)")
 	check(not DeathCG.has("vignette") and DeathCG.seg(0.5, 0.0, 1.0) == 0.5 and DeathCG.seg(-1.0, 0.0, 1.0) == 0.0 and DeathCG.ss(0.5, 0.0, 1.0) == 0.5 and DeathCG.ss(2.0, 0.0, 1.0) == 1.0, "the easing helpers clamp")
+
+
+func _test_scene_beats() -> void:
+	# The beat sounds of the death, ending and opening scenes (old SFX.door / sting / vanish / smile / bigBell / crackle / engine / hum / blink / wake).
+	var cg := DeathCG.new()
+	var fired := [0]
+	cg.snd("foley.door")  # silent without audio: no error
+	cg.cue("x", 1.0, 1.5, func() -> void: fired[0] += 1)
+	cg.cue("x", 2.0, 1.5, func() -> void: fired[0] += 1)
+	check(fired[0] == 1, "a beat fires once, when its time comes")
+	var bank: Dictionary = (JSON.parse_string(FileAccess.get_file_as_string(AudioFx.INDEX)) as Dictionary)["sfx"]
+	var ids: Array = bank.keys()
+	for sound_id: String in ["foley.door", "threat.sting", "foley.vanish", "threat.smileBack", "threat.smileJump", "event.bigBell", "world.crackle", "scene.engine", "scene.hum", "scene.cyberEnd", "ui.click", "ui.blink", "foley.wake"]:
+		check(ids.has(sound_id), "beat sound %s is in the bank" % sound_id)
+	var src := FileAccess.get_file_as_string("res://app/death_cg.gd")
+	for pair: String in ["trash:k1", "grip:grab", "twin:in", "gaze:giggle", "bell:hit", "loop:man", "laugh:big", "lamps:last"]:
+		var parts := pair.split(":")
+		check(src.contains('cue("%s"' % parts[1]) and src.contains("func _update_%s(" % parts[0]), "death scene %s has its beat %s" % [parts[0], parts[1]])
+	cg.free()
 
 
 func _test_ending_cut() -> void:

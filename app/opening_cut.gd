@@ -35,6 +35,8 @@ const LINES := [
 
 var on := false
 var short := false
+var audio: AudioFx  ## set by the caller; the opening's beat sounds (crackle, blink, wake)
+var _sounded := {}
 var k := 0.0
 var cam: Camera3D
 var _ui: GameUI
@@ -195,7 +197,22 @@ static func mate_pose(kind: String, amp: float, f: float, ph: float, kk: float) 
 	return Vector2(0.02, amp * w)
 
 
+func _beats(kk: float) -> void:
+	if audio == null or not is_instance_valid(audio):
+		return
+	if kk > 0.37 and not _sounded.has("hum"):
+		_sounded["hum"] = true
+		audio.play("world.crackle", {"k": 0.6, "pan": 0.5})
+	if kk >= 0.72 and not _sounded.has("flip"):
+		_sounded["flip"] = true
+		audio.play("ui.blink")
+	if kk > 0.78 and not _sounded.has("wake"):
+		_sounded["wake"] = true
+		audio.play("foley.wake")
+
+
 func _apply(kk: float) -> void:
+	_beats(kk)
 	for m: Dictionary in _mates:
 		if is_instance_valid(m["node"]):
 			var pz := mate_pose(String(m["kind"]), float(m["amp"]), float(m["f"]), float(m["ph"]), kk)

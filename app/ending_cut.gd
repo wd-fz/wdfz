@@ -43,6 +43,7 @@ var _lamp: MeshInstance3D
 var _figs: Array = []
 var _beeped := false
 var _on_beep: Callable
+var audio: AudioFx  ## set by the caller before begin(); the scenes' own sounds (engine, hum, the gate's second click, the cyber ending bed)
 var _world: Node3D
 var _world_was_visible := true
 var _how := "exam"
@@ -168,16 +169,22 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	_root.add_child(cam)
 	cam.current = true
 	if id == "car":
+		snd("scene.engine")
 		_setup_car()
 		_ui.cut_fade(0.0)
 		_apply(0.0)
 		return
 	if id == "cyber":
+		# Ambient out, the ending's own bed in (faded when the scene ends).
+		if audio != null and is_instance_valid(audio):
+			audio.duck(_dur)
+		snd("scene.cyberEnd")
 		_setup_cyber()
 		_ui.cut_fade(0.0)
 		_apply(0.0)
 		return
 	if id == "portal":
+		snd("scene.hum")
 		_setup_portal()
 		_ui.cut_fade(0.0)
 		_apply(0.0)
@@ -213,6 +220,12 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	_apply(0.0)
 
 
+## A sound of the scene; silent without audio attached (tests, headless).
+func snd(sound_id: String, opts: Dictionary = {}) -> void:
+	if audio != null and is_instance_valid(audio):
+		audio.play(sound_id, opts)
+
+
 func _look(from: Vector3, to: Vector3) -> void:
 	if _sky != null:
 		_sky.global_position = from
@@ -244,6 +257,8 @@ func _apply(kk: float) -> void:
 			_beeped = true
 			if _on_beep.is_valid():
 				_on_beep.call()
+			# The gate answers with two clicks, 120 ms apart (the first is the app's own).
+			get_tree().create_timer(0.12, true).timeout.connect(func() -> void: snd("ui.click"))
 		_look(_g + Vector3(3.4, 1.6, 0.6), _g + Vector3(0.0, 1.3, 0.6))
 		for f: Node3D in _figs:
 			f.visible = false
@@ -291,6 +306,8 @@ func end(skipped: bool) -> void:
 	if not on:
 		return
 	on = false
+	if kind == "cyber" and audio != null and is_instance_valid(audio):
+		audio.stop("scene")
 	if STAGED.has(kind) and is_instance_valid(_world):
 		_world.visible = _world_was_visible
 	_ui.cut_caption("")

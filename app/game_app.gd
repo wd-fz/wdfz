@@ -319,6 +319,7 @@ func _play_opening() -> void:
 				f.store_string("1")
 				f.close()
 			_opening_done(skipped))
+		_opening_cut.audio = audio
 		_opening_cut.begin(world, room, player, ui, FileAccess.file_exists(seen))
 		return
 	ui.show_opening()
@@ -1458,6 +1459,7 @@ func _start_death_cg(fx: String) -> void:
 	_death_cg = DeathCG.new()
 	_death_cg.name = "DeathCG"
 	add_child(_death_cg)
+	_death_cg.audio = audio
 	_death_cg.begin(fx, player, world, ui, DeathCG.duration(fx, StoryModule.duration(fx)), settings.get_int("reduce_flash") == 1)
 
 
@@ -4220,6 +4222,7 @@ func _play_car_intro() -> void:
 	_ending_cut.finished.connect(func(_skipped: bool) -> void:
 		get_tree().paused = was_paused
 		_enter_drive())
+	_ending_cut.audio = audio
 	_ending_cut.begin("car", world, CampusData.campus(), player, ui)
 
 
@@ -4390,6 +4393,7 @@ func _reach_ending(id: String) -> void:
 			get_tree().paused = was_paused
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 			show_card.call())
+		_ending_cut.audio = audio
 		_ending_cut.begin(id, world, CampusData.campus(), player, ui, func() -> void: audio.play("ui.click"), {"how": String(exchange().s.get("how", "exam")) if exchange() != null else "exam"})
 		return
 	show_card.call()
