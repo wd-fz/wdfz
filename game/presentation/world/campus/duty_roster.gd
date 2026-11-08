@@ -20,6 +20,9 @@ var boards: Array[MeshInstance3D] = []
 var tier := -1
 var today := -1
 var _busy := false
+var _view: SubViewport
+var _board_index := 0
+var _draw_frames := 0
 
 
 static func tier_of(tt: float) -> int:
@@ -50,46 +53,81 @@ func setup(r: Dictionary) -> void:
 
 ## Called every frame with the assimilation tier and the weekday (day - 1) % 5.
 func update(t: int, today_i: int) -> void:
-	if boards.is_empty() or (t == tier and today_i == today) or _busy:
+	if boards.is_empty() or (t == tier and today_i == today):
 		return
+	_release_view()
 	tier = t
 	today = today_i
+	_board_index = 0
+	_busy = t != 0
 	if t == 0:
 		for b in boards:
 			b.visible = false
 		return
-	_busy = true
-	for i in boards.size():
-		var tex: Texture2D = await texture(t, today_i, "duty%d:%d:%d" % [i, t, today_i])
-		var mat := StandardMaterial3D.new()
-		mat.albedo_texture = tex
-		mat.roughness = 1.0
-		boards[i].material_override = mat
-		boards[i].visible = tier == t
+	_request_texture()
+
+
+## A node-owned draw job can be cancelled when its room leaves the tree. No suspended
+## coroutine keeps the previous board's material alive while the next texture is drawn.
+func _request_texture() -> void:
+	if not _busy or not is_inside_tree() or is_queued_for_deletion() or _view != null:
+		return
+	while _board_index < boards.size():
+		var key := "duty%d:%d:%d" % [_board_index, tier, today]
+		if _cache.has(key):
+			_apply_texture(_cache[key])
+			continue
+		_view = SubViewport.new()
+		_view.size = SIZE
+		_view.transparent_bg = false
+		_view.render_target_update_mode = SubViewport.UPDATE_ONCE
+		var canvas := Sheet.new()
+		canvas.size = Vector2(SIZE)
+		canvas.t = tier
+		canvas.today = today
+		canvas.key = key
+		_view.add_child(canvas)
+		add_child(_view)
+		_draw_frames = 0
+		RenderingServer.frame_post_draw.connect(_after_draw)
+		return
 	_busy = false
 
 
-func texture(t: int, today_i: int, key: String) -> Texture2D:
-	if _cache.has(key):
-		return _cache[key]
-	var vp := SubViewport.new()
-	vp.size = SIZE
-	vp.transparent_bg = false
-	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
-	var canvas := Sheet.new()
-	canvas.size = Vector2(SIZE)
-	canvas.t = t
-	canvas.today = today_i
-	canvas.key = key
-	vp.add_child(canvas)
-	add_child(vp)
-	await RenderingServer.frame_post_draw
-	await RenderingServer.frame_post_draw
-	var img := vp.get_texture().get_image()
-	vp.queue_free()
-	var tex := ImageTexture.create_from_image(img)
-	_cache[key] = tex
-	return tex
+func _after_draw() -> void:
+	if not is_inside_tree() or is_queued_for_deletion():
+		_release_view()
+		return
+	_draw_frames += 1
+	if _draw_frames < 2:
+		return
+	var tex := ImageTexture.create_from_image(_view.get_texture().get_image())
+	_cache["duty%d:%d:%d" % [_board_index, tier, today]] = tex
+	_release_view()
+	_apply_texture(tex)
+	_request_texture.call_deferred()
+
+
+func _apply_texture(tex: Texture2D) -> void:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = tex
+	mat.roughness = 1.0
+	boards[_board_index].material_override = mat
+	boards[_board_index].visible = true
+	_board_index += 1
+
+
+func _release_view() -> void:
+	if RenderingServer.frame_post_draw.is_connected(_after_draw):
+		RenderingServer.frame_post_draw.disconnect(_after_draw)
+	if is_instance_valid(_view):
+		_view.queue_free()
+	_view = null
+
+
+func _exit_tree() -> void:
+	_busy = false
+	_release_view()
 
 
 class Sheet extends Control:

@@ -456,3 +456,42 @@ func _test_dev_tools() -> void:
 		total += dp.ids_of(String(c)).size()
 	check(total == dp.sfx().size() and total > 100, "the sound audition lists the whole bank by category (%d)" % total)
 	dp.free()
+
+
+func _test_duty_roster_lifecycle() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	await _frames(3)
+	DutyRoster._cache.clear()
+	var roster := DutyRoster.new()
+	root.add_child(roster)
+	roster.setup(CampusData.rooms()["teach1"])
+	roster.update(1, 2)
+	for _i in 12:
+		await _frames(1)
+		if roster.boards[0].material_override != null:
+			break
+	check(roster.boards[0].material_override != null and roster._busy,
+		"the first roster is visible while the next classroom board is rendering")
+	var old_material: WeakRef = weakref(roster.boards[0].material_override)
+	var old_roster: WeakRef = weakref(roster)
+	roster.queue_free()
+	await _frames(3)
+	check(old_roster.get_ref() == null and old_material.get_ref() == null,
+		"removing a room during a roster draw releases its owner and rendered materials")
+	roster = DutyRoster.new()
+	root.add_child(roster)
+	roster.setup(CampusData.rooms()["teach1"])
+	roster.update(2, 2)
+	roster.update(4, 3) # An in-flight update must not leave the previous tier on the wall.
+	for _i in roster.boards.size() * 4 + 4:
+		await _frames(1)
+		if not roster._busy:
+			break
+	check(not roster._busy and roster.boards.all(func(b: MeshInstance3D) -> bool:
+		return b.visible and b.material_override != null), "all classroom rosters finish after the tier changes")
+	roster.update(0, 3)
+	check(not roster._busy and roster.boards.all(func(b: MeshInstance3D) -> bool: return not b.visible),
+		"tier zero hides the rewritten boards and cancels pending work")
+	roster.queue_free()
+	await _frames(3)

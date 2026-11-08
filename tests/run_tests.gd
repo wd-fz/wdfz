@@ -179,6 +179,8 @@ func _run() -> void:
 	presentation._test_chalk_notes()
 	print("CASE: presentation._test_chalk_texture")
 	presentation._test_chalk_texture()
+	print("CASE: presentation._test_duty_roster_lifecycle")
+	await presentation._test_duty_roster_lifecycle()
 	print("CASE: presentation._test_phantoms")
 	presentation._test_phantoms()
 	print("CASE: presentation._test_traces")
