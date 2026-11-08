@@ -406,7 +406,9 @@ func _pick_talent(difficulty: String, speed: bool = false) -> void:
 
 ## Carry what can be carried of an old Web save into a new run (app/legacy_save.gd). Returns "" or why not.
 func import_legacy_save(text: String) -> String:
-	var parsed: Variant = JSON.parse_string(text.strip_edges())
+	# A JSON instance, not parse_string: pasted text that is not JSON is an ordinary answer here, not an engine error.
+	var json := JSON.new()
+	var parsed: Variant = json.data if json.parse(text.strip_edges()) == OK else null
 	var p := LegacySave.plan(parsed, CampusData.rooms(), CampusData.campus().get("items", {}), TalentModule.KEYS)
 	if not String(p["error"]).is_empty():
 		return String(p["error"])
