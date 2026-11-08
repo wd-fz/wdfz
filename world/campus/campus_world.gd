@@ -153,10 +153,38 @@ func set_lift_doors(amount: float) -> void:
 		shape.set_deferred("disabled", amount >= 0.9)
 
 
-## Inspection silhouettes (InspectionView): placeholder dark figures until the figure models and
-## their scatter animation are ported.
+## Inspection silhouettes (InspectionView, fx/inspection-fx.js): the old figure, black. When the check ends they scatter:
+## away from the player at 1.5 m/s, fading out over 0.8 s (scatter_t).
 var _silhouettes: Node3D
 var _silhouette_key := ""
+var _scatter: Node3D
+var _scatter_t := 0.0
+var _scatter_dirs: Array = []
+const SCATTER_SECONDS := 0.8
+const SCATTER_SPEED := 1.5
+
+
+func _process(delta: float) -> void:
+	if _scatter == null or not is_instance_valid(_scatter):
+		return
+	_scatter_t += delta
+	var alpha := maxf(0.0, 1.0 - _scatter_t / SCATTER_SECONDS)
+	var i := 0
+	for f: Node3D in _scatter.get_children():
+		var dir: Vector2 = _scatter_dirs[i]
+		f.position += Vector3(dir.x, 0.0, dir.y) * delta * SCATTER_SPEED
+		for mi: Node in f.find_children("*", "MeshInstance3D", true, false):
+			var m := (mi as MeshInstance3D).material_override as StandardMaterial3D
+			if m != null:
+				m.albedo_color.a = alpha
+		i += 1
+	if _scatter_t >= SCATTER_SECONDS:
+		_scatter.queue_free()
+		_scatter = null
+
+
+func scattering() -> bool:
+	return _scatter != null and is_instance_valid(_scatter)
 
 
 func show_silhouettes(points: Array, room: Variant, height: float) -> void:
@@ -165,7 +193,20 @@ func show_silhouettes(points: Array, room: Variant, height: float) -> void:
 		return
 	_silhouette_key = key
 	if is_instance_valid(_silhouettes):
-		_silhouettes.queue_free()
+		if points.is_empty() and not _scatter_dirs_of(_silhouettes, room).is_empty():
+			# The check is over: they scatter instead of vanishing.
+			if is_instance_valid(_scatter):
+				_scatter.queue_free()
+			_scatter = _silhouettes
+			_scatter_t = 0.0
+			_scatter_dirs = _scatter_dirs_of(_silhouettes, room)
+			for f: Node in _scatter.get_children():
+				for mi: Node in f.find_children("*", "MeshInstance3D", true, false):
+					var m := (mi as MeshInstance3D).material_override as StandardMaterial3D
+					if m != null:
+						m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		else:
+			_silhouettes.queue_free()
 	_silhouettes = null
 	if points.is_empty():
 		return
@@ -177,6 +218,24 @@ func show_silhouettes(points: Array, room: Variant, height: float) -> void:
 		var fig := FigureModel.make("person", Color(0.02, 0.02, 0.025), false, 0.95)
 		fig.position = Vector3(s.x, height, s.y)
 		_silhouettes.add_child(fig)
+
+
+## Directions (x, z) from the player to each figure; the player is where the camera looks from (the first person).
+var _player_scene := Vector3.ZERO
+
+
+func set_player_scene(p: Vector3) -> void:
+	_player_scene = p
+
+
+func _scatter_dirs_of(group: Node3D, _room: Variant) -> Array:
+	var out: Array = []
+	for f: Node3D in group.get_children():
+		var dx := f.position.x - _player_scene.x
+		var dz := f.position.z - _player_scene.z
+		var len := maxf(0.001, sqrt(dx * dx + dz * dz))
+		out.append(Vector2(dx / len, dz / len))
+	return out
 
 
 ## The patroller's figure (patEnsureFig / patRender): the exported teacher figure scaled 1.12,

@@ -114,6 +114,7 @@ func _run() -> void:
 	_test_death_cg()
 	_test_day_banner()
 	_test_chalk_notes()
+	_test_inspection_scatter()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
@@ -3189,6 +3190,13 @@ func _test_records_panel() -> void:
 	check(panel.open_view(a, true) and panel._map.trails[0]["pts"].size() == 4 and not panel._map.here, "the footprint map shows the whole path, no marker")
 	check(not panel.open_view("nope", true), "a missing replay does not open")
 	panel.queue_free()
+
+
+func _test_inspection_scatter() -> void:
+	var rooms := CampusData.rooms()
+	var cw := CampusWorld.new()
+	check(not cw.scattering(), "no scatter before a check")
+	cw.free()
 
 
 func _test_chalk_notes() -> void:

@@ -1071,6 +1071,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 		"can_stand": _can_stand.bind(room, float(p[1])), "line_clear": _line_clear.bind(room), "snack": snack, "pill_san": pill_san})
 	var world := _campus_world()
 	if world != null:
+		world.set_player_scene(Vector3(float(p[0]), float(p[1]), float(p[2])))
 		world.show_silhouettes(day_rules.inspection_points(), room, float(p[1]))
 	player.can_sprint = day_rules.can_run(snack) and (body() == null or body().can_run())
 	_patrol_step(delta, watcher, day_rules, room, pose)
