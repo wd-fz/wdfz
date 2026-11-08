@@ -7,7 +7,7 @@ extends Node
 ## a turn and a lift change (and are put back at the end); a veil sphere on it closes the scene.
 ## Not every cause has a scene yet (CAUSES lists the ported ones); the others keep the screen-effect fade.
 
-const CAUSES := ["trash", "liftdoor", "crowd", "grip", "neck", "shadow", "twin", "shatter", "drown", "water", "freeze", "stare", "voice", "bell", "follow", "deep", "floor", "ring", "loop", "lamps", "laugh", "swarm", "gaze", "window_gaze", "paper_sender", "misread", "campus_fall", "void", "abyss"]
+const CAUSES := ["trash", "liftdoor", "crowd", "grip", "neck", "shadow", "twin", "shatter", "drown", "water", "freeze", "stare", "voice", "bell", "follow", "deep", "floor", "ring", "loop", "lamps", "laugh", "swarm", "gaze", "window_gaze", "paper_sender", "misread", "campus_fall", "void", "abyss", "vignette", "hand", "names", "chalk", "mirror", "face", "squeeze", "slit", "wall"]
 ## Scenes that carry their own length (seconds) when the cause is not one of StoryModule.DURATIONS.
 const LENGTH := {"window_gaze": 7.0, "paper_sender": 8.0, "misread": 4.1, "campus_fall": 6.0}
 
@@ -21,6 +21,7 @@ var veil_mesh: MeshInstance3D
 var shk := 1.0
 var rand := RandomNumberGenerator.new()
 var d: Dictionary = {}                 # per-scene state
+var remaining_props: RemainingDeathProps
 var _player: PlayerController
 var _world: Node3D
 var _world_was_visible := true
@@ -74,7 +75,14 @@ func begin(cause: String, player: PlayerController, world: Node3D, ui: GameUI, d
 	F.global_position = Vector3(player.global_position.x, player.global_position.y, player.global_position.z)
 	F.rotation.y = player.rotation.y + PI          # local +z = the gaze
 	veil_mesh = null
-	call("_build_" + cause)
+	if RemainingDeathProps.CAUSES.has(cause):
+		F.global_position=Vector3.ZERO
+		F.rotation=Vector3.ZERO
+		remaining_props=RemainingDeathProps.new()
+		F.add_child(remaining_props)
+		remaining_props.stage(cause,player.global_position,CampusGeometry.ang_from_yaw(player.rotation.y))
+	else:
+		call("_build_" + cause)
 	update(0.0)
 
 
@@ -97,6 +105,7 @@ func _restore() -> void:
 	if F != null and is_instance_valid(F):
 		F.queue_free()
 	F = null
+	remaining_props=null
 	if _sky != null and is_instance_valid(_sky):
 		_sky.queue_free()
 	_sky = null
@@ -296,7 +305,11 @@ func cue(id: String, kk: float, at: float, fn: Callable) -> void:
 
 
 func update(kk: float) -> void:
-	call("_update_" + fx, kk)
+	if remaining_props!=null:
+		remaining_props.present(kk,_player.global_position,CampusGeometry.ang_from_yaw(_player.rotation.y))
+		if remaining_props.camera_pitch!=null: cam.rotation.x=float(remaining_props.camera_pitch)
+	else:
+		call("_update_" + fx, kk)
 
 
 func _build_crowd() -> void:
