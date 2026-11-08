@@ -546,6 +546,7 @@ func _unwire(old: GameSession) -> void:
 
 
 func _install_session(candidate: GameSession, pose: Dictionary) -> void:
+	_cancel_ending_cut()
 	if session != null:
 		_unwire(session)
 		session.stop()
@@ -679,7 +680,15 @@ func resume_game() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
 
 
+func _cancel_ending_cut() -> void:
+	if is_instance_valid(_ending_cut):
+		_ending_cut.cancel()
+		_ending_cut.queue_free()
+	_ending_cut = null
+
+
 func return_to_menu() -> void:
+	_cancel_ending_cut()
 	_last_result = {}
 	_fake_people_clear()
 	_stop_snake(true)
@@ -4368,7 +4377,10 @@ func _reach_ending(id: String) -> void:
 		meta += " · " + SchoolClock.fmt_clock(school().tsec)
 	if run_line != "":
 		meta += "\n" + run_line
+	var ending_session := session
 	var show_card := func() -> void:
+		if session != ending_session:
+			return
 		ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta, achievements().run_new_labels() if achievements() != null else PackedStringArray(),
 			"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""))
 	var world := _campus_world()
@@ -4378,6 +4390,8 @@ func _reach_ending(id: String) -> void:
 		travel("out", {"position": [gate.x, 0.05, gate.z - 4.0], "yaw": 0.0, "pitch": 0.0}, false)
 		await get_tree().process_frame
 		await get_tree().process_frame
+		if session != ending_session:
+			return
 		world = _campus_world()
 	if EndingCut.has(id) and world != null and session != null and (session.world_id == "out" or not EndingCut.needs_outdoor(id)) and DisplayServer.get_name() != "headless":
 		if _ending_cut != null and is_instance_valid(_ending_cut):
@@ -4766,6 +4780,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _exit_tree() -> void:
+	_cancel_ending_cut()
 	if session != null:
 		_unwire(session)
 		session.stop()

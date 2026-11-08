@@ -323,3 +323,21 @@ func _face_tile(app: GameApp, scene: String, ch: String, key: String) -> bool:
 
 
 ## The portal route through the app: tunnel, diary, three blueprints, parts, the circle, 《门》.
+
+
+## End route cinematics through the same input path as a player, before checking the card.
+func _skip_cut(app: GameApp) -> void:
+	await _frames(4)
+	if not is_instance_valid(app._ending_cut) or not app._ending_cut.on:
+		return
+	check(paused and not app.player.enabled, "the live cutscene holds simulation and player input")
+	var key := InputEventKey.new()
+	key.keycode = KEY_SPACE
+	key.physical_keycode = KEY_SPACE
+	key.pressed = true
+	Input.parse_input_event(key)
+	await _frames(2)
+	key.pressed = false
+	Input.parse_input_event(key)
+	await _frames(2)
+	check(not app._ending_cut.on, "Space skips the live ending through real input")

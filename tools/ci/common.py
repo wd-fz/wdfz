@@ -21,7 +21,11 @@ def run(label, command, reports, timeout=600, cwd=ROOT):
             with log.open(encoding="utf-8", errors="replace") as reader:
                 tail = ""
                 while process.poll() is None:
-                    tail = (tail + reader.read())[-16000:]
+                    chunk = reader.read()
+                    tail = (tail + chunk)[-16000:]
+                    for line in chunk.splitlines():
+                        if line.startswith("CASE:"):
+                            print(line, flush=True)
                     if re.search(r"(?:SCRIPT ERROR:|ERROR:)", tail):
                         raise RuntimeError(f"{label} printed an engine error; see {log}")
                     if time.monotonic() > deadline:

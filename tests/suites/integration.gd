@@ -89,6 +89,7 @@ func _test_campus_app() -> void:
 		var err := app.router.switch_to(id)
 		check(err.is_empty(), "world %s registered and instantiable" % id)
 	app.router.clear()
+	print("CASE: integration._test_stair_walk")
 	await _test_stair_walk(app)
 	app.queue_free()
 	await _frames()
@@ -113,27 +114,51 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _walk(app, [Vector2(-1.25, 0.8), Vector2(-1.25, 5.6), Vector2(-1.25, 6.4), Vector2(1.25, 6.4), Vector2(1.25, 5.6), Vector2(1.25, 0.8), Vector2(0.0, -0.3), Vector2(0.0, -3.2)], 240)
 	check(app.session.world_id == "teach2", "climbing one flight pair and walking out reaches teach2 (now %s, y=%.2f)" % [app.session.world_id, app.player.position.y])
 	check(absf(app.player.position.y) < 0.2, "teach2 floor is at the scene's own ground level")
+	print("CASE: integration._test_spiral_walk")
 	await _test_spiral_walk(app)
+	print("CASE: integration._test_elevator_walk")
 	await _test_elevator_walk(app)
+	print("CASE: integration._test_patrol_app")
 	await _test_patrol_app(app)
+	print("CASE: integration._test_anomaly_fx")
 	await _test_anomaly_fx(app)
+	print("CASE: integration._test_audio")
 	await _test_audio(app)
+	print("CASE: integration._test_cut_lifecycle")
+	await _test_cut_lifecycle(app)
+	print("CASE: integration._test_whitelist_route")
 	await _test_whitelist_route(app)
+	print("CASE: integration._test_achievement_flow")
 	await _test_achievement_flow(app)
+	print("CASE: integration._test_archive")
 	await _test_archive(app)
+	print("CASE: integration._test_death_scene")
 	await _test_death_scene(app)
+	print("CASE: integration._test_car_route")
 	await _test_car_route(app)
+	print("CASE: integration._test_portal_route")
 	await _test_portal_route(app)
+	print("CASE: integration._test_dismissal_route")
 	await _test_dismissal_route(app)
+	print("CASE: integration._test_cyber_route")
 	await _test_cyber_route(app)
+	print("CASE: integration._test_vault_app")
 	await _test_vault_app(app)
+	print("CASE: integration._test_lesson_app")
 	await _test_lesson_app(app)
+	print("CASE: integration._test_speedrun_app")
 	await _test_speedrun_app(app)
+	print("CASE: integration._test_marks_app")
 	await _test_marks_app(app)
+	print("CASE: integration._test_sensory_app")
 	await _test_sensory_app(app)
+	print("CASE: integration._test_settings_app")
 	await _test_settings_app(app)
+	print("CASE: integration._test_score_app")
 	await _test_score_app(app)
+	print("CASE: integration._test_checkup_app")
 	await _test_checkup_app(app)
+	print("CASE: integration._test_death_flow")
 	await _test_death_flow(app)
 	app.return_to_menu()
 
@@ -357,6 +382,7 @@ func _test_whitelist_route(app: GameApp) -> void:
 	check(app.ui.choice_open(), "the green gate choice is open")
 	app._choice_made(0)
 	await _frames(2)
+	await _skip_cut(app)
 	check(app.story().ended == "face" and app.ui.ending_panel != null and app.ui.ending_panel.visible, "the ending card is shown")
 	check(not app.saves.exists() and not app.player.enabled, "the run is over and the save is cleared")
 	check(FileAccess.file_exists(app.saves.side_path("ends.json")), "the ending is recorded")
@@ -459,6 +485,8 @@ func _test_car_route(app: GameApp) -> void:
 			break
 	var waited := 0
 	while not app.driving() and waited < 200:
+		if is_instance_valid(app._ending_cut) and app._ending_cut.on:
+			await _skip_cut(app)
 		await process_frame
 		waited += 1
 	check(app.driving() and app._drive_view != null and app.session.world_id == "out", "the right car starts the drive on the road out")
@@ -472,6 +500,7 @@ func _test_car_route(app: GameApp) -> void:
 	Input.action_press("move_forward")
 	await _frames(4)
 	Input.action_release("move_forward")
+	await _skip_cut(app)
 	check(app.story().ended == "car" and app.ui.ending_panel.visible and not app.driving(), "driving out is the 《闸门》 ending")
 	check(app.achievements().unlocked.has("e.end_car") and app.achievements().unlocked.has("e.firstcar"), "with its achievements")
 	app.return_to_menu()
@@ -522,6 +551,7 @@ func _test_portal_route(app: GameApp) -> void:
 	check(app.ui.choice_open(), "after a moment the circle asks")
 	app._choice_made(0)
 	await _frames(2)
+	await _skip_cut(app)
 	check(app.story().ended == "portal" and app.ui.ending_panel.visible, "walking in is the 《门》 ending")
 	check(app.achievements().unlocked.has("e.end_portal"), "with its achievement")
 	app.return_to_menu()
@@ -578,6 +608,7 @@ func _test_dismissal_route(app: GameApp) -> void:
 		if app.story().ended != "":
 			won = true
 			break
+	await _skip_cut(app)
 	check(won and app.story().ended == "dismissal" and app.ui.ending_panel.visible, "following the crowd out of the north gate is 《放学》")
 	check(app.achievements().unlocked.has("e.end_dismissal"), "with its achievement")
 	app.return_to_menu()
@@ -618,6 +649,7 @@ func _test_cyber_route(app: GameApp) -> void:
 	check(app.story().ended == "", "not before ten minutes")
 	app._phone_step(2.0)
 	await _frames(2)
+	await _skip_cut(app)
 	check(app.story().ended == "cyber" and app.ui.ending_panel.visible, "surviving ten minutes is 《网安仙人》")
 	check(app.achievements().unlocked.has("e.end_cyber"), "with its achievement")
 	app.return_to_menu()
@@ -978,3 +1010,28 @@ func _test_spiral_walk(app: GameApp) -> void:
 	await _walk(app, [c + Vector2(cos(th0 + 2.0), sin(th0 + 2.0)) * rm], 90)
 	var q := Vector2(app.player.position.x, app.player.position.z) - c
 	check(q.length() > float(sp["rOut"]) + 0.2 and app.player.position.y < 0.2, "ground under the stair is solid away from the entry")
+
+
+func _test_cut_lifecycle(app: GameApp) -> void:
+	if DisplayServer.get_name() == "headless":
+		return # Live cinematics are intentionally disabled by the app in this mode.
+	for action: String in ["menu", "new_game"]:
+		app.start_new_game()
+		app.travel("out", {"position": [0.0, 0.05, 0.0], "yaw": 0.0, "pitch": 0.0}, false)
+		await _frames(2)
+		app._reach_ending("face")
+		await _frames(2)
+		var old_cut := app._ending_cut
+		check(is_instance_valid(old_cut) and old_cut.on, "a visible ending starts before " + action)
+		var completed := [0]
+		old_cut.finished.connect(func(_skipped: bool) -> void: completed[0] += 1)
+		if action == "menu":
+			app.return_to_menu()
+		else:
+			app.start_new_game()
+		await _frames(3)
+		check(app._ending_cut == null and not is_instance_valid(old_cut) and completed[0] == 0,
+			"leaving an ending cancels props and callbacks on " + action)
+		check(not paused and (app.ui.ending_panel == null or not app.ui.ending_panel.visible),
+			"an abandoned ending cannot reopen its card or pause the next run")
+	app.return_to_menu()

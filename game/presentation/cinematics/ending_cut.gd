@@ -334,8 +334,8 @@ func _unhandled_input(event: InputEvent) -> void:
 func tick(delta: float) -> void:
 	if not on:
 		return
-	if not is_instance_valid(_root):
-		end(true)
+	if not is_instance_valid(_root) or not _root.is_inside_tree() or not is_instance_valid(cam) or not cam.is_inside_tree():
+		cancel()
 		return
 	k += delta / _dur
 	if k >= 1.0:
@@ -345,22 +345,33 @@ func tick(delta: float) -> void:
 
 
 func end(skipped: bool) -> void:
+	_finish(skipped, true)
+
+
+## Leaving a run is not completing or skipping its ending. Do not call the old continuation.
+func cancel() -> void:
+	_finish(true, false)
+
+
+func _finish(skipped: bool, notify: bool) -> void:
 	if not on:
 		return
 	on = false
-	_ui.cut_mode(false)
-	if kind == "cyber" and audio != null and is_instance_valid(audio):
+	if is_instance_valid(_ui):
+		_ui.cut_mode(false)
+		_ui.cut_caption("")
+		_ui.cut_flash(0.0)
+		_ui.cut_fade(0.0)
+	if (kind == "cyber" or not notify) and audio != null and is_instance_valid(audio):
 		audio.stop("scene")
 	if STAGED.has(kind) and is_instance_valid(_world):
 		_world.visible = _world_was_visible
-	_ui.cut_caption("")
-	_ui.cut_flash(0.0)
-	_ui.cut_fade(0.0)
 	if is_instance_valid(_player) and _player.camera != null:
 		_player.camera.current = true
 	if is_instance_valid(_root):
 		_root.queue_free()
-	finished.emit(skipped)
+	if notify:
+		finished.emit(skipped)
 
 
 # ---- 《外国语学生》 ----
