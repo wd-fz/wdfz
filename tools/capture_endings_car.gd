@@ -27,13 +27,15 @@ func _run() -> void:
 	app.start_new_game("easy")
 	for _i in 10:
 		await process_frame
+	app.travel("garage1", {"position": [28.5, 0.05, -0.5], "yaw": 1.5708, "pitch": 0.0}, false)
+	for _i in 30:
+		await process_frame
 	app.player.enabled = false
 	app._play_car_intro()
 	var cut: EndingCut = app._ending_cut
 	cut.set_process(false)
-	for spec: Array in [["car-1-lights", 0.1], ["car-2-lights-steady", 0.28], ["car-3-gate", 0.65], ["car-4-chase", 0.85]]:
+	for spec: Array in [["car-1-lights", 0.1], ["car-2-lights-steady", 0.28], ["car-3-gate", 0.45], ["car-3b-gate", 0.65], ["car-4-chase", 0.85]]:
 		cut.k = float(spec[1])
 		cut._apply(cut.k)
-		print("F0 ", (cut._walk[0] as Node3D).position, " vis ", (cut._walk[0] as Node3D).visible, " cam ", cut.cam.global_position)
 		await _shot(String(spec[0]))
 	quit()

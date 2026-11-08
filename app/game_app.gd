@@ -4223,7 +4223,12 @@ func _play_car_intro() -> void:
 		get_tree().paused = was_paused
 		_enter_drive())
 	_ending_cut.audio = audio
-	_ending_cut.begin("car", world, CampusData.campus(), player, ui)
+	var gate := EndingCut.gate_scene(CampusData.campus(), "n")
+	var switch_out := func() -> Node3D:
+		# Out of the garage and through the north gate: the real outdoors, in front of the gate (cutscene.js car, beginOutsideStage).
+		travel("out", {"position": [gate.x, 0.05, gate.z - 4.0], "yaw": 0.0, "pitch": 0.0}, false)
+		return _campus_world()
+	_ending_cut.begin("car", world, CampusData.campus(), player, ui, Callable(), {"switch": switch_out, "tsec": school().tsec if school() != null else 0.0})
 
 
 func _enter_drive() -> void:

@@ -51,6 +51,14 @@ var _dis_teach := Vector2.ZERO
 var _campus_env: Environment
 var _campus_light: CampusLighting
 var _cy_base := Vector3.ZERO
+var _car_switch: Callable          # the app's world switch for the car intro (garage -> outside the gate)
+var _car_tsec := 0.0
+var _car_live := false
+var _car_switched := false
+var _car_p := Vector3.ZERO
+var _car_f := Vector3.FORWARD
+var _car_gate := Vector3.ZERO
+var _car_figs: Array = []
 var _device: PortalDevice          # the portal rig in the real lab (the staged fallback has plain blocks instead)
 var _device_at := Vector3.ZERO
 var _last_kk := 0.0
@@ -163,7 +171,13 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	_world = world
 	# 《门》 plays in the real lab with the real rig when the player is there (the ending only starts there).
 	var live_portal := id == "portal" and String(world.get("scene_id")) == "lab1"
-	if STAGED.has(id) and not live_portal:
+	# 《闸门》片头 starts in the real garage (the world stays) and switches to the real outside of the gate halfway.
+	_car_live = id == "car" and opts.has("switch") and String(world.get("scene_id")) != "out"
+	if _car_live:
+		_car_switch = opts["switch"]
+		_car_tsec = float(opts.get("tsec", 0.0))
+		add_child(_root)
+	elif STAGED.has(id) and not live_portal:
 		# Its own stages far from the real scene: the world is hidden meanwhile.
 		_how = String(opts.get("how", "exam"))
 		_world_was_visible = world.visible
@@ -192,7 +206,10 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	cam.current = true
 	if id == "car":
 		snd("scene.engine")
-		_setup_car()
+		if _car_live:
+			_setup_live_car(world, player)
+		else:
+			_setup_car()
 		_ui.cut_fade(0.0)
 		_apply(0.0)
 		return
@@ -1131,6 +1148,89 @@ static func car_fade(kk: float) -> float:
 	return (kk - 0.9) / 0.1 if kk > 0.9 else 0.0
 
 
+## Headlights in the real garage: the player's spot and facing, the beam on the floor 4.4 m ahead, the thing 6.5 m ahead (cutscene.js car).
+func _setup_live_car(world: Node3D, player: PlayerController) -> void:
+	_car_p = Vector3(player.global_position.x, 0.0, player.global_position.z)
+	var fwd := -player.global_transform.basis.z
+	_car_f = Vector3(fwd.x, 0.0, fwd.z).normalized()
+	_beam = MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 1.0
+	cm.bottom_radius = 1.0
+	cm.height = 0.01
+	_beam.mesh = cm
+	_beam.scale = Vector3(1.3, 1.0, 3.4)
+	_beam.position = _car_p + _car_f * 4.4 + Vector3(0, 0.02, 0)
+	_beam.rotation.y = atan2(_car_f.x, _car_f.z)
+	var bm := StandardMaterial3D.new()
+	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bm.albedo_color = Color(1.0, 0.9, 0.69, 0.0)
+	_beam.material_override = bm
+	_root.add_child(_beam)
+	_thing = FigureModel.make("roam", Color("#05070a"), true)
+	_thing.position = _car_p + _car_f * 6.5
+	_thing.rotation.y = atan2(-_car_f.x, -_car_f.z) + PI    # faces the car
+	_thing.visible = false
+	_root.add_child(_thing)
+	_car_gate = gate_scene(_campus, "n")
+	for i in 12:
+		var f := FigureModel.make("person", Color("#040506"), true, 1.0 + float((i * 7) % 3) * 0.05)
+		f.visible = false
+		_root.add_child(f)
+		_car_figs.append(f)
+	var lit: Variant = world.get("lighting")
+	if lit is CampusLighting:
+		_campus_env = (lit as CampusLighting).env
+		_campus_light = lit as CampusLighting
+	cam.environment = _campus_env
+
+
+## Halfway: out through the gate. The app switches to the real outdoors; the black figures come out of the gate behind you.
+func _car_go_outside() -> void:
+	_car_switched = true
+	_beam.visible = false
+	_thing.visible = false
+	var nw: Variant = _car_switch.call()
+	if nw is Node3D:
+		_world = nw as Node3D
+		_world.visible = true
+		var lit: Variant = _world.get("lighting")
+		if lit is CampusLighting:
+			_campus_light = lit as CampusLighting
+			_campus_env = _campus_light.env
+			_campus_light.update(0.0, _car_tsec, cam)
+		cam.environment = _campus_env
+
+
+func _apply_live_car(kk: float) -> void:
+	_ui.cut_fade(clampf(car_fade(kk), 0.0, 1.0))
+	if kk < 0.36:
+		((_beam.material_override) as StandardMaterial3D).albedo_color = Color(1.0, 0.9, 0.69, 0.2 * car_lights(kk))
+		_thing.visible = car_thing_visible(kk)
+		var sh := sin(kk * 70.0) * 0.012 if kk > 0.16 else 0.0
+		_look(_car_p + Vector3(0, 1.15 + sh, 0), _car_p + _car_f * 6.0 + Vector3(0, 1.0, 0))
+		return
+	if not _car_switched:
+		_car_go_outside()
+	var t := clampf((kk - 0.36) / 0.64, 0.0, 1.0)
+	var g := _car_gate
+	var z := lerpf(g.z - 2.0, g.z - 30.0, ease_k(t))
+	var sway := sin(kk * 34.0) * 0.025
+	var from := Vector3(g.x + sway, 1.25, z)
+	_look(from, Vector3(g.x, 1.8, g.z + 24.0))
+	for i in _car_figs.size():
+		var f: Node3D = _car_figs[i]
+		var side := 1.0 if i % 2 == 1 else -1.0
+		var row := float(i / 2)
+		var c := clampf((t - 0.12 - float(i) * 0.03) / 0.7, 0.0, 1.0)
+		f.visible = c > 0.0
+		f.position = Vector3(g.x + side * (0.5 + row * 0.28) * (1.0 - 0.4 * c), absf(sin(kk * 30.0 + float(i))) * 0.06, lerpf(g.z + 3.0, z + 5.0 + row * 1.5, c * 0.92))
+		f.rotation.y = atan2(f.position.x - from.x, f.position.z - from.z)
+	if _campus_env != null:
+		_campus_env.fog_density = lerpf(0.012, 0.04, t)
+
+
 func _setup_car() -> void:
 	var a := Node3D.new()
 	_root.add_child(a)
@@ -1185,6 +1285,9 @@ func _setup_car() -> void:
 
 
 func _apply_car(kk: float) -> void:
+	if _car_live:
+		_apply_live_car(kk)
+		return
 	var out := kk >= 0.36
 	(_st[0] as Node3D).visible = not out
 	(_st[1] as Node3D).visible = out
