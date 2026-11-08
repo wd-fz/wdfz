@@ -334,7 +334,7 @@ func _finish(skipped: bool, notify: bool) -> void:
 	on = false
 	if is_instance_valid(_ui):
 		_ui.set_normal_world(_normal_before)
-	if is_instance_valid(_lighting):
+	if is_instance_valid(_lighting) and _lighting.is_inside_tree():
 		_lighting.world_normal=_normal_before
 		_lighting.update(0,700.0,_player.camera if is_instance_valid(_player) else null)
 	if is_instance_valid(_ui):
