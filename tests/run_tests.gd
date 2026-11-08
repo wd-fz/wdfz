@@ -117,6 +117,7 @@ func _run() -> void:
 	_test_chalk_texture()
 	_test_phantoms()
 	_test_traces()
+	_test_weather_fx()
 	_test_model_tiers()
 	_test_anomaly_traces()
 	_test_chase_dash()
@@ -3334,6 +3335,32 @@ func _test_model_tiers() -> void:
 	CampusData.tier = 0
 	check(CampusData.scene_path("teach1") == CampusData.SCENE_DIR + "teach1.glb" or CampusData.tiers_available().has(0), "a tier that is not exported falls back to the default models")
 	CampusData.tier = was
+
+
+func _test_weather_fx() -> void:
+	check(WeatherFx.wetness(0.0) == 0.0 and WeatherFx.wetness(5.0) == 0.5 and WeatherFx.wetness(30.0) == 1.0, "the puddles fill in ten seconds")
+	check(WeatherFx.threat(0.0, false) == 0.0 and WeatherFx.threat(6.5, false) == 1.0 and WeatherFx.threat(4.5, true) == 1.0 and WeatherFx.threat(3.0, true) > WeatherFx.threat(3.0, false), "the swarm closes in faster on nightmare")
+	var rain := WeatherFx.new()
+	root.add_child(rain)
+	rain.setup_rain(Vector3.ZERO)
+	for i in 30:
+		rain.update_rain(0.05, Vector3.ZERO, 0.0)
+	check(rain._seeds.size() == WeatherFx.RAIN_COUNT and rain._puddles.size() == 9, "the rain has its drops and puddles")
+	var seen := 0
+	for m in rain._rings:
+		seen += 1 if m.visible else 0
+	check(seen > 0, "drops that land spread rings (%d)" % seen)
+	rain.queue_free()
+	var swarm := WeatherFx.new()
+	root.add_child(swarm)
+	swarm.setup_moths(Vector3(2, 0, 3))
+	for i in 40:
+		swarm.update_moths(0.05, Vector3(0, 1.7, 0), 6.5, false)
+	var nearest := 99.0
+	for m: Dictionary in swarm._moths:
+		nearest = minf(nearest, (m["p"] as Vector3).distance_to(Vector3(0, 1.7, 0)))
+	check(nearest >= 0.34 and swarm.distance < 3.0, "the swarm is drawn onto you but never onto your face (nearest %.2f m, mean %.2f)" % [nearest, swarm.distance])
+	swarm.queue_free()
 
 
 func _test_traces() -> void:

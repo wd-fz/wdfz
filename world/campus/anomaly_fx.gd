@@ -117,12 +117,17 @@ func _particles(count: int, lifetime: float, size: Vector3, color: Color, extent
 func _build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vector2) -> void:
 	match id:
 		"rain", "raindots":
-			_extra["rain"] = _particles(420, 0.7, Vector3(0.012, 0.5, 0.012), Color(0.68, 0.78, 0.9, 0.75), Vector3(9, 0.1, 9), Vector3(0, -40, 0), 4.0)
-			(_extra["rain"] as CPUParticles3D).position.y = 9.0
+			var rain := WeatherFx.new()
+			_props.add_child(rain)
+			rain.setup_rain(feet)
+			_extra["rain"] = rain
 		"moth":
-			var cloud := _particles(160, 1.2, Vector3(0.05, 0.05, 0.05), Color(0.82, 0.78, 0.66), Vector3(0.9, 0.7, 0.9), Vector3.ZERO, 1.5)
-			cloud.spread = 180.0
-			_extra["cloud"] = cloud
+			var msrc: Dictionary = d.get("src", {"x": 0.0, "y": 0.0})
+			var ms := _at(room, float(msrc["x"]), float(msrc["y"]))
+			var swarm := WeatherFx.new()
+			_props.add_child(swarm)
+			swarm.setup_moths(Vector3(ms.x, feet.y, ms.y))
+			_extra["swarm"] = swarm
 		"exercise":
 			var src: Dictionary = d.get("src", {"x": 0.0, "y": 0.0})
 			var c := _at(room, float(src["x"]), float(src["y"]))
@@ -272,12 +277,9 @@ func _animate(id: String, t: float, d: Dictionary, room: Variant, feet: Vector3,
 	var me := Vector3(feet.x, feet.y, feet.z)
 	match id:
 		"rain", "raindots":
-			(_extra["rain"] as CPUParticles3D).global_position = Vector3(me.x, me.y + 9.0, me.z)
+			(_extra["rain"] as WeatherFx).update_rain(dt, Vector3(me.x, me.y + 1.7, me.z), me.y)
 		"moth":
-			var src: Dictionary = d.get("src", {"x": 0.0, "y": 0.0})
-			var s := _at(room, float(src["x"]), float(src["y"]))
-			var k := clampf(t / 6.5, 0.0, 1.0)
-			(_extra["cloud"] as CPUParticles3D).global_position = Vector3(lerpf(s.x, me.x, k), me.y + 1.6, lerpf(s.y, me.z, k))
+			(_extra["swarm"] as WeatherFx).update_moths(dt, Vector3(me.x, me.y + 1.7, me.z), t, bool(d.get("hard", false)))
 		"exercise":
 			var swing := sin(t * 5.0) * 0.12
 			for f: Node3D in _extra["figs"]:
