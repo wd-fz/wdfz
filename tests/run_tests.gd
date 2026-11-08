@@ -59,6 +59,8 @@ func _run() -> void:
 	await documents.test_layout_and_input()
 	print("CASE: documents.test_microphone_boundaries")
 	await documents.test_microphone_boundaries()
+	print("CASE: documents.test_outing_notes")
+	await documents.test_outing_notes()
 	var archive := preload("res://tests/suites/archive.gd").new(self)
 	print("CASE: archive.test_reference")
 	archive.test_reference()

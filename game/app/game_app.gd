@@ -2476,7 +2476,8 @@ func _show_notes(query: String = "") -> void:
 		focus = "car" if routes.any(func(r: Array) -> bool: return r[0] == "car") else ""
 	var listing := inv.list(query)
 	ui.show_notes({"goal": inv.goal(), "focus": focus, "routes": routes, "recent": listing["recent"], "groups": listing["groups"],
-		"progress": inv.progress(), "found": listing["found"], "query": query})
+		"progress": inv.progress(), "found": listing["found"], "query": query,
+		"duty": school().duty_summary(), "permanent": bool(patrol().pat["permanent"])})
 
 
 func _notes_focus(route: String) -> void:

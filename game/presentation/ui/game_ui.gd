@@ -1455,6 +1455,13 @@ func show_notes(data: Dictionary) -> void:
 			b.pressed.connect(func() -> void: notes_focus_requested.emit(String(r[0])))
 			row.add_child(b)
 		_notes_box.add_child(row)
+	var duty := String(data.get("duty",""))
+	if not duty.is_empty() or bool(data.get("permanent",false)):
+		_note_label("外出记录",Color(1,.9,.55))
+		if bool(data.get("permanent",false)):
+			_note_label("登记后缺席：持续追踪仍生效。假条、重新登记和符纸不能解除。",Color(1,.7,.65))
+		if not duty.is_empty():
+			_note_label("仍须到教室参加："+duty+"。许可到期不免除责任；系统取消的检查会顺延。",Color.WHITE)
 	if not query.is_empty():
 		_note_label(("找到 %d 条" % int(data["found"])) if int(data["found"]) > 0 else "没有找到仍能回忆的对应记录。", Color(1, 1, 1, 0.7))
 	var recent: Array = data["recent"]

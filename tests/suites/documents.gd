@@ -147,3 +147,48 @@ func test_microphone_boundaries() -> void:
 		check(not app._mic_panel.visible and not app._mic_open and not app._mic_hold_button and not previous.held,"session boundary releases the previous microphone, panel and reading: "+boundary)
 	app.queue_free()
 	await _frames(2)
+
+
+func test_outing_notes() -> void:
+	var app: GameApp = APP.instantiate()
+	app.saves = SaveStore.new(_test_path.get_base_dir()+"/outing-notes/slot.json")
+	app.settings = GameSettings.new(app.saves.side_path("settings.json"))
+	root.add_child(app)
+	await _frames(2)
+	app.wuda_roll = func() -> float: return 1
+	app.start_new_game("hard","none")
+	app.set_physics_process(false)
+	app.player.set_physics_process(false)
+	var day := app.school()
+	var text := func() -> String:
+		var parts := PackedStringArray()
+		for child in app.ui._notes_box.get_children():
+			if child is Label: parts.append(child.text)
+		return "\n".join(parts)
+	app._show_notes()
+	check(not text.call().contains("外出记录"),"notes omit an outing card when no duty or permanent pursuit exists")
+	day.day = 2
+	day.tsec = 700
+	check(day.grant_outing(true),"real outing registration creates the pending attendance duty")
+	var before := day.capture().duplicate(true)
+	app._show_notes("没有匹配的记录")
+	check(text.call().contains("仍须到教室参加：第 2 天 12:50。许可到期不免除责任；系统取消的检查会顺延。"),"original outing summary remains visible during note search")
+	check(same_json(before,day.capture()),"reading the card cannot renew a permit or change a duty")
+	day._duty_cancel({"day":2,"slot":0})
+	app._show_notes()
+	check(text.call().contains("第 2 天 17:50") and not text.call().contains("第 2 天 12:50"),"a system-cancelled inspection shows the rolled-forward obligation")
+	day._duty_settle({"day":2,"slot":1},false,false)
+	app.patrol().registered_absence("2:1")
+	app._show_notes()
+	check(text.call().contains("登记后缺席：持续追踪仍生效。假条、重新登记和符纸不能解除。") and not text.call().contains("仍须到教室参加"),"a settled absence shows the original permanent pursuit warning")
+	day.tsec = 1100
+	day.grant_outing(true)
+	app._show_notes()
+	check(text.call().contains("第 3 天 12:50") and text.call().contains("持续追踪仍生效"),"new registration retains permanent pursuit and shows tomorrow's attendance")
+	app.save_game()
+	app.load_game()
+	app._show_notes()
+	check(text.call().contains("第 3 天 12:50") and text.call().contains("持续追踪仍生效"),"reloading preserves both pieces of live outing information")
+	app.return_to_menu()
+	app.queue_free()
+	await _frames(2)
