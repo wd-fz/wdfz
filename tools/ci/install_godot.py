@@ -53,8 +53,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cache", type=Path, default=Path.home() / ".cache/wdfz-godot")
     parser.add_argument("--templates", action="store_true")
-    parser.add_argument("--android-debug", action="store_true", help="install the Android debug APK template")
-    parser.add_argument("--android-release", action="store_true", help="install the Android release APK template")
+    parser.add_argument("--android-debug", action="store_true", help="install the official Android Gradle template with prebuilt engine libraries")
+    parser.add_argument("--android-release", action="store_true", help="install the official Android Gradle template with prebuilt engine libraries")
     args = parser.parse_args()
     version = (ROOT / ".godot-version").read_text().strip()
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
@@ -70,10 +70,8 @@ def main():
         engine.chmod(0o755)
         archive.unlink()
     selected = list(TEMPLATES) if args.templates else []
-    if args.android_debug:
-        selected += [name for name in ("android_debug.apk", "version.txt") if name not in selected]
-    if args.android_release:
-        selected += [name for name in ("android_release.apk", "version.txt") if name not in selected]
+    if args.android_debug or args.android_release:
+        selected += [name for name in ("android_source.zip", "version.txt") if name not in selected]
     if selected:
         template_cache = cache / "templates"
         if not all((template_cache / name).is_file() for name in selected):

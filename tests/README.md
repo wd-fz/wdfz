@@ -4,6 +4,7 @@
 
 | 套件 | 范围 |
 | --- | --- |
+| rendering | 确认真实 Vulkan RenderingDevice；headless 明确不算 GPU 验证 |
 | framework | 时钟、模块协议、存档、应用生命周期、输入 |
 | campus | 校园、门与电梯、背包、设施、探索 |
 | school | 课表、检查、特殊日、怪谈、同学、伤势与感官规则 |

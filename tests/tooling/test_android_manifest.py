@@ -3,7 +3,7 @@ from pathlib import Path
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
-from export_android import verify_launcher_orientation, verify_manifest
+from export_android import verify_launcher_orientation, verify_manifest, verify_vulkan_manifest
 
 
 def activity(orientation, launcher=True):
@@ -19,6 +19,26 @@ def activity(orientation, launcher=True):
 
 
 class AndroidManifestTests(unittest.TestCase):
+    def test_android_requires_vulkan_and_exports_mobile_renderer(self):
+        tree = '''E: manifest
+  E: uses-feature
+    A: android:name(0x01010003)="android.hardware.vulkan.version"
+    A: android:version(0x01010519)=(type 0x11)0x400003
+    A: android:required(0x0101028e)=(type 0x12)0xffffffff
+  E: application
+    E: meta-data
+      A: android:name(0x01010003)="org.godotengine.rendering.method"
+      A: android:value(0x01010024)="mobile"
+'''
+        self.assertTrue(verify_vulkan_manifest(tree)["vulkan_required"])
+        for bad in [tree.replace("0xffffffff", "0x0"), tree.replace("0x400003", "0x0"),
+                    tree.replace("android.hardware.vulkan.version", "android.hardware.other"),
+                    tree.replace('(type 0x12)0xffffffff', '"false"'),
+                    tree.replace("android:required", "android:other"),
+                    tree.replace('="mobile"', '="gl_compatibility"'), ""]:
+            with self.subTest(tree=bad), self.assertRaises(RuntimeError):
+                verify_vulkan_manifest(bad)
+
     def test_godot_launcher_alias_checks_the_target_activity(self):
         tree = '''E: manifest
   A: package="org.wdfz.godot"

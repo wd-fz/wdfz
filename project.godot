@@ -7,7 +7,7 @@ config/description="探索校园、遵守规则，寻找里世界的出口。"
 config/version="0.1.0"
 config/icon="res://assets/branding/icon.svg"
 run/main_scene="res://game/app/app.tscn"
-config/features=PackedStringArray("4.6", "GL Compatibility")
+config/features=PackedStringArray("4.6", "Forward Plus")
 config/use_custom_user_dir=true
 config/custom_user_dir_name="wdfz-godot"
 
@@ -26,8 +26,14 @@ pointing/emulate_touch_from_mouse=false
 pointing/emulate_mouse_from_touch=true
 
 [rendering]
-renderer/rendering_method="gl_compatibility"
-renderer/rendering_method.mobile="gl_compatibility"
+renderer/rendering_method="forward_plus"
+renderer/rendering_method.mobile="mobile"
+rendering_device/driver="vulkan"
+rendering_device/driver.linuxbsd="vulkan"
+rendering_device/driver.windows="vulkan"
+rendering_device/driver.android="vulkan"
+rendering_device/fallback_to_d3d12=false
+rendering_device/fallback_to_opengl3=false
 textures/vram_compression/import_etc2_astc=true
 textures/default_filters/use_nearest_mipmap_filter=false
 environment/defaults/default_clear_color=Color(0.035, 0.05, 0.065, 1)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export and verify Android debug or signed release APKs with official Godot templates."""
+"""Export and verify Android APKs with Godot's official Gradle template and prebuilt engine."""
 import argparse
 import hashlib
 import json
@@ -81,6 +81,35 @@ def verify_launcher_orientation(tree):
     return "userLandscape"
 
 
+def verify_vulkan_manifest(tree):
+    """Verify what Android receives, including the renderer's exported mobile override."""
+    lines = tree.splitlines()
+    features, metadata = {}, {}
+    for index, line in enumerate(lines):
+        element = re.match(r"^( *)E: (uses-feature|meta-data)(?: |$)", line)
+        if not element:
+            continue
+        block = []
+        for child in lines[index + 1:]:
+            if child.strip() and len(child) - len(child.lstrip()) <= len(element[1]):
+                break
+            block.append(child)
+        text = "\n".join(block)
+        name = re.search(r'android:name\([^)]*\)="([^"]+)"', text)
+        if name:
+            (features if element[2] == "uses-feature" else metadata)[name[1]] = text
+    feature = features.get("android.hardware.vulkan.version", "")
+    version = re.search(r"android:version\([^)]*\)=\(type 0x1[01]\)(0x[0-9a-fA-F]+)", feature)
+    required = re.search(r"android:required\([^)]*\)=\(type 0x12\)(0x[0-9a-fA-F]+)", feature)
+    if not version or int(version[1], 16) < 0x400003 or not required or int(required[1], 16) != 0xffffffff:
+        raise RuntimeError("APK must require Vulkan hardware; an optional or missing feature permits unsupported devices")
+    renderer = metadata.get("org.godotengine.rendering.method", "")
+    if not re.search(r'android:value\([^)]*\)="mobile"', renderer):
+        raise RuntimeError("APK must export the Mobile renderer for Android")
+    return {"rendering_driver": "vulkan", "rendering_method": "mobile", "vulkan_required": True,
+            "vulkan_version_encoded": int(version[1], 16)}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sdk", default=os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT"))
@@ -97,13 +126,15 @@ def main():
     jdk = Path(args.jdk).expanduser().resolve() if args.jdk else Path(java).resolve().parents[1] if java else None
     suffix = ".exe" if os.name == "nt" else ""
     build_tools = sdk / "build-tools" / BUILD_TOOLS
-    if jdk is None or not (jdk / "bin" / ("keytool" + suffix)).is_file():
-        raise RuntimeError("A JDK with java and keytool is required; pass --jdk or set JAVA_HOME")
+    if jdk is None or any(not (jdk / "bin" / (tool + suffix)).is_file() for tool in ("java", "javac", "keytool")):
+        raise RuntimeError("A full JDK with java, javac and keytool is required by Gradle; pass --jdk or set JAVA_HOME")
     for name in ("aapt" + suffix, "zipalign" + suffix, "apksigner.bat" if os.name == "nt" else "apksigner"):
         if not (build_tools / name).is_file():
             raise RuntimeError(f"Missing Android build tool: {build_tools / name}")
     if not (sdk / "platform-tools" / ("adb" + suffix)).is_file():
         raise RuntimeError("Android SDK platform-tools are missing")
+    if not (sdk / "platforms/android-36/android.jar").is_file():
+        raise RuntimeError("Android SDK platforms;android-36 is required by the Gradle export template")
 
     if args.release:
         if not args.keystore or not args.keystore.is_file():
@@ -113,7 +144,8 @@ def main():
     reports = ROOT / ("build/reports/android-release" if args.release else "build/reports/android")
     reports.mkdir(parents=True, exist_ok=True)
     (ROOT / "build/.gdignore").touch()
-    summary = {"passed": False, "package": RELEASE_PACKAGE if args.release else PACKAGE, "runtime_verified": False}
+    summary = {"passed": False, "package": RELEASE_PACKAGE if args.release else PACKAGE, "runtime_verified": False,
+               "build_system": "gradle"}
     try:
         print(quality.check(ROOT), flush=True)
         summary["engine"] = check_version(reports)
@@ -141,7 +173,15 @@ def main():
         apk = packages / (f"wdfz-{RELEASE_VERSION}-android-arm64.apk" if args.release else "wdfz-android-debug-arm64.apk")
         apk.unlink(missing_ok=True)
         unsigned = packages / ".release-unsigned.apk" if args.release else apk
-        run("export-android", [ENGINE, "--headless", "--path", str(ROOT), "--export-release" if args.release else "--export-debug",
+        # The 4.6.3 non-Gradle exporter writes Vulkan feature booleans/versions as
+        # strings. Use Android's manifest compiler rather than weaken validation.
+        template = ROOT / "build/android-project"
+        installed = template / ".build_version"
+        expected = (ROOT / ".godot-version").read_text().strip() + ".stable"
+        if installed.exists() and installed.read_text().strip() != expected:
+            shutil.rmtree(template)
+        install_args = [] if (template / "build/build.gradle").exists() else ["--install-android-build-template"]
+        run("export-android", [ENGINE, "--headless", "--path", str(ROOT), *install_args, "--export-release" if args.release else "--export-debug",
                               "Android Release" if args.release else "Android Debug", str(unsigned)],
             reports, timeout=900, env=env)
         signer = build_tools / ("apksigner.bat" if os.name == "nt" else "apksigner")
@@ -164,6 +204,7 @@ def main():
         verify_manifest(manifest,args.release)
         manifest_tree = run("manifest-tree", [str(build_tools / ("aapt" + suffix)), "dump", "xmltree", str(apk), "AndroidManifest.xml"], reports)
         summary["launch_orientation"] = verify_launcher_orientation(manifest_tree)
+        summary.update(verify_vulkan_manifest(manifest_tree))
         with zipfile.ZipFile(apk) as archive:
             names = archive.namelist()
             entries = set(names)
@@ -174,7 +215,7 @@ def main():
                     raise RuntimeError(f"APK is missing {required}")
             if any(name.startswith(tuple("assets/" + folder + "/" for folder in ("tests", "tools", "docs", "pictures"))) for name in names):
                 raise RuntimeError("APK includes development files")
-            # Compatibility also uses portable lossless textures. Check the exported
+            # Vulkan also supports portable lossless textures. Check the exported
             # remaps instead of incorrectly requiring every image to be ETC2/ASTC.
             remaps = 0
             for name in names:

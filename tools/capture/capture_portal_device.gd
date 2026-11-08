@@ -1,6 +1,6 @@
 extends SceneTree
 ## The portal rig and the 《门》 ending in the real lab (needs a display):
-## godot --path . --rendering-driver opengl3 --script res://tools/capture/capture_portal_device.gd
+## godot --windowed --path . --rendering-driver vulkan --script res://tools/capture/capture_portal_device.gd
 ## Output: build/previews/portal/.
 
 const APP := preload("res://game/app/app.tscn")

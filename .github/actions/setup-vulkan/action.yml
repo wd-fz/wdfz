@@ -1,0 +1,19 @@
+name: Set up software Vulkan
+description: Install an X11 display runtime and explicitly select Mesa Lavapipe for rendering checks
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends xvfb libvulkan1 mesa-vulkan-drivers fonts-noto-cjk
+        python - <<'PY'
+        import os
+        from pathlib import Path
+        drivers = sorted(Path('/usr/share/vulkan/icd.d').glob('lvp_icd*.json'))
+        if len(drivers) != 1:
+            raise SystemExit(f'Expected one Lavapipe ICD, found {drivers}')
+        with open(os.environ['GITHUB_ENV'], 'a') as env:
+            env.write(f'VK_DRIVER_FILES={drivers[0]}\n')
+        print(f'Vulkan test driver: {drivers[0]}')
+        PY

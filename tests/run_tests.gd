@@ -42,6 +42,9 @@ func same_json(a: Variant, b: Variant) -> bool:
 
 
 func _run() -> void:
+	var rendering := preload("res://tests/suites/rendering.gd").new(self)
+	print("CASE: rendering.test_backend")
+	rendering.test_backend()
 	var crowd_props := preload("res://tests/suites/crowd_props.gd").new(self)
 	print("CASE: crowd_props.test_frames")
 	await crowd_props.test_frames()

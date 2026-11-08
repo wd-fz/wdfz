@@ -1,6 +1,6 @@
 extends SceneTree
 ## 《放学》 in the real campus for its last stage (needs a display):
-## godot --path . --rendering-driver opengl3 --script res://tools/capture/capture_dismissal.gd
+## godot --windowed --path . --rendering-driver vulkan --script res://tools/capture/capture_dismissal.gd
 ## Output: build/previews/dismissal/.
 
 const APP := preload("res://game/app/app.tscn")

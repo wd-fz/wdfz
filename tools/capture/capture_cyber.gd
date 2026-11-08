@@ -1,6 +1,6 @@
 extends SceneTree
 ## 《网安仙人》 in the real campus for its last stage (needs a display):
-## godot --path . --rendering-driver opengl3 --script res://tools/capture/capture_cyber.gd
+## godot --windowed --path . --rendering-driver vulkan --script res://tools/capture/capture_cyber.gd
 ## Output: build/previews/cyber/.
 
 const APP := preload("res://game/app/app.tscn")

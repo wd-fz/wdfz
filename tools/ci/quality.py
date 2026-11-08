@@ -1,5 +1,6 @@
 """Dependency-free repository checks; Godot remains the GDScript parser."""
 from pathlib import Path
+import configparser
 import re
 
 
@@ -26,9 +27,30 @@ def rule_errors(path, text, classes):
     return errors
 
 
+def rendering_errors(text):
+    config = configparser.ConfigParser(interpolation=None)
+    try:
+        config.read_string("[godot]\n" + text)
+    except configparser.Error as error:
+        return [f"project.godot: cannot validate rendering settings: {error}"]
+    rendering = config["rendering"] if config.has_section("rendering") else {}
+    expected = {"renderer/rendering_method": '"forward_plus"',
+                "renderer/rendering_method.mobile": '"mobile"',
+                "rendering_device/driver": '"vulkan"',
+                **{f"rendering_device/driver.{platform}": '"vulkan"' for platform in ("linuxbsd", "windows", "android")},
+                "rendering_device/fallback_to_d3d12": "false", "rendering_device/fallback_to_opengl3": "false"}
+    errors = [f"project.godot: {key} must be {value}" for key, value in expected.items() if rendering.get(key) != value]
+    for key, value in rendering.items():
+        if key.startswith("rendering_device/driver") and value != '"vulkan"':
+            errors.append(f"project.godot: {key} selects a non-Vulkan driver")
+        if key.startswith("renderer/rendering_method") and value not in ('"forward_plus"', '"mobile"'):
+            errors.append(f"project.godot: {key} selects a non-Vulkan renderer")
+    return errors
+
+
 def check(root: Path):
     scripts = sorted((root / "game").rglob("*.gd"))
-    errors, classes, uids = [], {}, {}
+    errors, classes, uids = rendering_errors((root / "project.godot").read_text(encoding="utf-8")), {}, {}
     for old in ("app", "actors", "core", "features", "scenes", "ui", "world"):
         if (root / old).exists():
             errors.append(f"Runtime files belong under game/, found old root {old}/")

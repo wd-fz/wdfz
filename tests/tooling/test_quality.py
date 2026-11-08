@@ -6,11 +6,22 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
-from ci.quality import code_only, rule_errors
+from ci.quality import code_only, rule_errors, rendering_errors
 from ci.common import run
 
 
 class BoundaryTests(unittest.TestCase):
+    def test_vulkan_contract_rejects_fallbacks_and_feature_overrides(self):
+        project = (Path(__file__).resolve().parents[2] / "project.godot").read_text()
+        self.assertEqual(rendering_errors(project), [])
+        for broken in [project.replace('driver.android="vulkan"', 'driver.android="opengl3"'),
+                       project.replace('fallback_to_opengl3=false', 'fallback_to_opengl3=true'),
+                       project.replace('fallback_to_d3d12=false', 'fallback_to_d3d12=true'),
+                       project.replace('rendering_method.mobile="mobile"', 'rendering_method.mobile="gl_compatibility"'),
+                       project.replace('[rendering]', '[rendering]\nrendering_device/driver.windows.debug="d3d12"')]:
+            with self.subTest(broken=broken):
+                self.assertTrue(rendering_errors(broken))
+
     def test_helpers_are_rules_too(self):
         self.assertTrue(rule_errors("game/features/story/helper.gd", "extends RefCounted\nvar data = FileAccess.open('x', 1)", {}))
 

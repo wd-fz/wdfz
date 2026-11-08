@@ -5,10 +5,10 @@ inputs:
     description: Install Linux and Windows release export templates
     default: 'false'
   android-debug:
-    description: Install the Android debug APK export template
+    description: Install the Android Gradle export template with prebuilt engine libraries
     default: 'false'
   android-release:
-    description: Install the Android release APK export template
+    description: Install the Android Gradle export template with prebuilt engine libraries
     default: 'false'
 runs:
   using: composite
@@ -19,7 +19,7 @@ runs:
     - uses: actions/cache@v4
       with:
         path: ${{ runner.tool_cache }}/wdfz-godot
-        key: godot-${{ runner.os }}-${{ hashFiles('.godot-version') }}-templates-${{ inputs.templates }}-android-${{ inputs.android-debug }}-release-${{ inputs.android-release }}-v3
+        key: godot-${{ runner.os }}-${{ hashFiles('.godot-version') }}-templates-${{ inputs.templates }}-android-${{ inputs.android-debug }}-release-${{ inputs.android-release }}-v4
     - name: Install verified Godot
       shell: bash
       env:

@@ -10,6 +10,7 @@ import subprocess
 import sys
 import zipfile
 from ci.common import ENGINE, ROOT, check_version, run
+from ci import quality
 
 
 def main():
@@ -21,6 +22,7 @@ def main():
     (ROOT / 'build/.gdignore').touch()
     summary = {'passed': False, 'packages': []}
     try:
+        print(quality.check(ROOT), flush=True)
         summary['engine'] = check_version(reports)
         run('import', [ENGINE, '--headless', '--path', str(ROOT), '--editor', '--import'], reports, timeout=900)
         revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
@@ -40,22 +42,27 @@ def main():
                 binary.chmod(binary.stat().st_mode | 0o111)
                 # Release templates do not expose --script. Check native startup, then inspect
                 # the same PCK with the editor's external test runner; no tests enter the package.
-                output = run('startup-linux', [str(binary), '--headless', '--audio-driver', 'Dummy', '--verbose',
+                output = run('startup-linux', [str(binary), '--windowed', '--audio-driver', 'Dummy', '--verbose',
                              '--', '--startup-smoke'], reports, timeout=180, cwd=directory)
                 if 'STARTUP SMOKE: passed' not in output:
                     raise RuntimeError('Exported Linux runtime did not complete normal startup and shutdown')
-                output = run('smoke-linux', [ENGINE, '--headless', '--audio-driver', 'Dummy',
+                if 'Vulkan' not in output or 'Forward+' not in output:
+                    raise RuntimeError('Exported Linux runtime did not start with Vulkan Forward+')
+                output = run('smoke-linux', [ENGINE, '--windowed', '--audio-driver', 'Dummy',
                              '--main-pack', str(binary.with_suffix('.pck')),
                              '--script', str(ROOT / 'tools/ci/export_smoke.gd')], reports, timeout=180, cwd=directory)
-                if 'EXPORT SMOKE: passed' not in output:
+                if 'EXPORT SMOKE: passed' not in output or 'EXPORT RENDERER: vulkan / forward_plus' not in output:
                     raise RuntimeError('Exported Linux runtime did not complete the smoke test')
             shutil.copy2(ROOT / 'LICENSE', directory / 'LICENSE')
             (directory / 'BUILD.json').write_text(json.dumps({'revision': revision, 'engine': summary['engine'], 'platform': target,
-                'source': 'https://github.com/wd-fz/wdfz', 'runtime_verified': target == 'linux'}, indent=2) + '\n')
+                'source': 'https://github.com/wd-fz/wdfz', 'runtime_verified': target == 'linux',
+                'rendering_driver': 'vulkan', 'rendering_method': 'forward_plus',
+                'rendering_verified': target == 'linux'}, indent=2) + '\n')
             (directory / 'README.txt').write_text(
                 '武大附中 · 里世界 — Godot 开发验证包\n\n'
                 '解压整个目录后启动 wdfz；可执行文件与 .pck 必须放在一起。\n'
-                'Linux 需要 OpenGL 3.3 驱动和中文系统字体（如 Noto Sans CJK）。\n'
+                '桌面版使用 Vulkan Forward+，需要支持 Vulkan 的显卡和驱动，不提供 OpenGL 回退。\n'
+                'Linux 还需中文系统字体（如 Noto Sans CJK）。\n'
                 '这是自动构建的移植开发版，Windows 包仅验证导出，尚未经过 Windows 真机验收。\n'
                 f'源代码与许可证：https://github.com/wd-fz/wdfz/tree/{revision}\n', encoding='utf-8')
             archive = packages / f'wdfz-{target}-x86_64.zip'

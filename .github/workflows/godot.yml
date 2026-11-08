@@ -32,31 +32,40 @@ jobs:
           retention-days: 14
 
   regression:
-    name: Regression (${{ matrix.mode }})
+    name: Regression (${{ matrix.name }})
     needs: structure
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
-        mode: [headless, windowed]
+        include:
+          - name: headless
+            mode: headless
+            renderer: forward_plus
+          # Keep the existing required-check name for desktop windowed regression.
+          - name: windowed
+            mode: windowed
+            renderer: forward_plus
+          - name: Vulkan Mobile
+            mode: windowed
+            renderer: mobile
     env:
-      LIBGL_ALWAYS_SOFTWARE: '1'
+      # Mesa's Vulkan CPU device is deterministic and available on hosted runners.
+      LP_NUM_THREADS: '4'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-godot
-      - name: Install display runtime and Chinese fonts
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri fonts-noto-cjk
+      - uses: ./.github/actions/setup-vulkan
       - name: Import and run regression suite
         env:
           TEST_MODE: ${{ matrix.mode }}
-        run: xvfb-run -a python tools/check.py --mode "$TEST_MODE"
+          TEST_RENDERER: ${{ matrix.renderer }}
+        run: xvfb-run -a python tools/check.py --mode "$TEST_MODE" --renderer "$TEST_RENDERER"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: reports-${{ matrix.mode }}
+          name: reports-${{ matrix.mode }}-${{ matrix.renderer }}
           path: build/reports/
           retention-days: 14
 
@@ -65,13 +74,16 @@ jobs:
     needs: regression
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      LP_NUM_THREADS: '4'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-godot
         with:
           templates: 'true'
-      - name: Export Linux and Windows; smoke-test Linux package
-        run: python tools/export.py
+      - uses: ./.github/actions/setup-vulkan
+      - name: Export Linux and Windows; smoke-test Linux package with Vulkan
+        run: xvfb-run -a python tools/export.py
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-builds-${{ github.sha }}

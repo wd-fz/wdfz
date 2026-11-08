@@ -30,7 +30,7 @@ godot --path .
 
 键鼠：WASD／方向键移动、鼠标环视、Shift 奔跑、E 交互、Esc 暂停；失去鼠标捕获后点击场景重新捕获。触屏：左侧摇杆移动、右侧上方滑动环视、右下角交互与奔跑；主菜单可以手动启用控件。切出应用会暂停，切回来后主动继续。
 
-默认使用 **Compatibility / OpenGL**，便于普通设备打开框架。渲染器属于表现层，可以在 Godot 项目设置中切换；当前没有做 Vulkan、移动设备或不同渲染器的性能与效果承诺。
+当前开发版统一使用 **Vulkan**：Linux／Windows 使用 **Forward+**，Android 使用 **Mobile**；关闭 OpenGL 与 D3D12 自动回退。需要支持相应 Godot Vulkan 渲染路径的设备和驱动，Android 7.0+ 本身不保证显卡支持。五档画质仍控制分辨率、模型、阴影与抗锯齿。配置、验证命令与设备要求见[渲染与 Vulkan 验证](docs/渲染与Vulkan验证.md)。已发布的 v0.1.0 是迁移前的版本，其附件不随 main 更新。
 
 界面使用系统字体回退；Linux 无中文字体时安装 Noto Sans CJK，Android 使用系统中文字体。本框架没有联网、账号或在线资源依赖。
 
@@ -56,12 +56,12 @@ godot --path .
 python tools/check.py
 ```
 
-若引擎不在 PATH，设置 `GODOT_BIN` 为 Godot 可执行文件的路径。检查会核对版本、规则层边界、执行真实 Godot 导入和无窗口回归；脚本报错即使 Godot 返回 0，也判为失败。有显示环境时加 `--windowed` 同时检查窗口输入。GitHub Actions 分别执行结构检查、无窗口回归、Xvfb 窗口回归，并在通过后导出桌面验证包。日志和结果均作为 Artifacts 保存。
+若引擎不在 PATH，设置 `GODOT_BIN` 为 Godot 可执行文件的路径。检查会核对版本、规则层边界、执行真实 Godot 导入和无窗口回归；脚本报错即使 Godot 返回 0，也判为失败。有 Vulkan 显示环境时加 `--windowed` 同时检查窗口输入；加 `--renderer mobile` 可验证 Android 使用的渲染路径。GitHub Actions 分别执行结构检查、无窗口回归、Vulkan Forward+ 与 Mobile 窗口回归，并在通过后导出桌面验证包。日志和结果均作为 Artifacts 保存。
 
 有显示环境时可生成实际渲染预览：
 
 ```bash
-godot --path . --script res://tools/capture/capture_preview.gd
+godot --windowed --path . --script res://tools/capture/capture_preview.gd
 ```
 
 图片输出到 `build/previews/`，不会覆盖正式存档。正式校园的预览用 `--script res://tools/capture/capture_campus.gd`。当前自动验证与限制见[框架验证记录](docs/框架验证记录.md)与[正式校园验证记录](docs/正式校园验证记录.md)。
@@ -72,7 +72,7 @@ godot --path . --script res://tools/capture/capture_preview.gd
 
 本地导出：安装同版本桌面 export templates 后运行 `python tools/export.py`。详细安装、日志与限制见[项目结构与持续集成](docs/项目结构与持续集成.md)。
 
-Android 调试包在 [Actions → Android Debug](https://github.com/wd-fz/wdfz/actions/workflows/android-debug.yml) 的成功运行中下载 `wdfz-android-debug-arm64-<SHA>`。解压后安装其中的 APK，支持 ARM64、Android 7.0 及以上；采用独立调试包名，横屏运行并自动启用触屏控件。构建检查签名、Debug 标记、启动横屏声明、16 KB 对齐和运行时资源，尚未代表 Android 真机运行验收。本地 Linux 构建入口为 `python tools/export_android.py --sdk <Android SDK 路径>`。
+Android 调试包在 [Actions → Android Debug](https://github.com/wd-fz/wdfz/actions/workflows/android-debug.yml) 的成功运行中下载 `wdfz-android-debug-arm64-<SHA>`。解压后安装其中的 APK，支持 ARM64、Android 7.0 及以上且具备 Vulkan 的设备；采用独立调试包名，横屏运行并自动启用触屏控件。构建检查签名、Debug 标记、启动横屏与 Vulkan 必需功能声明、Mobile 渲染器元数据、16 KB 对齐和运行时资源，尚未代表 Android 真机运行验收。本地 Linux 构建入口为 `python tools/export_android.py --sdk <Android SDK 路径>`。
 
 ## 存档与范围
 

@@ -108,7 +108,8 @@ func _process(dt: float) -> void:
 
 func snapshot() -> Dictionary:
 	var state:={"playing":alive(),"dead":app.session!=null and app.story().dead,"freeze":frozen,"fast":fast,"god":god,"search":instant_search,
-		"renderer":RenderingServer.get_current_rendering_method(),"quality":CampusData.tier,"fps":Engine.get_frames_per_second(),"history":history.duplicate()}
+		"renderer":RenderingServer.get_current_rendering_method(),"rendering_driver":RenderingServer.get_current_rendering_driver_name(),
+		"quality":CampusData.tier,"fps":Engine.get_frames_per_second(),"history":history.duplicate()}
 	if app.session!=null:
 		var school:=app.school()
 		state.merge({"room":app.session.world_id,"day":school.day,"time":SchoolClock.fmt_clock(school.tsec),"minutes":school.tsec,"san":school.san,"stam":school.stam,"cap":school.stamina_max(),"viol":school.viol,"tt":school.tt,

@@ -391,4 +391,4 @@ func set_runtime(state: Dictionary) -> void:
 	else:
 		_live.text="没有进行中的一局。"
 		_bag_info.text="背包未载入。"
-	_diagnostics.text="%s · 画质 %d · FPS %d\n%s" % [state.renderer,state.quality,state.fps,"\n".join(state.history)]
+	_diagnostics.text="%s / %s · 画质 %d · FPS %d\n%s" % [state.rendering_driver,state.renderer,state.quality,state.fps,"\n".join(state.history)]
