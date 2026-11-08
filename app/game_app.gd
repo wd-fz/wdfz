@@ -2968,6 +2968,37 @@ func _show_marks() -> void:
 	if mk.last_life is Dictionary and String(mk.last_life.get("scene", "")) == session.world_id:
 		list.append({"x": mk.last_life["x"], "y": mk.last_life["y"], "h": 0.0, "face": "floor", "a": 0.0, "text": "× " + SchoolClock.fmt_clock(float(mk.last_life.get("tsec", 700))), "old": true})
 	for m: Dictionary in list:
+		var sp := CampusGeometry.to_scene(room, Vector2(float(m["x"]), float(m["y"])))
+		if not m.has("text") and ChalkTexture.SYMBOLS.has(String(m.get("s", ""))):
+			# The hand-drawn chalk picture (world/campus/chalk_texture.gd), lit by the scene.
+			var sym := String(m["s"])
+			var old := bool(m.get("old", false))
+			var jj := fposmod(sin(float(absi(int(m.get("n", 0))) * 3 + 1) * 12.9898 + float(sym.length() * 7) * 78.233) * 43758.5453, 1.0)
+			var quad := MeshInstance3D.new()
+			var qm := QuadMesh.new()
+			quad.mesh = qm
+			var mat := StandardMaterial3D.new()
+			mat.albedo_texture = ChalkTexture.texture(sym)
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			mat.albedo_color = Color(0.84, 0.8, 0.71, 0.5) if old else Color(1, 1, 1, 0.92)
+			mat.roughness = 1.0
+			mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+			mat.render_priority = 2
+			quad.material_override = mat
+			quad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			quad.rotation_order = EULER_ORDER_YXZ
+			if m["face"] == "floor":
+				var sz := 0.8 * (0.92 + 0.16 * jj)
+				qm.size = Vector2(sz, sz)
+				quad.position = Vector3(sp.x, float(m["h"]) + 0.012, sp.y)
+				quad.rotation = Vector3(-PI * 0.5, -float(m["a"]) - PI * 0.5 + (jj - 0.5) * 0.16, 0.0)
+			else:
+				var sw := 0.6 * (0.92 + 0.16 * jj)
+				qm.size = Vector2(sw, sw)
+				quad.position = Vector3(sp.x + cos(float(m["a"])) * 0.012, float(m["h"]), sp.y + sin(float(m["a"])) * 0.012)
+				quad.rotation = Vector3(0.0, -float(m["a"]) + PI * 0.5, (jj - 0.5) * 0.14)
+			_marks_nodes.add_child(quad)
+			continue
 		var label := Label3D.new()
 		label.text = String(m.get("text", MarksModule._sym(String(m.get("s", "x")))))
 		label.font_size = 96
@@ -2975,7 +3006,6 @@ func _show_marks() -> void:
 		label.modulate = Color(0.92, 0.91, 0.86, 0.55 if m.get("old", false) else 0.9)
 		label.shaded = false
 		label.double_sided = true
-		var sp := CampusGeometry.to_scene(room, Vector2(float(m["x"]), float(m["y"])))
 		if m["face"] == "floor":
 			label.position = Vector3(sp.x, float(m["h"]) + 0.012, sp.y)
 			label.rotation = Vector3(-PI * 0.5, -float(m["a"]) - PI * 0.5, 0.0)

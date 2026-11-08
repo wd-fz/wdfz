@@ -114,6 +114,7 @@ func _run() -> void:
 	_test_death_cg()
 	_test_day_banner()
 	_test_chalk_notes()
+	_test_chalk_texture()
 	_test_inspection_scatter()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
@@ -3197,6 +3198,19 @@ func _test_inspection_scatter() -> void:
 	var cw := CampusWorld.new()
 	check(not cw.scattering(), "no scatter before a check")
 	cw.free()
+
+
+func _test_chalk_texture() -> void:
+	for sym: String in ChalkTexture.SYMBOLS:
+		var img := ChalkTexture.image(sym)
+		var inked := 0
+		for y in range(0, ChalkTexture.SIZE, 2):
+			for x in range(0, ChalkTexture.SIZE, 2):
+				if img.get_pixel(x, y).a > 0.3:
+					inked += 1
+		check(img.get_width() == 128 and inked > 150 and inked < 2500, "the chalk picture of %s is drawn (%d inked samples)" % [sym, inked])
+	check(ChalkTexture.image("x").get_pixel(64, 64).a > 0.0 and ChalkTexture.image("x").get_pixel(2, 64).a == 0.0, "the picture is transparent away from the strokes")
+	check(MarksModule.SYMS.size() == ChalkTexture.SYMBOLS.size(), "every mark symbol has a chalk picture")
 
 
 func _test_chalk_notes() -> void:
