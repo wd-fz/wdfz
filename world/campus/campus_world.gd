@@ -71,6 +71,7 @@ func _ready() -> void:
 		_build_link_preview()
 	_build_stair_preview()
 	_build_door_preview()
+	_build_gallery_view()
 	if is_room():
 		atmos_fx = AtmosFx.new()
 		atmos_fx.name = "AtmosFx"
@@ -129,6 +130,25 @@ func _build_clinic() -> void:
 var link_previews: Array[Node3D] = []
 var stair_previews: Array[Node3D] = []
 var door_previews: Array[Node3D] = []
+var gallery_campus: Node3D
+const GALLERY_RISE := 3.2
+
+
+## The open outside corridors of the teaching building, floors 2–5 (modules/campus-link/gallery.js): the real campus outside is hung into the
+## scene shifted by the building's offset and dropped by the floor's height, so from the corridor you see the campus, the people below and the
+## stair towers in front of the building. Visual only; the collision still stops you at the rail.
+func _build_gallery_view() -> void:
+	if not is_room() or not bool(layout.get("flags", {}).get("gallery", false)):
+		return
+	var model := _load_visual("out")
+	if model == null:
+		return
+	var sh := CampusGeometry.shift_of(layout)
+	var f := int(layout.get("floor", 2))
+	model.name = "GalleryCampus"
+	model.position = Vector3(-(sh.x + float(layout["cx"])) * CampusGeometry.U2M, -float(f - 1) * GALLERY_RISE, -(sh.y + float(layout["cy"])) * CampusGeometry.U2M)
+	add_child(model)
+	gallery_campus = model
 var _shaft_levels: Dictionary = {}      # level → the preview of the floor beyond that level's door
 
 

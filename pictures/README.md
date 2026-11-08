@@ -61,3 +61,4 @@
 | [楼梯井互看](楼梯井互看/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture_stair_view.gd`：站在教学楼一楼走廊，从楼梯间门洞里看得见楼梯井 |
 | [门内外互看](门内外互看/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture_door_view.gd`：站在教学楼南门外，门洞里看得见一楼走廊与安全出口灯 |
 | [楼梯井互看](楼梯井互看/) 续 | 2026-11-08，同上，`tools/capture_shaft.gd`：站在楼梯井二层平台，门洞外是教学楼二层走廊（随所在层只摆当前层与相邻一层） |
+| [外廊看校园](外廊看校园/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture_gallery.gd`：站在教学楼三楼敞开的外廊，红栏杆外是真实的校园与对面的楼 |
