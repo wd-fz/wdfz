@@ -11,6 +11,16 @@ const BOUNDARY := 1.0
 @export var scene_id := "out"
 
 var layout: Dictionary = {}
+## The anomaly module's leftovers at the moment a world is built (set by the app before the world exists).
+static var pending_traces: Array = []
+var banner: DayBanner
+var chalk: ChalkNotes
+var phantoms: Phantoms
+var traces: Traces
+var _traces_seen := -1
+var broadcast_props: BroadcastProps
+var mirror_view: MirrorView
+var canteen_view: CanteenView
 var lighting: CampusLighting
 var _door_bodies: Dictionary = {}   # key -> CollisionShape3D
 var _door_leaves: Dictionary = {}   # key -> {"closed": Node3D, "open": Node3D}
@@ -18,6 +28,8 @@ var _lift_leaves: Array[Node3D] = []
 var _lift_bodies: Array[CollisionShape3D] = []
 var _lift_amount := -1.0
 var anomaly_fx: AnomalyFx
+var atmos_fx: AtmosFx
+var duty: DutyRoster
 
 
 func _ready() -> void:
@@ -28,16 +40,276 @@ func _ready() -> void:
 	anomaly_fx = AnomalyFx.new()
 	anomaly_fx.name = "AnomalyFx"
 	add_child(anomaly_fx)
+	chalk = ChalkNotes.new()
+	add_child(chalk)
+	phantoms = Phantoms.new()
+	add_child(phantoms)
+	traces = Traces.new()
+	traces.name = "Traces"
+	add_child(traces)
+	traces.build(scene_id, layout if is_room() else null, CampusWorld.pending_traces)
+	_traces_seen = CampusWorld.pending_traces.size()
+	if is_room():
+		broadcast_props = BroadcastProps.new()
+		broadcast_props.name = "BroadcastProps"
+		add_child(broadcast_props)
+		broadcast_props.build(layout)
+		if scene_id == BodyModule.CLINIC["room"]:
+			_build_clinic()
+		if scene_id == CanteenView.ROOM:
+			canteen_view = CanteenView.new()
+			canteen_view.name = "CanteenView"
+			add_child(canteen_view)
+			canteen_view.build(layout)
+		if String(layout.get("host", "")) == "teach":
+			mirror_view = MirrorView.new()
+			mirror_view.name = "MirrorView"
+			add_child(mirror_view)
+	if not is_room():
+		_ready_banner()
+	else:
+		_build_link_preview()
+	_build_stair_preview()
+	_build_door_preview()
+	_build_gallery_view()
+	if is_room():
+		atmos_fx = AtmosFx.new()
+		atmos_fx.name = "AtmosFx"
+		add_child(atmos_fx)
+		atmos_fx.setup(layout)
+		if ClassmatesModule.eligible(layout):
+			duty = DutyRoster.new()
+			duty.name = "DutyRoster"
+			add_child(duty)
+			duty.setup(layout)
+
+
+func _ready_banner() -> void:
+	banner = DayBanner.new()
+	banner.name = "DayBanner"
+	add_child(banner)
+	banner.setup(layout)
 
 
 func is_room() -> bool:
 	return scene_id != "out"
 
 
+## The clinic's wall cabinet in the first office of the administration building (modules/body/injury.js, presentation): white, a red cross.
+func _build_clinic() -> void:
+	var rm := layout
+	var p := CampusGeometry.to_scene(rm, Vector2(float(rm["ox"]) + 6.0 * float(rm["tw"]), float(rm["oy"]) + 16.0 * float(rm["th"])))
+	var cab := MeshInstance3D.new()
+	cab.name = "ClinicCabinet"
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.6, 0.7, 0.22)
+	cab.mesh = bm
+	var white := StandardMaterial3D.new()
+	white.albedo_color = Color("#eef0ee")
+	white.emission_enabled = true
+	white.emission = Color("#2c2e2c")
+	cab.material_override = white
+	cab.position = Vector3(p.x, 1.55, p.y - 0.12)
+	add_child(cab)
+	var red := StandardMaterial3D.new()
+	red.albedo_color = Color("#c02a2a")
+	red.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	for dims: Vector3 in [Vector3(0.2, 0.06, 0.01), Vector3(0.06, 0.2, 0.01)]:
+		var bar := MeshInstance3D.new()
+		var rb := BoxMesh.new()
+		rb.size = dims
+		bar.mesh = rb
+		bar.material_override = red
+		bar.position = Vector3(p.x, 1.6, p.y - 0.235)
+		add_child(bar)
+
+
+## The corridor bridges seen from both ends (modules/campus-link/link-view.js): the neighbouring room's model placed by the rigid
+## transform of the port pair (CampusPortals.link_between), plus a lamp 3 m inside its doorway so the far end is not black.
+## Visual only: no collision, nothing advances. Standing at the west end of the second floor you see the whole bridge.
+var link_previews: Array[Node3D] = []
+var stair_previews: Array[Node3D] = []
+var door_previews: Array[Node3D] = []
+var gallery_campus: Node3D
+const GALLERY_RISE := 3.2
+
+
+## The open outside corridors of the teaching building, floors 2–5 (modules/campus-link/gallery.js): the real campus outside is hung into the
+## scene shifted by the building's offset and dropped by the floor's height, so from the corridor you see the campus, the people below and the
+## stair towers in front of the building. Visual only; the collision still stops you at the rail.
+func _build_gallery_view() -> void:
+	if not is_room() or not bool(layout.get("flags", {}).get("gallery", false)):
+		return
+	var model := _load_visual("out")
+	if model == null:
+		return
+	var sh := CampusGeometry.shift_of(layout)
+	var f := int(layout.get("floor", 2))
+	model.name = "GalleryCampus"
+	model.position = Vector3(-(sh.x + float(layout["cx"])) * CampusGeometry.U2M, -float(f - 1) * GALLERY_RISE, -(sh.y + float(layout["cy"])) * CampusGeometry.U2M)
+	add_child(model)
+	gallery_campus = model
+var _shaft_levels: Dictionary = {}      # level → the preview of the floor beyond that level's door
+
+
+## In a stairwell: the floors beyond the doors of the level you are on and the next one (StairView.refresh). level from the height.
+func update_shaft_previews(height: float) -> void:
+	var st: Dictionary = {}
+	for e: Dictionary in CampusData.campus().get("stair_layout", []):
+		if String(e["id"]) == scene_id:
+			st = e
+	if st.is_empty():
+		return
+	var rise := float(st["rise"])
+	var rooms_list: Array = st["rooms"]
+	var level := clampi(roundi(height / rise), 0, rooms_list.size() - 1)
+	var want: Array = [level]
+	if level < rooms_list.size() - 1:
+		want.append(level + 1)
+	elif level > 0:
+		want.append(level - 1)
+	for l: int in _shaft_levels.keys():
+		if not want.has(l):
+			(_shaft_levels[l] as Node3D).queue_free()
+			_shaft_levels.erase(l)
+	var rooms := CampusData.rooms()
+	var outside := CampusData.layout("out")
+	for f: int in want:
+		if _shaft_levels.has(f):
+			continue
+		var id := String(rooms_list[f])
+		var model := _load_visual(id)
+		var port := CampusPortals.stair_port(st, f, rooms, outside)
+		if model == null or port.is_empty():
+			continue
+		var pp := CampusGeometry.to_scene(rooms[id] if id != "out" else null, port["p"])
+		var theta := CampusPortals.stair_turn(port["n"])
+		model.name = "ShaftPreview_%d" % f
+		model.rotation.y = theta
+		model.position = Vector3(-(cos(theta) * pp.x + sin(theta) * pp.y), float(f) * rise, -2.8 - (-sin(theta) * pp.x + cos(theta) * pp.y))
+		add_child(model)
+		_shaft_levels[f] = model
+
+
+func _load_visual(id: String) -> Node3D:
+	var path := CampusData.scene_path(id)
+	if not ResourceLoader.exists(path):
+		return null
+	var model := (load(path) as PackedScene).instantiate() as Node3D
+	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
+			_to_multimesh(mesh)
+	return model
+
+
+## The campus doors seen through (modules/campus-link/doors.js views): from outside the ground-floor room behind each door of
+## the building, from a room the outdoors through its door; placed by the same shift as the seamless crossing. Visual only.
+func _build_door_preview() -> void:
+	var rooms := CampusData.rooms()
+	var doors: Array = CampusData.campus().get("campus_doors", {}).get("doors", [])
+	if scene_id == "out":
+		for d: Dictionary in doors:
+			var rid := String(d["room"])
+			if not rooms.has(rid):
+				continue
+			var r: Dictionary = rooms[rid]
+			var model := _load_visual(rid)
+			if model == null:
+				continue
+			var c := Vector2(float(r["cx"]), float(r["cy"])) + CampusGeometry.shift_of(r)
+			model.name = "DoorPreview_" + rid
+			model.position = Vector3(c.x * CampusGeometry.U2M, 0.0, c.y * CampusGeometry.U2M)
+			add_child(model)
+			door_previews.append(model)
+		return
+	for d: Dictionary in doors:
+		if String(d["room"]) != scene_id:
+			continue
+		var model := _load_visual("out")
+		if model == null:
+			return
+		var c := Vector2(float(layout["cx"]), float(layout["cy"])) + CampusGeometry.shift_of(layout)
+		model.name = "DoorPreview_out"
+		model.position = Vector3(-c.x * CampusGeometry.U2M, 0.0, -c.y * CampusGeometry.U2M)
+		add_child(model)
+		door_previews.append(model)
+		return
+
+
+## The stairwell shafts seen through their doorways (fx/stairwell-view.js): every stair that serves this scene, its shaft model placed
+## 2.8 m beyond the port, dropped by the level's height, turned by the port's normal. Visual only.
+func _build_stair_preview() -> void:
+	var rooms := CampusData.rooms()
+	var outside := CampusData.layout("out")
+	for st: Dictionary in CampusData.campus().get("stair_layout", []):
+		if scene_id == String(st["id"]):
+			continue
+		var level := (st["rooms"] as Array).find(scene_id)
+		if level < 0:
+			continue
+		var path := CampusData.scene_path(String(st["id"]))
+		if not ResourceLoader.exists(path):
+			continue
+		var port := CampusPortals.stair_port(st, level, rooms, outside)
+		if port.is_empty():
+			continue
+		var shaft := (load(path) as PackedScene).instantiate() as Node3D
+		shaft.name = "StairPreview_" + String(st["id"])
+		for mesh: MeshInstance3D in shaft.find_children("*", "MeshInstance3D", true, false):
+			if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
+				_to_multimesh(mesh)
+		var pos := CampusGeometry.to_scene(layout if is_room() else null, port["p"])
+		var n: Vector2 = port["n"]
+		shaft.position = Vector3(pos.x + 2.8 * n.x, -float(level) * float(st["rise"]), pos.y + 2.8 * n.y)
+		shaft.rotation.y = -CampusPortals.stair_turn(n)
+		var lamp := OmniLight3D.new()
+		lamp.light_color = Color("#f2dcc0")
+		lamp.omni_range = 9.0
+		lamp.light_energy = 0.8
+		lamp.position = Vector3(0, 2.4 + float(level) * float(st["rise"]), 0)
+		shaft.add_child(lamp)
+		add_child(shaft)
+		stair_previews.append(shaft)
+
+
+func _build_link_preview() -> void:
+	var rooms := CampusData.rooms()
+	var cfg: Dictionary = CampusData.campus().get("campus_link", {})
+	for v: Dictionary in CampusPortals.link_ports(cfg, rooms, scene_id):
+		var peer_id := String(v["peer"]["room"])
+		if not rooms.has(peer_id) or not ResourceLoader.exists(CampusData.scene_path(peer_id)):
+			continue
+		var model := (load(CampusData.scene_path(peer_id)) as PackedScene).instantiate() as Node3D
+		model.name = "LinkPreview_" + peer_id
+		for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+			if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
+				_to_multimesh(mesh)
+		var t := CampusPortals.link_between(v["peer"], v["self"])
+		var peer_room: Dictionary = rooms[peer_id]
+		var phi := float(t["phi"])
+		var c_there := Vector2(float(peer_room["cx"]), float(peer_room["cy"]))
+		var c_here := Vector2(float(layout["cx"]), float(layout["cy"]))
+		var p := (c_there.rotated(phi) + (t["t"] as Vector2) - c_here) * CampusGeometry.U2M
+		model.rotation.y = -phi
+		model.position = Vector3(p.x, 0.0, p.y)
+		var pp: Dictionary = v["peer"]
+		var inner: Vector2 = (pp["p"] as Vector2) - (pp["n"] as Vector2) * 3.0 / CampusGeometry.U2M
+		var lamp := OmniLight3D.new()
+		lamp.name = "LinkLamp"
+		lamp.light_color = Color("#f2dcc0")
+		lamp.omni_range = 14.0
+		lamp.light_energy = 0.9
+		lamp.shadow_enabled = false
+		lamp.position = Vector3((inner.x - c_there.x) * CampusGeometry.U2M, 2.7, (inner.y - c_there.y) * CampusGeometry.U2M)
+		model.add_child(lamp)
+		add_child(model)
+		link_previews.append(model)
+
+
 # ---- model ----
 
 func _build_model() -> void:
-	var packed := load(CampusData.SCENE_DIR + scene_id + ".glb") as PackedScene
+	var packed := load(CampusData.scene_path(scene_id)) as PackedScene
 	if packed == null:
 		push_error("校园模型缺失：%s" % scene_id)
 		return
@@ -62,7 +334,7 @@ func _build_model() -> void:
 
 
 ## Instances were kept as one prototype + per-instance transforms/colours in glTF extras.
-func _to_multimesh(source: MeshInstance3D) -> void:
+static func _to_multimesh(source: MeshInstance3D) -> void:
 	var extras: Dictionary = source.get_meta("extras")
 	var xf := Marshalls.base64_to_raw(String(extras["wdfz_instances"])).to_float32_array()
 	var count := xf.size() / 12
@@ -128,10 +400,46 @@ func set_lift_doors(amount: float) -> void:
 		shape.set_deferred("disabled", amount >= 0.9)
 
 
-## Inspection silhouettes (InspectionView): placeholder dark figures until the figure models and
-## their scatter animation are ported.
+## Inspection silhouettes (InspectionView, fx/inspection-fx.js): the old figure, black. When the check ends they scatter:
+## away from the player at 1.5 m/s, fading out over 0.8 s (scatter_t).
 var _silhouettes: Node3D
 var _silhouette_key := ""
+var _scatter: Node3D
+var _scatter_t := 0.0
+var _scatter_dirs: Array = []
+const SCATTER_SECONDS := 0.8
+const SCATTER_SPEED := 1.5
+
+
+func _process(delta: float) -> void:
+	if _scatter == null or not is_instance_valid(_scatter):
+		return
+	_scatter_t += delta
+	var alpha := maxf(0.0, 1.0 - _scatter_t / SCATTER_SECONDS)
+	var i := 0
+	for f: Node3D in _scatter.get_children():
+		var dir: Vector2 = _scatter_dirs[i]
+		f.position += Vector3(dir.x, 0.0, dir.y) * delta * SCATTER_SPEED
+		for mi: Node in f.find_children("*", "MeshInstance3D", true, false):
+			var m := (mi as MeshInstance3D).material_override as StandardMaterial3D
+			if m != null:
+				m.albedo_color.a = alpha
+		i += 1
+	if _scatter_t >= SCATTER_SECONDS:
+		_scatter.queue_free()
+		_scatter = null
+
+
+## Rebuild the leftovers when an anomaly has just left one (the list of AnomalyModule.traces).
+func sync_traces(list: Array) -> void:
+	if traces == null or list.size() == _traces_seen:
+		return
+	_traces_seen = list.size()
+	traces.build(scene_id, layout if is_room() else null, list)
+
+
+func scattering() -> bool:
+	return _scatter != null and is_instance_valid(_scatter)
 
 
 func show_silhouettes(points: Array, room: Variant, height: float) -> void:
@@ -140,26 +448,49 @@ func show_silhouettes(points: Array, room: Variant, height: float) -> void:
 		return
 	_silhouette_key = key
 	if is_instance_valid(_silhouettes):
-		_silhouettes.queue_free()
+		if points.is_empty() and not _scatter_dirs_of(_silhouettes, room).is_empty():
+			# The check is over: they scatter instead of vanishing.
+			if is_instance_valid(_scatter):
+				_scatter.queue_free()
+			_scatter = _silhouettes
+			_scatter_t = 0.0
+			_scatter_dirs = _scatter_dirs_of(_silhouettes, room)
+			for f: Node in _scatter.get_children():
+				for mi: Node in f.find_children("*", "MeshInstance3D", true, false):
+					var m := (mi as MeshInstance3D).material_override as StandardMaterial3D
+					if m != null:
+						m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		else:
+			_silhouettes.queue_free()
 	_silhouettes = null
 	if points.is_empty():
 		return
 	_silhouettes = Node3D.new()
 	_silhouettes.name = "InspectionSilhouettes"
 	add_child(_silhouettes)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.02, 0.02, 0.025)
-	mat.roughness = 1.0
-	var mesh := CapsuleMesh.new()
-	mesh.radius = 0.22
-	mesh.height = 1.75
-	mesh.material = mat
 	for xy: Array in points:
 		var s := CampusGeometry.to_scene(room, Vector2(xy[0], xy[1]))
-		var fig := MeshInstance3D.new()
-		fig.mesh = mesh
-		fig.position = Vector3(s.x, height + 0.875, s.y)
+		var fig := FigureModel.make("person", Color(0.02, 0.02, 0.025), false, 0.95)
+		fig.position = Vector3(s.x, height, s.y)
 		_silhouettes.add_child(fig)
+
+
+## Directions (x, z) from the player to each figure; the player is where the camera looks from (the first person).
+var _player_scene := Vector3.ZERO
+
+
+func set_player_scene(p: Vector3) -> void:
+	_player_scene = p
+
+
+func _scatter_dirs_of(group: Node3D, _room: Variant) -> Array:
+	var out: Array = []
+	for f: Node3D in group.get_children():
+		var dx := f.position.x - _player_scene.x
+		var dz := f.position.z - _player_scene.z
+		var len := maxf(0.001, sqrt(dx * dx + dz * dz))
+		out.append(Vector2(dx / len, dz / len))
+	return out
 
 
 ## The patroller's figure (patEnsureFig / patRender): the exported teacher figure scaled 1.12,
@@ -190,7 +521,7 @@ func show_patrol(visible_now: bool, scene_pos: Vector2, height: float, toward: V
 
 
 ## The thing in the garage driveway (systems.js ROAM): a tall dark figure, placeholder.
-var _garage_shadow: MeshInstance3D
+var _garage_shadow: Node3D
 
 
 func show_garage_shadow(visible_now: bool, scene_pos: Vector2, height: float) -> void:
@@ -199,23 +530,15 @@ func show_garage_shadow(visible_now: bool, scene_pos: Vector2, height: float) ->
 			_garage_shadow.visible = false
 		return
 	if not is_instance_valid(_garage_shadow):
-		_garage_shadow = MeshInstance3D.new()
+		_garage_shadow = FigureModel.make("roam", Color(0.01, 0.01, 0.012), true)
 		_garage_shadow.name = "GarageShadow"
-		var body := CapsuleMesh.new()
-		body.radius = 0.26
-		body.height = 2.35
-		_garage_shadow.mesh = body
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(0.01, 0.01, 0.012)
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		_garage_shadow.material_override = mat
 		add_child(_garage_shadow)
 	_garage_shadow.visible = true
-	_garage_shadow.position = Vector3(scene_pos.x, height + 1.175, scene_pos.y)
+	_garage_shadow.position = Vector3(scene_pos.x, height, scene_pos.y)
 
 
 ## The opened door of the portal route (portal.js): a ring of coloured light in front of the physics bench.
-var _portal_ring: Node3D
+var _portal_dev: PortalDevice
 
 
 ## The checkup day in admin1 (checkup.js, placeholder): height rule, scale and eye chart in the
@@ -291,18 +614,11 @@ func show_checkup(on: bool, queue: bool, line: String) -> void:
 		_checkup_queue.collision_layer = 1
 		_checkup_queue.collision_mask = 0
 		_checkup.add_child(_checkup_queue)
-		var coat := StandardMaterial3D.new()
-		coat.albedo_color = Color(0.29, 0.34, 0.41)
 		var k := 0
 		for q: Vector2 in [Vector2(1.45, 17.32), Vector2(2.22, 17.32), Vector2(3.0, 17.32), Vector2(3.78, 17.32), Vector2(4.55, 17.32)]:
 			var p: Vector3 = at.call(q.x, q.y)
-			var fig := MeshInstance3D.new()
-			var cap := CapsuleMesh.new()
-			cap.radius = 0.2
-			cap.height = 1.6 + 0.05 * float((k * 37) % 3)
-			fig.mesh = cap
-			fig.material_override = coat
-			fig.position = p + Vector3(0, cap.height * 0.5, 0)
+			var fig := FigureModel.make("person", Color(0.29, 0.34, 0.41), false, (1.6 + 0.05 * float((k * 37) % 3)) / 1.85)
+			fig.position = p
 			_checkup_queue.add_child(fig)
 			var shape := CollisionShape3D.new()
 			var bs := BoxShape3D.new()
@@ -323,68 +639,83 @@ func checkup_queue_blocks() -> bool:
 	return is_instance_valid(_checkup_queue) and _checkup_queue.collision_layer == 1
 
 
-func show_portal(visible_now: bool) -> void:
-	if not visible_now or scene_id != "lab1":
-		if is_instance_valid(_portal_ring):
-			_portal_ring.visible = false
+## A revisit's note on the floor (fx/dread-fx.js note): a sheet of exercise paper 1.3–2.1 m ahead,
+## one handwritten line, faintly lit so it can be read in the dark. Empty text removes it.
+var _dread_note: Node3D
+
+
+func show_dread_note(text: String, seed: float, pose: Dictionary) -> void:
+	if is_instance_valid(_dread_note):
+		_dread_note.queue_free()
+	_dread_note = null
+	if text == "" or not is_room():
 		return
-	if not is_instance_valid(_portal_ring):
-		var room := CampusData.layout("lab1")
-		var bench := Vector2.ZERO
-		var n := 0
-		var grid: Array = room["grid"]
-		for r in grid.size():
-			for c in String(grid[r]).length():
-				if String(grid[r]).substr(c, 1) == "K":
-					bench += CampusGeometry.tile_center(room, c, r)
-					n += 1
-		bench /= maxf(1.0, float(n))
-		var mid := Vector2(float(room["cx"]), float(room["cy"]))
-		var at := bench + (mid - bench).normalized() * 14.0
-		var s := CampusGeometry.to_scene(room, at)
-		_portal_ring = Node3D.new()
-		_portal_ring.name = "PortalRing"
-		var ring := MeshInstance3D.new()
-		var torus := TorusMesh.new()
-		torus.inner_radius = 0.85
-		torus.outer_radius = 1.0
-		ring.mesh = torus
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(0.6, 0.9, 1.0)
-		mat.emission_enabled = true
-		mat.emission = Color(0.5, 0.85, 1.0)
-		mat.emission_energy_multiplier = 3.0
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		ring.material_override = mat
-		ring.rotation.x = PI * 0.5
-		_portal_ring.add_child(ring)
-		var inside := MeshInstance3D.new()
-		var disc := CylinderMesh.new()
-		disc.top_radius = 0.86
-		disc.bottom_radius = 0.86
-		disc.height = 0.01
-		inside.mesh = disc
-		var glow := StandardMaterial3D.new()
-		glow.albedo_color = Color(0.95, 0.8, 0.5, 0.55)
-		glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		inside.material_override = glow
-		inside.rotation.x = PI * 0.5
-		_portal_ring.add_child(inside)
-		var lamp := OmniLight3D.new()
-		lamp.light_color = Color(0.7, 0.9, 1.0)
-		lamp.light_energy = 1.2
-		lamp.omni_range = 5.0
-		_portal_ring.add_child(lamp)
-		_portal_ring.position = Vector3(s.x, 1.15, s.y)
-		var face := (mid - bench)
-		_portal_ring.rotation.y = atan2(face.x, face.y)
-		add_child(_portal_ring)
-	_portal_ring.visible = true
+	var p: Array = pose["position"]
+	var yaw := float(pose["yaw"])
+	var fwd := Vector3(-sin(yaw), 0.0, -cos(yaw))
+	_dread_note = Node3D.new()
+	_dread_note.name = "DreadNote"
+	var paper := MeshInstance3D.new()
+	var q := PlaneMesh.new()
+	q.size = Vector2(0.34, 0.234)
+	paper.mesh = q
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.85, 0.82, 0.74)
+	mat.emission_enabled = true
+	mat.emission = Color(0.54, 0.52, 0.47) * 0.6
+	paper.material_override = mat
+	_dread_note.add_child(paper)
+	var label := Label3D.new()
+	label.text = text
+	label.font_size = 44
+	label.pixel_size = 0.0006
+	label.modulate = Color(0.17, 0.15, 0.13)
+	label.outline_size = 0
+	label.width = 520.0
+	label.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
+	label.rotation.x = -PI * 0.5
+	label.position.y = 0.006
+	label.alpha_cut = Label3D.ALPHA_CUT_DISCARD
+	label.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_dread_note.add_child(label)
+	_dread_note.position = Vector3(float(p[0]), float(p[1]) + 0.006, float(p[2])) + fwd * (1.3 + fmod(seed * 7.0, 1.0) * 0.8)
+	_dread_note.rotation.y = seed * TAU
+	add_child(_dread_note)
+
+
+func dread_note_text() -> String:
+	if not is_instance_valid(_dread_note):
+		return ""
+	return (_dread_note.get_child(1) as Label3D).text
+
+
+func show_portal(open_now: bool, sketch_now: bool = false) -> void:
+	# The rig stands on the lab's first bench tile in every stage (PortalDevice.sync): bare, sockets lit once the plans are
+	# complete, door open.
+	if scene_id != "lab1":
+		if is_instance_valid(_portal_dev):
+			_portal_dev.visible = false
+		return
+	if not is_instance_valid(_portal_dev):
+		var spot := PortalDevice.bench_spot(CampusData.layout("lab1"))
+		_portal_dev = PortalDevice.new()
+		_portal_dev.build()
+		_portal_dev.position = Vector3(spot.x, 0.0, spot.y)
+		add_child(_portal_dev)
+	_portal_dev.visible = true
+	var st := "open" if open_now else ("ready" if sketch_now else "base")
+	if _portal_dev.state != st:
+		_portal_dev.set_state(st, 1.0)
+
+
+## Hide the rig for a cutscene that brings its own.
+func hide_portal() -> void:
+	if is_instance_valid(_portal_dev):
+		_portal_dev.visible = false
 
 
 func portal_shown() -> bool:
-	return is_instance_valid(_portal_ring) and _portal_ring.visible
+	return is_instance_valid(_portal_dev) and _portal_dev.visible and _portal_dev.state == "open"
 
 
 func garage_shadow_shown() -> bool:

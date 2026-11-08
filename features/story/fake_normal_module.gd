@@ -181,3 +181,4 @@ func choose(index: int) -> void:
 		laughs += 1
 	_emit("notice", {"text": "其实——" + String(e["real"])})
 	_emit("toast", {"text": "（你笑出了声）" if laughed else "（你忍住了）"})
+	_emit("fact_laugh", {"laugh": laughed})

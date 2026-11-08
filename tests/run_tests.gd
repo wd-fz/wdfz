@@ -84,7 +84,53 @@ func _run() -> void:
 	_test_marks_rules()
 	_test_classmates_rules()
 	_test_sensory_rules()
+	_test_caption_rules()
+	_test_dread_rules()
+	_test_atmos_rules()
+	_test_mono_rules()
+	_test_scene_rules()
+	_test_settings_rules()
+	_test_investigation_rules()
+	_test_exploration_rules()
+	_test_drop_rules()
+	_test_plane_rules()
+	_test_camera_rules()
+	_test_snake_rules()
+	_test_run_new_rules()
+	_test_duty_rules()
+	_test_last_life_box()
+	_test_umbrella_rules()
+	_test_vault_hold()
+	await _test_fake_people()
+	_test_call_budget()
+	_test_score_rules()
+	_test_run_records()
+	_test_results_page()
+	_test_records_panel()
+	_test_dev_tools()
+	_test_hands()
+	_test_opening()
+	_test_scene_beats()
+	_test_portal_device()
+	_test_ending_cut()
+	_test_death_cg()
+	_test_day_banner()
+	_test_chalk_notes()
+	_test_chalk_texture()
+	_test_phantoms()
+	_test_traces()
+	_test_weather_fx()
+	_test_model_tiers()
+	_test_anomaly_traces()
+	_test_chase_dash()
+	_test_canteen_view()
+	_test_mirror_view()
+	_test_legacy_save()
+	_test_link_view()
+	_test_broadcast_props()
+	_test_inspection_scatter()
 	await _test_campus_app()
+	await _test_legacy_import()
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
 			DirAccess.remove_absolute(_test_path + suffix)
@@ -993,7 +1039,7 @@ func _test_garage_rules() -> void:
 	var wc := wrong.split(":")
 	drive.inspect_car(int(wc[0]), int(wc[1]))
 	var asked := drive.take_events()
-	check(asked[0]["kind"] == "choice" and String(asked[0]["text"]).begins_with(GarageModule.car_name(int(wc[0]), int(wc[1]))), "looking at a car offers to try the key")
+	check(asked.back()["kind"] == "choice" and String(asked.back()["text"]).begins_with(GarageModule.car_name(int(wc[0]), int(wc[1]))), "looking at a car offers to try the key")
 	drive.choose(0)
 	check(drive.job != null and _notices(drive.take_events()).has("我：我把钥匙插进锁孔，慢慢地拧……"), "trying the key is a 1.6 s hold")
 	drive.set_context(_gctx(east.x + 8.0, east.y))
@@ -1446,7 +1492,7 @@ func _test_body_rules() -> void:
 	var l1 := CampusData.layout("link1")
 	var mid := CampusGeometry.tile_center(l1, 1, 10)
 	b.set_context(_bodyctx("link1", mid, PI))
-	check(b.target()["kind"] == "link" and b.hint() == "翻过栏杆 · 外侧悬空", "the bridge railing can be climbed")
+	check(b.target()["kind"] == "link" and b.hint() == "翻过栏杆 · 外侧悬空（按住空格）", "the bridge railing can be climbed")
 	b.set_context(_bodyctx("link1", mid, 0.0))
 	check(b.target().is_empty(), "facing along the bridge there is nothing to climb")
 	var t6 := CampusData.layout("teach6")
@@ -2095,6 +2141,1457 @@ func _test_sensory_rules() -> void:
 	check(SensoryRules.blink_at(plan, 0.01) == 1.0 and SensoryRules.blink_at(plan, SensoryRules.blink_end(plan) + 0.1) == 0.0, "a blink goes black and comes back")
 
 
+func _test_caption_rules() -> void:
+	var c := SoundCaptions.new()
+	var e := c.publish("dread.knock", {"place": {"pan": -0.6, "muffled": true}})
+	check(e["text"] == "左 · 隔着墙 · 轻轻的敲门声", "a caption says where: left, through a wall")
+	check(c.publish("music.box", {}).is_empty() and c.publish("step.tile", {"self_step": true}).is_empty(), "uncaptioned sounds and your own steps say nothing")
+	check(String(c.publish("step.tile", {"patrol": true, "place": {"behind": true, "m": 3.0}})["text"]) == "后方 · 近处 · 脚步声", "the patroller's steps: behind, near")
+	c.publish("threat.heartLow", {})
+	check(c.publish("threat.heartLow", {}).is_empty(), "the heart is captioned at most once in 20 s")
+	check(c.publish("dread.door", {}, true).is_empty() and not c.publish("event.bellEnd", {}, true).is_empty(), "with the phone or a lesson open only urgent captions get through")
+	check(c.visible().size() == 2 and int(c.visible()[0]["priority"]) == 3, "two lines at most, the urgent one first")
+	for _i in 30:
+		c.tick(0.25)
+	check(c.visible().is_empty(), "captions expire (the clock steps at most 0.25 s a frame)")
+	c.mode = 0
+	check(not c.enabled(0.7, false) and c.enabled(0.03, false) and c.enabled(0.7, true), "auto mode captions only when the sound is off or nearly")
+
+
+func _test_dread_rules() -> void:
+	check(absf(DreadModule.lhash("1:teach1:2") - 0.09446) < 0.000001 and absf(DreadModule.lhash("2:lab1:3") - 0.32188) < 0.000001, "the revisit hash is the Web version's lhashStr")
+	var d := DreadModule.new(CampusData.rooms())
+	d.reset()
+	var t1 := CampusData.layout("teach1")
+	var at := CampusGeometry.tile_center(t1, 30, 17)
+	var ctx := {"scene": "teach1", "x": at.x, "y": at.y, "ang": 0.0, "san": 100.0, "viol": 0.0, "night": 0.0, "day": 1}
+	d.set_context(ctx)
+	for _i in 590:
+		d.tick(0.1)
+	check(d.take_events().is_empty(), "nothing in the first minute of a run")
+	check(d.allow(1) and d.false_threat("knock"), "a false threat when the budget allows")
+	var ev := d.take_events()
+	var pl: Dictionary = ev[0]["place"] if not ev.is_empty() else {}
+	check(not ev.is_empty() and ev[0]["kind"] == "dread" and ev[0]["cue"] == "knock" and float(pl["m"]) >= 4.0 and float(pl["m"]) <= 16.0, "a knock at a door or wall 4–16 m away, placed")
+	check(not d.allow(1) and not d.false_threat("steps"), "mild scares are at least 9 s apart")
+	d.t += 30.0
+	check(d.allow(1) and d.allow(2), "after the gaps both are allowed again")
+	d.false_threat("run", 2)
+	d.t += 50.0
+	check(not d.allow(2), "strong scares in the same area wait 120 s")
+	d.t += 100.0
+	d.take_events()
+	d.false_threat("silence")
+	check(d.take_events()[0]["kind"] == "duck", "a hush drops the ambience")
+	var pre := ctx.duplicate()
+	pre["an_next"] = 2.0
+	pre["an_next0"] = 7
+	d.set_context(pre)
+	d.tick(0.1)
+	d.tick(0.1)
+	check(_of_kind(d.take_events(), "precursor").size() == 1, "one precursor 3.2 s before the next anomaly")
+	var busy := ctx.duplicate()
+	busy["busy"] = true
+	d.set_context(busy)
+	d.next_amb = 0.0
+	d.tick(0.1)
+	check(_of_kind(d.take_events(), "dread").is_empty(), "nothing while something real is going on")
+	var v := DreadModule.new(CampusData.rooms())
+	v.reset()
+	v.set_context(ctx)
+	v.enter("teach1")
+	check(v.visit_fx.is_empty(), "the first visit of the day is as usual")
+	v.enter("teach1")
+	var vev := v.take_events()
+	check(v.visit_fx.get("kind", "") == "lamp" and _of_kind(vev, "visit").size() == 1 and _of_kind(vev, "visit")[0]["fx"] == "lamp", "the second visit to teach1 on day 1 breaks a lamp (as the Web version)")
+	var back := DreadModule.new(CampusData.rooms())
+	back.restore(v.capture())
+	back.set_context(ctx)
+	back.enter("teach1", true)
+	check(back.visit_fx.get("kind", "") == "lamp" and back.visits["1:teach1"] == 2, "a load replays the same change without counting a visit")
+
+
+func _atmos_ctx(col: int, row: int, extra: Dictionary = {}) -> Dictionary:
+	var t1 := CampusData.layout("teach1")
+	var at := CampusGeometry.tile_center(t1, col, row)
+	var ctx := {"scene": "teach1", "x": at.x, "y": at.y, "ang": 0.0, "day": 2, "tsec": 700.0, "viol": 0.0, "busy": false, "an_active": false,
+		"an_next": -1.0, "an_next0": 0, "age": 100.0, "prop": null, "prop_ok": false, "sees_shifted": false}
+	ctx.merge(extra, true)
+	return ctx
+
+
+func _test_atmos_rules() -> void:
+	# Classes and the ground the module reads.
+	check(AtmosModule.class_index(12, 10) == 0 and AtmosModule.class_index(33, 7) == 2 and AtmosModule.class_index(20, 10) == -1 and AtmosModule.class_index(12, 6) == -1,
+		"four classes a floor, rows 7–14 only (ClassroomLayout.classAt)")
+	var rooms := CampusData.rooms()
+	var probe := AtmosModule.new(rooms)
+	check(probe.class_at(rooms["teach1"], 12, 10) == "teach1:0" and probe.class_at(rooms["teach1"], 12, 6).is_empty(), "a tile names its class")
+	# A1: the campus goes quiet day by day.
+	var a := AtmosModule.new(rooms)
+	a.reset()
+	a.set_context(_atmos_ctx(12, 10, {"day": 1}))
+	check(a.campus_kinds().size() == 3, "day 1 keeps whistle, car and bird")
+	a.set_context(_atmos_ctx(12, 10, {"day": 2}))
+	check(a.campus_kinds() == ["car", "bird"], "day 2 loses the whistle")
+	a.set_context(_atmos_ctx(12, 10, {"day": 3}))
+	check(a.campus_kinds() == ["bird"], "day 3 only a bird")
+	var day1 := AtmosModule.new(rooms)
+	day1.reset()
+	day1.set_context(_atmos_ctx(12, 10, {"day": 1}))
+	var heard := 0
+	for _i in 600:
+		day1.tick(0.2)
+		heard += _of_kind(day1.take_events(), "campus").size()
+	check(heard >= 2, "daytime campus noise comes every 16–38 s")
+	var night := AtmosModule.new(rooms)
+	night.reset()
+	night.set_context(_atmos_ctx(12, 10, {"day": 1, "tsec": 1200.0}))
+	var night_heard := 0
+	for _i in 600:
+		night.tick(0.2)
+		night_heard += _of_kind(night.take_events(), "campus").size()
+	check(night_heard == 0, "none after dark")
+	# A1: before an anomaly the place may hush (day 2 on, half the time).
+	var hushed := 0
+	var quiet_day1 := 0
+	for n in 60:
+		var h := AtmosModule.new(rooms)
+		h.reset()
+		h.set_context(_atmos_ctx(12, 10, {"day": 2, "an_next": 5.0, "an_next0": 100 + n}))
+		h.tick(0.1)
+		hushed += _of_kind(h.take_events(), "duck").size()
+		var h1 := AtmosModule.new(rooms)
+		h1.reset()
+		h1.set_context(_atmos_ctx(12, 10, {"day": 1, "an_next": 5.0, "an_next0": 100 + n}))
+		h1.tick(0.1)
+		quiet_day1 += _of_kind(h1.take_events(), "duck").size()
+	check(hushed > 10 and hushed < 50 and quiet_day1 == 0, "from day 2 about half of the anomalies are announced by a hush; day 1 never")
+	# A5: the bell.
+	var b := AtmosModule.new(rooms)
+	b.set_context(_atmos_ctx(12, 10, {"day": 1}))
+	check(b.bell_tune("end", 700.0).is_empty(), "day 1 the bell rings true")
+	b.set_context(_atmos_ctx(12, 10, {"day": 2}))
+	var tune := b.bell_tune("end", 700.0)
+	check(absf(float(tune["pitch"]) - pow(2.0, -0.5 / 12.0)) < 0.0001 and b.bell_tune("start", 700.0).is_empty(), "day 2 the end bell sinks half a tone; the start bell never changes")
+	b.set_context(_atmos_ctx(12, 10, {"day": 3}))
+	check(absf(float(b.bell_tune("end", 700.0)["pitch"]) - pow(2.0, -1.0 / 12.0)) < 0.0001, "day 3 a whole tone")
+	var late := b.bell_tune("end", 1330.0)
+	check(float(late["pitch"]) < pow(2.0, -2.5 / 12.0) + 0.0001 and bool(late["slow"]), "the bell before lights-out is lower and slower")
+	# A7: dusk comes early from day 2.
+	var m1 := AtmosModule.light_mods(1, 1020.0)
+	var m3 := AtmosModule.light_mods(3, 1020.0)
+	check(float(m1["dusk"]) == 0.0 and float(m3["dusk"]) > 0.2 and float(m3["cold"]) < 1.0 and float(AtmosModule.light_mods(3, 700.0)["dusk"]) == 0.0,
+		"day 1 has no early dusk, day 3 does (only in the afternoon)")
+	# A3: a class turns once, three a day at most, never with many violations or something real going on.
+	var stared := 0
+	var vacant := 0
+	var turned: AtmosModule
+	for day in range(2, 40):
+		var s := AtmosModule.new(rooms)
+		s.reset()
+		var d := DreadModule.new(rooms)
+		d.reset()
+		s.set_context(_atmos_ctx(12, 13, {"day": day, "dread": d}))
+		s.tick(0.1)
+		if not s.stare.is_empty():
+			stared += 1
+			turned = s
+	check(stared > 5 and stared < 25, "walking into a class on day 2+ sometimes turns every head (%d of 38)" % stared)
+	check(turned != null and turned.stare["cls"] == "teach1:0" and turned.stares.values().has(1), "the turn is recorded for the day and class")
+	for _i in 30:
+		turned.tick(0.1)
+	check(turned.stare.is_empty(), "the class turns back after 2.7 s")
+	var busy_hits := 0
+	var viol_hits := 0
+	for day in range(2, 40):
+		var s2 := AtmosModule.new(rooms)
+		s2.reset()
+		s2.set_context(_atmos_ctx(12, 13, {"day": day, "busy": true, "dread": DreadModule.new(rooms)}))
+		s2.tick(0.1)
+		busy_hits += 0 if s2.stare.is_empty() else 1
+		var s3 := AtmosModule.new(rooms)
+		s3.reset()
+		s3.set_context(_atmos_ctx(12, 13, {"day": day, "viol": 40.0, "dread": DreadModule.new(rooms)}))
+		s3.tick(0.1)
+		viol_hits += 0 if s3.stare.is_empty() else 1
+	check(busy_hits == 0 and viol_hits == 0, "no stare during anything real or at 35+ violations")
+	var day1_stare := AtmosModule.new(rooms)
+	day1_stare.reset()
+	day1_stare.set_context(_atmos_ctx(12, 13, {"day": 1, "dread": DreadModule.new(rooms)}))
+	day1_stare.tick(0.1)
+	check(day1_stare.stare.is_empty(), "never on day 1")
+	# A3: a return can leave one more seat empty.
+	for day in range(2, 60):
+		var r := AtmosModule.new(rooms)
+		r.reset()
+		var rd := DreadModule.new(rooms)
+		rd.reset()
+		r.left["teach1:0"] = day
+		r.set_context(_atmos_ctx(12, 13, {"day": day, "dread": rd, "ang": PI}))   # facing away: no stare, only a vacancy
+		r.tick(0.1)
+		if r.seats.has("%d:teach1:0" % day):
+			vacant += 1
+			check(int(r.seats["%d:teach1:0" % day]) >= 1 and int(r.seats["%d:teach1:0" % day]) <= 7 and r.stare.is_empty(), "a return leaves one seat of the class empty")
+			break
+	check(vacant == 1, "a return after leaving a class sometimes leaves one more empty seat")
+	# A4: a figure outside the window (not before 90 s into the run).
+	var windows := 0
+	var early := 0
+	for day in range(1, 60):
+		var w := AtmosModule.new(rooms)
+		w.reset()
+		w.set_context(_atmos_ctx(12, 13, {"day": day, "dread": DreadModule.new(rooms)}))
+		w.tick(0.1)
+		windows += 0 if w.window.is_empty() else 1
+		var w2 := AtmosModule.new(rooms)
+		w2.reset()
+		w2.set_context(_atmos_ctx(12, 13, {"day": day, "age": 30.0, "dread": DreadModule.new(rooms)}))
+		w2.tick(0.1)
+		early += 0 if w2.window.is_empty() else 1
+	check(windows > 5 and windows < 45 and early == 0, "some classes show a figure at the window, never in the first 90 s")
+	var gone: AtmosModule
+	for day in range(1, 60):
+		var w3 := AtmosModule.new(rooms)
+		w3.reset()
+		w3.set_context(_atmos_ctx(12, 13, {"day": day, "dread": DreadModule.new(rooms)}))
+		w3.tick(0.1)
+		if not w3.window.is_empty():
+			gone = w3
+			break
+	gone.window_look = true
+	for _i in 10:
+		gone.tick(0.1)
+	check(not bool(gone.window["gone"]), "while it is looked at it stays")
+	gone.window_look = false
+	gone.tick(0.1)
+	check(bool(gone.window["gone"]), "after more than 0.8 s of looking, the next glance away finds it gone")
+	# A6: the mop moves when far away and unseen.
+	var moved := 0
+	var facing := 0
+	for day in range(2, 40):
+		var sh := AtmosModule.new(rooms)
+		sh.reset()
+		var sd := DreadModule.new(rooms)
+		sd.reset()
+		var t1 := CampusData.layout("teach1")
+		sh.set_context(_atmos_ctx(30, 17, {"day": day, "dread": sd, "prop": CampusGeometry.tile_center(t1, 12, 17), "prop_ok": true}))
+		sh.tick(0.1)
+		var rec := str(sh.shift.get("%d:teach1" % day, 0))
+		if rec == "face":
+			facing += 1
+		moved += 1 if (rec == "face" or rec == "push") else 0
+	check(moved > 10 and moved < 36 and facing == moved, "on day 2+ the mop and bucket sometimes face you when nobody saw them move (%d of 38)" % moved)
+	var seen := AtmosModule.new(rooms)
+	seen.reset()
+	seen.set_context(_atmos_ctx(30, 17, {"day": 2, "dread": DreadModule.new(rooms), "prop": Vector2(10, 10), "prop_ok": false}))
+	for _i in 20:
+		seen.tick(0.1)
+	check(seen.shift.is_empty(), "never while it is in sight or close")
+	# A2: dead stretch of lamps, fixed for the room and always at least one lamp lit.
+	var rows := [8, 10, 12, 14, 16, 16, 18, 19]
+	var dark := AtmosModule.dark_lamps(rooms["teach1"], rows)
+	check(AtmosModule.dark_lamps(rooms["teach1"], rows) == dark and dark.size() < rows.size() and not AtmosModule.dark_lamps(rooms["canteen1"], rows).size() > 0, "the dark stretch is fixed per room and only on a teaching, office or lab floor")
+	# Saved state.
+	var back := AtmosModule.new(rooms)
+	back.restore(turned.capture())
+	check(back.stares == turned.stares and back.validate(turned.capture()).is_empty() and not back.validate({"stares": {"1:a": 9}}).is_empty(), "the atmosphere record saves and loads, and a bad one is rejected")
+
+
+func _test_mono_rules() -> void:
+	var rooms := CampusData.rooms()
+	var m := MonoModule.new(rooms)
+	m.reset()
+	var t1 := CampusData.layout("teach1")
+	var hall := CampusGeometry.tile_center(t1, 20, 18)
+	var klass := CampusGeometry.tile_center(t1, 12, 10)
+	m.set_context({"scene": "teach1", "x": hall.x, "y": hall.y, "tile": "", "san": 90.0, "night": false, "busy": false, "seated_class": false})
+	check(m.tier() == "calm" and m.place() == "hall", "a steady mind in the corridor mutters about the corridor")
+	m.set_context({"scene": "teach1", "x": klass.x, "y": klass.y, "tile": "", "san": 60.0, "night": false, "busy": false, "seated_class": false})
+	check(m.tier() == "uneasy" and m.place() == "class", "SAN 50–75 is uneasy, a classroom is a class")
+	var tiers := {}
+	for san in [100.0, 74.0, 49.0, 10.0]:
+		m.set_context({"scene": "out", "x": 0.0, "y": 0.0, "tile": "", "san": san, "night": true, "busy": false, "seated_class": false})
+		tiers[m.tier()] = m.place()
+	check(tiers.size() == 4 and tiers["calm"] == "outNight", "four tiers by SAN (75, 50, 25), and the night outside has its own lines")
+	check(MonoModule.LINES["calm"]["any"].size() == 4 and MonoModule.LINES["breaking"]["any"].size() == 5, "the lines are the Web version's")
+	m.set_context({"scene": "garage1", "x": 0.0, "y": 0.0, "tile": "", "san": 30.0, "night": false, "busy": false, "seated_class": false})
+	var garage_line := m.pick()
+	check(m.place() == "garage" and (MonoModule.LINES["frayed"]["garage"].has(garage_line) or MonoModule.LINES["frayed"]["any"].has(garage_line)), "the garage has its own lines")
+	# 40–75 s apart, with no repeats among the last eight, nothing while busy.
+	var said: Array = []
+	m.reset()
+	m.set_context({"scene": "out", "x": 0.0, "y": 0.0, "tile": "", "san": 90.0, "night": false, "busy": false, "seated_class": false})
+	for _i in 5000:
+		m.tick(0.1)
+		for e: Dictionary in m.take_events():
+			said.append(e["text"])
+	check(said.size() >= 6 and said.size() <= 13, "about one line a minute (%d in 500 s)" % said.size())
+	var first := said.slice(0, 6)
+	var distinct := {}
+	for l: String in first:
+		distinct[l] = true
+	check(distinct.size() == first.size(), "no line repeats until all of the place's lines have been said")
+	var quiet := MonoModule.new(rooms)
+	quiet.reset()
+	quiet.set_context({"scene": "out", "x": 0.0, "y": 0.0, "tile": "", "san": 90.0, "night": false, "busy": true, "seated_class": false})
+	for _i in 2000:
+		quiet.tick(0.1)
+	check(quiet.take_events().is_empty(), "nothing while something else is going on")
+
+
+func _test_scene_rules() -> void:
+	var rooms := CampusData.rooms()
+	var t1 := CampusData.layout("teach1")
+	var lamps: Array = [CampusGeometry.tile_center(t1, 20, 18), CampusGeometry.tile_center(t1, 40, 18)]
+	var sc := AtmosModule.new(rooms)
+	sc.reset()
+	var d := DreadModule.new(rooms)
+	d.reset()
+	sc.set_context(_atmos_ctx(20, 18, {"day": 1, "dread": d, "lamps": lamps, "tsec": 700.0}))
+	var hum := 0
+	var dimmed := 1.0
+	var returned := false
+	for _i in 2400:
+		sc.tick(0.1)
+		hum += _of_kind(sc.take_events(), "dread").size()
+		var mul := sc.lamp_mul()
+		if not mul.is_empty():
+			dimmed = minf(dimmed, float(mul.values()[0]))
+		elif dimmed < 0.2:
+			returned = true
+	check(hum >= 2 and dimmed < 0.2 and returned, "a corridor lamp hums, dims to 12 %% and comes back, the hum moving to a door (%d sounds)" % hum)
+	var quiet := AtmosModule.new(rooms)
+	quiet.reset()
+	quiet.set_context(_atmos_ctx(20, 18, {"day": 1, "dread": DreadModule.new(rooms), "lamps": lamps, "busy": true}))
+	for _i in 2400:
+		quiet.tick(0.1)
+	check(quiet.scene_event().is_empty() and _of_kind(quiet.take_events(), "dread").is_empty(), "no small scene while something real is going on")
+	var early := AtmosModule.new(rooms)
+	early.reset()
+	early.set_context(_atmos_ctx(20, 18, {"day": 1, "dread": DreadModule.new(rooms), "lamps": lamps, "age": 30.0}))
+	early._sc_clock = 90.0
+	early.tick(0.1)
+	check(early.scene_event().is_empty(), "nothing in the first minute of a run")
+	# A door you just closed is answered 1.4 s later about three times in ten.
+	var knocks := 0
+	for n in 100:
+		var dm := AtmosModule.new(rooms)
+		dm.reset()
+		dm.set_context(_atmos_ctx(20, 18, {"day": 1, "dread": DreadModule.new(rooms)}))
+		dm.door_action("teach1", 30, 15, false)
+		if not dm.scene_event().is_empty():
+			for _i in 13:
+				dm.tick(0.1)
+			check(_of_kind(dm.take_events(), "dread").is_empty(), "no answer before 1.4 s")
+			for _i in 3:
+				dm.tick(0.1)
+			knocks += _of_kind(dm.take_events(), "dread").size()
+	check(knocks > 12 and knocks < 55, "about 30 %% of closed doors are knocked on from the other side (%d of 100)" % knocks)
+	var again := AtmosModule.new(rooms)
+	again.reset()
+	again.set_context(_atmos_ctx(20, 18, {"day": 1, "dread": DreadModule.new(rooms)}))
+	again._sc_doors["teach1:30:15"] = 0.0
+	again.door_action("teach1", 30, 15, false)
+	check(again.scene_event().is_empty(), "the same door is not answered twice within 120 s")
+	var reopened := AtmosModule.new(rooms)
+	reopened.reset()
+	reopened._sc_event = {"kind": "door", "at": 0.0, "room": "teach1", "pos": CampusGeometry.tile_center(t1, 30, 15)}
+	reopened.set_context(_atmos_ctx(20, 18, {"day": 1, "dread": DreadModule.new(rooms)}))
+	reopened.door_action("teach1", 30, 15, true)
+	check(reopened.scene_event().is_empty(), "opening the door again cancels the answer")
+
+
+func _test_settings_rules() -> void:
+	var d := GameSettings.normalize({})
+	check(d["vol"] == 70 and d["captions"] == 1 and d["amb"] == 1 and d["distortion"] == 2 and d["reduce_flash"] == 0 and d["bright"] == 100 and d["mouse"] == 100,
+		"settings default to the Web version's (volume 70, captions on, ambience on, full distortion)")
+	var bad := GameSettings.normalize({"vol": 250, "bright": 3, "mouse": 9999, "text": 10, "captions": 7, "quality": -1, "unknown": 5, "sub": "x"})
+	check(bad["vol"] == 100 and bad["bright"] == 50 and bad["mouse"] == 250 and bad["text"] == 85 and bad["captions"] == 1 and bad["quality"] == 2 and bad["sub"] == 1 and not bad.has("unknown"),
+		"out-of-range or invalid values are clamped or defaulted, unknown keys dropped")
+	var path := _test_path.get_base_dir() + "/settings-rules.json"
+	var a := GameSettings.new(path)
+	check(not a.load_file(false) and a.get_int("quality") == 2, "no file: defaults")
+	var t := GameSettings.new(path + ".touch")
+	t.load_file(true)
+	check(t.get_int("quality") == 0, "a first run on a touch device starts at 流畅")
+	a.set_value("vol", 35)
+	a.set_value("captions", 2)
+	a.set_value("mouse", 400)
+	check(a.save_file() and GameSettings.new(path).load_file() , "saves to its own file")
+	var b := GameSettings.new(path)
+	b.load_file()
+	check(b.get_int("vol") == 35 and b.get_int("captions") == 2 and b.get_int("mouse") == 250, "a saved setting is read back, clamped")
+	b.set_value("text", 140)
+	b.set_value("touch_size", 120)
+	b.reset_comfort()
+	check(b.get_int("text") == 100 and b.get_int("touch_size") == 100 and b.get_int("vol") == 35, "restoring comfort defaults leaves sound and picture alone")
+	check(GameSettings.QUALITY_SCALE.size() == 5 and GameSettings.QUALITY_LABELS[4] == "真实" and GameSettings.SUB_MULT == [0.6, 1.0, 1.6], "five quality tiers, three caption sizes")
+	for p2: String in [path, path + ".touch"]:
+		if FileAccess.file_exists(p2):
+			DirAccess.remove_absolute(p2)
+
+
+func _test_investigation_rules() -> void:
+	var inv := InvestigationModule.new()
+	inv.reset()
+	inv.set_context({"day": 1, "place": "教学楼 1F", "desk_ok": true})
+	check(inv.goal().begins_with("先看看自己课桌上的停车单"), "day 1 starts at the desk: look at the parking ticket")
+	check(inv.open_desk() and inv.visible("desk") and _of_kind(inv.take_events(), "save").size() == 1, "R at the own seat reads the ticket and records it")
+	check(not inv.open_desk() and inv.goal().begins_with("停车单提到了教室前方的讲台"), "the ticket is read once; the goal moves on to the podium")
+	inv.notice()
+	var ev := inv.take_events()
+	check(inv.visible("notice") and inv.visible("carTheory") and inv.visible("timePressure") and inv.visible("supply") and not _of_kind(ev, "spots").is_empty(), "the handover note records four entries and marks the guard post and the garage on the map")
+	check(inv.entries["carTheory"]["kind"] == "推测" and inv.entries["notice"]["kind"] == "事实" and inv.entries["notice"]["source"].contains("讲台"), "kinds and sources follow the Web version")
+	var ch: Dictionary = _of_kind(ev, "choice")[0]
+	check(ch["labels"][0] == "阅读登记规定（次日起开放）" and ch["labels"].size() == 2, "on day 1 the outing registration is read, not made")
+	inv.choose(0)
+	check(inv.visible("outing") and not _of_kind(inv.take_events(), "outing").is_empty(), "the outing rule is recorded and registration is offered")
+	check(inv.entries["notice"]["day"] == 1 and inv.recent.back() == "outing", "an entry remembers its day; the latest find is last")
+	# Supply box: only at its place, only after the note, once.
+	var site := String(inv.supply["site"])
+	var other := "canteen1" if site == "guard1" else "guard1"
+	inv.set_context({"day": 1, "place": "x", "has_coin": true, "has_pill": false, "bag_full": false})
+	check(not inv.supply_offer(other) and inv.supply_offer(site) and _of_kind(inv.take_events(), "choice").size() == 1, "the supply offer appears only at its own place")
+	inv.choose(1)
+	var took := inv.take_events()
+	check(not _of_kind(took, "supply").is_empty() and _of_kind(took, "supply")[0]["pay"] and inv.visible("supplyTaken") and bool(inv.supply["taken"]), "paying a coin takes the pill and records it")
+	check(not inv.supply_offer(site), "the box is empty afterwards")
+	var full := InvestigationModule.new()
+	full.reset()
+	full.set_context({"day": 1, "bag_full": true})
+	full.record("notice", "n", "事实")
+	full.supply_offer(String(full.supply_site()["site"]))
+	full.take_events()
+	full.choose(0)
+	check(_of_kind(full.take_events(), "supply").is_empty() and not bool(full.supply["taken"]), "a full bag leaves the pill in the box")
+	var again := InvestigationModule.new()
+	again.reset()
+	again.record("notice", "n", "事实")
+	again.supply_offer(String(again.supply_site()["site"]))
+	again.take_events()
+	again.choose(2)
+	check(not _of_kind(again.take_events(), "continue").is_empty(), "declining goes on with the facility")
+	# Focus, goal and progress.
+	var f := InvestigationModule.new()
+	f.reset()
+	f.set_context({"day": 2, "has_key": true, "car": {"ok": true, "via": "key"}, "car_tried": 2, "portal": {"diary": true, "sketch": false, "open": false, "count": 1, "floors_left": [2, 5], "need": ""}, "hacked": true, "spot_comp": true})
+	f.record("portalDiary", "d", "事实")
+	check(f.focus == "portal" and f.current_focus() == "portal" and f.routes().size() == 3 and f.goal().contains("已得到 1/3 张图纸"), "reading the diary moves the focus to the portal route")
+	check(f.set_focus("car") and f.goal().begins_with("已经有车钥匙") and not f.set_focus("cyber"), "the player can focus a route that exists, not one that does not")
+	var prog := f.progress()
+	check(prog.size() == 3 and String(prog[0][1]).contains("有钥匙，能够试车门；已试 2 辆") and String(prog[2][1]).contains("还需调查实验楼 2、5 楼教师台"), "the route progress block reads like the Web version")
+	# Listing and search.
+	f.record("notice", "钥匙移交：行政楼五楼校长办公室。", "事实", "教学楼一楼 · 讲台移交单")
+	f.record("parking", "停车登记：第 3 排。", "事实", "保安岗")
+	var all := f.list()
+	var hits := f.list("保安")
+	check(all["found"] == 3 and hits["found"] == 1 and hits["recent"].is_empty() and all["recent"].size() == 3 and all["recent"][0]["id"] == "parking", "search filters by text or place; recent shows the latest three, newest first")
+	check(InvestigationModule.new().car_name(4, 3) == "鄂A·H3227" and GarageModule.new(CampusData.layout("garage1")).car_name(4, 3) == InvestigationModule.new().car_name(4, 3), "plates match the garage's")
+	# Records survive a save; a bad one is rejected.
+	var back := InvestigationModule.new()
+	back.restore(f.capture())
+	check(back.entries == f.entries and back.recent == f.recent and back.focus == f.focus and back.validate(f.capture()).is_empty(), "the notebook saves and loads")
+	check(not back.validate({"entries": {"a": {"text": 3, "kind": "事实"}}, "recent": [], "supply": {}}).is_empty(), "a broken notebook is rejected")
+	var many := InvestigationModule.new()
+	many.reset()
+	for i in 12:
+		many.record("r%d" % i, "t", "线索")
+	check(many.recent.size() == 8 and many.recent[0] == "r4", "only the last eight finds are remembered")
+
+
+func _test_exploration_rules() -> void:
+	var rooms := CampusData.rooms()
+	var t1: Dictionary = rooms["teach1"]
+	var ex := ExplorationModule.new(rooms)
+	ex.reset()
+	var at := CampusGeometry.tile_center(t1, 20, 18)
+	var open_doors := {}
+	ex.set_context({"scene": "teach1", "x": at.x, "y": at.y, "door_open": func(c: int, r: int) -> bool: return open_doors.has("%d:%d" % [c, r])})
+	check(ex.rooms().is_empty() and ex.count("teach1") == 0, "nothing is on the sketch before you look")
+	check(ex.observe() and ex.has(t1, 20, 18) and ex.has(t1, 24, 18) and not ex.has(t1, 40, 18), "the tiles within 6 around you are seen, the far ones are not")
+	check(ex.rooms() == ["teach1"] and ex.count("teach1") > 20, "the room joins the list of walked floors")
+	check(not ex.has(t1, 20, 10), "a classroom behind its closed door is not seen from the corridor")
+	var d := Vector2i(-1, -1)
+	for c in range(10, 24):
+		if String(t1["grid"][15]).substr(c, 1) == "=":
+			d = Vector2i(c, 15)
+			break
+	check(d.x >= 0, "(the corridor wall has classroom doors)")
+	var door_at := CampusGeometry.tile_center(t1, d.x, 17)
+	var ex2 := ExplorationModule.new(rooms)
+	ex2.reset()
+	ex2.set_context({"scene": "teach1", "x": door_at.x, "y": door_at.y, "door_open": func(_c: int, _r: int) -> bool: return false})
+	ex2.observe()
+	check(not ex2.has(t1, d.x, 13), "a closed door hides the room behind it")
+	var ex3 := ExplorationModule.new(rooms)
+	ex3.reset()
+	ex3.set_context({"scene": "teach1", "x": door_at.x, "y": door_at.y, "door_open": func(_c: int, _r: int) -> bool: return true})
+	ex3.observe()
+	check(ex3.has(t1, d.x, 13), "an open door shows it")
+	check(ex.percent("teach1") > 0 and ex.percent("teach1") < 20, "a few steps in, a small part of the floor is seen (%d%%)" % ex.percent("teach1"))
+	# Save: six tiles a character, trailing blanks dropped; a bad record is rejected.
+	var saved := ex.capture()
+	var text := String(saved["seen"]["teach1"])
+	check(text.length() <= (63 * 22 + 5) / 6 and not text.ends_with("A") and ExplorationModule.unpack(text, t1) == ex.seen("teach1"), "the sketch packs to a short string and unpacks to the same tiles")
+	var back := ExplorationModule.new(rooms)
+	back.restore(saved)
+	check(back.count("teach1") == ex.count("teach1") and back.validate(saved).is_empty(), "the sketch saves and loads")
+	check(not back.validate({"seen": {"teach1": "!!"}}).is_empty() and not back.validate({"seen": {"nowhere": "A"}}).is_empty() and not back.validate({"seen": {"teach1": "B".repeat(400)}}).is_empty(), "bad records are rejected")
+	# The tick samples every 0.3 s.
+	var tk := ExplorationModule.new(rooms)
+	tk.reset()
+	tk.set_context({"scene": "teach1", "x": at.x, "y": at.y, "door_open": func(_c: int, _r: int) -> bool: return false})
+	tk.tick(0.2)
+	check(tk.count("teach1") == 0, "no look before 0.3 s")
+	tk.tick(0.15)
+	check(tk.count("teach1") > 0, "a look every 0.3 s")
+	check(MapView.tone("留") == "brass" and MapView.tone("锁") == "seal" and MapView.tone("✓") == "done" and MapView.tone("梯") == "route" and MapView.tone("桌") == "prop" and MapView.static_mark("S") == "梯", "the four tones and the furniture letters of the sketch")
+
+
+func _test_drop_rules() -> void:
+	var bag := InventoryModule.new(CampusData.rooms(), CampusData.campus())
+	bag.reset()
+	bag.add("coin")
+	bag.add("torch")
+	bag.set_hot(0, "torch")
+	bag.torch_on = true
+	check(bag.drop("torch") and not bag.has("torch") and bag.hot[0] == null and not bag.torch_on and bag.take_notices().has("我：我把「手电筒」放下了。"), "dropping an item removes it from the bag and the hot slot, and switches the torch off")
+	check(not bag.drop("torch") and bag.has("coin"), "dropping what you do not have does nothing; the rest stays")
+	var fac := FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
+	fac.reset()
+	fac.flags["coil"] = true
+	check(fac.flags["coil"] == true, "(the coil was taken from the server room)")
+
+
+func _test_plane_rules() -> void:
+	var g := PlaneGame.new()
+	var rnd := RandomNumberGenerator.new()
+	rnd.seed = 7
+	var roll := func() -> float: return rnd.randf()
+	check(g.st == "ready" and g.flap() and g.st == "fly" and g.vy == PlaneGame.FLAP, "the first tap starts the round with an upward kick")
+	var tick := g.tick(0.1, 1.0, roll)
+	check(tick.is_empty() and g.y > PlaneGame.H * 0.45 - 30.0 and g.pipes.size() == 1 and float(g.pipes[0]["x"]) < PlaneGame.W + 20.0, "gravity pulls, a shelf comes in from the right")
+	# Fall: the round ends on the floor with no score and no gain.
+	var ended: Array = []
+	for _i in 100:
+		ended.append_array(g.tick(0.05, 1.0, roll))
+	check(g.st == "over" and ended.size() == 1 and ended[0]["gain"] == 0.0 and g.msg == "", "falling ends the round; no score gives no rest")
+	check(g.flap() == true and g.st == "ready" and g.score == 0, "a tap after the end restarts")
+	# A hand-made scored round: pass shelves, end by the floor, and the SAN gain is scaled by the pressure.
+	var h := PlaneGame.new()
+	h.st = "fly"
+	h.score = 3
+	h.y = PlaneGame.H - 9.0
+	h.vy = 200.0
+	var scored := h.tick(0.1, 0.5, roll)
+	check(scored.size() == 1 and absf(float(scored[0]["gain"]) - 1.5) < 0.001 and h.cool == PlaneGame.COOL and h.msg == "手指放松下来，远处声音又清楚了", "a scored round gives 1 SAN a point scaled by the rest factor, then the phone is hot for 45 s")
+	var hot := h
+	hot.reset()
+	hot.st = "fly"
+	hot.score = 5
+	hot.y = PlaneGame.H - 9.0
+	hot.vy = 200.0
+	var none := hot.tick(0.1, 1.0, roll)
+	check(none.size() == 1 and none[0]["gain"] == 0.0 and hot.msg == "手机发烫了，静不下心", "a hot phone gives nothing")
+	var cap := PlaneGame.new()
+	cap.st = "fly"
+	cap.score = 20
+	cap.y = PlaneGame.H - 9.0
+	cap.vy = 200.0
+	check(cap.tick(0.1, 1.0, roll)[0]["gain"] == 6.0, "at most 6 points of rest")
+	cap.tick(40.0, 1.0, roll)
+	check(cap.cool > 0.0 and cap.cool < PlaneGame.COOL, "the heat cools down with time")
+	# Shelf pass counts a point and a collision ends the round.
+	var s := PlaneGame.new()
+	s.st = "fly"
+	s.y = 150.0
+	s.vy = 0.0
+	s.pipes = [{"x": 20.0, "gy": 200.0, "pass": false}]
+	s.tick(0.01, 1.0, roll)
+	check(s.score == 0 and s.st == "over", "hitting a shelf ends the round")
+	var p := PlaneGame.new()
+	p.st = "fly"
+	p.y = 150.0
+	p.pipes = [{"x": 10.0, "gy": 100.0, "pass": false}]
+	p.tick(0.01, 1.0, roll)
+	check(p.score == 1 and p.st == "fly", "passing a shelf scores a point")
+	check(PhoneEnergy.next_signal_in({"elapsed": 14.0}) > 0.99 and PhoneEnergy.next_signal_in({"elapsed": 15.0}) > 14.99, "the next exposure of the cracking comes every 15 run-seconds")
+
+
+func _test_camera_rules() -> void:
+	check(CameraModule.PHOTO.size() == 28 and CameraModule.PHOTO["rain"]["cap"].begins_with("雨幕后面站着一个没打伞的人") and CameraModule.PHOTO["cola"].get("secret", false), "the photo table is the Web version's: 26 anomalies, the window and the lift crowd")
+	var cam := CameraModule.new()
+	cam.reset()
+	cam.set_context({"an": "", "gaze": false, "crowd": false, "day": 2, "tsec": 700.0, "place": "教学楼 1F", "clock": true})
+	var calm := cam.plan()
+	check(calm["an"] == "" and calm["cap"] == "照片里什么也没有。" and calm["kind"] == "" and calm["stamp"] == "%s  D2" % SchoolClock.fmt_clock(700.0), "with nothing happening the photo shows nothing extra")
+	cam.set_context({"an": "rain", "gaze": false, "crowd": false, "day": 2, "tsec": 700.0, "place": "操场", "clock": false})
+	var rain := cam.plan()
+	check(rain["an"] == "rain" and rain["kind"] == "figure" and String(rain["cap"]).begins_with("照片里，雨幕后面") and rain["stamp"] == "--:--  D2" and rain["flash"], "a running anomaly adds its one extra thing; without a watch the stamp has no time")
+	check(cam.plan()["seed"] == rain["seed"], "the same moment gives the same photo")
+	cam.set_context({"an": "rain", "gaze": true, "crowd": false, "day": 2, "tsec": 700.0, "place": "x", "clock": false})
+	check(cam.subject() == "window_gaze" and cam.plan()["kind"] == "eyes", "the window's eyes come before an anomaly")
+	cam.set_context({"an": "rain", "gaze": true, "crowd": true, "day": 2, "tsec": 700.0, "place": "x", "clock": false})
+	check(cam.subject() == "crowd", "the lift crowd comes first")
+	cam.set_context({"an": "nothing", "gaze": false, "crowd": false, "day": 2, "tsec": 700.0, "place": "x", "clock": false})
+	check(cam.subject() == "", "an anomaly without a photo adds nothing")
+	# Album: newest first, at most six, records for public anomalies only.
+	cam.set_context({"an": "rain", "gaze": false, "crowd": false, "day": 3, "tsec": 710.0, "place": "操场", "clock": true})
+	var p := cam.plan()
+	cam.add_photo(p, "AAAA", true)
+	var ev := cam.take_events()
+	check(ev[0]["kind"] == "say" and String(ev[0]["text"]).contains("闪光一亮") and ev[1]["kind"] == "record" and ev[1]["id"] == "photo_rain" and String(ev[1]["text"]).begins_with("手机里的照片（操场）"), "a photo says so, notes the clue and the flash drawing the patroller over")
+	cam.set_context({"an": "cola", "gaze": false, "crowd": false, "day": 3, "tsec": 720.0, "place": "天台", "clock": true})
+	cam.add_photo(cam.plan(), "BBBB", false)
+	check(_of_kind(cam.take_events(), "record").is_empty(), "an internal anomaly's photo is not written into the notes")
+	for i in 8:
+		cam.add_photo(cam.plan(), "C%d" % i, false)
+	check(cam.photos.size() == 6 and cam.photos[0]["img"] == "C7", "the album keeps the last six, newest first")
+	var on_text := cam.copy_text()
+	cam.toggle_flash()
+	check(on_text.contains("闪光开着") and cam.copy_text().contains("闪光关着") and cam.copy_text().contains("6 张"), "the page text follows the flash and the album")
+	var back := CameraModule.new()
+	back.restore(cam.capture())
+	check(back.photos == cam.photos and back.flash == cam.flash and back.validate(cam.capture()).is_empty() and not back.validate({"photos": [{"cap": 1}], "flash": true}).is_empty(), "the album saves and loads; a bad one is rejected")
+
+
+func _test_snake_rules() -> void:
+	var g := SnakeGame.new()
+	var rnd := RandomNumberGenerator.new()
+	rnd.seed = 3
+	var roll := func() -> float: return rnd.randf()
+	g.start(roll)
+	check(g.on and g.body == [Vector2i(8, 8)] and g.dir == Vector2i(1, 0) and g.cd == SnakeGame.COUNTDOWN, "a game starts with a one-segment snake in the middle, facing right, after a 3 s countdown")
+	check(g.tick(1.0, Vector2i.ZERO, roll) and g.body.size() == 1 and g.body[0] == Vector2i(8, 8), "during the countdown nothing moves")
+	g.tick(2.5, Vector2i.ZERO, roll)
+	check(g.cd <= 0.0 and g.body[0] == Vector2i(8, 8), "(the countdown is over)")
+	check(not g.tick(0.1, Vector2i.ZERO, roll) and g.tick(0.05, Vector2i.ZERO, roll) and g.body[0] == Vector2i(9, 8), "a step every 0.14 s")
+	g.food = Vector2i(10, 8)
+	g.tick(0.15, Vector2i.ZERO, roll)
+	check(g.score == 1 and g.body.size() == 2 and g.food != Vector2i(10, 8), "eating grows the snake and scores a point")
+	g.tick(0.15, Vector2i(-1, 0), roll)
+	check(g.dir == Vector2i(1, 0), "with a body you cannot turn straight back")
+	g.turn(Vector2i(0, 1))
+	g.tick(0.15, Vector2i.ZERO, roll)
+	check(g.dir == Vector2i(0, 1) and g.want == null, "a swipe is used on the next step")
+	g.turn(Vector2i(-1, 0))
+	g.tick(0.15, Vector2i(1, 0), roll)
+	check(g.dir == Vector2i(1, 0) and g.want == Vector2i(-1, 0), "a held key beats a swipe; the swipe waits")
+	var wall := SnakeGame.new()
+	wall.start(roll)
+	wall.cd = 0.0
+	wall.body = [Vector2i(15, 8)]
+	wall.tick(0.2, Vector2i.ZERO, roll)
+	check(wall.dead and not wall.tick(0.2, Vector2i.ZERO, roll), "the wall ends the game")
+	var own := SnakeGame.new()
+	own.start(roll)
+	own.cd = 0.0
+	own.body = [Vector2i(5, 5), Vector2i(6, 5), Vector2i(6, 4), Vector2i(5, 4), Vector2i(4, 4)]
+	own.dir = Vector2i(0, -1)
+	own.tick(0.2, Vector2i.ZERO, roll)
+	check(own.dead, "hitting yourself ends the game")
+	var scorer := SnakeGame.new()
+	check(scorer.gain(1.0) == 0.0, "no score, no rest")
+	scorer.score = 3
+	check(scorer.gain(1.0) == 12.0 and absf(scorer.gain(0.5) - 6.0) < 0.001, "rest is 6 + 2 a point, scaled by the pressure")
+	scorer.score = 30
+	check(scorer.gain(1.0) == 20.0, "at most 20")
+	check(AchievementsModule.LIST.has("n.snake"), "the snake achievement exists")
+	var ach := AchievementsModule.new(25)
+	ach.reset()
+	check(ach.fact({"kind": "snake", "score": 6}).is_empty() and ach.fact({"kind": "snake", "score": 7}).has("n.snake"), "seven bites unlock 一口一口")
+
+
+func _test_run_new_rules() -> void:
+	var ach := AchievementsModule.new(25)
+	ach.reset()
+	check(ach.run_new.is_empty() and ach.run_new_labels().is_empty(), "a fresh run has no new achievements")
+	ach.fact({"kind": "snake", "score": 7})
+	ach.fact({"kind": "day", "day": 2})
+	check(ach.run_new == ["n.snake", "n.day2"] and ach.run_new_labels() == PackedStringArray(["普通 · 一口一口", "普通 · 熬过第一天"]), "what the run unlocks is listed in order with its tier")
+	ach.fact({"kind": "snake", "score": 9})
+	check(ach.run_new.size() == 2, "an achievement is listed once")
+	var back := AchievementsModule.new(25)
+	back.restore(ach.capture())
+	check(back.run_new == ach.run_new, "the list is saved with the run")
+	var prior := AchievementsModule.new(25)
+	prior.reset()
+	prior.load_profile({"unlocked": {"n.snake": true}, "sets": {}})
+	prior.fact({"kind": "snake", "score": 8})
+	check(prior.run_new.is_empty(), "something unlocked in an earlier run is not new")
+	var other := AchievementsModule.new(25)
+	other.reset()
+	other.run_new.append("n.snake")
+	other.reset()
+	check(other.run_new.is_empty(), "a new run starts empty")
+
+
+func _test_duty_rules() -> void:
+	check(DutyRoster.tier_of(0.0) == 0 and DutyRoster.tier_of(19.9) == 0 and DutyRoster.tier_of(20.0) == 1 and DutyRoster.tier_of(65.0) == 3 and DutyRoster.tier_of(80.0) == 4 and DutyRoster.tier_of(500.0) == 4, "the roster changes every 20 assimilation, up to tier 4")
+	var mine := func(t: int) -> int:
+		var n := 0
+		for d in 5:
+			for k in 3:
+				n += 1 if DutyRoster.is_mine(t, k, d, 2) else 0
+		return n
+	check(mine.call(0) == 0 and mine.call(1) == 1 and mine.call(2) == 5 and mine.call(3) == 10 and mine.call(4) == 15, "tier 1 one square today, 2 the first square every day, 3 two a day, 4 all fifteen")
+	check(DutyRoster.is_mine(1, 0, 2, 2) and not DutyRoster.is_mine(1, 0, 3, 2) and not DutyRoster.is_mine(1, 1, 2, 2), "tier 1 is today's first square only")
+	check(DutyRoster.NAMES.size() == 16 and DutyRoster.NAMES[0] == "王浩" and DutyRoster.DAYS == ["周一", "周二", "周三", "周四", "周五"], "the names and weekdays are the Web version's")
+
+
+func _test_last_life_box() -> void:
+	var rooms := CampusData.rooms()
+	var g := CampusData.layout("guard1")
+	var at := Vector2(float(g["ox"]) + 4.5 * float(g["tw"]), float(g["oy"]) + 6.5 * float(g["th"]))
+	var m := MarksModule.new(rooms)
+	m.reset()
+	m.set_context({"scene": "guard1", "x": at.x, "y": at.y})
+	check(not m.near_box() and m.box_hint() == "" and not m.use_box(), "no box without a trace of the last run")
+	m.last_life = {"scene": "teach1", "x": 10.0, "y": 10.0, "tsec": 745, "day": 2}
+	check(m.near_box() and m.box_hint() == "失物招领箱", "with a trace, the lost-and-found box by the guard counter is offered")
+	check(m.use_box(), "E at the box reads the card")
+	var ev := m.take_events()
+	check(String(ev[0]["text"]).contains("照片那一栏是空的") and String(ev[0]["text"]).contains("第 2 天 12:25") and ev[1]["kind"] == "record" and ev[1]["id"] == "lastLife" and ev[1]["source"] == "保安岗", "the card is blank, the day and time are pencilled on the back, and it is noted")
+	m.set_context({"scene": "guard1", "x": at.x + 100.0, "y": at.y})
+	check(not m.near_box(), "only close to the box")
+	m.set_context({"scene": "teach1", "x": at.x, "y": at.y})
+	check(not m.near_box(), "only at the guard post")
+
+
+func _test_umbrella_rules() -> void:
+	var bag := InventoryModule.new(CampusData.rooms(), CampusData.campus())
+	bag.reset()
+	bag.add("brolly")
+	check(not bag.brolly_up, "the umbrella starts closed")
+	var open := bag.use("brolly", 700.0)
+	check(bag.brolly_up and open["toast"] == "撑开伞", "using it opens it")
+	var shut := bag.use("brolly", 700.0)
+	check(not bag.brolly_up and shut["toast"] == "收起伞", "using it again closes it")
+	bag.use("brolly", 700.0)
+	bag.drop("brolly")
+	check(not bag.brolly_up and not bag.has("brolly"), "dropping an open umbrella closes it")
+	bag.add("brolly")
+	bag.use("brolly", 700.0)
+	bag.reset()
+	check(not bag.brolly_up, "a new run starts with it closed")
+	# The cola anomaly's can bounces off an open umbrella (anomaly.js): it costs SAN instead of the can.
+	var an := CampusData.make_anomaly()
+	check(an != null, "(the anomaly module reads the umbrella from its context)")
+
+
+func _test_vault_hold() -> void:
+	var rooms := CampusData.rooms()
+	var roof: Dictionary = rooms["teach6"]
+	var body := BodyModule.new(rooms)
+	body.reset()
+	# Stand one step from the parapet on the north side, facing it.
+	var at := Vector2(float(roof["ox"]) + 10.5 * float(roof["tw"]), float(roof["oy"]) + 1.8 * float(roof["th"]))
+	var ctx := {"scene": "teach6", "x": at.x, "y": at.y, "ang": -PI * 0.5, "seated": false, "hiding": false, "stam": 100.0, "moving": false, "locked": false, "anomaly": false, "day": 1, "dead": false, "space": true}
+	body.set_context(ctx)
+	check(not body.target().is_empty() and body.hint() == "翻过栏杆 · 外侧悬空（按住空格）", "the railing hint now says to hold space")
+	body.tick(0.4)
+	check(body.hold > 0.39 and body.fall == null, "holding space builds progress, nothing yet")
+	var released := ctx.duplicate()
+	released["space"] = false
+	body.set_context(released)
+	body.tick(0.1)
+	check(body.hold == 0.0 and body.fall == null, "letting go cancels")
+	body.set_context(ctx)
+	for _i in 5:
+		body.tick(0.15)
+	check(body.fall != null and body.hold == 0.0, "after 0.6 s of holding the vault begins")
+	var tired := BodyModule.new(rooms)
+	tired.reset()
+	var weak := ctx.duplicate()
+	weak["stam"] = 3.0
+	tired.set_context(weak)
+	for _i in 6:
+		tired.tick(0.15)
+	check(tired.fall == null and _of_kind(tired.take_events(), "notice").size() >= 1, "too tired: holding does not vault, and says so")
+	var away := ctx.duplicate()
+	away["x"] = at.x + 200.0
+	var far := BodyModule.new(rooms)
+	far.reset()
+	far.set_context(away)
+	for _i in 6:
+		far.tick(0.15)
+	check(far.hold == 0.0 and far.fall == null, "away from the railing holding space does nothing")
+
+
+func _test_fake_people() -> void:
+	var app: GameApp = APP.instantiate()
+	app.saves = SaveStore.new(_test_path)
+	app.settings = GameSettings.new(_test_path.get_base_dir() + "/settings.json")
+	root.add_child(app)
+	await _frames()
+	app.start_new_game()
+	await _frames(3)
+	app.patrol().pat["safety"] = 999.0
+	var fnm := app.fake_normal()
+	fnm.fn["on"] = true
+	fnm.fn["v"] = 10.0
+	app.school().day = 2
+	await _frames(4)
+	check(is_instance_valid(app._fake_people) and app._fake_people.get_child_count() >= 1 and app._fake_people.get_child_count() <= 4, "on the fake-normal day a few dull people stand in the room (%d)" % (app._fake_people.get_child_count() if is_instance_valid(app._fake_people) else -1))
+	fnm.fn["v"] = 80.0
+	await _frames(3)
+	check(app._fake_people == null, "past 72 laughs they are gone")
+	fnm.fn["v"] = 10.0
+	fnm.fn["on"] = false
+	await _frames(3)
+	check(app._fake_people == null, "and when the fake-normal day ends")
+	app.queue_free()
+	await _frames(2)
+
+
+func _test_call_budget() -> void:
+	var rooms := CampusData.rooms()
+	var radio := BroadcastModule.new(rooms, CampusData.patrol_nav())
+	radio.reset()
+	radio.set_seed(42)
+	var spot := _spot("teach1", [12, 18])
+	radio.b["nextCall"] = 0.0
+	radio.set_context(_bctx("teach1", spot, [], {"dread_ok": false}))
+	radio.tick(1.0)
+	check(radio.b["current"] == null and radio.b["nextCall"] == 0.0 and _of_kind(radio.take_events(), "dread_note").is_empty(), "no roll call while the scare budget says wait: it keeps waiting")
+	radio.set_context(_bctx("teach1", spot, [], {"dread_ok": true}))
+	radio.tick(1.0)
+	var ev := radio.take_events()
+	check(radio.b["current"] != null and float(radio.b["nextCall"]) > 180.0 and _of_kind(ev, "dread_note").size() == 1 and _of_kind(ev, "dread_note")[0]["what"] == "broadcast-call", "when it is quiet the call is made, the next one 180–260 s later, and the budget is spent")
+
+
+func _test_score_rules() -> void:
+	# Time score: 400 × par/sec, clamped to 0.25–1.5.
+	check(ScoreRules.time_score(1080.0, 1080.0) == 400 and ScoreRules.time_score(720.0, 1080.0) == 600 and ScoreRules.time_score(100.0, 1080.0) == 600 and ScoreRules.time_score(10800.0, 1080.0) == 100 and ScoreRules.time_score(0.0, 1080.0) == 0, "the time score is 400 × par / time, between 100 and 600")
+	# Nine grades by grade score.
+	check(ScoreRules.grade_of(0)["g"] == "F" and ScoreRules.grade_of(399)["g"] == "F" and ScoreRules.grade_of(400)["g"] == "E" and ScoreRules.grade_of(700)["g"] == "C" and ScoreRules.grade_of(1000)["g"] == "A"
+		and ScoreRules.grade_of(1300)["g"] == "SS" and ScoreRules.grade_of(1450)["g"] == "SSS" and ScoreRules.grade_of(9999)["g"] == "SSS", "nine grades at 0, 400, 550, 700, 850, 1000, 1150, 1300, 1450")
+	check(ScoreRules.band("D") == "low" and ScoreRules.band("B") == "mid" and ScoreRules.band("S") == "high" and ScoreRules.band("SSS") == "top" and ScoreRules.san_band(80) == "清醒" and ScoreRules.san_band(45) == "动摇" and ScoreRules.san_band(10) == "濒临", "the sound band of a grade and the SAN state")
+	# SSS needs the nightmare difficulty, no rescue, no waking.
+	var hard := {"diff": "hard", "saved": false, "wakes": 0}
+	check(ScoreRules.gate(hard) and not ScoreRules.gate({"diff": "easy", "saved": false, "wakes": 0}) and not ScoreRules.gate({"diff": "hard", "saved": true, "wakes": 0}) and not ScoreRules.gate({"diff": "hard", "saved": false, "wakes": 1}), "SSS needs hard, no rescue, no waking")
+	var sss := ScoreRules.rate(1100.0, 1080.0, 1080.0, hard)
+	check(sss["grade"] == "SSS" and sss["gradeScore"] == 1500 and not sss["capped"], "enough grade score with the gate is SSS")
+	var capped := ScoreRules.rate(1100.0, 1080.0, 1080.0, {"diff": "easy", "saved": false, "wakes": 0})
+	check(capped["grade"] == "SS" and capped["capped"] and not capped["gate"], "without the gate an SSS score gives SS and says it was capped")
+	# Exploration: places 50 %, sketch 30 %, clues 20 %.
+	var ex := ScoreRules.explore({"places": 5, "places_total": 10, "cells": 50, "cells_total": 100, "clues": 10, "clues_total": 20})
+	check(ex["pct"] == 50 and ex["place"] == 50 and ex["sketch"] == 50 and ex["clue"] == 50 and ScoreRules.explore({"places": 0, "places_total": 0, "cells": 0, "cells_total": 0, "clues": 0, "clues_total": 21})["pct"] == 0, "exploration is the weighted share of places, sketch and clues")
+	# Total: the ending, achievements, SAN and exploration, the hard multiplier, and merged entries.
+	var ledger: Array = [{"cat": "应对 · 选择", "text": "课桌任务答对", "pts": 5}, {"cat": "应对 · 选择", "text": "课桌任务答对", "pts": 5}, {"cat": "校规与巡察", "text": "甩掉了巡察者", "pts": 10}]
+	var easy := ScoreRules.total(ledger, {"ending": true, "ending_name": "通关 · 闸门", "san": 70.0, "min_san": 50.0, "explore": {"pct": 40}, "diff": "easy",
+		"achievements": [{"name": "普通 · 还活着", "pts": 10}, {"name": "x", "pts": 0}]})
+	check(easy["sum"] == 300 + 5 + 5 + 10 + 10 + 70 + 80 and easy["total"] == 480 and easy["mult"] == 1.0, "ending 300 + the ledger + achievements + final SAN + 2 a point of exploration")
+	var merged := ScoreRules.group(ledger)
+	check(merged.size() == 2 and merged[0]["n"] == 2 and merged[0]["pts"] == 5, "like entries are merged: desk answer ×2")
+	var nm := ScoreRules.total([], {"ending": true, "san": 100.0, "min_san": 10.0, "explore": {"pct": 50}, "diff": "hard"})
+	check(nm["mult"] == 1.2 and nm["sum"] == 300 + 100 - 30 - 30 + 100 and nm["total"] == roundi(440 * 1.2), "the nightmare multiplies by 1.2; a low SAN low costs 30, a very low one 30 more")
+	check(ScoreRules.total([{"cat": "保命与惊醒", "text": "x", "pts": -900}], {"diff": "easy"})["total"] == 0, "the total never goes below 0")
+	check(ScoreRules.PAR["cyber"] == 1680 and ScoreRules.PAR["car"] == 1080 and ScoreRules.GRADES.size() == 9 and ScoreRules.CATS.size() == 8, "par times and the eight categories")
+	# The track codec.
+	var track: Array = [[0, 0, 100, 50, 3], [5, 0, 101, 52, 4], [12, 1, 400, -20, 63], [40, 1, 400, -20, 0]]
+	var text := RunTrack.encode(track)
+	check(RunTrack.decode(text) == track and text.length() < 40, "a track encodes small and decodes to the same samples")
+	check(RunTrack.decode("AB!AB") == RunTrack.decode("AB") and RunTrack.decode("").is_empty(), "bad data stops there; what came before is used")
+	var mid := RunTrack.at(track, 2.5)
+	check(absf(float(mid[2]) - 100.5) < 0.0001 and absf(float(mid[3]) - 51.0) < 0.0001 and RunTrack.at(track, 20.0)[1] == 0 + 1 - 0 and RunTrack.at(track, -5.0) == track[0] and RunTrack.at(track, 999.0) == track[3], "between samples the position is interpolated; across a scene change it is not")
+	# The ledger from facts.
+	var rooms := CampusData.rooms()
+	var sc := RunScoreModule.new(rooms, CampusData.layout("out"), CampusData.campus(), {"rain": "下不完的雨"})
+	sc.begin("s1")
+	var logged: Array = []
+	sc.on_event = func(kind: String, text2: String, pts: int) -> void: logged.append([kind, text2, pts])
+	sc.fact({"kind": "anomaly", "phase": "start", "id": "rain"})
+	sc.fact({"kind": "anomaly", "phase": "end", "id": "rain", "survived": true, "lethal": true})
+	sc.fact({"kind": "anomaly", "phase": "start", "id": "moth"})
+	sc.fact({"kind": "anomaly", "phase": "hurt", "id": "moth"})
+	sc.fact({"kind": "anomaly", "phase": "end", "id": "moth", "survived": true, "lethal": false})
+	sc.fact({"kind": "anomaly", "phase": "start", "id": "turn"})
+	sc.fact({"kind": "anomaly", "phase": "end", "id": "turn", "survived": false, "lethal": true})
+	check(sc.ledger.size() == 2 and sc.ledger[0]["text"] == "化解「下不完的雨」" and sc.ledger[0]["pts"] == 40 and sc.ledger[1]["text"] == "「moth」受伤后脱身" and sc.ledger[1]["pts"] == -10, "a lethal anomaly survived is +40, one survived hurt is −10, one not survived is nothing")
+	sc.fact({"kind": "fakeNormal", "laugh": true})
+	sc.fact({"kind": "fakeNormal", "laugh": false})
+	sc.fact({"kind": "face", "correct": true})
+	sc.fact({"kind": "face", "correct": false})
+	sc.fact({"kind": "lesson", "correct": true})
+	sc.fact({"kind": "lesson", "correct": false})
+	sc.fact({"kind": "exam", "phase": "paper", "pass": true})
+	sc.fact({"kind": "exam", "phase": "bell"})
+	sc.fact({"kind": "inspection", "compliant": true})
+	sc.fact({"kind": "inspection", "compliant": false})
+	sc.fact({"kind": "inspection", "compliant": false, "excused": true})
+	var pts := []
+	for e: Dictionary in sc.ledger.slice(2):
+		pts.append(int(e["pts"]))
+	check(pts == [-20, 15, 10, -15, 5, 20, 20, -30], "laugh −20, held back +15, quiz +10/−15, desk +5, exam +20, inspection +20/−30; an excused absence is nothing")
+	for _i in 9:
+		sc.fact({"kind": "patrol", "what": "locked"})
+	var lock_sum := 0
+	for e: Dictionary in sc.ledger:
+		if e["text"] == "被巡察者盯上":
+			lock_sum += int(e["pts"])
+	check(lock_sum == -60 and sc.locked == -60, "being locked on costs 10 each, at most 60 in all")
+	sc.fact({"kind": "patrol", "what": "lost"})
+	sc.fact({"kind": "patrol", "what": "locker"})
+	sc.fact({"kind": "patrol", "what": "door"})
+	sc.fact({"kind": "patrol", "what": "permanent"})
+	sc.fact({"kind": "protect", "by": "immune"})
+	sc.fact({"kind": "wake"})
+	check(sc.saved == 1 and sc.wakes == 1 and sc.ledger[sc.ledger.size() - 1]["pts"] == -80 and sc.ledger[sc.ledger.size() - 2]["pts"] == -60 and sc.ledger[sc.ledger.size() - 3]["pts"] == -80, "rescue −60, waking −80, permanent chase −80")
+	check(logged.any(func(x: Array) -> bool: return x[0] == "anomaly" and x[1] == "遭遇「下不完的雨」") and logged.any(func(x: Array) -> bool: return x[0] == "choice" and x[1] == "课桌任务答错") and logged.any(func(x: Array) -> bool: return x[0] == "exam" and x[1] == "撞响了钟楼的钟"), "the replay log hears the ledger and the zero-point events too")
+	# Save, restore, validate.
+	var back := RunScoreModule.new(rooms, CampusData.layout("out"), CampusData.campus())
+	back.restore(sc.capture())
+	check(back.ledger == sc.ledger and back.saved == 1 and back.run == "s1" and back.validate(sc.capture()).is_empty() and not back.validate({"run": 5, "ledger": []}).is_empty(), "the ledger saves and loads; a bad one is rejected")
+	# Clues and the totals of the exploration.
+	sc.add_clue("server", 2)
+	sc.add_clue("stall", 2)
+	check(sc.clues.has("server") and not sc.clues.has("stall"), "only public clues count (a hidden route's is not kept)")
+	var t := sc.totals()
+	check((t["rooms"] as Array).size() >= 30 and (t["zones"] as Array).has("gateN") and int(t["cells"]) > 5000, "the totals: rooms with a sketch, open outdoor areas and three gates, walkable tiles (%d rooms, %d cells)" % [(t["rooms"] as Array).size(), int(t["cells"])])
+	sc.rooms["teach1"] = 1
+	sc.zones["gateN"] = 1
+	var e1 := sc.explore(null, ["usb"])
+	check(e1["pct"] > 0 and e1["clue"] == roundi(2.0 / 21.0 * 100.0), "visited places and found clues raise the exploration (%d%%)" % int(e1["pct"]))
+	# Min SAN and a clear.
+	sc.observe_san(80.0)
+	sc.observe_san(12.0)
+	sc.observe_san(40.0)
+	check(sc.min_san == 12.0, "the lowest SAN is remembered")
+	var res := sc.finish({"id": "car", "legit": true}, {"achievements": [], "san": 40.0, "explore": e1, "diff": "hard", "talent": "none", "day": 2, "clock": 900.0, "active": 1080.0, "route_name": "《闸门》", "mode": "normal", "version": "t"})
+	check(res["rated"] and res["route"] == "car" and res["grade"] == ScoreRules.grade_of(float(res["gradeScore"]))["g"] and res["san"]["min"] == 12 and res["time"]["par"] == 1080.0 and res["timeScore"] == 400
+		and res["score"]["mult"] == 1.2 and sc.result() == res, "a clear makes a rated record: score, time score (par time) and grade")
+	check(res["score"]["items"][0]["cat"] == "结局" and res["score"]["items"][0]["text"] == "通关 · 《闸门》", "the first line of the detail is the ending")
+	sc.trusted = false
+	check(not sc.finish({"id": "car", "legit": true}, {"san": 40.0, "explore": e1, "diff": "easy", "active": 1080.0})["rated"], "a run that used the debug panel is not rated")
+	sc.trusted = true
+	var unlawful := sc.finish({"id": "car", "legit": false}, {"san": 40.0, "explore": e1, "diff": "easy", "active": 1080.0})
+	check(not unlawful["rated"] and unlawful["score"]["items"][0]["cat"] != "结局", "an ending that is not legit gets no ending points and no record")
+	var dl := sc.death_line({"san": 40.0, "explore": e1, "diff": "easy"})
+	check(dl.has("total") and dl["explore"] == int(e1["pct"]) and not dl["debug"], "a death gives one line: the score and the exploration")
+
+
+func _rec(route: String, diff: String, grade: String, gscore: int, used: float, at: int, extra: Dictionary = {}) -> Dictionary:
+	var r := {"at": at, "mode": "normal", "diff": diff, "talent": "none", "route": route, "routeName": route, "day": 1, "clock": 700.0,
+		"time": {"active": used, "rta": null, "par": 1200.0, "used": used}, "score": {"rules": 1, "total": gscore - 400, "sum": gscore - 400, "mult": 1.0, "items": []},
+		"grade": grade, "gradeName": "x", "band": "mid", "memo": "m", "gradeScore": gscore, "timeScore": 400, "gate": false, "capped": false,
+		"explore": {"pct": 10, "place": 10, "sketch": 10, "clue": 10}, "san": {"final": 50, "min": 20}, "ach": {"run": [], "newly": []}, "source": "play", "version": "t"}
+	r.merge(extra, true)
+	return r
+
+
+func _test_run_records() -> void:
+	var dir := _test_path.get_base_dir() + "/records-test"
+	var store := RunRecords.new(dir)
+	for f in DirAccess.get_files_at(dir) if DirAccess.dir_exists_absolute(dir) else PackedStringArray():
+		DirAccess.remove_absolute(dir + "/" + f)
+	check(store.list().is_empty() and store.grades().is_empty(), "no records at first")
+	var pack := {"v": 1, "run": "r", "scenes": ["teach1"], "track": "AAAAA", "pat": [], "clock": [], "events": [], "start": 1, "partial": 0}
+	var a := store.add(_rec("car", "easy", "C", 700, 900.0, 1000), pack)
+	var b := store.add(_rec("car", "easy", "B", 860, 1100.0, 2000), pack)
+	var c := store.add(_rec("face", "hard", "A", 1010, 800.0, 3000, {"mode": "speedrun", "time": {"active": 800.0, "rta": 805.0, "par": 1200.0, "used": 805.0}}), pack)
+	check(store.list().size() == 3 and store.get_record(b)["grade"] == "B" and int(store.get_record(a)["replay"]) == 1 and not store.replay(a).is_empty() and store.replay(a)["track"] == "AAAAA", "records are kept with their replay files")
+	check(store.grades()["B"]["count"] == 1 and store.grades()["B"]["best"] == b and float(store.grades()["C"]["first"]) == 1000.0, "the grade obtained summary: first time, count, best record")
+	store.add(_rec("car", "easy", "B", 870, 1000.0, 4000), pack)
+	check(store.grades()["B"]["count"] == 2 and store.grades()["B"]["best"] != b, "the best of a grade follows the higher grade score")
+	# Debug records are marked and never count.
+	var d := store.add(_rec("car", "easy", "SS", 1400, 500.0, 5000, {"source": "debug"}), {})
+	check(not store.grades().has("SS") and store.best_grade("easy", "car") == "B" and int(store.get_record(d)["replay"]) == 0, "a debug record is not a real grade, not a best, and has no replay")
+	check(store.remove_debug() == 1 and store.get_record(d).is_empty(), "debug records can be cleared")
+	# Ranking: real speedrun records with an RTA.
+	store.add(_rec("face", "hard", "B", 900, 700.0, 6000, {"mode": "speedrun", "time": {"active": 700.0, "rta": 705.0, "par": 1200.0, "used": 705.0}}), {})
+	var by_time := store.ranking("hard", "face")
+	var by_grade := store.ranking("hard", "face", "grade")
+	check(by_time.size() == 2 and by_time[0]["time"]["rta"] == 705.0 and by_grade[0]["grade"] == "A" and store.ranking("easy", "car").is_empty(), "the speedrun ranking by time or by grade; none without an RTA")
+	# Reload from disk.
+	var again := RunRecords.new(dir)
+	check(again.list().size() == store.list().size() and again.grades()["B"]["count"] == 3 and again.best_grade("hard", "face") == "A", "the records are read back from their file")
+	# At most 50, but the bests of every route × difficulty survive and only the last 10 keep a replay.
+	var many := RunRecords.new(dir + "-many")
+	for f in DirAccess.get_files_at(dir + "-many") if DirAccess.dir_exists_absolute(dir + "-many") else PackedStringArray():
+		DirAccess.remove_absolute(dir + "-many/" + f)
+	var first := many.add(_rec("portal", "easy", "S", 1200, 600.0, 1), pack)
+	for i in 55:
+		many.add(_rec("car", "easy", "D", 560 + i, 1000.0 + i, 100 + i), pack)
+	check(many.list().size() == 50 and not many.get_record(first).is_empty(), "at most 50 records; the oldest go, but the best of a route survives")
+	var with_replay := 0
+	for x: Dictionary in many.list():
+		with_replay += int(x.get("replay", 0))
+	check(with_replay <= RunRecords.REPLAYS_MAX + 3 and with_replay >= RunRecords.REPLAYS_MAX, "only the recent ten and the bests keep a replay (%d)" % with_replay)
+	check(many.remove(first) and many.get_record(first).is_empty() and not many.remove("nope"), "a record can be deleted")
+	# The log.
+	var log := RunLog.new(CampusData.rooms())
+	log.begin("r1")
+	log.scene = "teach1"
+	log.pos = Vector2(100, 60)
+	log.now_s = 1.0
+	log.tick(0.5, {}, [])
+	log.pos = Vector2(100.5, 60.5)
+	log.now_s = 1.5
+	log.tick(0.5, {}, [])
+	check(log.samples.size() == 1, "a point is kept only when the player moved, turned or changed scene")
+	log.pos = Vector2(130, 60)
+	log.now_s = 2.0
+	log.tick(0.5, {}, [])
+	check(log.samples.size() == 2 and log.samples[1][2] == 65, "moving adds a point (x/2)")
+	log.event("anomaly", "遭遇「雨」")
+	log.scene = "out"
+	log.tick(10.0, {"walk": true, "room": "out", "x": 400.0, "y": 200.0}, ["还活着"])
+	check(log.events.size() == 2 and log.events[1][1] == "achieve" and log.clock.size() == 1 and log.scenes == ["teach1", "out"] and log.pat.size() == 1, "events, the clock every 10 s, a new achievement event, and the patroller's position in the same building")
+	var packed := log.pack()
+	var restored := RunLog.new(CampusData.rooms())
+	restored.restore("r1", packed)
+	check(restored.run == "r1" and restored.samples == log.samples and restored.events == log.events and restored.partial == 0, "the log in progress carries on when the run id matches")
+	var other := RunLog.new(CampusData.rooms())
+	other.restore("r2", packed)
+	check(other.run == "r2" and other.samples.is_empty() and other.partial == 1, "when it does not match it starts again, marked partial")
+	var done := log.finish()
+	check(done["track"] != "" and RunTrack.decode(String(done["track"])).size() == log.samples.size(), "a clear hands over the encoded track")
+
+
+func _test_results_page() -> void:
+	check(ResultsPanel.fmt(0) == "00:00" and ResultsPanel.fmt(1245.4) == "20:45" and ResultsPanel.fmt(-5) == "00:00", "times read mm:ss")
+	var items: Array = [{"cat": "应对 · 异象", "text": "化解「下不完的雨」", "pts": 40, "n": 1}, {"cat": "校规与巡察", "text": "学生会检查 · 在教室", "pts": 20, "n": 3},
+		{"cat": "校规与巡察", "text": "躲在柜子里躲过", "pts": 15, "n": 2}, {"cat": "校规与巡察", "text": "电梯门在它面前合上", "pts": 15, "n": 1}, {"cat": "保命与惊醒", "text": "不知名药丸挡下一次", "pts": -60, "n": 1}]
+	var rep := ResultsPanel.report_card({"score": {"items": items}, "day": 2},
+		{"events": [[100, "anomaly", "遭遇「下不完的雨」", 0, 0, 0, 0]], "clock": [[0, 1, 500], [200, 1, 700]]})
+	check(rep.size() == 3 and String(rep[0]).begins_with("该生 ") and String(rep[0]).contains(SchoolClock.fmt_clock(500.0)) and String(rep[0]).ends_with("在「下不完的雨」里没有回头。") and String(rep[1]).contains("3 次检查都在座位上"), "the class teacher's remarks come from what happened, at most three")
+	var plain := ResultsPanel.report_card({"score": {"items": []}, "day": 3})
+	check(plain == ["该生第 3 天离开了学校。没有人看见是怎么走的。"], "with nothing to say: left without anyone seeing")
+	var secret := ResultsPanel.report_card({"score": {"items": [{"cat": "应对 · 异象", "text": "化解「满员」", "pts": 20, "n": 1}, {"cat": "应对 · 异象", "text": "化解「可乐」", "pts": 20, "n": 1}]}, "day": 1})
+	var leaked := false
+	for line in secret:
+		for w: String in ResultsPanel.REPORT_SECRET:
+			if String(line).contains(w):
+				leaked = true
+	check(not leaked and secret.size() == 1 and String(secret[0]).contains("离开了学校"), "hidden content never reaches the report card (the secrecy guard)")
+	var m := ScoreRules.sample_meta("SSS", "cyber")
+	check(m["grade"] == "SSS" and m["diff"] == "hard" and m["score"]["mult"] == 1.2 and m["time"]["par"] == 1680.0, "a sample record for SSS is nightmare and clears the gate")
+	for g: Dictionary in ScoreRules.GRADES:
+		var sm := ScoreRules.sample_meta(String(g["g"]), "car")
+		check(sm["grade"] == g["g"], "the sample for %s grades %s" % [g["g"], sm["grade"]])
+
+
+func _test_records_panel() -> void:
+	var dir := _test_path.get_base_dir() + "/records-ui"
+	for f in DirAccess.get_files_at(dir) if DirAccess.dir_exists_absolute(dir) else PackedStringArray():
+		DirAccess.remove_absolute(dir + "/" + f)
+	var store := RunRecords.new(dir)
+	var samples: Array = [[0, 0, 40, 30, 0], [10, 0, 44, 30, 0], [20, 0, 44, 34, 16], [30, 0, 44, 34, 16]]
+	var pack := {"v": 1, "run": "r", "scenes": ["teach1"], "track": RunTrack.encode(samples), "pat": [[10, 0, 46, 30]], "clock": [], "events": [[10, "anomaly", "遭遇「下不完的雨」", 0, 0, 44, 30]],
+		"start": 1, "partial": 0}
+	var a := store.add(_rec("car", "easy", "B", 860, 1100.0, 2000), pack)
+	var b := store.add(_rec("face", "hard", "A", 1010, 800.0, 3000, {"mode": "speedrun", "time": {"active": 800.0, "rta": 805.0, "par": 1200.0, "used": 805.0}}), pack)
+	var panel := RecordsPanel.new(store, CampusData.rooms())
+	root.add_child(panel)
+	panel.open()
+	check(panel.filtered().size() == 2 and panel.filtered()[0]["id"] == b, "the list starts newest first")
+	panel._diff = "easy"
+	check(panel.filtered().size() == 1 and panel.filtered()[0]["id"] == a, "the difficulty filter narrows the list")
+	panel._diff = ""
+	panel._sort = "used"
+	check(panel.filtered()[0]["id"] == b, "sorted by used time puts the fastest first")
+	panel._mode = "rank"
+	panel._refresh()
+	check(panel.visible, "the ranking tab builds")
+	panel._mode = "grades"
+	panel._refresh()
+	check(store.grades().has("B") and not store.grades().has("SSS"), "the result screens tab lists only grades a real run earned")
+	check(panel.open_view(a, false) and panel._t_max == 30.0 and panel._scene == "teach1", "the replay opens on the first drawable scene")
+	panel._t = 20.0
+	panel._redraw()
+	check(panel._map.here and panel._map.trails[0]["pts"].size() == 3, "the replay shows the path up to the time")
+	check(panel.open_view(a, true) and panel._map.trails[0]["pts"].size() == 4 and not panel._map.here, "the footprint map shows the whole path, no marker")
+	check(not panel.open_view("nope", true), "a missing replay does not open")
+	panel.queue_free()
+
+
+func _test_inspection_scatter() -> void:
+	var rooms := CampusData.rooms()
+	var cw := CampusWorld.new()
+	check(not cw.scattering(), "no scatter before a check")
+	cw.free()
+
+
+func _test_broadcast_props() -> void:
+	check(BroadcastProps.tags_for("admin2").is_empty() and BroadcastProps.tags_for("gear1").size() == 1 and BroadcastProps.tags_for("teach6").size() == 1, "the tags sit in the rooms of the sources, the key and the fuse")
+	var bp := BroadcastProps.new()
+	root.add_child(bp)
+	bp.build(CampusData.rooms()["admin2"])
+	var n0 := bp.count()
+	check(n0 == 13, "the station has its door signs, amplifier, microphone and book (%d)" % n0)
+	bp.set_fuse(true)
+	check(bp.count() == n0, "mending the fuse only changes the sign")
+	bp.build(CampusData.rooms()["teach2"])
+	check(bp.count() == 0, "other rooms have no station props")
+	bp.queue_free()
+
+
+func _test_link_view() -> void:
+	var cw := CampusWorld.new()
+	cw.scene_id = "link1"
+	check(CampusPortals.link_ports(CampusData.campus()["campus_link"], CampusData.rooms(), "link1").size() == 2, "the first bridge has a port at each end")
+	check(CampusPortals.link_ports(CampusData.campus()["campus_link"], CampusData.rooms(), "teach3").is_empty(), "a room off the bridges has no neighbour to show")
+	cw.free()
+
+
+func _test_legacy_import() -> void:
+	var app: GameApp = APP.instantiate()
+	app.saves = SaveStore.new(_test_path.get_base_dir() + "/legacy-import/save.json")
+	root.size = Vector2i(1280, 720)
+	root.add_child(app)
+	await _frames()
+	var save := {"v": 1, "clockVersion": 2, "mode": "in", "room": "teach1", "x": 500.0, "y": 300.0, "ang": 1.0, "pitch": 0.1, "tsec": 800, "day": 3, "diff": "hard", "san": 61.5, "viol": 12,
+		"stam": 40, "tt": 25, "bag": ["torch", "pill"], "hot": ["torch", null], "talent": "watch"}
+	var why := app.import_legacy_save("not json")
+	check(not why.is_empty() and app.session == null, "a file that is not JSON is refused and nothing starts")
+	why = app.import_legacy_save(JSON.stringify(save))
+	await _frames(3)
+	check(why.is_empty() and app.session != null and app.school().day == 3 and absf(app.school().tsec - 800.0) < 1.0, "an old save starts a run on its day and time")
+	check(absf(app.school().san - 61.5) < 12.0 and absf(app.school().viol - 12.0) < 12.0 and app.items().bag == ["torch", "pill"] and app.talent().id == "watch" and app.story().diff == "hard", "SAN, violation, bag, talent and difficulty come over")
+	check(app.session.world_id == "teach1" and app.runscore().legacy == 1 and app.player.enabled and not app.player.seated, "it puts you where you stood and marks the run as from an old save")
+	app.queue_free()
+	await _frames()
+
+
+func _test_legacy_save() -> void:
+	var rooms := CampusData.rooms()
+	var items: Dictionary = CampusData.campus().get("items", {})
+	var keys: Array = TalentModule.KEYS
+	var good := {"v": 1, "clockVersion": 2, "mode": "in", "room": "teach1", "x": 500.0, "y": 300.0, "ang": 1.0, "pitch": 0.1, "tsec": 800, "day": 3, "diff": "hard", "san": 61.5, "viol": 12,
+		"stam": 40, "tt": 25, "bag": ["torch", "pill", "ghost_item"], "hot": ["torch", "pill"], "talent": "watch"}
+	var p := LegacySave.plan(good, rooms, items, keys)
+	check(String(p["error"]).is_empty() and p["world"] == "teach1" and p["day"] == 3 and p["diff"] == "hard" and p["talent"] == "watch" and is_equal_approx(float(p["san"]), 61.5), "a good old save is planned")
+	check(p["bag"] == ["torch", "pill"] and p["dropped"] == ["ghost_item"] and p["hot"] == ["torch", "pill"], "items this version does not have are dropped, the hotbar keeps what is in the bag")
+	check(not String(LegacySave.plan("nope", rooms, items, keys)["error"]).is_empty(), "something that is not an object is refused")
+	check(not String(LegacySave.plan({"x": 1, "y": 2, "tsec": 2000}, rooms, items, keys)["error"]).is_empty(), "a time out of range is refused")
+	var bad_room := good.duplicate()
+	bad_room["room"] = "nowhere"
+	check(not String(LegacySave.plan(bad_room, rooms, items, keys)["error"]).is_empty(), "an unknown room is refused")
+	var out := {"mode": "out", "x": 10, "y": 20, "tsec": 700, "day": 1, "san": 500, "talent": "bogus"}
+	var po := LegacySave.plan(out, rooms, items, keys)
+	check(String(po["error"]).is_empty() and po["world"] == "out" and float(po["san"]) == 100.0 and po["talent"] == "none", "numbers are clamped and an unknown talent becomes none")
+	var bad_clock := good.duplicate()
+	bad_clock["clockVersion"] = 9
+	check(not String(LegacySave.plan(bad_clock, rooms, items, keys)["error"]).is_empty(), "an unknown clock version is refused")
+
+
+func _test_mirror_view() -> void:
+	check(MirrorView.tier_of(90.0) == 0 and MirrorView.tier_of(55.0) == 1 and MirrorView.tier_of(30.0) == 2 and MirrorView.tier_of(10.0) == 3, "the four tiers of the mirror by SAN")
+	check(is_equal_approx(MirrorView.facing(0.0, Vector2(-1, 0)), 1.0) and is_equal_approx(MirrorView.facing(PI, Vector2(-1, 0)), -1.0), "facing is 1 when squarely at the mirror")
+	check(is_equal_approx(MirrorView.lateral(Vector2(10, 20), Vector2(0, 0), Vector2(-1, 0)), -20.0 * CampusGeometry.U2M) or is_equal_approx(MirrorView.lateral(Vector2(10, 20), Vector2(0, 0), Vector2(-1, 0)), 20.0 * CampusGeometry.U2M), "the sideways offset is measured along the mirror")
+	var buf: Array = [[0.0, 0.1, 1.0], [0.4, 0.2, 1.0], [0.8, 0.3, 1.0], [1.2, 0.4, 1.0]]
+	check(MirrorView.lagged(buf, 1.2, 0.5)[1] == 0.2 and MirrorView.lagged(buf, 1.2, 0.0)[1] == 0.4 and MirrorView.lagged(buf, 0.1, 0.5)[1] == 0.1, "a beat behind replays the position from half a second ago")
+	var mv := MirrorView.new()
+	root.add_child(mv)
+	mv.build(CampusData.rooms()["teach1"], [{"w": Vector2(1392.0, 1917.5), "n": Vector2(-1, 0)}])
+	check(mv.count() == 1, "a mirror hangs over the basin")
+	mv.update(0.1, Vector2(1380, 1917.5), 0.0, 10.0, 1.0, true)
+	check(((mv._mirrors[0]["arm"]) as Node3D).visible, "at the lowest tier with the raise on, the arm shows")
+	mv.queue_free()
+
+
+func _test_canteen_view() -> void:
+	var room: Dictionary = CampusData.rooms()["canteen1"]
+	var ly := CanteenView.layout(room)
+	check(not ly.is_empty() and (ly["lamp"] as Vector2).x > (ly["server"] as Vector2).x, "the lamp is over the counter, the server at its west head")
+	check(CanteenView.layout(CampusData.rooms()["teach1"]).is_empty(), "a room without a counter has no layout")
+	var cv := CanteenView.new()
+	root.add_child(cv)
+	cv.build(room)
+	check(cv.built(), "the lamp, bowl and server are built")
+	cv.update(true, Vector2(0, 0), false)
+	check(cv.visible and cv._bowl.visible, "lit after lights out, with the bowl")
+	cv.update(true, Vector2(0, 0), true)
+	check(not cv._bowl.visible, "the bowl is gone once eaten tonight")
+	cv.update(false, Vector2(0, 0), false)
+	check(not cv.visible, "dark before lights out")
+	cv.queue_free()
+
+
+func _test_chase_dash() -> void:
+	check(not CarChaseView.shade_state(0.0, 0, 0.0)["visible"] and CarChaseView.shade_state(0.1, 0, 0.0)["visible"] and not CarChaseView.shade_state(0.1, 1, 0.0)["visible"] and CarChaseView.shade_state(0.9, 4, 0.0)["visible"], "the shadows in the mirror come one by one as the pursuit closes")
+	check(CarChaseView.shade_state(1.0, 0, 0.0)["scale"].x > CarChaseView.shade_state(0.1, 0, 0.0)["scale"].x, "and grow")
+
+
+func _test_anomaly_traces() -> void:
+	var an := AnomalyModule.new(CampusData.rooms(), {})
+	var me := Vector2(100, 200)
+	check(an.trace_for("rain", {}, me, "teach1", 0.0) == {"k": "puddle", "x": 100.0, "y": 200.0, "room": "teach1"} and an.trace_for("rain", {}, me, "out", 0.0)["room"] == "", "the rain leaves a puddle where you stood, outdoors it is room-less")
+	check(an.trace_for("moth", {"src": {"x": 5.0, "y": 6.0}}, me, "teach1", 0.0)["k"] == "moths" and an.trace_for("moth", {}, me, "teach1", 0.0).is_empty(), "moths leave the dead ones at their source, none without a source")
+	check(an.trace_for("cup", {"phase": 2, "lx": 1.0, "ly": 2.0}, me, "teach1", 0.0)["room"] == "" and an.trace_for("cup", {"phase": 1}, me, "out", 0.0).is_empty(), "the cup lands outdoors and only after it fell")
+	check(an.trace_for("necker", {}, me, "out", 300.0)["x"] == 300.0 and an.trace_for("blackout", {}, me, "out", 0.0).is_empty(), "the necker leaves marks on the fence, a blackout leaves none")
+	for i in 45:
+		an.traces.append({"k": "dust", "x": 0.0, "y": 0.0, "room": ""})
+		while an.traces.size() > AnomalyModule.TRACE_MAX:
+			an.traces.pop_front()
+	check(an.traces.size() == 40, "at most 40 are kept")
+	check(Traces.dynamic_for([{"k": "dust", "room": "teach1"}, {"k": "dust", "room": ""}], "teach1").size() == 1 and Traces.dynamic_for([{"k": "dust", "room": ""}], "out").size() == 1, "each scene shows its own leftovers")
+
+
+func _test_model_tiers() -> void:
+	var was := CampusData.tier
+	CampusData.tier = CampusData.DEFAULT_TIER
+	check(CampusData.scene_path("teach1") == CampusData.SCENE_DIR + "teach1.glb" and CampusData.tiers_available().has(CampusData.DEFAULT_TIER), "the default tier loads from the usual folder")
+	CampusData.tier = 0
+	check(CampusData.scene_path("teach1") == "res://assets/campus_q0/scenes/teach1.glb" and CampusData.tiers_available() == [0, 1, 2, 3, 4], "all five tiers are exported and tier 0 loads its own model")
+	CampusData.tier = 3
+	check(CampusData.scene_path("lab2") == "res://assets/campus_q3/scenes/lab2.glb" and ResourceLoader.exists(CampusData.scene_path("stair_garage")), "every scene exists in every tier, stairwells included")
+	for t in [0, 1, 3, 4]:
+		CampusData.tier = t
+		var n := 0
+		for id: String in CampusData.rooms():
+			if ResourceLoader.exists(CampusData.scene_path(id)) and CampusData.scene_path(id).contains("campus_q%d" % t):
+				n += 1
+		check(n == CampusData.rooms().size(), "tier %d has a model for every room (%d)" % [t, n])
+	CampusData.tier = was
+
+
+func _test_weather_fx() -> void:
+	check(WeatherFx.wetness(0.0) == 0.0 and WeatherFx.wetness(5.0) == 0.5 and WeatherFx.wetness(30.0) == 1.0, "the puddles fill in ten seconds")
+	check(WeatherFx.threat(0.0, false) == 0.0 and WeatherFx.threat(6.5, false) == 1.0 and WeatherFx.threat(4.5, true) == 1.0 and WeatherFx.threat(3.0, true) > WeatherFx.threat(3.0, false), "the swarm closes in faster on nightmare")
+	var rain := WeatherFx.new()
+	root.add_child(rain)
+	rain.setup_rain(Vector3.ZERO)
+	for i in 30:
+		rain.update_rain(0.05, Vector3.ZERO, 0.0)
+	check(rain._seeds.size() == WeatherFx.RAIN_COUNT and rain._puddles.size() == 9, "the rain has its drops and puddles")
+	var seen := 0
+	for m in rain._rings:
+		seen += 1 if m.visible else 0
+	check(seen > 0, "drops that land spread rings (%d)" % seen)
+	rain.queue_free()
+	var swarm := WeatherFx.new()
+	root.add_child(swarm)
+	swarm.setup_moths(Vector3(2, 0, 3))
+	for i in 40:
+		swarm.update_moths(0.05, Vector3(0, 1.7, 0), 6.5, false)
+	var nearest := 99.0
+	for m: Dictionary in swarm._moths:
+		nearest = minf(nearest, (m["p"] as Vector3).distance_to(Vector3(0, 1.7, 0)))
+	check(nearest >= 0.34 and swarm.distance < 3.0, "the swarm is drawn onto you but never onto your face (nearest %.2f m, mean %.2f)" % [nearest, swarm.distance])
+	swarm.queue_free()
+
+
+func _test_traces() -> void:
+	check(Traces.for_scene("garage1").size() == 1 and Traces.for_scene("out").size() == 1 and Traces.for_scene("teach2").is_empty(), "each fixed trace belongs to one scene")
+	var tr := Traces.new()
+	root.add_child(tr)
+	tr.build("garage1", CampusData.rooms()["garage1"])
+	check(tr.count() == 52, "the drag marks are 26 pairs of shoe prints (%d)" % tr.count())
+	tr.build("teach1", CampusData.rooms()["teach1"])
+	check(tr.count() == 5, "five scratches by the toilet door")
+	tr.queue_free()
+
+
+func _test_phantoms() -> void:
+	var ph := Phantoms.new()
+	root.add_child(ph)
+	var room: Dictionary = CampusData.rooms()["teach1"]
+	var cam := Vector3(17.3, 1.7, 1.4)
+	var stand := func(_w: Vector2) -> bool: return true
+	ph.hallucinate(1.0, true, 80.0, cam, 0.0, room, 0.0, stand)
+	check(not ph.hallu_visible(), "no hallucination while SAN is above 32")
+	var seen := false
+	for i in 120:
+		ph.hallucinate(1.0, true, 10.0, cam, 0.0, room, 0.0, stand)
+		seen = seen or ph.hallu_visible()
+	check(seen, "a low SAN brings the figure at the edge of the view")
+	# Turning to it takes it away at once.
+	ph._hallu.visible = true
+	var a_to := atan2(ph._hallu.position.z - cam.z, ph._hallu.position.x - cam.x)
+	ph.hallucinate(0.01, true, 10.0, cam, a_to, room, 0.0, stand)
+	check(not ph.hallu_visible(), "looking at it makes it gone")
+	ph.apparition(1.0, false, true, false, 50.0, cam, 0.0, room, 0.0, stand, func(_a: Vector2, _b: Vector2) -> bool: return true)
+	check(not ph.appar_visible(), "no apparition when something else is going on")
+	var shown := false
+	for i in 200:
+		ph.apparition(1.0, true, true, false, 50.0, cam, 0.0, room, 0.0, stand, func(_a: Vector2, _b: Vector2) -> bool: return true)
+		shown = shown or ph.appar_visible()
+	check(shown, "the far figure appears in the dark")
+	ph.apparition(0.1, true, true, true, 50.0, cam, atan2(ph._appar.position.z - cam.z, ph._appar.position.x - cam.x), room, 0.0, stand, func(_a: Vector2, _b: Vector2) -> bool: return true)
+	check(not ph.appar_visible() or ph._appar_life > 0.0, "the torch on it can send it away")
+	ph.show_smile("behind", cam, 0.0)
+	check(ph.smile_mode() == "behind" and absf(ph._smile.position.x - (cam.x + 1.7)) < 0.001, "the smile stands 1.7 m behind")
+	ph.tick_smile(3.0, cam)
+	check(ph.smile_mode() == "", "and fades after 2 s")
+	ph.show_smile("jump", cam, 0.0)
+	ph.tick_smile(0.2, cam)
+	check(ph._smile.scale.x > 0.9 and ph._smile.scale.x < 0.93, "the jump smile fills the view within 0.18 s")
+	ph.queue_free()
+
+
+func _test_chalk_texture() -> void:
+	for sym: String in ChalkTexture.SYMBOLS:
+		var img := ChalkTexture.image(sym)
+		var inked := 0
+		for y in range(0, ChalkTexture.SIZE, 2):
+			for x in range(0, ChalkTexture.SIZE, 2):
+				if img.get_pixel(x, y).a > 0.3:
+					inked += 1
+		check(img.get_width() == 128 and inked > 150 and inked < 2500, "the chalk picture of %s is drawn (%d inked samples)" % [sym, inked])
+	check(ChalkTexture.image("x").get_pixel(64, 64).a > 0.0 and ChalkTexture.image("x").get_pixel(2, 64).a == 0.0, "the picture is transparent away from the strokes")
+	check(MarksModule.SYMS.size() == ChalkTexture.SYMBOLS.size(), "every mark symbol has a chalk picture")
+
+
+func _test_chalk_notes() -> void:
+	var room: Dictionary = CampusData.rooms()["teach1"]
+	var w := Vector2(float(room["ox"]) + 48.5 * float(room["tw"]), float(room["oy"]) + 11.5 * float(room["th"]))
+	var west := ChalkNotes.spot(room, w, Vector2(-1, 0))
+	check(String(west["kind"]) == "wall" and int(west["nx"]) == -1 and int(west["d"]) <= 6, "the forecast finds the wall ahead (the front wall with the board)")
+	check(String(ChalkNotes.spot(room, w, Vector2(0, 1))["kind"]) == "wall" and String(ChalkNotes.spot({}, w, Vector2(1, 0))["kind"]) == "floor", "a wall within six tiles, else the floor")
+	check(is_equal_approx(ChalkNotes.skip_interval(12.0), 5.024) and ChalkNotes.skip_interval(100.0) == 1.0, "truancy writing comes faster with violation, at most once a second")
+	check(ChalkNotes.skip_active(true, 12.0, false) and not ChalkNotes.skip_active(true, 10.0, false) and ChalkNotes.skip_active(true, 10.0, true) and not ChalkNotes.skip_active(true, 7.0, true) and not ChalkNotes.skip_active(false, 50.0, true), "truancy writing starts at 12, stays above 8, needs a wrong place")
+	var cn := ChalkNotes.new()
+	root.add_child(cn)
+	check(cn.update_forecast(true, "10:15", room, w, Vector2(-1, 0), Vector3.ZERO, 0.1) and cn.forecast_text() == "10:15", "the forecast is written")
+	cn.update_forecast(false, "", room, w, Vector2(-1, 0), Vector3.ZERO, 0.1)
+	check(not cn.has_forecast(), "and wiped when no anomaly is coming")
+	for i in 40:
+		cn.update_skip(10.0, true, 60.0, room, Vector3(0, 0, 0))
+	check(cn.skip_count() > 0 and cn.skip_count() <= ChalkNotes.MAX_SKIP, "the truancy writing is capped at 28")
+	cn.update_skip(0.1, false, 0.0, room, Vector3.ZERO)
+	check(cn.skip_count() == 0, "and wiped when the violation falls")
+	cn.queue_free()
+
+
+func _test_day_banner() -> void:
+	var at := DayBanner.spot(CampusData.layout("out"))
+	check(at != Vector3.ZERO and is_equal_approx(at.y, 5.55) and is_equal_approx(at.x, (397.0 + 283.5 / 2.0) * 2.0 / 9.0) and is_equal_approx(at.z, (875.5 + 99.0) * 2.0 / 9.0 + 0.82), "the banner hangs on the front of the teaching building, second floor")
+	check(DayBanner.spot({}) == Vector3.ZERO, "no building, no banner")
+
+
+func _test_death_cg() -> void:
+	for c: String in DeathCG.CAUSES:
+		check((StoryModule.DURATIONS.has(c) or DeathCG.LENGTH.has(c)) and DeathCG.has(c), "death scene %s has a duration and a scene" % c)
+	check(DeathCG.duration("misread", 2.0) == 4.1 and DeathCG.duration("trash", 3.6) == 3.6 and DeathCG.has("window_gaze") and DeathCG.has("paper_sender") and DeathCG.has("campus_fall"), "scenes of the cause's own length (window gaze 7 s, paper sender 8 s, misread 4.1 s, fall 6 s)")
+	check(not DeathCG.has("vignette") and DeathCG.seg(0.5, 0.0, 1.0) == 0.5 and DeathCG.seg(-1.0, 0.0, 1.0) == 0.0 and DeathCG.ss(0.5, 0.0, 1.0) == 0.5 and DeathCG.ss(2.0, 0.0, 1.0) == 1.0, "the easing helpers clamp")
+
+
+func _test_scene_beats() -> void:
+	# The beat sounds of the death, ending and opening scenes (old SFX.door / sting / vanish / smile / bigBell / crackle / engine / hum / blink / wake).
+	var cg := DeathCG.new()
+	var fired := [0]
+	cg.snd("foley.door")  # silent without audio: no error
+	cg.cue("x", 1.0, 1.5, func() -> void: fired[0] += 1)
+	cg.cue("x", 2.0, 1.5, func() -> void: fired[0] += 1)
+	check(fired[0] == 1, "a beat fires once, when its time comes")
+	var bank: Dictionary = (JSON.parse_string(FileAccess.get_file_as_string(AudioFx.INDEX)) as Dictionary)["sfx"]
+	var ids: Array = bank.keys()
+	for sound_id: String in ["foley.door", "threat.sting", "foley.vanish", "threat.smileBack", "threat.smileJump", "event.bigBell", "world.crackle", "scene.engine", "scene.hum", "scene.cyberEnd", "ui.click", "ui.blink", "foley.wake"]:
+		check(ids.has(sound_id), "beat sound %s is in the bank" % sound_id)
+	var src := FileAccess.get_file_as_string("res://app/death_cg.gd")
+	for pair: String in ["trash:k1", "grip:grab", "twin:in", "gaze:giggle", "bell:hit", "loop:man", "laugh:big", "lamps:last"]:
+		var parts := pair.split(":")
+		check(src.contains('cue("%s"' % parts[1]) and src.contains("func _update_%s(" % parts[0]), "death scene %s has its beat %s" % [parts[0], parts[1]])
+	cg.free()
+
+
+func _test_portal_device() -> void:
+	# The portal rig (model/portal.js): states base -> ready -> charge -> open -> enter.
+	var dev := PortalDevice.new()
+	dev.build(16)
+	check(is_equal_approx(dev.ring_y, 0.935 + 0.05 + 0.06 + 0.62), "the ring centre stands above the bench top (%.3f)" % dev.ring_y)
+	check(not dev._inner.visible and not (dev._parts["coil"] as Node3D).visible and (dev._sockets["coil"] as Node3D).visible, "base: sockets only, nothing inside the ring")
+	dev.set_state("ready")
+	check(((dev._leds["lens"] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color == Color("#ffb347") and not (dev._parts["lens"] as Node3D).visible, "ready: the socket lamps are on")
+	dev.set_state("charge", 0.4)
+	var closed := 0
+	for r: MeshInstance3D in dev._rails:
+		closed += 1 if r.visible else 0
+	check((dev._parts["coil"] as Node3D).visible and not (dev._sockets["coil"] as Node3D).visible and closed == 2 and not dev._inner.visible, "charge 0.4: parts fitted, two of three rails closed, door still shut")
+	dev.set_state("charge", 0.8)
+	check(dev._inner.visible and dev._inner.scale.x > 0.2 and dev._inner.scale.x < 1.0, "charge 0.8: the door starts to open")
+	dev.set_state("open")
+	check(dev._inner.visible and is_equal_approx(dev._inner.scale.x, 1.0), "open: the whole door")
+	dev.tick(0.1)
+	check(dev._coil_mat.emission.r > 0.0, "the coil pulses once powered")
+	dev.set_state("enter", 1.0)
+	var top: StandardMaterial3D = dev._layers[2].material_override
+	check(top.albedo_color.a > 0.35, "enter: the inside brightens (%.2f)" % top.albedo_color.a)
+	var tb := PortalDevice.bench_spot(CampusData.layout("lab1"))
+	check(tb != Vector2.ZERO, "the rig stands on the lab's first bench tile")
+	dev.free()
+	for prop_name: String in ["server_rack", "server_console", "speaker_box", "locker_bank_4", "window_in_150", "desk_computer", "chair_office"]:
+		check(ResourceLoader.exists("res://assets/campus/props/%s.glb" % prop_name), "the cyber ending's prop %s is exported" % prop_name)
+	check(ResourceLoader.exists("res://assets/campus/patrol/patrol_figure.glb"), "the patroller's own model is there for the corridor")
+
+
+func _test_ending_cut() -> void:
+	check(EndingCut.has("face") and EndingCut.has("international") and EndingCut.has("dismissal") and EndingCut.has("portal") and EndingCut.has("cyber") and EndingCut.has("car"), "only the ported endings have a live scene")
+	check(EndingCut.needs_outdoor("face") and not EndingCut.needs_outdoor("international"), "the gate scene needs the outdoors, the stage scene does not")
+	check(EndingCut.intl_stage(3.9) == 0 and EndingCut.intl_stage(4.0) == 1 and EndingCut.intl_stage(9.0) == 2 and EndingCut.intl_stage(15.0) == 3 and EndingCut.intl_edge(4.0) == 1.0 and EndingCut.intl_edge(6.0) == 0.0 and is_equal_approx(EndingCut.intl_edge(19.6), 0.5), "the four stages and the fades between them")
+	check(EndingCut.intl_caption(0, "multilingual").begins_with("「Alle da?」") and EndingCut.intl_caption(0, "exam").begins_with("队尾的人回头") and EndingCut.intl_caption(3, "exam").contains("学校名字"), "the captions differ only in the first line by qualification")
+	check(EndingCut.face_lamp(0.1) == Color("#d23a2e") and EndingCut.face_lamp(0.2) == Color("#e8e4d2"), "the gate's lamp is red, then white")
+	check(EndingCut.face_fade(0.1) == 0.0 and EndingCut.face_fade(0.3) == 1.0 and is_equal_approx(EndingCut.face_fade(0.33), 0.5) and EndingCut.face_fade(0.6) == 0.0 and is_equal_approx(EndingCut.face_fade(0.95), 0.5), "black after the beep, clear outside, black at the end")
+	check(EndingCut.dis_stage(3.1) == 0 and EndingCut.dis_stage(7.8) == 2 and EndingCut.dis_stage(12.0) == 3 and EndingCut.dis_edge(3.2) == 1.0 and EndingCut.dis_edge(10.0) == 0.0 and EndingCut.dis_caption(14.0).begins_with("登记簿") and EndingCut.dis_caption(17.0).begins_with("你回过头"), "the four stages of the dismissal, fades and captions")
+	check(EndingCut.portal_state(0.2)["charge"] < 1.0 and not EndingCut.portal_state(0.2)["open"] and EndingCut.portal_state(0.5)["open"] and EndingCut.portal_state(0.5)["enter"] == 0.0 and EndingCut.portal_state(1.0)["enter"] == 1.0, "the device charges, opens, then is entered")
+	var pc := EndingCut.portal_camera(0.55, Vector3.ZERO, 1.6)
+	var pe := EndingCut.portal_camera(1.0, Vector3.ZERO, 1.6)
+	check(pc["from"].z > EndingCut.portal_camera(0.5, Vector3.ZERO, 1.6)["from"].z - 0.001 and pe["from"].z < 0.2 and is_equal_approx(pe["from"].y, 1.6), "the camera steps back half a pace, then pushes through the ring")
+	check(EndingCut.cy_stage(3.1) == 0 and EndingCut.cy_stage(3.2) == 1 and EndingCut.cy_stage(7.2) == 2 and EndingCut.cy_stage(11.2) == 3 and EndingCut.cy_log_lines(0.2) == 0 and EndingCut.cy_log_lines(2.8) == 6, "the four stages and the console log lines")
+	check(EndingCut.cy_flicker_on(3.25) and not EndingCut.cy_flicker_on(3.2 + 0.11) and EndingCut.cy_flicker_on(EndingCut.cy_flicker_end() + 1.0) and is_equal_approx(EndingCut.cy_flicker_end(), 3.2 + 1.97), "the tube lights flicker two short one long, then settle")
+	check(EndingCut.cy_archive_steps(7.0) == 0 and EndingCut.cy_archive_steps(7.4) == 1 and EndingCut.cy_archive_steps(10.3) == 9 and EndingCut.cy_fade(3.2) == 1.0 and EndingCut.cy_fade(5.0) == 0.0 and EndingCut.cy_fade(16.0) == 1.0, "the archive fills line by line, fades between stages")
+	check(EndingCut.car_lights(0.03) == 0.0 and EndingCut.car_lights(0.5) == 1.0 and not EndingCut.car_thing_visible(0.03) and not EndingCut.car_thing_visible(0.3) and EndingCut.car_fade(0.1) == 0.0 and EndingCut.car_fade(0.33) > 0.4 and EndingCut.car_fade(0.5) == 0.0 and is_equal_approx(EndingCut.car_fade(0.95), 0.5), "the garage lights flicker, something shows in the flicker only, black between garage and gate")
+	var g := EndingCut.gate_scene(CampusData.campus(), "w")
+	check(is_equal_approx(g.x, 200.0 * 2.0 / 9.0) and is_equal_approx(g.z, 624.0 * 2.0 / 9.0), "the gate is placed from the campus plan")
+
+
+func _test_opening() -> void:
+	check(OpeningCut.duration(false) == 26.0 and OpeningCut.duration(true) == 11.0 and OpeningCut.story_time(0.0, true) == OpeningCut.SHORT_FROM and OpeningCut.story_time(1.0, true) == 1.0 and OpeningCut.story_time(0.5, false) == 0.5,
+		"the opening is 26 s, the short version 11 s starting at the fourth part")
+	check(OpeningCut.line_at(0.1).begins_with("你是这学期转来的") and OpeningCut.line_at(0.22) == "" and OpeningCut.line_at(0.95).begins_with("下课铃没有响"), "the captions follow the storyboard")
+	check(OpeningCut.mate_pose("still", 0.0, 0.5, 0.0, 0.2) == Vector2.ZERO and OpeningCut.mate_pose("write", 0.08, 0.5, 0.0, 0.8) == Vector2.ZERO and OpeningCut.mate_pose("write", 0.08, 0.5, 0.0, 0.2).x > 0.0 and is_equal_approx(OpeningCut.mate_pose("turn", 0.08, 0.5, 1.0, 0.2).x, 0.02), "mates write, turn a page or stay, and sit up straight again after 70%")
+	check(OpeningCut.ease_k(-1.0) == 0.0 and OpeningCut.ease_k(2.0) == 1.0 and is_equal_approx(OpeningCut.ease_k(0.5), 0.5), "the easing is clamped")
+
+
+func _test_hands() -> void:
+	check(HandsView.uses(true, true, true, true) == {"L": "brolly", "R": "torch"} and HandsView.uses(false, false, true, true) == {"L": "phone", "R": ""}
+		and HandsView.uses(false, true, true, true) == {"L": "brolly", "R": "phone"} and HandsView.uses(true, true, true, false) == {"L": "", "R": ""},
+		"the umbrella takes the left, the torch the right, the phone the free hand; nothing when hidden")
+	var hv := HandsView.new()
+	root.add_child(hv)
+	hv.update(0.1, true, false, true, true, false, false)
+	check(hv.held("R") == "torch" and hv.held("L") == "phone" and hv.get_child_count() == 2, "the hands are built from the exported models")
+	hv.update(0.1, false, false, false, true, false, false)
+	check(hv.held("R") == "" and hv.held("L") == "", "putting things away empties the hands")
+	hv.update(0.1, true, false, false, true, false, false)
+	hv.light(2.0, Color("#ffd9a0"), true)
+	check(hv._fill != null and hv._fill.light_cull_mask == CampusLighting.HAND_LAYER and is_equal_approx(hv._fill.light_energy, HandsView.fill_energy(2.0, true)) and hv._fill.light_energy > HandsView.fill_energy(2.0, false), "the hands have their own near light, with the torch lit it is stronger")
+	check(CampusLighting.WORLD_LIGHT_MASK & CampusLighting.HAND_LAYER == 0 and hv._lens.size() == 2 and hv._lens[0].albedo_color == Color("#fff2c8"), "the world's lights skip the hand layer; the torch lens shines warm")
+	hv.light(2.0, Color.WHITE, false)
+	check(hv._lens[0].albedo_color == Color("#30343a") and hv._lens[1].albedo_color == Color("#3a3e44"), "an unlit torch has a dark lens and bulb")
+	hv.queue_free()
+
+
+func _test_dev_tools() -> void:
+	var pt := Playtest.new(_test_path.get_base_dir() + "/playtest-test.json")
+	pt.event("无效", "没开始不记")
+	check(pt.export().is_empty(), "nothing is recorded before it starts")
+	pt.start({"vol": 70}, Vector2i(1280, 720))
+	pt.frame(0.016, "play")
+	pt.frame(0.2, "play")
+	pt.frame(1.0, "menu")
+	pt.event("事实", "lesson", {"day": 2})
+	check(pt.note("  回头看了一眼  ", {}) and not pt.note("   ", {}), "an observer's note is kept, a blank one is not")
+	var ex := pt.export()
+	check(is_equal_approx(float(ex["seconds"]["play"]), 0.216) and is_equal_approx(float(ex["seconds"]["menu"]), 1.0) and ex["frameIntervals"]["under25ms"] == 1 and ex["frameIntervals"]["over100ms"] == 1,
+		"seconds by mode and the frame bins (play only)")
+	for i in 520:
+		pt.event("x", str(i))
+	check((pt.data["events"] as Array).size() == Playtest.MAX_EVENTS and int(pt.data["discardedEvents"]) > 0, "at most 500 events, the oldest dropped")
+	pt.stop()
+	check(FileAccess.file_exists(pt.path) and not pt.recording, "stopping writes the log")
+	var idx: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/audio/index.json"))
+	var dp := DebugPanel.new(idx as Dictionary)
+	var total := 0
+	for c: Variant in dp._cats:
+		total += dp.ids_of(String(c)).size()
+	check(total == dp.sfx().size() and total > 100, "the sound audition lists the whole bank by category (%d)" % total)
+	dp.free()
+
+
 func _test_facility_rules() -> void:
 	var rooms := CampusData.rooms()
 	var fac := FacilitiesModule.new(rooms, CampusData.layout("out"), CampusData.campus())
@@ -2310,7 +3807,7 @@ func _test_routes_rules() -> void:
 	rt.choose(wrong, "easy")
 	var after_wrong := rt.take_events()
 	check(after_wrong[0]["kind"] == "san" and absf(float(after_wrong[0]["amount"]) + 4.0 * 0.82) < 0.001, "a wrong answer costs 4 SAN (×0.82 on 预知梦)")
-	check(after_wrong[1]["kind"] == "choice" and String(after_wrong[1]["text"]).contains(RoutesModule.EXPLANATIONS[order[0]]), "and shows the explanation")
+	check(_of_kind(after_wrong, "choice").size() == 1 and String(_of_kind(after_wrong, "choice")[0]["text"]).contains(RoutesModule.EXPLANATIONS[order[0]]) and _of_kind(after_wrong, "fact_face")[0]["correct"] == false, "and shows the explanation, and the wrong answer is a fact for the ledger")
 	check(rt.face_quiz["order"][0] != order[0] and rt.face_quiz["used"].size() == 4, "the question is swapped for one not asked yet")
 	rt.choose(0, "easy")
 	var again := rt.take_events()
@@ -2559,6 +4056,7 @@ func _night_hunt(scene: String) -> bool:
 func _test_campus_app() -> void:
 	var app: GameApp = APP.instantiate()
 	app.saves = SaveStore.new(_test_path)
+	app.settings = GameSettings.new(_test_path.get_base_dir() + "/settings.json")
 	root.size = Vector2i(1280, 720)
 	root.add_child(app)
 	await _frames()
@@ -2697,6 +4195,8 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_speedrun_app(app)
 	await _test_marks_app(app)
 	await _test_sensory_app(app)
+	await _test_settings_app(app)
+	await _test_score_app(app)
 	await _test_checkup_app(app)
 	await _test_death_flow(app)
 	app.return_to_menu()
@@ -2705,11 +4205,25 @@ func _test_stair_walk(app: GameApp) -> void:
 ## Synthesised sound: every cue exists, layers follow the context, mute works, rules are untouched.
 func _test_audio(app: GameApp) -> void:
 	var fx := app.audio
-	for id in ["step", "step_heavy", "heart", "thud", "bell", "ding", "drip", "creak", "static", "sting", "scare", "chime", "hum", "wind", "rain"]:
+	check(fx.ids().size() == 139, "the baked bank has the 139 public recipes (%d)" % fx.ids().size())
+	check(not fx.ids().any(func(id: String) -> bool: return id.begins_with("void.") or id == "death.void"), "hidden content's sounds are not baked")
+	for id: String in ["step.tile", "step.garage", "threat.heartLow", "event.bellEnd", "event.dismissal", "death.generic", "ui.click", "anomaly.bell13", "music.box"]:
 		var stream := fx.stream_of(id)
-		check(stream != null and stream.data.size() > 400, "the %s cue is synthesised" % id)
-	check(fx.stream_of("hum").loop_mode == AudioStreamWAV.LOOP_FORWARD and fx.stream_of("step").loop_mode == AudioStreamWAV.LOOP_DISABLED, "ambient cues loop, one-shots do not")
-	check(fx.stream_of("nothing") == null, "an unknown cue is empty, not an error")
+		check(stream is AudioStreamOggVorbis and stream.get_length() > 0.02 and not (stream as AudioStreamOggVorbis).loop, "%s is a baked one-shot" % id)
+	check(fx.stream_of("nothing") == null and not fx.play("nothing"), "an unknown sound is nothing, not an error")
+	var court := Vector2.ZERO
+	var out := CampusData.layout("out")
+	for o: Dictionary in out["objects"]:
+		if o["k"] == "court":
+			court = Vector2(float(o["x"]) + float(o["w"]) * 0.5, float(o["y"]) + float(o["h"]) * 0.5) * float(out["SC"])
+	check(AudioFx.surface("garage1", false, Vector2.ZERO, [], 1.0) == "garage" and AudioFx.surface("teach6", false, Vector2.ZERO, [], 1.0) == "roof"
+		and AudioFx.surface("bell1", true, Vector2.ZERO, [], 1.0) == "stair" and AudioFx.surface("teach1", false, Vector2.ZERO, [], 1.0) == "tile"
+		and AudioFx.surface("out", false, court, out["objects"], float(out["SC"])) == "court" and AudioFx.surface("out", false, Vector2(-9999, -9999), out["objects"], float(out["SC"])) == "road",
+		"footing: garage, roof, spiral stairs, tile; outdoors the court, otherwise the road")
+	fx.update(0.1, {"menu": true})
+	for _i in 30:
+		fx.update(0.1, {"menu": true})
+	check(fx.bed_playing("pad_menu") and fx.bed_gain("pad_menu") > 0.02, "the menu has its low pad")
 	app.saves.clear()
 	app.start_new_game()
 	await _frames(3)
@@ -2717,27 +4231,59 @@ func _test_audio(app: GameApp) -> void:
 	var t1 := CampusData.layout("teach1")
 	app.travel("teach1", _campus_pose(t1, CampusGeometry.tile_center(t1, 30, 17), PI), false)
 	app.patrol().pat["safety"] = 999.0
+	var base := {"scene": "teach1", "out": false, "san": 100.0, "surface": "tile"}
 	fx.played.clear()
-	fx.update(0.1, {"moving": true, "running": false, "indoors": true, "san": 100.0})
-	check(fx.played.has("step"), "walking plays a footstep")
+	var walk := base.duplicate()
+	walk["moving"] = true
+	fx.update(0.1, walk)
+	check(fx.played.has("step.tile"), "walking indoors steps on tile")
 	fx.played.clear()
-	fx.update(0.1, {"moving": false, "indoors": true, "san": 10.0})
-	check(fx.played.has("heart"), "low SAN plays the heartbeat")
+	var low := base.duplicate()
+	low["bpm"] = 120.0
+	low["body"] = 0.8
+	fx.update(0.1, low)
+	check(fx.played.has("threat.heartLow") and fx.played.has("threat.breath"), "a shaken body: heartbeat at the sensory rate and breath")
 	fx.played.clear()
-	fx.update(0.1, {"moving": false, "indoors": true, "san": 100.0, "patrol_pos": Vector3(3, 0, 3)})
-	check(fx.played.has("step_heavy"), "the patroller's footsteps play in space")
-	await _frames(2)
-	check(fx.looping("hum") and not fx.looping("wind"), "indoors the room tone plays, not the wind")
-	fx.update(0.1, {"indoors": false, "san": 100.0, "rain": true})
-	check(fx.looping("wind") and fx.looping("rain") and not fx.looping("hum"), "outdoors the wind and the rain play")
-	fx.update(0.1, {"indoors": true, "san": 100.0, "blackout": true})
-	check(not fx.looping("hum"), "a blackout kills the hum")
+	var pat := base.duplicate()
+	pat["patrol_pos"] = Vector3(3, 0, 3)
+	fx.update(0.1, pat)
+	check(fx.played.has("step.tile"), "the patroller's footsteps play in space")
+	for _i in 30:
+		fx.update(0.1, base)
+	check(fx.bed_playing("hum") and fx.bed_playing("pad_in_calm") and not fx.bed_playing("wind"), "indoors: the lamp hum and the indoor pad, no wind")
+	var outdoors := {"scene": "out", "out": true, "san": 100.0, "anomaly": "rain", "night": 0.0}
+	for _i in 40:
+		fx.update(0.1, outdoors)
+	check(fx.bed_playing("wind") and fx.bed_playing("rain") and fx.bed_playing("pad_day_tense") and fx.bed_gain("hum") < 0.001, "outdoors in the rain: wind, rain and a tenser day pad; the hum fades")
+	var dark := base.duplicate()
+	dark["blackout"] = true
+	for _i in 40:
+		fx.update(0.1, dark)
+	check(fx.bed_gain("hum") < 0.001, "a blackout kills the hum")
+	fx.played.clear()
+	fx.anomaly_start("bell13")
+	fx.death("swarm")
+	fx.death("no_such_death")
+	check(fx.played.has("anomaly.base") and fx.played.has("anomaly.bell13") and fx.played.has("death.swarm") and fx.played.has("death.generic"),
+		"an anomaly opens with the low drop and its own recipe; a death plays its own sound, or the generic one")
+	fx.played.clear()
+	app._add_item("pen")
+	app.ui.flash_light(0.5)
+	check(fx.played.has("ui.pickup") and app.ui.bolt_level() > 0.3, "picking up plays the pickup; lightning whitens the screen")
+	var weird := app.anomaly()
+	weird.events.append({"kind": "smile", "mode": "jump"})
+	app._anomaly_step(0.0, app.school(), CampusData.layout("teach1"), app.player.capture_pose())
+	check(fx.played.has("threat.smileJump"), "the smile in your face screams at the ear")
+	fx.update(0.1, base)
+	fx.play("event.bellEnd")
+	await _frames(3)
+	check(app.ui.captions_text().contains("下课铃"), "the HUD shows the caption under the status card")
 	app.audio.muted = true
 	check(AudioServer.is_bus_mute(AudioServer.get_bus_index("Master")), "mute silences the master bus")
 	app.audio.muted = false
 	check(not AudioServer.is_bus_mute(AudioServer.get_bus_index("Master")), "unmute restores it")
 	fx.stop_all()
-	check(not fx.looping("wind"), "stop_all stops the loops")
+	check(not fx.bed_playing("wind") and not fx.bed_playing("hum"), "stop_all stops the beds")
 
 
 ## The placeholder anomaly props follow the module state and vanish when it ends.
@@ -3062,7 +4608,7 @@ func _test_portal_route(app: GameApp) -> void:
 	await _frames(2)
 	check(bool(app.facilities().portal["open"]), "the circle opens")
 	await _frames(2)
-	check(app._campus_world().portal_shown(), "the circle of light stands in front of the bench")
+	check(app._campus_world().portal_shown(), "the rig stands on the bench with its door open")
 	await create_timer(2.8).timeout
 	await _frames(2)
 	check(app.ui.choice_open(), "after a moment the circle asks")
@@ -3098,10 +4644,8 @@ func _test_dismissal_route(app: GameApp) -> void:
 	check(app.ui.choice_open(), "E at the station opens its menu")
 	app._choice_made(3)
 	await _frames(2)
-	check(app.ui.choice_open(), "the microphone asks which paper")
-	app._choice_made(0)
-	await _frames(2)
-	check(app._mic_open, "the microphone is live")
+	check(app._mic_open and not app.ui.choice_open() and app._mic_panel.visible and not app.get_tree().paused, "the microphone panel opens without pausing the world")
+	check(app._mic_panel.chooser.item_count == 4 and app._mic_panel.hold_button.text == "按住朗读 · 空格", "it lists the four papers in hand and offers the hold-to-read button")
 	Input.action_press("interact")
 	for n in 4:
 		for _i in 32:
@@ -3201,6 +4745,9 @@ func _test_lesson_app(app: GameApp) -> void:
 	app.patrol().pat["safety"] = 999.0
 	check(app.school().seated, "the run starts seated in class")
 	var before := app.school().san
+	app._lesson_press()
+	await _frames(1)
+	check(app.investigation().visible("desk") and not app.ui.choice_open(), "the first R at the own seat reads the parking ticket (the investigation starts there)")
 	app._lesson_press()
 	await _frames(1)
 	check(app.ui.choice_open() and app._choice_left > 11.0, "R opens the desk question with its timer")
@@ -3325,9 +4872,106 @@ func _test_sensory_app(app: GameApp) -> void:
 	app.school().san = 10.0
 	await _frames(40)
 	check(app.ui.sensory_on() and float(app._sense_view["tunnel"]) > 0.5 and float(app._sense_view["bpm"]) > 100.0, "low SAN narrows the picture and quickens the heart, with no number on the HUD")
+	check(float(app._sense_view["halo"]) > 0.5 and float(app._sense_view["warp"]) > 0.0, "low SAN also blooms the lamps and warps the picture")
+	app.audio.pulse_t = 0.0
+	app.audio.inhale_t = 0.3
+	await _frames(1)
+	var fresh := float(app._sense_view["pulse_env"])
+	var pressed := float(app._sense_view["inhale"])
+	app.audio.pulse_t = 1.0
+	app.audio.inhale_t = 2.0
+	await _frames(1)
+	check(fresh > 0.5 * float(app._sense_view["pulse"]) and float(app._sense_view["pulse_env"]) < 0.05 * float(app._sense_view["pulse"]), "the view tightens on the heartbeat and relaxes within a second")
+	check(pressed > 0.3 and float(app._sense_view["inhale"]) == 0.0, "the picture presses in as the breath is taken and is back after 1.6 s")
+	var ghosted := 0.0
+	for _i in 600:
+		app._sense_view = {}
+		await _frames(1)
+		ghosted = maxf(ghosted, float(app._sense_view.get("ghost_env", 0.0)))
+		if ghosted > 0.0:
+			break
+	check(ghosted > 0.0 and ghosted <= float(app._sense_view["ghost"]) + 0.0001, "at very low SAN faint ghost copies drift now and then")
 	app.return_to_menu()
 	await _frames(2)
 	check(not app.ui.sensory_on(), "back at the menu the picture is clear")
+
+
+func _test_settings_app(app: GameApp) -> void:
+	app.saves.clear()
+	app.start_new_game()
+	await _frames(3)
+	app.ui.settings_requested.emit()
+	await _frames(2)
+	check(app.ui.settings_panel != null and app.ui.settings_panel.visible, "the settings panel opens")
+	app.ui.setting_changed.emit("vol", 40)
+	app.ui.setting_changed.emit("amb", 0)
+	app.ui.setting_changed.emit("captions", 2)
+	app.ui.setting_changed.emit("mouse", 200)
+	app.ui.setting_changed.emit("reduce_flash", 1)
+	app.ui.setting_changed.emit("bright", 120)
+	app.ui.setting_changed.emit("quality", 0)
+	await _frames(3)
+	check(absf(app.audio.volume - 0.4) < 0.0001 and not app.audio.ambience and app.audio.captions.mode == 2, "volume, ambience and the caption mode take effect")
+	check(absf(app.player.mouse_sensitivity - 0.005) < 0.000001, "look sensitivity follows the setting")
+	var cw := app._campus_world()
+	check(cw.lighting.reduce_flash and absf(cw.lighting.brightness - 1.2) < 0.0001, "reduce flash and brightness reach the lighting")
+	check(absf(app.get_viewport().scaling_3d_scale - 0.55) < 0.0001, "the 流畅 tier renders at 55 %% of the resolution")
+	app.ui.setting_changed.emit("distortion", 0)
+	app.school().san = 10.0
+	await _frames(30)
+	check(float(app._sense_view["warp"]) == 0.0 and float(app._sense_view["tunnel"]) > 0.5, "distortion off keeps the static narrowing but stops the warping")
+	var saved := GameSettings.new(app.settings.path)
+	saved.load_file()
+	check(saved.get_int("vol") == 40 and saved.get_int("quality") == 0, "changes are saved immediately")
+	app.ui.setting_changed.emit("reset_comfort", 0)
+	check(app.settings.get_int("mouse") == 100 and app.settings.get_int("vol") == 40, "restoring comfort defaults keeps the sound")
+	app.school().san = 100.0
+	app.ui.setting_changed.emit("quality", 2)
+	app.ui.setting_changed.emit("reduce_flash", 0)
+	app.ui.setting_changed.emit("distortion", 2)
+	app.ui.setting_changed.emit("vol", 70)
+	app.ui.setting_changed.emit("amb", 1)
+	app.ui.setting_changed.emit("captions", 1)
+	app.ui.setting_changed.emit("bright", 100)
+	app.ui.settings_panel.visible = false
+	app.items().add("coil")
+	app.facilities().flags["coil"] = true
+	app._drop_item("coil")
+	check(not app.items().has("coil") and app.facilities().flags["coil"] == false, "a dropped portal material can be taken again from where it was found")
+	app.return_to_menu()
+	await _frames(2)
+
+
+func _test_score_app(app: GameApp) -> void:
+	app.saves.clear()
+	app.start_new_game()
+	await _frames(4)
+	app.patrol().pat["safety"] = 999.0
+	var sm := app.runscore()
+	check(sm != null and sm.run.begins_with("s") and sm.ledger.is_empty() and app._runlog.run == sm.run, "a new game starts a score ledger and a replay log")
+	await _frames(30)
+	check(app._runlog.samples.size() >= 1 and app._runlog.events.size() >= 0 and sm.min_san <= 100.0, "the log samples the player and the lowest SAN is watched")
+	app.fact({"kind": "anomaly", "phase": "start", "id": "rain"})
+	app.fact({"kind": "anomaly", "phase": "end", "id": "rain", "survived": true, "lethal": true})
+	app.fact({"kind": "face", "correct": true})
+	check(sm.ledger.size() == 2 and sm.ledger[0]["pts"] == 40 and app._runlog.events.any(func(e: Array) -> bool: return e[1] == "anomaly"), "facts become ledger lines and replay events")
+	var before := app.runs().list().size()
+	app._reach_ending("car")
+	await _frames(2)
+	var res := app._last_result
+	check(bool(res.get("rated", false)) and res["route"] == "car" and res["id"] != "" and app.runs().list().size() == before + 1, "a clear is rated and written into the records")
+	check(not app.runs().replay(String(res["id"])).is_empty() and app.runs().replay(String(res["id"]))["track"] != "", "with its replay")
+	check(res["score"]["items"][0]["cat"] == "结局" and int(res["score"]["total"]) >= 300 + 40 + 10, "the score starts with the ending and the ledger")
+	app.return_to_menu()
+	await _frames(2)
+	app.start_new_game("hard")
+	await _frames(3)
+	app.patrol().pat["safety"] = 999.0
+	app.kill("test", "vignette", "patrol")
+	await _frames(2)
+	check(app.runscore().last_death_line().has("total") and app._runlog.run == "", "a death gives one score line and drops the replay log")
+	app.return_to_menu()
+	await _frames(2)
 
 
 func _test_death_flow(app: GameApp) -> void:

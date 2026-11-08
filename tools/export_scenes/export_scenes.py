@@ -106,7 +106,7 @@ def main():
         if a.only:
             want = set(a.only.split(','))
             todo = [t for t in todo if t in want]
-            if a.only == 'patrol':
+            if a.only in ('patrol', 'figures', 'hands', 'fx', 'props'):
                 todo = []
         patrol_dir = Path(a.out) / 'patrol'
         patrol_dir.mkdir(parents=True, exist_ok=True)
@@ -117,6 +117,48 @@ def main():
             (patrol_dir / 'patrol_figure.glb').write_bytes(externalize_images(base64.b64decode(fig['glb']), tex, '../textures/'))
             print(f"patrol: data {(patrol_dir / 'patrol_data.json').stat().st_size/1e3:.0f} kB, figure {(patrol_dir / 'patrol_figure.glb').stat().st_size/1e3:.0f} kB", flush=True)
             if a.only == 'patrol':
+                todo = []
+        if not a.only or 'figures' in a.only.split(','):
+            fig_dir = Path(a.out) / 'figures'
+            fig_dir.mkdir(parents=True, exist_ok=True)
+            for kind in ['tall', 'roam', 'person', 'teacher', 'neck', 'sit']:
+                r = pg.evaluate("([k,i])=>window.__wdfzExport(k,i)", ['figure', kind])
+                data = externalize_images(base64.b64decode(r['glb']), tex, '../textures/')
+                (fig_dir / f'{kind}.glb').write_bytes(data)
+                print(f'figure {kind}: {len(data)/1e3:.0f} kB', flush=True)
+            if a.only == 'figures':
+                todo = []
+        if not a.only or 'fx' in a.only.split(','):
+            fx_dir = Path(a.out) / 'fx'
+            fx_dir.mkdir(parents=True, exist_ok=True)
+            for name in ['hand', 'head', 'bigface', 'smile', 'neckhead', 'bell']:
+                r = pg.evaluate("([k,i])=>window.__wdfzExport(k,i)", ['fx', name])
+                data = externalize_images(base64.b64decode(r['glb']), tex, '../textures/')
+                (fx_dir / f'{name}.glb').write_bytes(data)
+                print(f'fx {name}: {len(data)/1e3:.0f} kB', flush=True)
+            if a.only == 'fx':
+                todo = []
+        if not a.only or 'props' in a.only.split(','):
+            prop_dir = Path(a.out) / 'props'
+            prop_dir.mkdir(parents=True, exist_ok=True)
+            for name in ['server_rack', 'server_console', 'speaker_box', 'locker_bank_4', 'window_in_150', 'desk_computer', 'chair_office']:
+                r = pg.evaluate("([k,i])=>window.__wdfzExport(k,i)", ['prop', name])
+                data = externalize_images(base64.b64decode(r['glb']), tex, '../textures/')
+                (prop_dir / f'{name}.glb').write_bytes(data)
+                print(f'prop {name}: {len(data)/1e3:.0f} kB', flush=True)
+            if a.only == 'props':
+                todo = []
+        if not a.only or 'hands' in a.only.split(','):
+            hand_dir = Path(a.out) / 'hands'
+            hand_dir.mkdir(parents=True, exist_ok=True)
+            for item in ['torch', 'phone', 'brolly']:
+                for side in ['R', 'L']:
+                    r = pg.evaluate("([k,i])=>window.__wdfzExport(k,i)", ['hand', f'{item}_{side}'])
+                    data = externalize_images(base64.b64decode(r['glb']), tex, '../textures/')
+                    (hand_dir / f'{item}_{side}.glb').write_bytes(data)
+                    print(f'hand {item}_{side}: {len(data)/1e3:.0f} kB', flush=True)
+            (hand_dir / 'place.json').write_text(json.dumps(pg.evaluate('window.__wdfzHandPlace()'), indent=1))
+            if a.only == 'hands':
                 todo = []
         index_path = out / 'index.json'
         index = json.loads(index_path.read_text()) if index_path.exists() else {}

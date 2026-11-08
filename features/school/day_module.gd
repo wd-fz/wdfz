@@ -205,6 +205,7 @@ func answer(index: int, ctx: Dictionary) -> void:
 		r["correct"] = true
 		_emit("san", {"amount": 2.0 + lesson_bonus(int(ctx.get("day", 1)), float(ctx.get("tsec", 0.0))), "max": 100.0})
 		_emit("notice", {"text": "我：" + String(task["note"])})
+		_emit("record", {"id": "lesson:%d" % int(r["task"]), "text": String(task["note"]), "kind": "事实", "source": "课堂提醒"})
 	else:
 		_emit("notice", {"text": "我：老师没有说对不对，只让我把纸翻过去。"})
 	_emit("save")

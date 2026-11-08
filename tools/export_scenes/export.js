@@ -189,8 +189,33 @@
       stair_geometry:window.StairGeometry.config};
   }
   window.__wdfzPatrolData = patrolData;
+  window.__wdfzHandPlace = function(){ return window.HAND_PLACE; };
   window.__wdfzExport = function(kind, id){
     if(kind === 'patrol') return exportScene(patrolFigure(), 'patrol_figure');
+    if(kind === 'hand'){   /* 第一人称的手与手里的东西：id = torch_R / torch_L / phone_R / … / brolly_L；原点在握持中心，前方 -z */
+      var parts = id.split('_'), item = parts[0], side = parts[1] === 'L' ? -1 : 1;
+      var hand = window.handArm(side);
+      hand.children[0].geometry = window.handGeo(side, item);
+      var it = window.makeHandItem(item);
+      it.scale.x = (item === 'brolly' || side > 0) ? 1 : -1;
+      hand.add(it);
+      return exportScene(hand, 'hand_' + id);
+    }
+    if(kind === 'fx'){   /* 异象／死亡演出里的东西（旧版 fxMesh）：手、头、突脸、笑脸、长脖子的头、钟…… */
+      var xg = new T.Group();
+      xg.add(window.fxMesh(id));
+      return exportScene(xg, 'fx_' + id);
+    }
+    if(kind === 'prop'){   /* 一件家具／设备（旧版 Kit.asset，合并网格）：结局分镜的布景用，原点在脚下 */
+      var pk = new window.Kit();
+      pk.asset(id, 0, 0, 0, 0, {merge:true, mat:{emit:''}});
+      return exportScene(pk.build(), 'prop_' + id);
+    }
+    if(kind === 'figure'){   /* 旧版 figMesh 的人形（tall / roam / person / teacher / neck / sit），白色，颜色由 Godot 侧给 */
+      var fg = new T.Group();
+      fg.add(window.figMesh(id, new T.MeshBasicMaterial({color:0xffffff, vertexColors:true}), 1));
+      return exportScene(fg, 'figure_' + id);
+    }
     if(kind === 'out') return exportScene(window.buildOutdoorGeometry(), 'outdoor');
     var R = window.INTERIORS[id], g = window.buildRoomGeometry(R);
     doorVariants(R, g);

@@ -488,15 +488,30 @@ func _guard() -> void:
 	if not bool(flags.get("guard_told", false)):
 		flags["guard_told"] = true
 		_emit("clue", {"id": "keys"})
+		_parking_records()
 		var light := _has("torch") or _add("torch")
 		_say("我：钥匙已上交行政楼五楼校长办公室。停车记录和避险便签记在手册里了。" + ("抽屉里的手电带好了，去车库前记得打开。" if light else "手电还在抽屉里，装不下了，腾出一格再来拿。"))
 		_emit("save")
 		return
 	if not _has("torch"):
+		_parking_records()
 		if _add("torch"):
 			_say("我：柜台下面还有一把手电筒。去车库之前，把它带上。")
 		return
-	_say("我：停车登记：可用车辆在车库靠西侧。旁边的便签说：手电能暂时照退黑影，硬币能把它引开，开门前先确认车道。")
+	_parking_records()
+	_say("我：登记写着「靠西侧，第 %d 排」。旁边的便签说：手电能暂时照退黑影，硬币能把它引开，开门前先确认车道。" % int(_c.get("car_row", 1)))
+	_emit("save")
+
+
+## investigation.js parking: the register and the guard's note (the same two records every time).
+func _parking_records() -> void:
+	_record("parking", "停车登记：可用车辆在车库靠西侧，第 %d 排。记录的签名与教室停车单相同，离校栏却始终空着。" % int(_c.get("car_row", 1)), "事实", "保安岗 · 停车登记")
+	_record("garageSafety", "车道上的黑影会靠近。手电持续照射能暂时逼退它；硬币可把它引开。拉车门前，先确认它离开车辆。", "事实", "保安岗 · 值班便签")
+
+
+## A notebook record (the app writes it into InvestigationModule).
+func _record(id: String, text: String, kind: String, source: String) -> void:
+	_emit("record", {"id": id, "text": text, "kind": kind, "source": source})
 
 
 func _canteen_window() -> void:
@@ -773,6 +788,7 @@ func _read_diary() -> void:
 		return
 	if not bool(portal["diary"]):
 		_emit("clue", {"id": "portalDiary"})
+	_record("portalDiary", "前人的日记：图纸在实验楼二、四、五楼教师台，基座在一楼。页边写着：「名单把我认回来了，却没有告诉我墙外是什么。」", "事实", "隧道日记")
 	portal["diary"] = true
 	spots["portal"] = true
 	_say("我：日记里写着：「我把造门的图纸分开放在实验楼二楼、四楼和五楼的教师台。基座留在物理实验室。」")
@@ -802,6 +818,8 @@ func _award(floor_n: int) -> void:
 	if (portal["blueprints"] as Dictionary).has(floor_n):
 		return
 	portal["blueprints"][floor_n] = true
+	var lab: Dictionary = _rooms.get(String(_c.get("scene", "")), {})
+	_record("blueprint:%d" % floor_n, String(OBSERVATIONS[floor_n]["note"]), "验证", "%s · 教师台" % String(lab.get("name", "实验楼")))
 	if blueprint_count() == BLUEPRINT_FLOORS.size():
 		portal["sketch"] = true
 		spots["portal"] = true

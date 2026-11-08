@@ -213,6 +213,7 @@ func gave(ok: bool) -> void:
 		_say("我：背包满了。纸飞机还在地上。")
 		return
 	_say("我：纸飞机里面写着一行字：\n「%s」" % e["text"])
+	_emit("record", {"id": "paperNote", "text": "窗口飞来的纸飞机：「%s」" % e["text"], "kind": "线索", "source": ""})
 	_emit("fact", {"what": "received"})
 	_end("peace")
 

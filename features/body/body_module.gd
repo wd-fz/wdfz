@@ -10,6 +10,7 @@ extends FeatureModule
 
 const STATE_VERSION := 1
 const VAULT_COST := 8.0
+const VAULT_HOLD := 0.6   # hold space this long to vault (injury.js BODY_CFG.vaultHold); release cancels
 const LINK_INJURY := 45.0
 const FALL_ROOF := 1.3
 const FALL_LINK := 0.9
@@ -145,7 +146,7 @@ func target() -> Dictionary:
 
 func hint() -> String:
 	if not target().is_empty():
-		return "翻过栏杆 · 外侧悬空"
+		return "翻过栏杆 · 外侧悬空（按住空格）"
 	if near_clinic():
 		return "医务室的药柜"
 	return ""
@@ -220,9 +221,20 @@ func gave_medkit(day: String) -> void:
 	_say("我：药柜里有一个急救包。")
 
 
+var hold := 0.0
+
+
 func tick(dt: float) -> void:
 	if not (dt > 0.0) or bool(_c.get("dead", false)):
 		return
+	# Hold space at the railing: 0.6 s vaults (E asks once instead); letting go cancels.
+	if fall == null and treat == null and bool(_c.get("space", false)) and not target().is_empty():
+		hold += dt
+		if hold >= VAULT_HOLD:
+			hold = 0.0
+			vault()
+	else:
+		hold = 0.0
 	if fall != null:
 		var f: Dictionary = fall
 		var dur := FALL_ROOF if f["kind"] == "roof" else FALL_LINK

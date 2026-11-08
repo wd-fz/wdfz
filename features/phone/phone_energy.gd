@@ -12,6 +12,11 @@ static func fresh() -> Dictionary:
 		"wireless": {"status": "idle", "elapsed": 0.0, "target": 0.0}, "download": {"status": "idle", "elapsed": 0.0, "target": 60.0}}
 
 
+## Seconds until the next exposure of the cracking (every 15 run-seconds).
+static func next_signal_in(w: Dictionary) -> float:
+	return (floor((float(w["elapsed"]) + EPS) / WIRELESS_SIGNAL_SECONDS) + 1.0) * WIRELESS_SIGNAL_SECONDS - float(w["elapsed"])
+
+
 ## Net charge per second. c: held, classroom, computer, tech.
 static func rate(d: Dictionary, c: Dictionary) -> float:
 	var running: bool = bool(d["powered"]) and bool(c.get("held", false)) and d["wireless"]["status"] == "running"

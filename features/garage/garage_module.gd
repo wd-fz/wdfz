@@ -171,6 +171,8 @@ func key_label() -> String:
 ## investigation.js inspectCar: a choice between trying the key and stepping back.
 func inspect_car(c: int, r: int) -> void:
 	var tried := car_tried.has("%d:%d" % [c, r])
+	_emit("record", {"id": "vehicle:%d:%d" % [c, r], "text": car_name(c, r) + ("：钥匙不匹配。" if tried else "：已看清车牌，尚未验证钥匙。"),
+		"kind": "验证" if tried else "事实", "source": "车库 · 第 %d 排" % (r + 1)})
 	_pending = {"kind": "car", "c": c, "r": r}
 	_emit("choice", {"text": car_name(c, r) + ("，这辆已经试过，钥匙不匹配。" if tried else "。车窗上倒映着身后的车道。"),
 		"labels": ["试钥匙 / 接线（原地 1.6 秒）", "退开观察车道"]})
@@ -235,6 +237,8 @@ func _job_tick(dt: float) -> void:
 	var cell := String(j["cell"])
 	if cell != car_right_cell():
 		car_tried[cell] = true
+		var tc := cell.split(":")
+		_emit("record", {"id": "vehicle:" + cell, "text": car_name(int(tc[0]), int(tc[1])) + ("：已试，搭线打不着。" if wired else "：已试，钥匙不匹配。"), "kind": "验证", "source": "车库"})
 		var lines := ["我：线碰上了，仪表盘一点反应都没有。不是这辆。", "我：电瓶是死的。下一辆。", "我：火花跳了一下就没了。不是它。"] if wired else ["我：钥匙插进去，拧不动。不是这辆。", "我：锁孔是对的，钥匙齿不对。下一辆。", "我：车门开了一条缝，又自己合上了。不是它。"]
 		_say("%s（试过 %d 辆）" % [lines[_rng.randi() % lines.size()], car_tried.size()])
 		_emit("save")

@@ -3,7 +3,7 @@ extends FeatureModule
 ## Achievements, ported from the Web version (reference wd-fz.github.io@0bf508a,
 ## domain/achievement-rules.js + modules/achievements). Record only, no bonuses.
 ## Ported here: the public entries whose facts the ported systems can produce. Entries that need
-## systems not yet in Godot (exams, snake, garage, paper planes, the other routes, talents, the
+## systems not yet in Godot (exams, garage, paper planes, the other routes, talents, the
 ## archive, speedrun, ...) are absent, not locked. Hidden entries are not part of this public table
 ## (see CLAUDE.md); the achievement method text stays internal, the player sees only the name and,
 ## once unlocked, a memory line.
@@ -19,6 +19,7 @@ const EXPLORE_ANY := [["dorm1", "dorm2", "dorm3"], ["dorm4", "dorm5", "dorm6"]]
 ## id -> [tier, name, memory]
 const LIST := {
 	"n.day2": ["n", "熬过第一天", "熄灯，换日。日历往后翻了一页。"],
+	"n.snake": ["n", "一口一口", "屏幕上那条蛇越来越长。机房里只有我这一台亮着。"],
 	"n.anomaly": ["n", "看见了", "从那一刻起，我知道这所学校不对劲。"],
 	"n.survive": ["n", "还活着", "它过去了。手还在发抖，但我还站着。"],
 	"n.lost": ["n", "两短一长", "灯还在闪。脚步声停在了拐角另一边。"],
@@ -82,6 +83,7 @@ var face_wrong := 0               # run
 var saved := false                # run: rescued by the pill
 var started := ""                 # run: the anomaly that started
 var exams: Dictionary = {}        # run: "day" -> {pass, fail}
+var run_new: Array = []           # run: ids unlocked in this run (shown on the ending card and the death screen)
 var events: Array = []
 var _anomaly_total := 25
 
@@ -105,11 +107,12 @@ func reset() -> void:
 	saved = false
 	started = ""
 	exams = {}
+	run_new = []
 	events = []
 
 
 func capture() -> Dictionary:
-	return {"rooms": rooms.keys(), "insp": insp, "face_wrong": face_wrong, "saved": saved, "exams": exams.duplicate(true)}
+	return {"rooms": rooms.keys(), "insp": insp, "face_wrong": face_wrong, "saved": saved, "exams": exams.duplicate(true), "run_new": run_new.duplicate()}
 
 
 func validate(data: Dictionary) -> String:
@@ -129,6 +132,8 @@ func restore(data: Dictionary) -> void:
 	face_wrong = int(data["face_wrong"])
 	saved = bool(data["saved"])
 	exams = (data.get("exams", {}) as Dictionary).duplicate(true) if data.get("exams") is Dictionary else {}
+	if data.get("run_new") is Array:
+		run_new = (data["run_new"] as Array).filter(func(id: Variant) -> bool: return id is String and LIST.has(id))
 
 
 func profile() -> Dictionary:
@@ -149,6 +154,15 @@ func load_profile(data: Dictionary) -> void:
 func take_events() -> Array:
 	var out := events
 	events = []
+	return out
+
+
+## "tier · name" of what this run unlocked, in order (the ending card and the death screen).
+func run_new_labels() -> PackedStringArray:
+	var out := PackedStringArray()
+	for id: String in run_new:
+		if LIST.has(id):
+			out.append("%s · %s" % [TIERS[LIST[id][0]]["name"], LIST[id][1]])
 	return out
 
 
@@ -231,8 +245,9 @@ func fact(f: Dictionary) -> Array[String]:
 		for id: String in LIST:
 			if not unlocked.has(id) and _test(id, f):
 				unlocked[id] = true
+				run_new.append(id)
 				got.append(id)
-				events.append({"kind": "unlock", "id": id, "name": LIST[id][1]})
+				events.append({"kind": "unlock", "id": id, "name": LIST[id][1], "tier": LIST[id][0]})
 				again = true
 	return got
 
@@ -250,6 +265,8 @@ func _test(id: String, f: Dictionary) -> bool:
 	match id:
 		"n.day2":
 			return kind == "day" and int(f["day"]) == 2
+		"n.snake":
+			return kind == "snake" and int(f.get("score", 0)) >= 7
 		"n.anomaly":
 			return kind == "anomaly" and f["phase"] == "start"
 		"n.survive":

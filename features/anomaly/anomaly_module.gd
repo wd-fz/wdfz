@@ -90,6 +90,7 @@ func state_version() -> int:
 
 
 func reset() -> void:
+	traces = []
 	an = {"id": "", "t": 0.0, "acc": 0.0, "next": 60.0, "data": {}, "rained": false, "cool": {}, "lastBig": false, "active": false,
 		"sub": 0, "pre": "", "locked": false, "preNext": 0.0, "lockWait": false, "next0": 0}
 	hist = []
@@ -116,7 +117,7 @@ func begin_run(diff: String) -> void:
 
 func capture() -> Dictionary:
 	return {"an": an.duplicate(true), "hist": hist.duplicate(), "seen": seen.duplicate(), "pre_told": pre_told, "cola_pending": cola_pending,
-		"cola_seq": cola_seq, "cola_done": cola_done, "cola_wait": cola_wait, "clues": clues.duplicate(), "rng_seed": str(_rng.seed), "rng_state": str(_rng.state)}
+		"cola_seq": cola_seq, "cola_done": cola_done, "cola_wait": cola_wait, "clues": clues.duplicate(), "traces": traces.duplicate(true), "rng_seed": str(_rng.seed), "rng_state": str(_rng.state)}
 
 
 func validate(data: Dictionary) -> String:
@@ -133,6 +134,12 @@ func validate(data: Dictionary) -> String:
 			return "异象历史无效"
 	if not String(data.get("rng_state", "")).is_valid_int():
 		return "异象随机状态无效"
+	var tr: Variant = data.get("traces", [])
+	if not tr is Array or (tr as Array).size() > TRACE_MAX:
+		return "异象痕迹无效"
+	for t: Variant in tr:
+		if not t is Dictionary or not String(t.get("k", "")) in TRACE_KINDS or not String(t.get("room", "")) is String:
+			return "异象痕迹无效"
 	return ""
 
 
@@ -141,6 +148,7 @@ func restore(data: Dictionary) -> void:
 	hist = data["hist"].duplicate()
 	seen = data["seen"].duplicate()
 	pre_told = bool(data.get("pre_told", false))
+	traces = (data.get("traces", []) as Array).duplicate(true)
 	cola_pending = data.get("cola_pending")
 	cola_seq = int(data.get("cola_seq", 0))
 	cola_done = int(data.get("cola_done", 0))
@@ -524,10 +532,63 @@ func _start() -> void:
 	_on(id)
 
 
+## What an anomaly leaves on the ground (app/traces.js traceAdd): a puddle where the rain fell, stains of the leak, the remains of
+## the chalk circle, dead moths, footprint rows, paper, a handprint, a fence, a bowl, chalk dust, the dented cup. Kept in the save,
+## at most 40 (the oldest go). room "" means outdoors; outdoor positions are old world units. The picture is world/campus/traces.gd.
+const TRACE_KINDS := ["puddle", "stain", "chalkring", "moths", "rows", "feet", "paper", "handprint", "fence", "bowl", "dust", "cup"]
+const TRACE_MAX := 40
+var traces: Array = []
+
+
+func trace_for(id: String, d: Dictionary, me: Vector2, scene: String, fence_x: float) -> Dictionary:
+	var t: Dictionary = {}
+	if id == "rain" or id == "raindots":
+		t = {"k": "puddle", "x": me.x, "y": me.y}
+	elif id == "leak" and d.has("pts"):
+		var pts: Array = []
+		for p: Variant in (d["pts"] as Array).slice(0, 5):
+			pts.append({"x": float(p["x"]), "y": float(p["y"])})
+		t = {"k": "stain", "pts": pts}
+	elif id == "rite" and d.has("c"):
+		t = {"k": "chalkring", "x": float(d["c"]["x"]), "y": float(d["c"]["y"])}
+	elif id == "moth" and d.has("src"):
+		t = {"k": "moths", "x": float(d["src"]["x"]), "y": float(d["src"]["y"])}
+	elif id == "exercise" and d.has("src"):
+		t = {"k": "rows", "x": float(d["src"]["x"]), "y": float(d["src"]["y"])}
+	elif id == "twin" and d.has("x"):
+		t = {"k": "feet", "x": float(d["x"]), "y": float(d["y"]), "a": atan2(me.y - float(d["y"]), me.x - float(d["x"]))}
+	elif id == "roster" and d.has("rx"):
+		t = {"k": "paper", "x": float(d["rx"]), "y": float(d["ry"])}
+	elif id == "hand":
+		t = {"k": "handprint", "x": me.x, "y": me.y}
+	elif id == "necker":
+		t = {"k": "fence", "x": fence_x, "y": me.y}
+	elif id == "feast":
+		t = {"k": "bowl", "x": me.x, "y": me.y}
+	elif id == "chalk":
+		t = {"k": "dust", "x": me.x, "y": me.y}
+	elif id == "cup" and int(d.get("phase", 0)) == 2 and d.has("lx"):
+		t = {"k": "cup", "x": float(d["lx"]), "y": float(d["ly"])}
+	if t.is_empty():
+		return t
+	t["room"] = "" if (id == "cup" or scene == "out") else scene      # the cup only lands outdoors
+	return t
+
+
+func _leave_trace(id: String) -> void:
+	var t := trace_for(id, an["data"], Vector2(float(_c.get("x", 0.0)), float(_c.get("y", 0.0))), String(_c.get("scene", "")), float(_c.get("fence_x", 0.0)))
+	if t.is_empty():
+		return
+	traces.append(t)
+	while traces.size() > TRACE_MAX:
+		traces.pop_front()
+
+
 func _end() -> void:
 	if not an["active"] and an["id"] == "":
 		return
 	var id := String(an["id"])
+	_leave_trace(id)
 	if id == "roster" and not an["data"].get("done", false):
 		_emit("violation", {"amount": 18.0})
 		_say("我：那张名单我没动。走开的时候，我听见身后有笔尖划过纸的声音。")
@@ -1049,10 +1110,12 @@ func _tick_turn_smile(dt: float, d: Dictionary) -> void:
 		d["done"] = true
 		an["acc"] = 0.0
 		_emit("turn", {"angle": PI})
+		_emit("smile", {"mode": "behind"})
 		_hurt("我：我回头了。身后是一张很大很大的笑脸，眼睛弯成两道缝，嘴角一直咧到耳根。它冲我点了点头，就不见了。我的手心全是汗。", 5.0, true, true)
 	elif d["chosen"] == "no" and float(an["acc"]) > 1.0:
 		d["done"] = true
 		_emit("violation", {"amount": 15.0})
+		_emit("smile", {"mode": "jump"})
 		_hurt("我没有回头。它等不及了——那张脸从我肩膀上绕过来，贴着我的鼻尖，一点一点咧开了嘴。", 30.0)
 
 

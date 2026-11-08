@@ -44,12 +44,55 @@ func _ready() -> void:
 	finish.shaded = false
 	finish.position = Vector3(0, 3.0, -CarChaseRules.DISTANCE - 8.0)
 	add_child(finish)
+	_build_dash()
 	var lamp := SpotLight3D.new()
 	lamp.name = "Headlights"
 	lamp.spot_range = 45.0
 	lamp.spot_angle = 28.0
 	lamp.light_energy = 3.0
 	add_child(lamp)
+
+
+## The dashboard and the rear-view mirror (fx/car-chase-view.js): dashboard, steering wheel, mirror; in the mirror black shadows — the
+## closer the pursuit, the more of them and the larger. Everything unlit; it follows the driver's eye.
+var _dash: Node3D
+var _shades: Array[MeshInstance3D] = []
+
+
+func _build_dash() -> void:
+	_dash = Node3D.new()
+	_dash.name = "Dash"
+	add_child(_dash)
+	var body := _box(Vector3(0, -0.58, -1.1), Vector3(2.4, 0.42, 0.45), Color("#353e3f"))
+	body.get_parent().remove_child(body)
+	_dash.add_child(body)
+	var wheel := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.165
+	tm.outer_radius = 0.215
+	wheel.mesh = tm
+	var wm := StandardMaterial3D.new()
+	wm.albedo_color = Color("#77817c")
+	wm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	wheel.material_override = wm
+	wheel.position = Vector3(0, -0.49, -0.88)
+	wheel.rotation.x = PI / 2.0 - 0.5
+	_dash.add_child(wheel)
+	var mirror := _box(Vector3(0, 0.47, -1.15), Vector3(0.9, 0.18, 0.04), Color("#515b59"))
+	mirror.get_parent().remove_child(mirror)
+	_dash.add_child(mirror)
+	for i in 5:
+		var sh := _box(Vector3(float(i - 2) * 0.15, 0.46, -1.12), Vector3(0.06, 0.08, 0.02), Color("#080a0a"))
+		sh.get_parent().remove_child(sh)
+		sh.visible = false
+		_dash.add_child(sh)
+		_shades.append(sh)
+
+
+## Which shadows show and how big, for a pursuit fraction (0..1): shade i shows above i·0.18 + 0.04.
+static func shade_state(near: float, i: int, t: float) -> Dictionary:
+	var k := 0.6 + near * 0.6 + sin(t * 7.0 + float(i) * 1.7) * 0.05
+	return {"visible": near > float(i) * 0.18 + 0.04, "scale": Vector3(k, k * (1.0 + near * 0.4), 1.0)}
 
 
 func _box(pos: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
@@ -73,5 +116,13 @@ static func eye(d: Dictionary) -> Vector3:
 
 
 func update(d: Dictionary) -> void:
+	if _dash != null:
+		_dash.position = eye(d)
+		var near := float(d.get("pursuit", 0.0)) / CarChaseRules.PURSUIT_LIMIT
+		var t := Time.get_ticks_msec() / 1000.0
+		for i in _shades.size():
+			var st := shade_state(near, i, t)
+			_shades[i].visible = bool(st["visible"])
+			_shades[i].scale = st["scale"]
 	var lamp := get_node("Headlights") as SpotLight3D
 	lamp.position = eye(d) + Vector3(0, -0.3, -0.5)

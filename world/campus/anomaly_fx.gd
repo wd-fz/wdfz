@@ -91,15 +91,7 @@ func _at(room: Variant, x: float, y: float) -> Vector2:
 
 func _figure(color: Color, height: float = 1.7) -> Node3D:
 	var n := Node3D.new()
-	var body := CapsuleMesh.new()
-	body.radius = 0.22
-	body.height = height
-	var mi := MeshInstance3D.new()
-	mi.mesh = body
-	mi.material_override = _unlit(color)
-	mi.position.y = height * 0.5
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	n.add_child(mi)
+	n.add_child(FigureModel.make("person", color, true, height / 1.85))
 	_props.add_child(n)
 	return n
 
@@ -125,12 +117,17 @@ func _particles(count: int, lifetime: float, size: Vector3, color: Color, extent
 func _build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vector2) -> void:
 	match id:
 		"rain", "raindots":
-			_extra["rain"] = _particles(420, 0.7, Vector3(0.012, 0.5, 0.012), Color(0.68, 0.78, 0.9, 0.75), Vector3(9, 0.1, 9), Vector3(0, -40, 0), 4.0)
-			(_extra["rain"] as CPUParticles3D).position.y = 9.0
+			var rain := WeatherFx.new()
+			_props.add_child(rain)
+			rain.setup_rain(feet)
+			_extra["rain"] = rain
 		"moth":
-			var cloud := _particles(160, 1.2, Vector3(0.05, 0.05, 0.05), Color(0.82, 0.78, 0.66), Vector3(0.9, 0.7, 0.9), Vector3.ZERO, 1.5)
-			cloud.spread = 180.0
-			_extra["cloud"] = cloud
+			var msrc: Dictionary = d.get("src", {"x": 0.0, "y": 0.0})
+			var ms := _at(room, float(msrc["x"]), float(msrc["y"]))
+			var swarm := WeatherFx.new()
+			_props.add_child(swarm)
+			swarm.setup_moths(Vector3(ms.x, feet.y, ms.y))
+			_extra["swarm"] = swarm
 		"exercise":
 			var src: Dictionary = d.get("src", {"x": 0.0, "y": 0.0})
 			var c := _at(room, float(src["x"]), float(src["y"]))
@@ -235,31 +232,7 @@ func _build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vec
 		"necker":
 			var walker := Node3D.new()
 			_props.add_child(walker)
-			var body := CapsuleMesh.new()
-			body.radius = 0.24
-			body.height = 1.7
-			var bm := MeshInstance3D.new()
-			bm.mesh = body
-			bm.material_override = _unlit(Color(0.05, 0.05, 0.06))
-			bm.position.y = 0.85
-			walker.add_child(bm)
-			var neck := CylinderMesh.new()
-			neck.top_radius = 0.06
-			neck.bottom_radius = 0.08
-			neck.height = 1.9
-			var nm := MeshInstance3D.new()
-			nm.mesh = neck
-			nm.material_override = _unlit(Color(0.75, 0.68, 0.6))
-			nm.position.y = 1.7 + 0.95
-			walker.add_child(nm)
-			var head2 := SphereMesh.new()
-			head2.radius = 0.14
-			head2.height = 0.3
-			var hm2 := MeshInstance3D.new()
-			hm2.mesh = head2
-			hm2.material_override = _unlit(Color(0.78, 0.7, 0.62))
-			hm2.position.y = 1.7 + 1.9 + 0.1
-			walker.add_child(hm2)
+			walker.add_child(FigureModel.make("neck", Color(0.05, 0.05, 0.06), true))
 			_extra["walker"] = walker
 		"shadow":
 			var disc := CylinderMesh.new()
@@ -304,12 +277,9 @@ func _animate(id: String, t: float, d: Dictionary, room: Variant, feet: Vector3,
 	var me := Vector3(feet.x, feet.y, feet.z)
 	match id:
 		"rain", "raindots":
-			(_extra["rain"] as CPUParticles3D).global_position = Vector3(me.x, me.y + 9.0, me.z)
+			(_extra["rain"] as WeatherFx).update_rain(dt, Vector3(me.x, me.y + 1.7, me.z), me.y)
 		"moth":
-			var src: Dictionary = d.get("src", {"x": 0.0, "y": 0.0})
-			var s := _at(room, float(src["x"]), float(src["y"]))
-			var k := clampf(t / 6.5, 0.0, 1.0)
-			(_extra["cloud"] as CPUParticles3D).global_position = Vector3(lerpf(s.x, me.x, k), me.y + 1.6, lerpf(s.y, me.z, k))
+			(_extra["swarm"] as WeatherFx).update_moths(dt, Vector3(me.x, me.y + 1.7, me.z), t, bool(d.get("hard", false)))
 		"exercise":
 			var swing := sin(t * 5.0) * 0.12
 			for f: Node3D in _extra["figs"]:

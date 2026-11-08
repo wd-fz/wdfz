@@ -449,6 +449,20 @@ func reveal_wireless() -> void:
 	_frame_path = {}
 
 
+## The phone camera's flash (camera.js flashNotice): in the same scene, walking, in sight within `see_mul`
+## times its sight range, and you are not hidden: the lock jumps up, your spot is remembered, it searches.
+func camera_flash(see_mul: float, lock: float) -> bool:
+	if not same() or pat["state"] != "walk" or bool(hide["on"]) or distance() > SEE * see_mul:
+		return false
+	var me := player_point()
+	if not nav.los(position(), me):
+		return false
+	pat["lock"] = maxf(float(pat["lock"]), lock)
+	pat["lastSeen"] = me
+	pat["search"] = maxf(float(pat["search"]), 3.0)
+	return true
+
+
 ## Where the patroller wants to go now, by priority (world.js target).
 func _target() -> Dictionary:
 	if pat["permanent"] and not camouflaged():

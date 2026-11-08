@@ -325,7 +325,7 @@ func _checkup_use() -> bool:
 		return false
 	if _near_tile(CHECKUP["room"], CHECKUP["chart"], 1.6):
 		_say("我：视力表最下面一行不是字母。是一行很小的字：\n「%s」" % chart_line())
-		_emit("clue", {"id": "checkupChart", "text": "医务室视力表最下面一行：「%s」" % chart_line()})
+		_emit("clue", {"id": "checkupChart", "text": "医务室视力表最下面一行：「%s」" % chart_line(), "source": "行政楼一楼医务室"})
 		return true
 	if not (_near_tile(CHECKUP["room"], CHECKUP["ruler"], 1.4) or _near_tile(CHECKUP["room"], CHECKUP["scale"], 1.4)):
 		return false
@@ -342,7 +342,7 @@ func _checkup_use() -> bool:
 	_emit("advance", {"minutes": float(CHECKUP["minutes"])})
 	(checkup["done"] as Dictionary)[_day_key()] = 1
 	_say("我：我站上去。没有人报数，尺子自己落下来，停在我头顶上方很高的地方。\n" + FORM)
-	_emit("clue", {"id": "checkupForm", "text": "体检表：身高「—」，心率「0」，医生意见「合格」。"})
+	_emit("clue", {"id": "checkupForm", "text": "体检表：身高「—」，心率「0」，医生意见「合格」。", "source": "行政楼一楼医务室"})
 	_emit("saved")
 	return true
 
@@ -396,6 +396,6 @@ func _read_note(i: int) -> void:
 	notes[sp["id"]] = 1
 	_say(note_text(i))
 	if first:
-		_emit("clue", {"id": "patrolNote%d" % i, "text": note_text(i).replace("\n", "　")})
+		_emit("clue", {"id": "patrolNote%d" % i, "text": note_text(i).replace("\n", "　"), "source": String(sp["where"])})
 		_emit("saved")
 

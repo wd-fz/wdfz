@@ -10,6 +10,7 @@ extends Node
 
 var session: GameSession
 var saves := SaveStore.new()
+var settings := GameSettings.new()
 var _hint_cooldown := 0.0
 var _choice_handler: Callable
 var _death_hold := 0.0
@@ -22,20 +23,43 @@ var speedrun := Speedrun.new()
 var audio: AudioFx
 var _seen_anomaly := ""
 var _seen_lock := false
-var _bell_count := 0
 var _seen_phase := 0
 var _seen_day := 1
 var _seen_hide := false
 var _seen_lock_ach := false
 var _ach_started := ""
 var _enter_cool := 0.0
+var _audio_period := ""
+var _bolt_next := 6.0
 var _drive_view: CarChaseView
+var playtest := Playtest.new()
+var debug_panel: DebugPanel
 
 
 func _ready() -> void:
 	audio = AudioFx.new()
 	audio.name = "AudioFx"
 	add_child(audio)
+	settings.load_file(DisplayServer.is_touchscreen_available())
+	ui.settings_requested.connect(func() -> void: ui.show_settings(settings.values))
+	ui.setting_changed.connect(_setting_changed)
+	ui.fullscreen_requested.connect(func() -> void: _setting_changed("full_screen", 1 - settings.get_int("full_screen")))
+	ui.notes_requested.connect(_show_notes)
+	ui.results_requested.connect(_open_results)
+	ui.records_requested.connect(_open_records)
+	ui.legacy_import_requested.connect(func(text: String) -> void:
+		var why := import_legacy_save(text)
+		ui.show_import_result(why))
+	ui.grade_sound.connect(func(b: String) -> void: audio.play("ui.grade." + b))
+	ui.map_requested.connect(_show_map)
+	ui.notes_focus_requested.connect(_notes_focus)
+	_apply_settings()
+	# ui.click on every button press (audio.js click), including buttons made later (choices).
+	get_tree().node_added.connect(func(n: Node) -> void:
+		if n is BaseButton and n.is_inside_tree() and ui.is_ancestor_of(n):
+			(n as BaseButton).pressed.connect(func() -> void: audio.play("ui.click")))
+	for b: Node in ui.find_children("*", "BaseButton", true, false):
+		(b as BaseButton).pressed.connect(func() -> void: audio.play("ui.click"))
 	ui.new_requested.connect(_pick_talent.bind("easy", false))
 	ui.new_hard_requested.connect(_pick_talent.bind("hard", false))
 	ui.speedrun_requested.connect(_speedrun_menu)
@@ -62,6 +86,7 @@ func _ready() -> void:
 	ui.lift_close_requested.connect(_lift_close)
 	ui.item_use_requested.connect(_use_item)
 	ui.item_hot_requested.connect(_set_hot)
+	ui.item_drop_requested.connect(_drop_item)
 	return_to_menu()
 
 
@@ -69,7 +94,7 @@ func _make_session() -> GameSession:
 	var candidate := GameSession.new()
 	for feature: FeatureModule in [DemoModule.new(), CampusData.make_module(), ElevatorModule.new(CampusData.rooms()),
 			SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()),
-			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(), ClassmatesModule.new(CampusData.rooms())]:
+			InventoryModule.new(CampusData.rooms(), CampusData.campus()), StoryModule.new(), CampusData.make_patrol(), CampusData.make_anomaly(), RoutesModule.new(CampusData.campus()), AchievementsModule.new(AnomalyModule.IDS.size() - 1), GarageModule.new(CampusData.layout("garage1")), FacilitiesModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus()), BroadcastModule.new(CampusData.rooms(), CampusData.patrol_nav()), PhoneModule.new(), TalentModule.new(), FakeNormalModule.new(), BodyModule.new(CampusData.rooms()), ExchangeModule.new(CampusData.patrol_nav(), CampusData.layout("out"), CampusData.campus()), DayModule.new(), TalesModule.new(CampusData.rooms(), CampusData.patrol_data().get("route", {}).get("nodes", [])), WindowGazeModule.new(CampusData.rooms()), PaperPlaneModule.new(CampusData.rooms()), MarksModule.new(CampusData.rooms()), ClassmatesModule.new(CampusData.rooms()), DreadModule.new(CampusData.rooms()), AtmosModule.new(CampusData.rooms()), MonoModule.new(CampusData.rooms()), InvestigationModule.new(), ExplorationModule.new(CampusData.rooms()), CameraModule.new(), RunScoreModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus(), _anomaly_names())]:
 		var error := candidate.modules.register(feature)
 		if not error.is_empty():
 			push_error(error)
@@ -79,6 +104,41 @@ func _make_session() -> GameSession:
 
 func campus() -> CampusModule:
 	return session.modules.get_module(&"campus.world") as CampusModule if session != null else null
+
+
+func dread() -> DreadModule:
+	return session.modules.get_module(&"story.dread") as DreadModule if session != null else null
+
+
+func runscore() -> RunScoreModule:
+	return session.modules.get_module(&"progress.score") as RunScoreModule if session != null else null
+
+
+func _anomaly_names() -> Dictionary:
+	var out := {}
+	for id: String in AnomalyModule.DEFS:
+		out[id] = String(AnomalyModule.DEFS[id].get("cn", id))
+	return out
+
+
+func camera() -> CameraModule:
+	return session.modules.get_module(&"phone.camera") as CameraModule if session != null else null
+
+
+func exploration() -> ExplorationModule:
+	return session.modules.get_module(&"campus.exploration") as ExplorationModule if session != null else null
+
+
+func investigation() -> InvestigationModule:
+	return session.modules.get_module(&"story.investigation") as InvestigationModule if session != null else null
+
+
+func mono() -> MonoModule:
+	return session.modules.get_module(&"story.mono") as MonoModule if session != null else null
+
+
+func atmos() -> AtmosModule:
+	return session.modules.get_module(&"story.atmos") as AtmosModule if session != null else null
 
 
 func classmates() -> ClassmatesModule:
@@ -172,10 +232,12 @@ func fact(f: Dictionary) -> void:
 	var ach := achievements()
 	if ach == null:
 		return
+	_score_fact(f)
+	playtest.event("事实", String(f.get("kind", "")), _playtest_state())
 	ach.fact(f)
 	for e: Dictionary in ach.take_events():
 		ui.show_notice("成就：%s" % e["name"])
-		audio.cue("chime", -10.0)
+		audio.achieve(String(e.get("tier", "n")))
 		_save_profile(ach)
 
 
@@ -227,11 +289,39 @@ func elevator() -> ElevatorModule:
 
 
 ## The prologue: the game waits (paused) until the pages are read or skipped.
+var _opening_cut: OpeningCut
+var _ending_cut: EndingCut
+
+
+## The opening scene is on (the live cutscene, or the text pages that stand in for it).
+func opening_busy() -> bool:
+	return ui.opening_on() or (_opening_cut != null and _opening_cut.on)
+
+
 func _play_opening() -> void:
 	if session == null:
 		return
 	player.enabled = false
 	get_tree().paused = true
+	var world := _campus_world()
+	var room: Variant = campus().room(session.world_id) if campus() != null else null
+	if world != null and room != null and session.world_id == "teach1" and DisplayServer.get_name() != "headless":
+		var seen := saves.side_path("opening_seen")
+		if _opening_cut != null and is_instance_valid(_opening_cut):
+			_opening_cut.queue_free()
+		_opening_cut = OpeningCut.new()
+		_opening_cut.name = "OpeningCut"
+		add_child(_opening_cut)
+		_opening_cut.finished.connect(func(skipped: bool) -> void:
+			DirAccess.make_dir_recursive_absolute(seen.get_base_dir())
+			var f := FileAccess.open(seen, FileAccess.WRITE)
+			if f != null:
+				f.store_string("1")
+				f.close()
+			_opening_done(skipped))
+		_opening_cut.audio = audio
+		_opening_cut.begin(world, room, player, ui, FileAccess.file_exists(seen))
+		return
 	ui.show_opening()
 
 
@@ -314,6 +404,45 @@ func _pick_talent(difficulty: String, speed: bool = false) -> void:
 	ui.show_choice("%s · 选择天赋（每局一个；限制写在卡片上）" % ("梦魇" if difficulty == "hard" else "预知梦"), labels)
 
 
+## Carry what can be carried of an old Web save into a new run (app/legacy_save.gd). Returns "" or why not.
+func import_legacy_save(text: String) -> String:
+	var parsed: Variant = JSON.parse_string(text.strip_edges())
+	var p := LegacySave.plan(parsed, CampusData.rooms(), CampusData.campus().get("items", {}), TalentModule.KEYS)
+	if not String(p["error"]).is_empty():
+		return String(p["error"])
+	speedrun.disarm()
+	start_new_game(String(p["diff"]), String(p["talent"]))
+	if session == null:
+		return "没能开始新局"
+	var rules := school()
+	rules.day = int(p["day"])
+	rules.tsec = float(p["tsec"])
+	rules.pressure_clock = rules.tsec
+	rules.san = float(p["san"])
+	rules.viol = float(p["viol"])
+	rules.stam = float(p["stam"])
+	rules.tt = float(p["tt"])
+	rules.seated = false
+	var inv := items()
+	if inv != null:
+		inv.bag = (p["bag"] as Array).duplicate()
+		inv.hot = (p["hot"] as Array).duplicate()
+	if runscore() != null:
+		runscore().legacy = 1
+	var world := String(p["world"])
+	var room: Variant = campus().room(world) if world != "out" else null
+	var sc := CampusGeometry.to_scene(room, Vector2(float(p["x"]), float(p["y"])))
+	travel(world, {"position": [sc.x, 0.05, sc.y], "yaw": CampusGeometry.yaw_from_ang(float(p["ang"])), "pitch": float(p["pitch"])}, false)
+	player.seated = false
+	player.enabled = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
+	var note := "已从旧版存档继续：位置、时间、SAN、背包等带过来了；异象、路线与剧情进度从头开始。"
+	if not (p["dropped"] as Array).is_empty():
+		note += "\n这个版本里没有的物品已丢掉：" + "、".join(p["dropped"])
+	ui.show_notice(note)
+	return ""
+
+
 func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> void:
 	var candidate := _make_session()
 	if candidate == null:
@@ -369,6 +498,14 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 		var mates := candidate.modules.get_module(&"school.classmates") as ClassmatesModule
 		if mates != null:
 			mates.set_seed(net.run_seed)
+		var mood := candidate.modules.get_module(&"story.atmos") as AtmosModule
+		if mood != null:
+			mood.set_seed(net.run_seed)
+	var scoring := candidate.modules.get_module(&"progress.score") as RunScoreModule
+	if scoring != null:
+		scoring.begin("s%d%04d" % [int(Time.get_unix_time_from_system()), randi() % 10000])
+		_write_side("runlog_cur.json", null)
+		_runlog.begin(scoring.run)
 	var rules := candidate.modules.get_module(&"campus.world") as CampusModule
 	var pose := rules.start_pose() if rules != null and initial_world == rules.start_world() else router.current.spawn_pose()
 	# Game.start: the run begins seated on the player's own seat in teach1.
@@ -378,6 +515,11 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 		if not seated.is_empty():
 			pose = seated
 	_install_session(candidate, pose)
+	if dread() != null:
+		dread().set_context(_dread_context())
+		dread().enter(session.world_id)
+	if atmos() != null:
+		atmos().enter(session.world_id)
 	if rules != null and rules.knows(initial_world):
 		ui.show_notice(String(rules.room(initial_world)["name"]) if rules.room(initial_world) != null else "武大附中 · 校园")
 	else:
@@ -513,13 +655,21 @@ func load_game() -> void:
 		return
 	candidate.restore(data)
 	_install_session(candidate, data["player"])
+	if runscore() != null:
+		_runlog.restore(runscore().run, _read_side("runlog_cur.json"))
+	if dread() != null:
+		dread().set_context(_dread_context())
+		dread().enter(session.world_id, true)
+		_apply_dread_events()
+	if atmos() != null:
+		atmos().enter(session.world_id)
 	if garage() != null and garage().driving():
 		_enter_drive()
 	ui.show_notice("已恢复测试进度；读档不会再次触发交互奖励。")
 
 
 func pause_game() -> void:
-	if ui.opening_on():
+	if opening_busy():
 		return
 	# Game.pause: no pause menu once dead (a death cannot be saved around).
 	if session == null or not session.running or _dead():
@@ -544,6 +694,11 @@ func resume_game() -> void:
 
 
 func return_to_menu() -> void:
+	_last_result = {}
+	_fake_people_clear()
+	_stop_snake(true)
+	_close_phone()
+	_audio_period = ""
 	ui.show_sensory({"tunnel": 0.0}, 0.0, 0.0)
 	_sense_body = -1.0
 	if is_instance_valid(_mates_nodes):
@@ -618,6 +773,8 @@ func _physics_process(delta: float) -> void:
 		_campus_step(delta)
 		if days() != null and days().waiting != null:
 			_study_fast_forward(delta)
+	elif audio != null and ui.menu.visible:
+		audio.update(delta, {"menu": true})
 
 
 # ---- formal campus (features/campus) ----
@@ -634,6 +791,12 @@ func _sync_world() -> void:
 	var lift := elevator()
 	if world != null and lift != null:
 		world.set_lift_doors(lift.door_amount_in(session.world_id))
+	if world != null and world.broadcast_props != null and broadcast() != null:
+		world.broadcast_props.set_fuse(bool(broadcast().b["fuse"]))
+	if world != null and world.banner != null and days() != null and school() != null:
+		var want := days().today(school().day, school().tsec) == "anniversary"
+		if want != world.banner.is_on():
+			world.banner.set_on(want)
 
 
 func _door_changed(key: String, open: bool) -> void:
@@ -677,6 +840,9 @@ func _campus_step(delta: float) -> void:
 	if _hint_cooldown <= 0.0 and not player.has_focus():
 		_hint_cooldown = 0.1
 		var radio_hint := broadcast().hint() if broadcast() != null else ""
+		if radio_hint == "" and marks() != null:
+			marks().set_context(_marks_context())
+			radio_hint = marks().box_hint()
 		if radio_hint == "" and body() != null:
 			body().set_context(_body_context())
 			radio_hint = body().hint()
@@ -715,6 +881,12 @@ func _campus_interact() -> void:
 		radio.set_context(_broadcast_context())
 		if radio.use_here():
 			_apply_broadcast_events()
+			return
+	var keepsakes := marks()
+	if keepsakes != null:
+		keepsakes.set_context(_marks_context())
+		if keepsakes.use_box():
+			_apply_marks_events()
 			return
 	var limbs := body()
 	if limbs != null:
@@ -758,7 +930,11 @@ func _apply_result(result: Dictionary) -> void:
 	if result.is_empty():
 		return
 	if result.has("door"):
-		audio.cue("creak", -10.0)
+		audio.play("foley.door")
+		var dk := String(result["door"]["key"]).rsplit(":", true, 2)
+		if atmos() != null and dk.size() == 3:
+			atmos().set_context(_atmos_context())
+			atmos().door_action(dk[0], int(dk[1]), int(dk[2]), bool(result["door"]["open"]))
 	if result.has("choice"):
 		_open_choice(result["choice"])
 	var text := String(result.get("notice", ""))
@@ -768,6 +944,9 @@ func _apply_result(result: Dictionary) -> void:
 		var room: Variant = campus().room(session.world_id)
 		var p: Array = player.capture_pose()["position"]
 		items().start_search(session.world_id, int(result["search"][0]), int(result["search"][1]), CampusGeometry.to_world(room, float(p[0]), float(p[2])))
+	if result.has("podium") and investigation() != null and CampusData.campus().get("own_podium", []) == [int(result["podium"][0]), int(result["podium"][1])] and session.world_id == "teach1":
+		_invest_do(func(inv: InvestigationModule) -> void: inv.notice())
+		return
 	if result.has("podium") and items() != null:
 		var said := items().podium(session.world_id, int(result["podium"][0]), int(result["podium"][1]))
 		text = String(said.get("notice", text))
@@ -792,15 +971,27 @@ func _apply_result(result: Dictionary) -> void:
 		_apply_phone_events()
 		return
 	if result.has("phone") and phone() != null:
-		phone().set_context(_phone_context())
-		phone().phone_menu()
-		_apply_phone_events()
+		_open_phone()
 		return
 	if result.has("facility") and facilities() != null:
 		var fac := facilities()
-		fac.set_context(_facility_context())
-		fac.use(campus().room(session.world_id), String(result["facility"][0]), int(result["facility"][1]), int(result["facility"][2]))
-		_apply_facility_events()
+		var use_here := func() -> void:
+			fac.set_context(_facility_context())
+			fac.use(campus().room(session.world_id), String(result["facility"][0]), int(result["facility"][1]), int(result["facility"][2]))
+			_apply_facility_events()
+		var ch := String(result["facility"][0])
+		var inv2 := investigation()
+		if inv2 != null and ch == "M":
+			inv2.set_context(_invest_context())
+			if inv2.supply_offer(session.world_id):
+				_supply_after = use_here
+				_apply_invest_events()
+				return
+		use_here.call()
+		if inv2 != null and ch == "k" and session.world_id == "guard1":
+			inv2.set_context(_invest_context())
+			if inv2.supply_offer(session.world_id):
+				_apply_invest_events()
 		return
 	if result.has("rest") and facilities() != null:
 		facilities().set_context(_facility_context())
@@ -835,6 +1026,7 @@ func _apply_result(result: Dictionary) -> void:
 		_apply_garage_events()
 		return
 	if result.has("car_key") and garage() != null:
+		_record({"id": "carKey", "text": "钥匙环刻着车牌「%s」。在车位前看车牌，再试钥匙。" % garage().key_label(), "kind": "事实", "source": "车钥匙"})
 		ui.show_notice("我：钥匙环刻着「%s」。要去车位前核对。" % garage().key_label())
 		return
 	if result.has("coin") and garage() != null:
@@ -924,6 +1116,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 		"can_stand": _can_stand.bind(room, float(p[1])), "line_clear": _line_clear.bind(room), "snack": snack, "pill_san": pill_san})
 	var world := _campus_world()
 	if world != null:
+		world.set_player_scene(Vector3(float(p[0]), float(p[1]), float(p[2])))
 		world.show_silhouettes(day_rules.inspection_points(), room, float(p[1]))
 	player.can_sprint = day_rules.can_run(snack) and (body() == null or body().can_run())
 	_patrol_step(delta, watcher, day_rules, room, pose)
@@ -964,6 +1157,11 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	_show_marks()
 	_classmates_step(delta)
 	_sensory_step(delta)
+	_dread_step(delta)
+	_atmos_step(delta)
+	_mono_step(delta)
+	_explore_step(delta)
+	_score_step(delta)
 	_anomaly_step(delta, day_rules, room, pose)
 	_audio_step(delta, watcher, day_rules, room, p)
 	_progress_step(watcher, day_rules, weird_now)
@@ -987,6 +1185,9 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 	var lit := _campus_world()
 	if lit != null:
 		var weird_light := anomaly()
+		if lit.lighting != null:
+			lit.lighting.reduce_flash = settings.get_int("reduce_flash") == 1
+			lit.lighting.brightness = float(settings.get_int("bright")) / 100.0
 		lit.update_lighting(delta, day_rules.tsec, player.camera, watcher.flick if watcher != null else 0.0, watcher.red if watcher != null else 0.0,
 			weird_light != null and weird_light.blackout_now(), weird_light.overcast_target() if weird_light != null else 0.0)
 		if watcher != null:
@@ -1069,7 +1270,7 @@ func _bag_entries() -> Array:
 	var bag := items()
 	var out: Array = []
 	for id: String in bag.bag:
-		out.append({"id": id, "name": bag.item_name(id), "text": bag.item_text(id)})
+		out.append({"id": id, "name": bag.item_name(id) + (" · 撑开着" if id == "brolly" and bag.brolly_up else ""), "text": bag.item_text(id)})
 	return out
 
 
@@ -1093,6 +1294,17 @@ func _use_item(id: String) -> void:
 		return
 	_close_bag()
 	_apply_result(bag.use(id, school().tsec if school() != null else 0.0))
+
+
+func _drop_item(id: String) -> void:
+	var bag := items()
+	if bag == null or story().dead or not bag.drop(id):
+		return
+	if id in ["coil", "lens", "vial"] and facilities() != null:
+		facilities().flags[id] = false     # the unique portal materials can be taken again where they were found
+	for line: String in bag.take_notices():
+		ui.show_notice(line)
+	ui.show_bag(_bag_entries())
 
 
 func _set_hot(index: int, id: String) -> void:
@@ -1157,7 +1369,7 @@ func kill(msg: String, fx: String, source: String) -> void:
 	if result.has("protected"):
 		if result["protected"] == "elixir":
 			bag.remove("elixir")
-		fact({"kind": "protect"})
+		fact({"kind": "protect", "by": String(result["protected"])})
 		if garage() != null:
 			garage().rescued()
 		school().survive(source)
@@ -1174,7 +1386,9 @@ func kill(msg: String, fx: String, source: String) -> void:
 		return
 	if not result.get("dead", false):
 		return
-	fact({"kind": "death", "source": source, "fx": fx})
+	fact({"kind": "death", "source": source, "fx": fx, "wake": bool(result["wake"])})
+	if not bool(result["wake"]):
+		_score_death()
 	if not result["wake"] and not (session.world_id in ["lift_dream", "portal_tunnel"]):
 		var lp: Array = player.capture_pose()["position"]
 		var lw := CampusGeometry.to_world(campus().room(session.world_id), float(lp[0]), float(lp[2]))
@@ -1182,7 +1396,7 @@ func kill(msg: String, fx: String, source: String) -> void:
 	player.enabled = false
 	player.clear_input()
 	audio.stop_all()
-	audio.cue("scare", -2.0)
+	audio.death(fx)
 	ui.hide_choice()
 	ui.hide_bag()
 	if bag != null:
@@ -1197,9 +1411,13 @@ func kill(msg: String, fx: String, source: String) -> void:
 	_death_hold = float(result["hold"])
 	_death_wait = 0.0
 	_death_phase = "fade"
+	_start_death_cg(source if DeathCG.has(source) else fx)
+	_death_hold = DeathCG.duration(source if DeathCG.has(source) else fx, _death_hold) if _death_cg != null and is_instance_valid(_death_cg) and _death_cg.on else _death_hold
 	ui.show_notice(msg)
 	var updated := fate.log_death(_read_death_log(), school().day if school() != null else 1, session.world_id)
 	_write_death_log(updated)
+	if not fate.cause().is_empty():
+		_record({"id": "failure:" + fate.death_source, "text": fate.cause(), "kind": "验证", "source": "刚才的经历"})
 	if not result["wake"]:
 		if speedrun.run.is_empty():
 			saves.clear()
@@ -1229,11 +1447,37 @@ func _write_death_log(record: Dictionary) -> void:
 		file.close()
 
 
+var _death_cg: DeathCG
+
+
+## The cause's own scene (death_cg.gd), when it has one and there is a picture to draw on; else the fade effect only.
+func _start_death_cg(fx: String) -> void:
+	_stop_death_cg()
+	var world := _campus_world()
+	if world == null or not DeathCG.has(fx) or DisplayServer.get_name() == "headless":
+		return
+	_death_cg = DeathCG.new()
+	_death_cg.name = "DeathCG"
+	add_child(_death_cg)
+	_death_cg.audio = audio
+	_death_cg.begin(fx, player, world, ui, DeathCG.duration(fx, StoryModule.duration(fx)), settings.get_int("reduce_flash") == 1)
+
+
+func _stop_death_cg() -> void:
+	if _death_cg != null and is_instance_valid(_death_cg):
+		_death_cg.finish()
+		_death_cg.queue_free()
+	_death_cg = null
+
+
 func _death_step(delta: float) -> void:
 	if _death_phase != "fade":
 		return
 	_death_wait += delta
-	ui.show_death_scene(story().death_fx, minf(1.0, _death_wait / maxf(0.2, _death_hold)))
+	if _death_cg != null and is_instance_valid(_death_cg) and _death_cg.on:
+		_death_cg.tick(delta)
+	else:
+		ui.show_death_scene(story().death_fx, minf(1.0, _death_wait / maxf(0.2, _death_hold)))
 	# story.js deathSkip: at least 0.6 s of the scene, then a key skips to the result.
 	var skip := _death_wait >= 0.6 and (Input.is_action_just_pressed("interact") or Input.is_action_just_pressed("ui_accept"))
 	if _death_wait >= _death_hold or skip:
@@ -1241,10 +1485,12 @@ func _death_step(delta: float) -> void:
 
 
 func _finish_death() -> void:
+	_stop_death_cg()
 	var fate := story()
 	if fate.wake_pending:
 		var left := fate.finish_wake()
 		fact({"kind": "wake"})
+		audio.play("foley.wake")
 		if phone() != null:
 			phone().dream()
 		ui.hide_terminal()
@@ -1272,7 +1518,7 @@ func _finish_death() -> void:
 		return
 	_death_phase = "card"
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	ui.show_death_card(fate.death_msg, fate.epitaph(), fate.cause(), StoryModule.hints(_read_death_log()))
+	ui.show_death_card(fate.death_msg, fate.epitaph(), fate.cause(), StoryModule.hints(_read_death_log()), achievements().run_new_labels() if achievements() != null else PackedStringArray(), _death_score_line())
 
 
 ## Player state the patroller reads (old S / HIDE / Inspection state).
@@ -1300,6 +1546,7 @@ func _patrol_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, 
 	for e: Dictionary in day_rules.take_events():
 		if e["kind"] == "absence":
 			watcher.registered_absence(String(e["id"]))
+			fact({"kind": "patrol", "what": "permanent"})
 		elif e["kind"] == "exam":
 			fact({"kind": "exam", "phase": e["phase"], "pass": e.get("pass", false), "day": e.get("day", 1)})
 		elif e["kind"] == "inspection":
@@ -1346,6 +1593,8 @@ func _progress_step(watcher: PatrolModule, day_rules: SchoolModule, weird: Anoma
 			fact({"kind": "patrol", "what": "lost"})
 		if _seen_hide and not hid and _seen_lock_ach and not story().dead:
 			fact({"kind": "patrol", "what": "locker"})
+		if locked and not _seen_lock_ach and not story().dead:
+			fact({"kind": "patrol", "what": "locked", "permanent": bool(watcher.pat["permanent"])})
 		_seen_lock_ach = locked
 		_seen_hide = hid
 
@@ -1363,53 +1612,83 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 		near = clampf(1.0 - dist / 360.0, 0.0, 1.0)
 		var fs := CampusGeometry.to_scene(room, Vector2(float(watcher.pat["x"]), float(watcher.pat["y"])))
 		patrol_pos = Vector3(fs.x, float(watcher.pat["fy"]) + 0.2, fs.y)
-	audio.update(delta, {"bpm": float(_sense_view.get("bpm", 0.0)), "moving": player.moving, "running": player.sprinting, "indoors": session.world_id != "out", "san": day_rules.san,
-		"blackout": weird != null and weird.blackout_now(), "rain": an_id in ["rain", "raindots"] and session.world_id == "out", "hiding": player.hiding,
-		"patrol_near": near, "patrol_pos": patrol_pos, "chase": watcher != null and bool(watcher.pat["locked"])})
+	var scene := session.world_id
+	var w_here := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var out_room := CampusData.layout("out")
+	var cw := _campus_world()
+	var night := 0.0
+	if cw != null and cw.lighting != null:
+		night = 1.0 - float(cw.lighting.sun_at(day_rules.tsec / 60.0)["day"])
+	var behind := false
+	if patrol_pos is Vector3:
+		var to_p: Vector3 = (patrol_pos as Vector3) - player.camera.global_position
+		behind = (-player.camera.global_basis.z).dot(to_p.normalized()) < -0.2
+	var big := false
+	if room is Dictionary and (room as Dictionary).has("cols"):
+		big = int(room["cols"]) * int(room["rows"]) > 900
+	audio.update(delta, {"scene": scene, "out": scene == "out", "night": night, "dead": story().dead,
+		"surface": AudioFx.surface(scene, scene == "bell1" and float(p[1]) > 0.4, w_here, out_room.get("objects", []), float(out_room.get("SC", 1.0))),
+		"san": day_rules.san, "viol": day_rules.viol, "anomaly": an_id, "shelter": false, "brolly": items() != null and items().brolly_up, "moving": player.moving, "running": player.sprinting,
+		"hiding": player.hiding, "body": maxf(0.0, _sense_body), "bpm": float(_sense_view.get("bpm", 0.0)),
+		"chase": watcher != null and bool(watcher.pat["locked"]), "threat": watcher != null and watcher.local_threat(),
+		"patrol_pos": patrol_pos, "patrol_behind": behind, "big": big, "blackout": weird != null and weird.blackout_now(), "moth_near": 0.5 if an_id == "moth" else 0.0, "busy": ui.terminal_open() or (days() != null and days().waiting != null), "echo": dread() != null and dread().echo})
+	ui.show_captions(audio.captions.lines() if audio.captions.enabled(audio.volume, audio.muted) else PackedStringArray())
+	# fx/weather.js: in the rain a bolt every 6–14 s, the screen whitens twice and the thunder comes late.
+	if an_id in ["rain", "raindots"]:
+		_bolt_next -= delta
+		if _bolt_next <= 0.0:
+			_bolt_next = 6.0 + randf() * 8.0
+			var near_b := randf()
+			ui.flash_light(0.45 + 0.3 * (1.0 - near_b))
+			get_tree().create_timer(0.09 + randf() * 0.08).timeout.connect(func() -> void: ui.flash_light(0.35))
+			audio.thunder(0.4 + near_b * 2.0, 1.0 - near_b * 0.6, scene != "out")
+	else:
+		_bolt_next = 6.0
+	if cw != null and cw.lighting != null:
+		cw.lighting.crackle_from = player.camera
+		for c: Dictionary in cw.lighting.crackles:
+			if float(c["k"]) >= 0.05:
+				audio.play("world.crackle", {"k": float(c["k"]), "pan": float(c["pan"])})
+		cw.lighting.crackles.clear()
+	# tickSchoolBell: the bell when the period changes (outdoors quieter and muffled).
+	var period := String(SchoolClock.period_at(day_rules.tsec)[2])
+	if _audio_period != "" and period != _audio_period and not story().dead:
+		var bell_kind := "start" if SchoolClock.period_at(day_rules.tsec)[3] == "教室" else "end"
+		audio.school_bell(bell_kind, session.world_id == "out", atmos().bell_tune(bell_kind, day_rules.tsec) if atmos() != null else {})
+	_audio_period = period
 	if watcher != null:
 		var locked := bool(watcher.pat["locked"])
 		if locked and not _seen_lock:
-			audio.cue("scare", -6.0)
+			audio.play("threat.sting")
 		_seen_lock = locked
 	if an_id != _seen_anomaly:
-		_seen_anomaly = an_id
-		_bell_count = 0
-		_seen_phase = 0
 		if an_id != "":
-			match an_id:
-				"broad":
-					audio.cue("static", -8.0)
-				"leak", "raindots":
-					audio.cue("drip", -8.0)
-				"hand":
-					audio.cue("creak", -8.0)
-				_:
-					audio.cue("sting", -10.0)
-	if weird != null and an_id != "":
-		var t := float(weird.an["t"])
-		var data: Dictionary = weird.an["data"]
-		match an_id:
-			"bell13":
-				if _bell_count < 13 and t >= float(_bell_count) * 1.4:
-					_bell_count += 1
-					audio.cue("bell", -6.0)
-			"bells":
-				if _bell_count < 9 and t >= float(_bell_count) * 0.25:
-					_bell_count += 1
-					audio.cue("ding", -10.0, 0.9 + 0.05 * float(_bell_count % 4))
-			"leak":
-				if fmod(t, 0.9) < delta:
-					audio.cue("drip", -14.0, 0.9 + randf() * 0.3)
-			"cup", "cola":
-				var phase := int(data.get("phase", 0))
-				if phase == 2 and _seen_phase != 2:
-					audio.cue("thud", -2.0)
-				_seen_phase = phase
+			audio.anomaly_start(an_id)
+		elif _seen_anomaly != "":
+			audio.play("anomaly.end")
+		_seen_anomaly = an_id
+		_seen_phase = 0
+	if weird != null and an_id in ["cup", "cola"]:
+		# cupFall / colaFall while it drops, cupHit / colaHit on landing (audio.js).
+		var phase := int((weird.an["data"] as Dictionary).get("phase", 0))
+		if phase != _seen_phase:
+			if phase == 1:
+				audio.play("foley.%sFall" % an_id)
+			elif phase == 2:
+				audio.play("foley.%sHit" % an_id)
+		_seen_phase = phase
 
 
 # ---- facilities, rest and the portal (features/campus/facilities_module.gd) ----
 
 func _facility_context() -> Dictionary:
+	var ctx := _facility_context_base()
+	var cars := garage()
+	ctx["car_row"] = int(cars.car_right.split(":")[1]) + 1 if cars != null and not cars.car_right.is_empty() else 1
+	return ctx
+
+
+func _facility_context_base() -> Dictionary:
 	var room: Variant = campus().room(session.world_id)
 	var pose := player.capture_pose()
 	var p: Array = pose["position"]
@@ -1440,6 +1719,8 @@ func _add_item(id: String) -> bool:
 	if bag == null:
 		return false
 	var ok := bag.add(id)
+	if ok:
+		audio.play("ui.pickup")
 	for text: String in bag.take_notices():
 		ui.show_notice(text)
 	return ok
@@ -1453,7 +1734,7 @@ func _facility_step() -> void:
 	fac.spot_tick()
 	var world := _campus_world()
 	if world != null:
-		world.show_portal(bool(fac.portal["open"]))
+		world.show_portal(bool(fac.portal["open"]), bool(fac.portal["sketch"]))
 
 
 func _apply_facility_events() -> void:
@@ -1462,6 +1743,11 @@ func _apply_facility_events() -> void:
 		return
 	for e: Dictionary in fac.take_events():
 		match e["kind"]:
+			"clue":
+				if runscore() != null:
+					runscore().add_clue(String(e["id"]), school().day)
+			"record":
+				_record(e)
 			"notice", "toast":
 				ui.show_notice(String(e["text"]))
 			"san":
@@ -1474,6 +1760,8 @@ func _apply_facility_events() -> void:
 				ui.show_notice("…%d 分钟过去了 · %s" % [int(e["minutes"]), e["name"]])
 			"fact":
 				fact({"kind": "rest", "key": String(e["key"])})
+				if String(e["key"]) == "pc":
+					_start_snake()
 			"anomaly_lock":
 				if anomaly() != null:
 					anomaly().lock_forecast()
@@ -1481,11 +1769,11 @@ func _apply_facility_events() -> void:
 				if anomaly() != null:
 					anomaly().end_now()
 			"exam_start":
-				audio.cue("bell", -2.0)
+				audio.play("event.bigBell", {"k": 1.0})
 				if school().exam_start():
 					ui.show_notice("考试模式 · 今天剩下的课都是考试，熄灯后结束")
 			"bell":
-				audio.cue("bell", -6.0)
+				audio.play("event.bigBell")
 			"save":
 				save_game()
 			"map":
@@ -1545,15 +1833,40 @@ var _blink_plan: Array = []
 var _blink_t := 0.0
 var _blink_next := 0.0
 var _sense_rng := RandomNumberGenerator.new()
+var _ghost_t := 9.0
+var _ghost_dur := 1.0
+var _ghost_next := 8.0
+var _ghost_a := 0.0
+var _ghost_spin := 0.0
 
 
 func _sensory_step(delta: float) -> void:
 	_sense_t += delta
 	_sense_body = SensoryRules.step(_sense_body, school().san, delta)
 	var watcher := patrol()
-	var v := SensoryRules.view(_sense_body, {"time": _sense_t, "threat": watcher != null and watcher.local_threat(),
+	var v := SensoryRules.view(_sense_body, {"time": _sense_t, "distortion": settings.get_int("distortion"), "reduce_flash": settings.get_int("reduce_flash") == 1, "threat": watcher != null and watcher.local_threat(),
 		"takeover": driving() or ui.terminal_open(), "chase": watcher != null and bool(watcher.pat["locked"])})
 	_sense_view = v
+	# The picture follows the body's sounds (modules/sensory): the view tightens as the heart beats and
+	# presses in as the breath is taken, from the moment the sound starts (muted or not).
+	v["pulse_env"] = float(v["pulse"]) * exp(-audio.pulse_t / 0.18)
+	var it := audio.inhale_t
+	v["inhale"] = sin(PI / 2.0 * it / 0.55) if it < 0.55 else (cos(PI / 2.0 * (it - 0.55) / 1.05) if it < 1.6 else 0.0)
+	# Ghosting: now and then a faint offset copy drifts for 0.8–1.6 s; the lower the SAN, the oftener.
+	_ghost_t += delta
+	if float(v["ghost"]) > 0.0:
+		_ghost_next -= delta
+		if _ghost_next <= 0.0 and _ghost_t >= _ghost_dur:
+			_ghost_t = 0.0
+			_ghost_dur = 0.8 + 0.8 * _sense_rng.randf()
+			_ghost_a = _sense_rng.randf() * TAU
+			_ghost_spin = (_sense_rng.randf() - 0.5) * 1.6
+			_ghost_next = (11.0 - 7.0 * minf(1.0, (_sense_body - 0.45) / 0.45)) * (0.75 + 0.5 * _sense_rng.randf())
+	else:
+		_ghost_next = maxf(_ghost_next, 2.0)
+	v["ghost_env"] = float(v["ghost"]) * sin(PI * _ghost_t / _ghost_dur) if _ghost_t < _ghost_dur else 0.0
+	var ga := _ghost_a + _ghost_spin * minf(_ghost_t, _ghost_dur)
+	v["ghost_dir"] = [cos(ga), sin(ga)]
 	var blink := 0.0
 	if float(v["flicker"]) > 0.0:
 		if _blink_plan.is_empty():
@@ -1572,10 +1885,962 @@ func _sensory_step(delta: float) -> void:
 	ui.show_sensory(v, blink, _sense_t)
 
 
+# ---- atmosphere (features/story/dread_module.gd) ----
+
+func _dread_context() -> Dictionary:
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var weird := anomaly()
+	var watcher := patrol()
+	var day_rules := school()
+	var cw := _campus_world()
+	var night := 0.0
+	if cw != null and cw.lighting != null:
+		night = 1.0 - float(cw.lighting.sun_at(day_rules.tsec / 60.0)["day"])
+	var busy := story().dead or get_tree().paused or ui.choice_open() or ui.terminal_open() or driving() or phone_open() or snake_open() \
+		or (weird != null and bool(weird.an["active"])) or (watcher != null and watcher.local_chase()) or day_rules.inspection_active() \
+		or (days() != null and days().waiting != null) or session.world_id in ElevatorModule.RIDE_ROOMS or session.world_id == "portal_tunnel" \
+		or (fake_normal() != null and fake_normal().active())
+	var rid := session.world_id
+	return {"scene": rid, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "san": day_rules.san, "viol": day_rules.viol,
+		"night": night, "day": day_rules.day, "busy": busy, "an_active": weird != null and bool(weird.an["active"]),
+		"an_next": float(weird.an["next"]) if weird != null else -1.0, "an_next0": int(weird.an["next0"]) if weird != null else 0,
+		"ear": talent() != null and talent().has("ear"),
+		"door_open": func(c: int, r: int) -> bool: return campus().is_open(CampusGeometry.door_key(campus().room(rid), c, r))}
+
+
+func _dread_step(delta: float) -> void:
+	var d := dread()
+	if d == null:
+		return
+	d.set_context(_dread_context())
+	d.tick(delta)
+	_apply_dread_events()
+
+
+func _apply_dread_events() -> void:
+	var d := dread()
+	if d == null:
+		return
+	var cw := _campus_world()
+	for e: Dictionary in d.take_events():
+		match e["kind"]:
+			"dread":
+				var pl: Dictionary = e["place"]
+				audio.play("dread." + String(e["cue"]), {"pan": float(pl["pan"]), "k": float(pl["k"]),
+					"lp": (0.35 if bool(pl["muffled"]) else 1.0) * (0.7 if bool(pl["behind"]) else 1.0), "place": pl})
+			"duck":
+				audio.duck(float(e["sec"]))
+			"precursor":
+				audio.play("threat.precursor", {"k": clampf(float(e["k"]), 0.2, 1.0)})
+			"visit":
+				if cw != null:
+					if e["fx"] == "lamp" and cw.lighting != null:
+						cw.lighting.dread_lamp = int(e["i"])
+					elif e["fx"] == "note":
+						cw.show_dread_note(String(e["text"]), float(e["seed"]), player.capture_pose())
+			"clear":
+				if cw != null:
+					cw.show_dread_note("", 0.0, {})
+					if cw.lighting != null:
+						cw.lighting.dread_lamp = -1
+
+
+# ---- settings (app/game_settings.gd) ----
+
+func _setting_changed(key: String, value: int) -> void:
+	if key == "clear_last_life":
+		_write_side("last_life.json", null)
+		if marks() != null:
+			marks().last_life = null
+		_marks_key = ""
+		ui.show_notice("已清除上一局的痕迹")
+		return
+	if key == "reset_comfort":
+		settings.reset_comfort()
+		ui.show_settings(settings.values)
+		ui.show_notice("操作与文字设置已恢复默认")
+	else:
+		settings.set_value(key, value)
+		if key == "quality":
+			ui.show_notice("画质：" + String(GameSettings.QUALITY_LABELS[settings.get_int("quality")]))
+	settings.save_file()
+	_apply_settings()
+
+
+## Push every stored setting to where it takes effect (presentation and comfort only).
+func _apply_settings() -> void:
+	audio.volume = float(settings.get_int("vol")) / 100.0
+	audio.ambience = settings.get_int("amb") == 1
+	audio.captions.mode = settings.get_int("captions")
+	ui.apply_caption_scale(float(GameSettings.SUB_MULT[settings.get_int("sub")]))
+	ui.apply_text_scale(settings.get_int("text"))
+	ui.apply_touch_scale(settings.get_int("touch_size"))
+	ui.set_grain(settings.get_int("grain") == 1)
+	player.mouse_sensitivity = 0.0025 * float(settings.get_int("mouse")) / 100.0
+	player.touch_sensitivity = 0.004 * float(settings.get_int("touch")) / 100.0
+	var q := settings.get_int("quality")
+	CampusData.tier = q if CampusData.tiers_available().has(q) else CampusData.DEFAULT_TIER   # models of the chosen tier, if exported
+	var vp := get_viewport()
+	vp.scaling_3d_scale = float(GameSettings.QUALITY_SCALE[q])
+	vp.msaa_3d = int(GameSettings.QUALITY_MSAA[q]) as Viewport.MSAA
+	CampusLighting.shadows_on = bool(GameSettings.QUALITY_SHADOW[q])
+	var cw := _campus_world()
+	if cw != null and cw.lighting != null:
+		cw.lighting.sun_light.shadow_enabled = CampusLighting.shadows_on
+	if DisplayServer.is_touchscreen_available():
+		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE if settings.get_int("auto_land") == 1 else DisplayServer.SCREEN_SENSOR)
+	var want := DisplayServer.WINDOW_MODE_FULLSCREEN if settings.get_int("full_screen") == 1 else DisplayServer.WINDOW_MODE_WINDOWED
+	if DisplayServer.window_get_mode() != want and DisplayServer.get_name() != "headless":
+		DisplayServer.window_set_mode(want)
+
+
+# ---- global atmosphere A1–A7 (features/story/atmos_module.gd, world/campus/atmos_fx.gd) ----
+
+func _atmos_context() -> Dictionary:
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var dc := _dread_context()
+	var cw := _campus_world()
+	var fx: AtmosFx = cw.atmos_fx if cw != null else null
+	var watcher := patrol()
+	_atmos_busy = bool(dc["busy"])
+	var ctx := {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])),
+		"day": school().day, "tsec": school().tsec, "viol": school().viol, "busy": bool(dc["busy"]), "an_active": dc["an_active"],
+		"an_next": dc["an_next"], "an_next0": dc["an_next0"], "age": dread().t if dread() != null else 0.0, "dread": dread(),
+		"prop": null, "prop_ok": false, "sees_shifted": false, "stage": int(school().pressure()["stage"]), "lamps": []}
+	if watcher != null:
+		ctx["pat"] = {"room": String(watcher.pat["room"]), "walk": watcher.pat["state"] == "walk", "x": float(watcher.pat["x"]), "y": float(watcher.pat["y"])}
+	if cw != null and cw.lighting != null and room != null:
+		var lamp_points: Array = []
+		for l: OmniLight3D in cw.lighting.room_lights:
+			lamp_points.append(CampusGeometry.to_world(room, l.position.x, l.position.z))
+		ctx["lamps"] = lamp_points
+	if fx != null and player.camera != null:
+		ctx["prop"] = fx.prop_world()
+		ctx["prop_ok"] = fx.can_shift(player.camera)
+		ctx["sees_shifted"] = fx.sees_shifted(player.camera)
+	return ctx
+
+
+func _atmos_step(delta: float) -> void:
+	var a := atmos()
+	if a == null or story().dead:
+		return
+	a.set_context(_atmos_context())
+	a.tick(delta)
+	_apply_atmos_events()
+	var cw := _campus_world()
+	if cw == null:
+		return
+	if cw.lighting != null:
+		cw.lighting.atmos_mods = AtmosModule.light_mods(school().day, school().tsec)
+		cw.lighting.lamp_mul = a.lamp_mul()
+	if cw.duty != null:
+		cw.duty.update(DutyRoster.tier_of(school().tt), (school().day - 1) % 5)
+	var fx: AtmosFx = cw.atmos_fx
+	if fx == null or player.camera == null:
+		return
+	var r := a.floor_room()
+	if not r.is_empty():
+		var key := "%d:%s" % [school().day, r["id"]]
+		var rec := str(a.shift.get(key, ""))
+		var kind: Variant = rec if (rec == "push" or rec == "face") else null
+		if kind != fx.shifted:
+			fx.apply_shift(kind, a.shift_pose.get(key, {}))
+		fx.face_camera(player.camera)
+	a.window_look = fx.show_window(a.window, player.camera)
+
+
+func _apply_atmos_events() -> void:
+	var a := atmos()
+	if a == null:
+		return
+	for e: Dictionary in a.take_events():
+		match e["kind"]:
+			"campus":
+				audio.play("campus." + String(e["cue"]), {"pan": float(e["pan"]), "k": float(e["k"]), "lp": float(e["lp"])})
+			"duck":
+				audio.duck(float(e["sec"]))
+				audio.note_caption("world.silence")
+			"dread":
+				var pl: Dictionary = e["place"]
+				audio.play("dread." + String(e["cue"]), {"pan": float(pl["pan"]), "k": float(pl["k"]), "lp": 0.7 if bool(pl["behind"]) else 1.0, "place": pl})
+			"say":
+				ui.show_notice(String(e["text"]))
+
+
+# ---- the investigation notebook (features/story/investigation_module.gd) ----
+
+var _supply_after: Callable
+
+
+func _invest_context() -> Dictionary:
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var bag := items()
+	var fac := facilities()
+	var rt := routes()
+	var ph := phone()
+	var cars := garage()
+	var has_key := bag != null and bag.has("key")
+	var portal: Dictionary = {}
+	if fac != null:
+		var floors_left: Array = []
+		for f: int in FacilitiesModule.BLUEPRINT_FLOORS:
+			if not (fac.portal["blueprints"] as Dictionary).has(f):
+				floors_left.append(f)
+		portal = {"diary": fac.portal["diary"], "sketch": fac.portal["sketch"], "open": fac.portal["open"], "count": fac.blueprint_count(), "floors_left": floors_left, "need": fac.portal_need_text()}
+	var cy: Dictionary = {}
+	if ph != null:
+		cy = {"initialized": ph.device["initialized"], "network": ph.device["network"], "download": ph.device["download"]["status"], "term": ph.termination["status"]}
+	var seat: Dictionary = CampusData.campus().get("own_seat", {})
+	var near_seat := false
+	if session.world_id == "teach1" and not seat.is_empty() and room != null:
+		near_seat = CampusGeometry.tile_center(room, int(seat["col"]), int(seat["row"])).distance_to(w) < 24.0
+	var weird_now := anomaly()
+	var watcher := patrol()
+	var idle := not (story().dead or get_tree().paused or ui.choice_open() or ui.terminal_open() or driving() or player.hiding \
+		or (weird_now != null and bool(weird_now.an["active"])) or (watcher != null and watcher.local_chase()) or school().inspection_active())
+	var row := 1
+	if cars != null and not cars.car_right.is_empty():
+		row = int(cars.car_right.split(":")[1]) + 1
+	return {"day": school().day, "place": school().place_name(session.world_id, float(p[1])), "has_key": has_key, "has_phone": bag != null and bag.has("phone"),
+		"has_coin": bag != null and bag.has("coin"), "has_pill": bag != null and bag.has("pill"), "bag_full": bag != null and bag.bag.size() >= 8,
+		"car": talent().car(has_key) if talent() != null else {"ok": has_key, "via": "key" if has_key else ""}, "car_tried": cars.car_tried.size() if cars != null else 0,
+		"car_used": cars != null and cars.car_used, "hacked": rt != null and rt.hacked, "data": rt != null and rt.data_synced,
+		"face_done": int(rt.face_quiz.get("done", -1)) if rt != null and not rt.face_quiz.is_empty() else -1,
+		"spot_comp": fac != null and fac.spots.has("comp"), "spot_data": fac != null and fac.spots.has("data"), "portal": portal, "cyber": cy,
+		"desk_ok": idle and near_seat, "car_row": row}
+
+
+func _record(e: Dictionary) -> void:
+	var inv := investigation()
+	if inv == null:
+		return
+	inv.set_context(_invest_context())
+	inv.record(String(e["id"]), String(e["text"]), String(e.get("kind", "事实")), String(e.get("source", "")))
+
+
+func _invest_do(action: Callable) -> void:
+	var inv := investigation()
+	if inv == null:
+		return
+	inv.set_context(_invest_context())
+	action.call(inv)
+	_apply_invest_events()
+
+
+func _apply_invest_events() -> void:
+	var inv := investigation()
+	if inv == null:
+		return
+	for e: Dictionary in inv.take_events():
+		match e["kind"]:
+			"say":
+				ui.show_notice(String(e["text"]))
+			"save":
+				save_game()
+			"spots":
+				if facilities() != null:
+					for n: String in e["names"]:
+						facilities().spots[n] = true
+			"outing":
+				school().grant_outing(false)
+				for line: String in school().take_notices():
+					ui.show_notice(line)
+			"chalk":
+				if items() != null and not items().has("chalk"):
+					items().add("chalk")
+			"supply":
+				if items() != null and items().add("pill"):
+					if bool(e["pay"]):
+						items().remove("coin")
+					else:
+						school().advance_game_time(6.0)
+			"continue":
+				if _supply_after.is_valid():
+					var after := _supply_after
+					_supply_after = Callable()
+					after.call()
+			"choice":
+				_choice_count += 1
+				var mine := _choice_count
+				_choice_handler = func(index: int) -> void:
+					var i2 := investigation()
+					if i2 != null and mine == _choice_count:
+						i2.set_context(_invest_context())
+						i2.choose(index)
+						_apply_invest_events()
+				player.enabled = false
+				player.clear_input()
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				ui.show_choice(String(e["text"]), e["labels"], false)
+
+
+func _show_notes(query: String = "") -> void:
+	var inv := investigation()
+	if inv == null:
+		return
+	inv.set_context(_invest_context())
+	var routes := inv.routes()
+	var focus := inv.current_focus()
+	if not routes.any(func(r: Array) -> bool: return r[0] == focus):
+		focus = "car" if routes.any(func(r: Array) -> bool: return r[0] == "car") else ""
+	var listing := inv.list(query)
+	ui.show_notes({"goal": inv.goal(), "focus": focus, "routes": routes, "recent": listing["recent"], "groups": listing["groups"],
+		"progress": inv.progress(), "found": listing["found"], "query": query})
+
+
+func _notes_focus(route: String) -> void:
+	var inv := investigation()
+	if inv != null and inv.set_focus(route):
+		save_game()
+		_show_notes(ui._notes_search.text if ui._notes_search != null else "")
+
+
+# ---- the map page (features/campus/exploration_module.gd, ui/map_view.gd) ----
+
+func _explore_step(delta: float) -> void:
+	var ex := exploration()
+	var room: Variant = campus().room(session.world_id)
+	if ex == null or room == null or story().dead or get_tree().paused:
+		return
+	var p: Array = player.capture_pose()["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var rid := session.world_id
+	ex.set_context({"scene": rid, "x": w.x, "y": w.y, "door_open": func(c: int, r: int) -> bool: return campus().is_open(CampusGeometry.door_key(campus().room(rid), c, r))})
+	ex.tick(delta)
+
+
+## The mark of a tile on a sketch (exploration-map.js label): what was left behind, searched, locked, tried.
+func _map_label(r: Dictionary, c: int, row: int) -> String:
+	var key := "%s:%d:%d" % [r["id"], c, row]
+	var ch := String(r["grid"][row]).substr(c, 1)
+	var bag := items()
+	if bag != null and bag.pending_loot.has(key):
+		return "留"
+	if bag != null and bag.desk_used.has(key):
+		return "✓"
+	if ch == "=":
+		if campus().is_open(key):
+			return "开"
+		return "锁" if CampusData.campus().get("door_locks", {}).has(key) else "门"
+	if ch == "V":
+		return "×" if garage() != null and garage().car_tried.has("%d:%d" % [c, row]) else "车"
+	if ch == "K" and r.get("host") == "lab" and facilities() != null and (facilities().portal["blueprints"] as Dictionary).has(int(r.get("floor", 0))):
+		return "✓"
+	return MapView.static_mark(ch)
+
+
+func _show_map(selected: String = "") -> void:
+	var ex := exploration()
+	if ex == null:
+		return
+	var here_room: Variant = campus().room(session.world_id)
+	if here_room != null:
+		var p0: Array = player.capture_pose()["position"]
+		var w0 := CampusGeometry.to_world(here_room, float(p0[0]), float(p0[2]))
+		var rid0 := session.world_id
+		ex.set_context({"scene": rid0, "x": w0.x, "y": w0.y, "door_open": func(c: int, r: int) -> bool: return campus().is_open(CampusGeometry.door_key(campus().room(rid0), c, r))})
+		ex.observe()
+	var ids := ex.rooms()
+	if selected.is_empty():
+		selected = session.world_id if session.world_id in ids else "campus"
+	if selected != "campus" and not ids.has(selected):
+		selected = "campus"
+	var options: Array = [["campus", "校园总图"]]
+	for id: String in ids:
+		options.append([id, String(campus().room(id)["name"]) + ("　· 你在这里" if id == session.world_id else "")])
+	var pose := player.capture_pose()
+	var yaw_ang := CampusGeometry.ang_from_yaw(float(pose["yaw"]))
+	if selected == "campus":
+		var view := ui.open_map(options, selected, "走过 %d 处室内" % ids.size(), "")
+		var out: Dictionary = CampusData.layout("out")
+		var cam: Dictionary = CampusData.campus()
+		var bm: Dictionary = cam["bound_map"]
+		var objects: Array = out["objects"]
+		var me := Vector2.ZERO
+		var p: Array = pose["position"]
+		var sc := float(out.get("SC", 2.0))
+		if here_room != null:
+			for o: Dictionary in objects:
+				if o["id"] == here_room.get("host"):
+					me = Vector2(float(o["x"]) + float(o["w"]) / 2.0, float(o["y"]) + float(o["h"]) / 2.0)
+		else:
+			var w1 := CampusGeometry.to_world(null, float(p[0]), float(p[2]))
+			me = w1 / sc
+		var gates: Array = []
+		var gate_names := {"n": "北门", "w": "西小门", "s": "南门"}
+		for g: String in ["n", "w", "s"]:
+			gates.append([gate_names[g], float(cam["gates"][g]["x"]), float(cam["gates"][g]["y"])])
+		view.show_plan({"bound": {"x0": bm["x0"], "y0": bm["y0"], "x1": bm["x1"], "y1": bm["y1"]}, "objects": objects, "gates": gates, "me": me, "ang": yaw_ang})
+		return
+	var r: Dictionary = campus().room(selected)
+	var hereb := selected == session.world_id
+	var view2 := ui.open_map(options, selected, "%s　北 ↑　%s已看清 %d%%" % [r["name"], "你在这一层　" if hereb else "", ex.percent(selected)],
+		"空白处还没看到过。桌、柜、架等字表示看到过，不代表搜过。\n梯 楼梯　电 电梯　廊 连廊　出 出口　锁 门锁着　✓ 已解决　留 有东西没拿　× 钥匙不匹配")
+	var me2 := Vector2.ZERO
+	if hereb:
+		var p2: Array = pose["position"]
+		me2 = CampusGeometry.to_world(r, float(p2[0]), float(p2[2]))
+	view2.show_floor(r, ex.seen(selected), _map_label, me2, yaw_ang, hereb)
+
+
+# ---- the phone shell (ui/phone_panel.gd, features/phone/plane_game.gd) ----
+
+var _phone_panel: PhonePanel
+var _phone_random := RandomNumberGenerator.new()
+
+
+func phone_open() -> bool:
+	return _phone_panel != null and _phone_panel.visible
+
+
+func _ensure_phone_panel() -> void:
+	if _phone_panel != null:
+		return
+	_phone_panel = PhonePanel.new()
+	_phone_panel.app_selected.connect(_phone_select)
+	_phone_panel.action_pressed.connect(_phone_action)
+	_phone_panel.flap.connect(_phone_flap)
+	_phone_panel.closed.connect(_close_phone)
+	_phone_panel.shoot_pressed.connect(_shoot)
+	_phone_panel.flash_pressed.connect(func() -> void:
+		if camera() != null:
+			camera().toggle_flash()
+			_phone_paint())
+	ui.get_node("Root").add_child(_phone_panel)
+
+
+func _open_phone() -> void:
+	var net := phone()
+	if net == null or phone_open():
+		return
+	net.set_context(_phone_context())
+	if not net.available():
+		ui.show_notice("手机已断电 · 充到 5% 后自动开机" if items() != null and items().has("phone") else "没有手机")
+		return
+	_ensure_phone_panel()
+	ui.hide_bag()
+	player.enabled = false
+	player.clear_input()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	net.plane.reset()
+	_phone_panel.screen.game = net.plane
+	_phone_panel.hint.text = ("点屏幕往上飘" if ui.touch_enabled() else "空格 / W 往上飘") + " · " + ("点「收起」" if ui.touch_enabled() else "Esc 收起")
+	_phone_panel.visible = true
+	audio.play("ui.click")
+	_phone_select(net.page)
+
+
+func _close_phone(dark: bool = false) -> void:
+	if not phone_open():
+		return
+	_phone_panel.visible = false
+	if dark and not story().dead:
+		ui.show_notice("我：屏幕一下子黑了。我抬起头。")
+	if session != null and session.running and not get_tree().paused and not story().dead and not ui.choice_open() and not ui.terminal_open():
+		player.enabled = true
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
+
+
+func _phone_danger() -> bool:
+	var weird := anomaly()
+	var watcher := patrol()
+	return (weird != null and bool(weird.an["active"])) or (watcher != null and watcher.local_chase())
+
+
+func _phone_select(app: String) -> void:
+	var net := phone()
+	if app == "plane" and _phone_danger():
+		ui.show_notice("遇险时不能玩纸飞机")
+		app = "home"
+	net.page = app
+	_phone_paint()
+
+
+func _phone_action(action: String) -> void:
+	var net := phone()
+	net.set_context(_phone_context())
+	match action:
+		"wireless":
+			net.toggle_wireless()
+		"download":
+			net.toggle_download()
+		"sync":
+			net.set_context(_phone_context())
+			if not net.available() or not bool(net.device["network"]):
+				ui.show_notice("手机需要电量与学校网络连接")
+			elif routes() != null:
+				routes().sync("phone")
+				_apply_route_events(routes())
+	_apply_phone_events()
+	_phone_paint()
+
+
+var _studio: PhotoStudio
+var _shooting := false
+
+
+func _camera_context() -> Dictionary:
+	var weird := anomaly()
+	var bag := items()
+	return {"an": String(weird.an["id"]) if weird != null and bool(weird.an["active"]) else "", "gaze": gaze() != null and not gaze().current().is_empty(),
+		"crowd": false, "day": school().day, "tsec": school().tsec, "place": school().place_name(session.world_id, float(player.capture_pose()["position"][1])),
+		"clock": (bag != null and bag.has_clock()) or (talent() != null and talent().has("watch"))}
+
+
+## camera.js shoot: the lens image without the interface, the flash, the extra layer, then the album.
+func _shoot() -> void:
+	var cam := camera()
+	if cam == null or _shooting or not phone_open() or story().dead:
+		return
+	_shooting = true
+	cam.set_context(_camera_context())
+	var plan := cam.plan()
+	var root_ui: CanvasItem = ui.get_node("Root")
+	root_ui.visible = false
+	await RenderingServer.frame_post_draw
+	var lens: Image = get_viewport().get_texture().get_image()
+	root_ui.visible = true
+	if _studio == null:
+		_studio = PhotoStudio.new()
+		add_child(_studio)
+	var photo: Image = await _studio.compose(lens, plan)
+	_shooting = false
+	if cam == null or session == null or camera() != cam or story().dead:
+		return
+	var b64 := ""
+	if photo != null and not photo.is_empty():
+		b64 = Marshalls.raw_to_base64(photo.save_jpg_to_buffer(0.6))
+	var seen := false
+	if bool(plan["flash"]):
+		ui.flash_screen(settings.get_int("reduce_flash") == 1)
+		if patrol() != null:
+			patrol().set_context(_patrol_context(campus().room(session.world_id), player.capture_pose()))
+			seen = patrol().camera_flash(CameraModule.FLASH_SEE, CameraModule.FLASH_LOCK)
+			for e: Dictionary in patrol().take_events():
+				ui.show_notice(String(e["text"]))
+	cam.set_context(_camera_context())
+	cam.add_photo(plan, b64, seen)
+	audio.play("ui.click")
+	for e: Dictionary in cam.take_events():
+		match e["kind"]:
+			"say":
+				ui.show_notice(String(e["text"]))
+			"record":
+				_record(e)
+			"fact":
+				fact({"kind": "photo", "an": e["an"], "flash": e["flash"], "seen": e["seen"]})
+	_phone_paint()
+
+
+func _phone_flap() -> void:
+	var net := phone()
+	if net != null and phone_open() and net.page == "plane":
+		if net.plane.flap():
+			pass
+		audio.play("ui.click")
+
+
+func _phone_copy() -> String:
+	var net := phone()
+	var d: Dictionary = net.device
+	var w: Dictionary = d["wireless"]
+	var copy := ""
+	match net.page:
+		"home":
+			copy = "工具查看时不能移动，世界仍在运行。收起手机后，后台任务继续。原教室无渗透时，从空电充满：普通约 5 分钟，科技党约 10 分钟。机房接线只抵普通基础耗电；科技党仍每分钟净掉 10 点。"
+		"wireless":
+			if w["status"] == "complete":
+				copy = "无线接入完成。定位与门禁同步已解锁；不再暴露新位置，已发出的情报不会撤回。"
+			elif w["status"] == "idle":
+				copy = "接入学校无线网络需要 180—600 运行秒，执行期间耗电翻倍。"
+			else:
+				copy = ("已暂停" if w["status"] == "paused" else "正在接入") + " · %d%% · 剩余 %d 秒" % [floori(float(w["elapsed"]) / float(w["target"]) * 100.0), ceili(float(w["target"]) - float(w["elapsed"]))]
+			if w["status"] != "complete":
+				copy += "\n\n破解每累计 15 运行秒暴露一次当时的位置，巡察者会来搜查；坐下、假条和外出登记不能豁免。"
+				if w["status"] == "running":
+					copy += "\n下次暴露：%d 秒；收起手机仍会继续。" % ceili(PhoneEnergy.next_signal_in(w))
+				if w["status"] == "paused":
+					copy += "\n暴露计时已暂停，已发出的位置信息不会撤回。"
+			if talent() != null and talent().has("tech") and w["status"] != "complete":
+				copy += " 科技党执行渗透时，即使在原教室也会净掉电。"
+		"location":
+			copy = "巡察查询：" + (patrol().location_label() if patrol() != null and bool(d["network"]) else "尚未接入学校网络")
+		"sync":
+			copy = "门禁数据已经同步。" if routes() != null and routes().data_synced else ("仍需先在网络中心写入白名单；联网手机可以完成同步。" if bool(d["network"]) else "先接入学校网络。")
+		"container":
+			var dl: Dictionary = d["download"]
+			if dl["status"] == "complete":
+				copy = "模拟 Kali Linux 容器已就绪，可在机房电脑旁打开终端。"
+			elif dl["status"] == "idle":
+				copy = "无线接入完成后，自动安装容器。"
+			else:
+				copy = ("安装已暂停 " if dl["status"] == "paused" else "容器安装 ") + "%d%% · 剩余 %d 秒" % [floori(float(dl["elapsed"]) / 60.0 * 100.0), ceili(60.0 - float(dl["elapsed"]))]
+			if net.termination["status"] == "accepted":
+				copy += "\n服务器停机剩余 %d 运行秒。" % ceili(float(net.termination["remaining"]))
+	return copy
+
+
+func _phone_paint() -> void:
+	var net := phone()
+	if net == null or not phone_open():
+		return
+	var d: Dictionary = net.device
+	_phone_panel.status.text = "电量 %d%% · %s%s" % [floori(float(d["battery"])), "学校网络已连接" if d["network"] else "尚未联网", " · 耗电 ×2" if talent() != null and talent().has("tech") else ""]
+	_phone_panel.copy.text = _phone_copy() if net.page != "plane" else ""
+	var action := ""
+	var label := ""
+	var disabled := false
+	match net.page:
+		"wireless":
+			var ws := String(d["wireless"]["status"])
+			action = "wireless"
+			disabled = ws == "complete"
+			label = "暂停任务" if ws == "running" else ("开始接入" if ws == "idle" else ("已连接" if ws == "complete" else "继续任务"))
+		"container":
+			var ds := String(d["download"]["status"])
+			action = "download"
+			disabled = not ["running", "paused"].has(ds)
+			label = "暂停下载" if ds == "running" else ("继续下载" if ds == "paused" else ("已安装" if ds == "complete" else "等待联网"))
+		"sync":
+			action = "sync"
+			label = "同步门禁数据"
+	if net.page == "camera" and camera() != null:
+		_phone_panel.copy.text = camera().copy_text()
+		_phone_panel.show_album(camera().photos, camera().flash)
+	_phone_panel.select(net.page, action, label, disabled)
+	_phone_panel.screen.queue_redraw()
+
+
+func _phone_shell_step(delta: float) -> void:
+	var net := phone()
+	var ends := net.plane.tick(delta, float(school().pressure()["rest"]), func() -> float: return _phone_random.randf())
+	for e: Dictionary in ends:
+		if float(e["gain"]) > 0.0:
+			school().san = minf(100.0, school().san + float(e["gain"]))
+			ui.show_notice("纸飞机 · 得分 %d" % int(e["score"]))
+		audio.play("ui.click")
+	if not phone_open():
+		return
+	var danger := net.page == "plane" and _phone_danger()
+	if story().dead or danger or ui.choice_open() or ui.terminal_open() or school().inspection_active() or not net.available():
+		_close_phone(danger and not story().dead)
+		return
+	_phone_paint()
+
+
+# ---- the snake game at the lab computer (features/phone/snake_game.gd, ui/snake_panel.gd) ----
+
+var _snake := SnakeGame.new()
+var _snake_panel: SnakePanel
+var _snake_random := RandomNumberGenerator.new()
+
+
+func snake_open() -> bool:
+	return _snake.on
+
+
+func _start_snake() -> void:
+	if _snake_panel == null:
+		_snake_panel = SnakePanel.new()
+		_snake_panel.turned.connect(func(d: Vector2i) -> void: _snake.turn(d))
+		_snake_panel.closed.connect(_stop_snake)
+		ui.get_node("Root").add_child(_snake_panel)
+		_snake_panel.board.game = _snake
+		_snake_panel.game = _snake
+	_snake.start(func() -> float: return _snake_random.randf())
+	player.enabled = false
+	player.clear_input()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_snake_panel.hint.text = ("方向键或在画面上滑动转向 · 点「离开」退出" if ui.touch_enabled() else "WASD / 方向键转向 · Esc 退出") + " · 玩一会儿，缓口气"
+	_snake_panel.visible = true
+	audio.play("ui.click")
+
+
+## Leaving the game (Esc, the exit button): the score earns rest. cancelled: a session end, no reward.
+func _stop_snake(cancelled: bool = false) -> void:
+	if not _snake.on:
+		return
+	var gain := _snake.gain(float(school().pressure()["rest"])) if not cancelled and school() != null else 0.0
+	var score := _snake.score
+	_snake.cancel()
+	if _snake_panel != null:
+		_snake_panel.visible = false
+	if cancelled:
+		return
+	fact({"kind": "snake", "score": score})
+	if gain > 0.0:
+		school().san = minf(100.0, school().san + gain)
+		ui.show_notice("游戏结束 · 得分 %d" % score)
+	if session != null and session.running and not get_tree().paused and not story().dead:
+		player.enabled = true
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
+
+
+func _snake_step(delta: float) -> void:
+	if not _snake.on:
+		return
+	if story().dead:
+		_stop_snake(true)
+		return
+	var key := Vector2i.ZERO
+	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+		key = Vector2i(0, -1)
+	elif Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+		key = Vector2i(0, 1)
+	elif Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+		key = Vector2i(-1, 0)
+	elif Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+		key = Vector2i(1, 0)
+	_snake.tick(delta, key, func() -> float: return _snake_random.randf())
+	if _snake_panel != null:
+		_snake_panel.board.queue_redraw()
+
+
+# ---- score, grade and clear records (features/progress/run_score_module.gd, run_log.gd, run_records.gd) ----
+
+var _runlog := RunLog.new(CampusData.rooms())
+var _last_result: Dictionary = {}
+var _runs_store: RunRecords
+var _runs_path := ""
+var _ach_logged := 0
+
+
+## The clear records of this device (next to the saves).
+func runs() -> RunRecords:
+	var dir := saves.side_path("records")
+	if _runs_store == null or _runs_path != dir:
+		_runs_store = RunRecords.new(dir)
+		_runs_path = dir
+	return _runs_store
+
+
+func _score_fact(f: Dictionary) -> void:
+	var sm := runscore()
+	if sm == null:
+		return
+	sm.fact(f)
+	match String(f["kind"]):
+		"lesson":
+			if bool(f.get("correct", false)):
+				sm.add_clue("lesson", school().day)
+		"ending":
+			_runlog.point(true)
+			if not bool(f.get("fake", false)):
+				_runlog.event("ending", "结局" + String(f["id"]), 0)
+		"death":
+			_runlog.event("death", "死去，又在座位上惊醒" if bool(f.get("wake", false)) else "死亡", 0)
+		"rest":
+			_runlog.event("rest", String(FacilitiesModule.SAN_ACTS.get(String(f["key"]), {}).get("n", "休息")), 0)
+		"garage":
+			_runlog.event("garage", "手电照退了车库里的东西" if f.get("what") == "torch" else "开走了车", 0)
+		"specialDay":
+			_runlog.event("day", "特殊的上学日", 0)
+		"day":
+			_runlog.event("day", "第 %d 天" % int(f["day"]), 0)
+
+
+func _runlog_room(id: String) -> void:
+	var r: Variant = campus().room(id)
+	_runlog.scene = id
+	_runlog.point(true)
+	_runlog.event("room", "进入 " + (String(r.get("name", id)) if r != null else id), 0)
+
+
+func _score_step(delta: float) -> void:
+	var sm := runscore()
+	if sm == null or story().dead:
+		return
+	sm.observe_san(school().san)
+	if items() != null:
+		if items().has("roomkey"):
+			sm.add_clue("roomkey", school().day)
+		if items().has("atlas"):
+			sm.add_clue("atlas", school().day)
+	var room: Variant = campus().room(session.world_id)
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	sm.zone_tick(delta, session.world_id, w if room == null else Vector2(-1e9, -1e9))
+	if not sm.on_event.is_valid():
+		sm.on_event = func(kind: String, text: String, pts: int) -> void: _runlog.event(kind, text, pts)
+	var watcher := patrol()
+	_runlog.now_s = session.clock.active_seconds
+	_runlog.scene = session.world_id
+	_runlog.pos = w
+	_runlog.ang = CampusGeometry.ang_from_yaw(float(pose["yaw"]))
+	_runlog.day = school().day
+	_runlog.tsec = school().tsec
+	var fresh: Array = []
+	var ach := achievements()
+	if ach != null:
+		for id: String in ach.run_new:
+			fresh.append(String(AchievementsModule.LIST[id][1]))
+	var pstate := {}
+	if watcher != null:
+		pstate = {"walk": watcher.pat["state"] == "walk", "room": String(watcher.pat["room"]), "x": float(watcher.pat["x"]), "y": float(watcher.pat["y"])}
+	if _runlog.tick(delta, pstate, fresh):
+		_write_side("runlog_cur.json", _runlog.pack())
+
+
+## Everything the ending's score needs from the other modules.
+func _score_context() -> Dictionary:
+	var sm := runscore()
+	var ach := achievements()
+	var run_ach: Array = []
+	var new_ach: Array = []
+	var ach_rows: Array = []
+	if ach != null:
+		for id: String in ach.run_new:
+			run_ach.append(id)
+			new_ach.append(id)
+			if not AchievementsModule.SCORELESS.has(id):
+				ach_rows.append({"name": "%s · %s" % [AchievementsModule.TIERS[AchievementsModule.LIST[id][0]]["name"], AchievementsModule.LIST[id][1]], "pts": int(AchievementsModule.TIERS[AchievementsModule.LIST[id][0]]["pts"])})
+	var extra: Array = []
+	if anomaly() != null:
+		extra.append_array(anomaly().clues.keys())
+	if routes() != null:
+		extra.append_array(routes().clues.keys())
+	var rta := 0.0
+	var mode := "normal"
+	if not speedrun.run.is_empty() and speedrun.run.get("ms") != null:
+		mode = "speedrun"
+		rta = float(speedrun.run["ms"]) / 1000.0
+	return {"achievements": ach_rows, "san": school().san, "explore": sm.explore(exploration(), extra), "diff": story().diff, "talent": talent().id if talent() != null else "none",
+		"day": school().day, "clock": school().tsec, "active": session.clock.active_seconds, "rta": rta, "mode": mode, "run_ach": run_ach, "new_ach": new_ach, "version": "godot"}
+
+
+## At a clear: the score, the time score and the grade; a rated run goes into the records with its replay.
+func _score_ending(id: String, title: String) -> Dictionary:
+	var sm := runscore()
+	if sm == null:
+		return {}
+	var ctx := _score_context()
+	ctx["route_name"] = title.replace(" ", "")
+	var res := sm.finish({"id": id, "legit": true}, ctx)
+	if bool(res.get("rated", false)):
+		var pack := _runlog.finish()
+		if exploration() != null:
+			pack["sketch"] = exploration().capture().get("seen", {})
+		res["id"] = runs().add(res, pack)
+		_write_side("runlog_cur.json", null)
+	return res
+
+
+func _score_death() -> void:
+	var sm := runscore()
+	if sm == null:
+		return
+	sm.death_line(_score_context())
+	_runlog.discard()
+	_write_side("runlog_cur.json", null)
+
+
+## The result page after a clear (ending card → 结算).
+func _open_results() -> void:
+	if _last_result.is_empty():
+		return
+	var m := _last_result
+	var rec := runs().get_record(String(m.get("id", ""))) if String(m.get("id", "")) != "" else {}
+	ui.show_results(rec if not rec.is_empty() else m, {"replay": runs().replay(String(m.get("id", ""))) if String(m.get("id", "")) != "" else {},
+		"back_label": "回到主菜单"})
+	_wire_results(_results_back)
+
+
+var _results_back_to: Callable
+
+
+## The main menu's 通关记录: the list; a row opens the result page, whose 回放 / 足迹图 open the viewer.
+func _open_records() -> void:
+	var panel := ui.show_records(runs(), CampusData.rooms())
+	if not panel.detail_requested.is_connected(_record_detail):
+		panel.detail_requested.connect(_record_detail)
+		panel.sample_requested.connect(func(g: String) -> void:
+			var m := ScoreRules.sample_meta(g, "car")
+			m["source"] = "archive"
+			panel.visible = false
+			ui.show_results(m, {"back_label": "返回记录", "silent": true})
+			_wire_results(func() -> void:
+				ui.hide_results()
+				panel.reopen()))
+
+
+func _record_detail(id: String) -> void:
+	var rec := runs().get_record(id)
+	if rec.is_empty():
+		return
+	ui.records_panel.visible = false
+	ui.show_results(rec, {"replay": runs().replay(id), "back_label": "返回记录", "silent": true})
+	_wire_results(func() -> void:
+		ui.hide_results()
+		ui.records_panel.reopen())
+
+
+## The result page's buttons: back (where to go), and the viewers of the record.
+func _wire_results(back: Callable) -> void:
+	var rp := ui.results_panel
+	for sig: Signal in [rp.back_pressed, rp.footprint_pressed, rp.replay_pressed]:
+		for c in sig.get_connections():
+			sig.disconnect(c["callable"])
+	rp.back_pressed.connect(back)
+	var panel := ui.ensure_records(runs(), CampusData.rooms())
+	rp.footprint_pressed.connect(func(rid: String) -> void:
+		ui.hide_results()
+		panel.open_view(rid, true))
+	rp.replay_pressed.connect(func(rid: String) -> void:
+		ui.hide_results()
+		panel.open_view(rid, false))
+
+
+func _results_back() -> void:
+	ui.hide_results()
+	if _results_back_to.is_valid():
+		var f := _results_back_to
+		_results_back_to = Callable()
+		f.call()
+	else:
+		return_to_menu()
+
+
+func _death_score_line() -> String:
+	var dl := runscore().last_death_line() if runscore() != null else {}
+	if dl.is_empty() or not dl.has("total"):
+		return ""
+	return "调试局 · 不计分" if bool(dl.get("debug", false)) else "本局积分 %d · 探索度 %d%%" % [int(dl["total"]), int(dl["explore"])]
+
+
+# ---- the protagonist's muttering (features/story/mono_module.gd) ----
+
+func _mono_step(delta: float) -> void:
+	var m := mono()
+	if m == null or story().dead:
+		return
+	var room: Variant = campus().room(session.world_id)
+	var p: Array = player.capture_pose()["position"]
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var day_rules := school()
+	m.set_context({"scene": session.world_id, "x": w.x, "y": w.y, "tile": CampusGeometry.tile_at(room, w) if room != null else "", "san": day_rules.san,
+		"night": SchoolClock.is_night(day_rules.tsec), "busy": bool(_dread_context()["busy"]),
+		"seated_class": day_rules.seated and SchoolClock.need_where(day_rules.tsec) == "教室"})
+	m.tick(delta)
+	for e: Dictionary in m.take_events():
+		ui.show_notice(String(e["text"]))
+
+
 # ---- classmates (features/school/classmates_module.gd) ----
 
 var _mates_nodes: Node3D
 var _mates_key := ""
+var _atmos_busy := false
 
 
 func _classmates_step(delta: float) -> void:
@@ -1615,27 +2880,47 @@ func _show_classmates(mates: ClassmatesModule, room: Variant, me: Vector2, stari
 		_mates_nodes = Node3D.new()
 		_mates_nodes.name = "Classmates"
 		world.add_child(_mates_nodes)
-		var cap := CapsuleMesh.new()
-		cap.radius = 0.2
-		cap.height = 1.25
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(0.32, 0.34, 0.4)
-		cap.material = mat
 		for t: Vector2i in mates.layout(session.world_id)["seats"]:
 			var k := ClassmatesModule.DESK_ROWS.find(t.y)
 			var shift := (0.11 if k % 2 == 0 else -0.11) if k >= 0 else 0.0
 			var wp := Vector2(float(room["ox"]) + (t.x + 0.8) * float(room["tw"]), float(room["oy"]) + (t.y + 0.5 + shift) * float(room["th"]))
 			var sp := CampusGeometry.to_scene(room, wp)
-			var fig := MeshInstance3D.new()
-			fig.mesh = cap
-			fig.position = Vector3(sp.x, 0.62, sp.y)
+			var fig := FigureModel.make("sit", Color(0.32, 0.34, 0.4))
+			fig.position = Vector3(sp.x, 0.0, sp.y)
 			fig.set_meta("w", wp)
+			fig.set_meta("cls", "%s:%d" % [key, AtmosModule.class_index(t.x, t.y)])
 			_mates_nodes.add_child(fig)
+	# A3 (atmos_module.gd): a class turns to you and back; after a return one more seat is empty.
+	var mood := atmos()
+	var turn := 0.0
+	var turning := ""
+	var day_i := school().day
+	if mood != null and not mood.stare.is_empty() and mood.stare["room"] == key:
+		var tt := float(mood.stare["t"])
+		var tm: float = AtmosModule.CFG["stare_turn"]
+		var th: float = AtmosModule.CFG["stare_hold"]
+		var kk := tt / tm if tt < tm else (1.0 if tt < tm + th else maxf(0.0, 1.0 - (tt - tm - th) / tm))
+		turn = kk * kk * (3.0 - 2.0 * kk)
+		turning = String(mood.stare["cls"])
+	var by_class := {}
 	for fig: Node in _mates_nodes.get_children():
 		var f := fig as Node3D
 		var wp: Vector2 = f.get_meta("w")
 		var target := me if staring else wp + Vector2(-10, 0)
-		f.rotation.y = -atan2(target.y - wp.y, target.x - wp.x) - PI * 0.5
+		var base := -atan2(target.y - wp.y, target.x - wp.x) - PI * 0.5
+		var cls: String = f.get_meta("cls")
+		if turn > 0.0 and cls == turning:
+			var want := -atan2(me.y - wp.y, me.x - wp.x) - PI * 0.5
+			base += wrapf(want - base, -PI, PI) * turn * 0.85
+		f.rotation.y = base
+		var list: Array = by_class.get(cls, [])
+		list.append(f)
+		by_class[cls] = list
+	for cls: String in by_class:
+		var gone := int(mood.seats.get("%d:%s" % [day_i, cls], 0)) if mood != null and not _atmos_busy and school().viol < 35.0 else 0
+		var list: Array = by_class[cls]
+		for i in list.size():
+			(list[i] as Node3D).visible = not (gone > 0 and i == gone % list.size())
 
 
 # ---- chalk marks and the last life (features/campus/marks_module.gd) ----
@@ -1685,6 +2970,8 @@ func _apply_marks_events() -> void:
 		return
 	for e: Dictionary in mk.take_events():
 		match e["kind"]:
+			"record":
+				_record(e)
 			"notice", "toast":
 				ui.show_notice(String(e["text"]))
 			"save":
@@ -1693,6 +2980,7 @@ func _apply_marks_events() -> void:
 				_marks_key = ""
 			"fact":
 				fact({"kind": "chalk", "sym": e["sym"]})
+				audio.play("foley.chalk")
 			"choice":
 				_choice_count += 1
 				var mine := _choice_count
@@ -1727,6 +3015,37 @@ func _show_marks() -> void:
 	if mk.last_life is Dictionary and String(mk.last_life.get("scene", "")) == session.world_id:
 		list.append({"x": mk.last_life["x"], "y": mk.last_life["y"], "h": 0.0, "face": "floor", "a": 0.0, "text": "× " + SchoolClock.fmt_clock(float(mk.last_life.get("tsec", 700))), "old": true})
 	for m: Dictionary in list:
+		var sp := CampusGeometry.to_scene(room, Vector2(float(m["x"]), float(m["y"])))
+		if not m.has("text") and ChalkTexture.SYMBOLS.has(String(m.get("s", ""))):
+			# The hand-drawn chalk picture (world/campus/chalk_texture.gd), lit by the scene.
+			var sym := String(m["s"])
+			var old := bool(m.get("old", false))
+			var jj := fposmod(sin(float(absi(int(m.get("n", 0))) * 3 + 1) * 12.9898 + float(sym.length() * 7) * 78.233) * 43758.5453, 1.0)
+			var quad := MeshInstance3D.new()
+			var qm := QuadMesh.new()
+			quad.mesh = qm
+			var mat := StandardMaterial3D.new()
+			mat.albedo_texture = ChalkTexture.texture(sym)
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			mat.albedo_color = Color(0.84, 0.8, 0.71, 0.5) if old else Color(1, 1, 1, 0.92)
+			mat.roughness = 1.0
+			mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+			mat.render_priority = 2
+			quad.material_override = mat
+			quad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			quad.rotation_order = EULER_ORDER_YXZ
+			if m["face"] == "floor":
+				var sz := 0.8 * (0.92 + 0.16 * jj)
+				qm.size = Vector2(sz, sz)
+				quad.position = Vector3(sp.x, float(m["h"]) + 0.012, sp.y)
+				quad.rotation = Vector3(-PI * 0.5, -float(m["a"]) - PI * 0.5 + (jj - 0.5) * 0.16, 0.0)
+			else:
+				var sw := 0.6 * (0.92 + 0.16 * jj)
+				qm.size = Vector2(sw, sw)
+				quad.position = Vector3(sp.x + cos(float(m["a"])) * 0.012, float(m["h"]), sp.y + sin(float(m["a"])) * 0.012)
+				quad.rotation = Vector3(0.0, -float(m["a"]) + PI * 0.5, (jj - 0.5) * 0.14)
+			_marks_nodes.add_child(quad)
+			continue
 		var label := Label3D.new()
 		label.text = String(m.get("text", MarksModule._sym(String(m.get("s", "x")))))
 		label.font_size = 96
@@ -1734,7 +3053,6 @@ func _show_marks() -> void:
 		label.modulate = Color(0.92, 0.91, 0.86, 0.55 if m.get("old", false) else 0.9)
 		label.shaded = false
 		label.double_sided = true
-		var sp := CampusGeometry.to_scene(room, Vector2(float(m["x"]), float(m["y"])))
 		if m["face"] == "floor":
 			label.position = Vector3(sp.x, float(m["h"]) + 0.012, sp.y)
 			label.rotation = Vector3(-PI * 0.5, -float(m["a"]) - PI * 0.5, 0.0)
@@ -1847,6 +3165,8 @@ func _apply_paper_events() -> void:
 		return
 	for e: Dictionary in plane.take_events():
 		match e["kind"]:
+			"record":
+				_record(e)
 			"notice":
 				ui.show_notice(String(e["text"]))
 			"fact":
@@ -1856,7 +3176,7 @@ func _apply_paper_events() -> void:
 				_apply_paper_events()
 			"steps":
 				ui.hide_choice()
-				audio.cue("step_heavy", -2.0)
+				audio.play("dread.steps", {"k": 1.0})
 			"read":
 				_choice_count += 1
 				var mine := _choice_count
@@ -1923,16 +3243,8 @@ func _show_gaze(g: WindowGazeModule) -> void:
 	if not is_instance_valid(_gaze_nodes):
 		_gaze_nodes = Node3D.new()
 		_gaze_nodes.name = "WindowGaze"
-		var body := MeshInstance3D.new()
-		var cap := CapsuleMesh.new()
-		cap.radius = 0.22
-		cap.height = 1.7
-		body.mesh = cap
-		var dark := StandardMaterial3D.new()
-		dark.albedo_color = Color(0.04, 0.05, 0.06)
-		dark.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		body.material_override = dark
-		body.position = Vector3(0, 0.8, -nz * 0.35)
+		var body := FigureModel.make("person", Color(0.04, 0.05, 0.06), true, 0.92)
+		body.position = Vector3(0, -0.05, -nz * 0.35)
 		_gaze_nodes.add_child(body)
 		for dx: float in [-0.045, 0.045]:
 			var eye := MeshInstance3D.new()
@@ -1961,7 +3273,7 @@ func _apply_gaze_events() -> void:
 			"breath":
 				var room: Variant = campus().room(session.world_id)
 				var bp := CampusGeometry.to_scene(room, e["p"])
-				audio.cue_at("static", Vector3(bp.x, 1.6, bp.y), -12.0)
+				audio.play("threat.breath", {"pos": Vector3(bp.x, 1.6, bp.y)})
 				ui.show_notice("（窗后 · 呼吸声）")
 			"fact":
 				fact({"kind": "gaze", "what": e["what"]})
@@ -2012,6 +3324,11 @@ func _apply_tales_events() -> void:
 		return
 	for e: Dictionary in tale.take_events():
 		match e["kind"]:
+			"clue":
+				if e.has("text"):
+					_record({"id": e["id"], "text": e["text"], "kind": "线索", "source": String(e.get("source", ""))})
+			"record":
+				_record(e)
 			"notice", "toast":
 				ui.show_notice(String(e["text"]))
 			"advance":
@@ -2078,6 +3395,12 @@ func _lesson_press() -> void:
 	var dm := days()
 	if dm == null or ui.choice_open():
 		return
+	var inv := investigation()
+	if inv != null:
+		inv.set_context(_invest_context())
+		if inv.open_desk():
+			_apply_invest_events()
+			return
 	dm.press(_lesson_context())
 	_apply_day_events()
 
@@ -2101,6 +3424,8 @@ func _apply_day_events() -> void:
 		return
 	for e: Dictionary in dm.take_events():
 		match e["kind"]:
+			"record":
+				_record(e)
 			"notice":
 				ui.show_notice(String(e["text"]))
 			"san":
@@ -2176,26 +3501,52 @@ func _show_visit(visit: ExchangeModule) -> void:
 		_visit_nodes.name = "ExchangeVisit"
 		world.add_child(_visit_nodes)
 		for i in 7:
-			var fig := MeshInstance3D.new()
-			var body_mesh := CapsuleMesh.new()
-			body_mesh.radius = 0.23
-			body_mesh.height = 1.72
-			fig.mesh = body_mesh
-			var mat := StandardMaterial3D.new()
-			mat.albedo_color = Color(0.2, 0.25, 0.4) if i == 0 else (Color(0.7, 0.62, 0.5) if i < 4 else Color(0.03, 0.03, 0.04))
-			if i >= 4:
-				mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-			fig.material_override = mat
+			var fig := FigureModel.make("person", Color(0.2, 0.25, 0.4) if i == 0 else (Color(0.7, 0.62, 0.5) if i < 4 else Color(0.03, 0.03, 0.04)), i >= 4, 0.93)
 			_visit_nodes.add_child(fig)
+		# The bilingual reception sign outside the north gate of the administration building (exchange-fx.js sign()).
+		var gp: Vector2 = visit.members()[0]
+		var sp := CampusGeometry.to_scene(null, Vector2(gp.x + 30.0, gp.y + 4.0))
+		var plate := MeshInstance3D.new()
+		var pq := QuadMesh.new()
+		pq.size = Vector2(1.2, 0.75)
+		plate.mesh = pq
+		var pm := StandardMaterial3D.new()
+		pm.albedo_color = Color("#eef0ea")
+		pm.cull_mode = BaseMaterial3D.CULL_DISABLED
+		pm.emission_enabled = true
+		pm.emission = Color(0.33, 0.33, 0.33)
+		plate.material_override = pm
+		plate.position = Vector3(sp.x, 1.2, sp.y)
+		_visit_nodes.add_child(plate)
+		var lines := [["国际交流 · 接待登记", 0.13, 0.22], ["Austausch · Anmeldung", 0.085, 0.0], ["Échange · Inscription", 0.085, -0.17]]
+		for ln: Array in lines:
+			var tl := Label3D.new()
+			tl.text = String(ln[0])
+			tl.font_size = 48
+			tl.pixel_size = float(ln[1]) / 48.0 * 0.9
+			tl.modulate = Color("#22324a")
+			tl.shaded = false
+			tl.double_sided = true
+			tl.position = Vector3(0, float(ln[2]), 0.003)
+			plate.add_child(tl)
+		var leg := MeshInstance3D.new()
+		var lm := BoxMesh.new()
+		lm.size = Vector3(0.06, 1.2, 0.06)
+		leg.mesh = lm
+		var legm := StandardMaterial3D.new()
+		legm.albedo_color = Color("#555b5e")
+		leg.material_override = legm
+		leg.position = Vector3(sp.x, 0.6, sp.y + 0.02)
+		_visit_nodes.add_child(leg)
 	var spots: Array = visit.members()
 	for h: Dictionary in visit.s.get("search", []):
 		spots.append(Vector2(float(h["x"]), float(h["y"])))
-	for i in _visit_nodes.get_child_count():
+	for i in 7:
 		var fig := _visit_nodes.get_child(i) as Node3D
 		fig.visible = i < spots.size()
 		if fig.visible:
 			var sp := CampusGeometry.to_scene(null, spots[i])
-			fig.position = Vector3(sp.x, 0.86, sp.y)
+			fig.position = Vector3(sp.x, 0.0, sp.y)
 
 
 func _apply_exchange_events() -> void:
@@ -2248,7 +3599,8 @@ func _body_context() -> Dictionary:
 	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
 	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "seated": school().seated,
 		"hiding": player.hiding, "stam": school().stam, "moving": player.moving, "locked": patrol() != null and bool(patrol().pat["locked"]),
-		"anomaly": anomaly() != null and anomaly().is_active(), "day": school().day, "dead": story().dead}
+		"anomaly": anomaly() != null and anomaly().is_active(), "day": school().day, "dead": story().dead,
+		"space": player.enabled and Input.is_key_pressed(KEY_SPACE) and not ui.choice_open()}
 
 
 func _body_step(delta: float) -> void:
@@ -2257,6 +3609,8 @@ func _body_step(delta: float) -> void:
 		return
 	limbs.set_context(_body_context())
 	limbs.tick(delta)
+	if limbs.hold > 0.0:
+		ui.show_search(limbs.hold / BodyModule.VAULT_HOLD)
 	if _eye_base < 0.0:
 		_eye_base = player.camera.position.y
 	player.camera.position.y = _eye_base - limbs.eye_drop()
@@ -2357,6 +3711,60 @@ func _fake_normal_step(delta: float) -> void:
 	fnm.tick(delta, {"tag": FakeNormalModule.where_tag(session.world_id, String(room.get("host", "")) if room != null else ""),
 		"busy": ui.choice_open() or day_rules.inspection_pending(), "dead": story().dead})
 	_apply_fake_normal_events()
+	_fake_people_step(fnm, room)
+
+
+# ---- the "normal people" of the fake-normal day (engine/presentation.js fnPeopleBuild) ----
+
+var _fake_people: Node3D
+var _fake_people_room := ""
+var _fake_people_random := RandomNumberGenerator.new()
+
+
+func _fake_people_clear() -> void:
+	if is_instance_valid(_fake_people):
+		_fake_people.queue_free()
+	_fake_people = null
+	_fake_people_room = ""
+
+
+## While the fake-normal day is on (laughs below 72) four dull figures stand in a room facing you, 2.2–7.5 m
+## away on open tiles; they are rebuilt when you change room and gone when it ends.
+func _fake_people_step(fnm: FakeNormalModule, room: Variant) -> void:
+	var on := fnm.active() and float(fnm.fn["v"]) < 72.0 and room != null and not story().dead
+	if not on:
+		if _fake_people != null:
+			_fake_people_clear()
+		return
+	var world := _campus_world()
+	if world == null or (is_instance_valid(_fake_people) and _fake_people_room == session.world_id and _fake_people.get_parent() == world):
+		return
+	_fake_people_clear()
+	_fake_people_room = session.world_id
+	_fake_people = Node3D.new()
+	_fake_people.name = "FakeNormalPeople"
+	world.add_child(_fake_people)
+	var p: Array = player.capture_pose()["position"]
+	var me := Vector2(float(p[0]), float(p[2]))
+	var grid: Array = room["grid"]
+	var made := 0
+	var tries := 0
+	while made < 4 and tries < 160:
+		tries += 1
+		var c := 1 + _fake_people_random.randi() % maxi(1, int(room["cols"]) - 2)
+		var r := 1 + _fake_people_random.randi() % maxi(1, int(room["rows"]) - 2)
+		var ch := String(grid[r]).substr(c, 1)
+		if ch in ["#", "=", "O", "S", "L"]:
+			continue
+		var s := CampusGeometry.to_scene(room, Vector2(float(room["ox"]) + (c + 0.5) * float(room["tw"]), float(room["oy"]) + (r + 0.5) * float(room["th"])))
+		var d := s.distance_to(me)
+		if d < 2.2 or d > 7.5:
+			continue
+		var fig := FigureModel.make("person", Color("#41505c"), true, 0.92)
+		fig.position = Vector3(s.x, 0.0, s.y)
+		fig.rotation.y = atan2(s.x - me.x, s.y - me.y)
+		_fake_people.add_child(fig)
+		made += 1
 
 
 func _apply_fake_normal_events() -> void:
@@ -2371,6 +3779,8 @@ func _apply_fake_normal_events() -> void:
 				ui.flash_hurt(0.45)
 			"fact":
 				fact({"kind": "fakeNormal", "done": true, "laughs": int(e["laughs"])})
+			"fact_laugh":
+				fact({"kind": "fakeNormal", "laugh": bool(e["laugh"])})
 			"choice":
 				_choice_count += 1
 				var mine := _choice_count
@@ -2432,6 +3842,8 @@ func _phone_step(delta: float) -> void:
 		return
 	net.set_context(_phone_context())
 	net.tick(delta)
+	_phone_shell_step(delta)
+	_snake_step(delta)
 	if ui.terminal_open():
 		if not net.terminal_open or Input.is_action_just_pressed("pause"):
 			_terminal_closed()
@@ -2470,6 +3882,8 @@ func _apply_phone_events() -> void:
 		return
 	for e: Dictionary in net.take_events():
 		match e["kind"]:
+			"record":
+				_record(e)
 			"toast", "notice":
 				ui.show_notice(String(e["text"]))
 			"save":
@@ -2524,6 +3938,8 @@ func _apply_phone_events() -> void:
 # ---- the broadcast station and 《放学》 (features/story/broadcast_module.gd) ----
 
 var _mic_open := false
+var _mic_panel: MicPanel
+var _mic_hold_button := false
 var _radio_job: Variant = null   # {index, t, seconds, x, y, scene}
 var _crowd_nodes: Node3D
 
@@ -2533,7 +3949,9 @@ func _broadcast_context() -> Dictionary:
 	var weird := anomaly()
 	var gates: Dictionary = CampusData.campus().get("gates", {})
 	var gn: Dictionary = gates.get("n", {"x": 514, "y": 95})
-	ctx.merge({"day": school().day, "diff": story().diff, "dead": story().dead, "hiding": player.hiding, "night": SchoolClock.is_night(school().tsec),
+	var scare := dread()
+	ctx.merge({"dread_ok": scare != null and not bool(_dread_context()["busy"]) and scare.allow(1),
+		"day": school().day, "diff": story().diff, "dead": story().dead, "hiding": player.hiding, "night": SchoolClock.is_night(school().tsec),
 		"anomaly_active": weird != null and weird.is_active(), "anomaly_id": weird.active_id() if weird != null else "",
 		"inspection_pending": school().inspection_pending(), "inspection_quiet": school().inspection_pending(),
 		"gate_n": Vector2(float(gn["x"]) * 2.0, float(gn["y"]) * 2.0),
@@ -2547,17 +3965,20 @@ func _broadcast_step(delta: float) -> void:
 		return
 	radio.set_context(_broadcast_context())
 	if _mic_open:
-		if not radio.near_station() or Input.is_action_just_pressed("pause"):
+		if not radio.near_station() or story().dead or Input.is_action_just_pressed("pause") or radio.b["phase"] == "bell":
 			_close_mic()
 		else:
-			var want := Input.is_action_pressed("interact") or Input.is_action_pressed("ui_accept")
+			var want := _mic_hold_button or Input.is_key_pressed(KEY_SPACE) or Input.is_action_pressed("interact")
 			if want and not radio.held:
 				radio.hold(true)
 			elif not want and radio.held:
 				radio.hold(false)
 			var why := radio.reason()
+			var names: Array = radio.papers().map(func(id: String) -> Array: return [id, "%s · %s" % [items().item_name(id), "红笔／第 0 天" if id == "notice_fake" else "蓝黑墨水"]])
+			var cur := String(radio.b["selected"])
+			var st := "长铃已响，跟随同学从北门离校。" if radio.b["phase"] == "bell" else (why if why != "" else "已播完 %d/4 段 · %s" % [int(radio.b["completed"]), "正在播音，门禁已报告这个房间。" if radio.held else "从当前这一段开始，松开会重读。"])
+			_mic_panel.paint(names, cur, radio.paper_text(cur) if radio.papers().has(cur) else "手里没有这一页", st, radio.progress, radio.reading_seconds(), radio.held, why == "" and not radio.papers().is_empty())
 			ui.show_search(radio.progress / radio.reading_seconds() if radio.held else 0.0)
-			ui.show_prompt("按住 E 朗读 · %s · 已播完 %d/4 段%s" % [radio.paper_text(String(radio.b["selected"])) if radio.papers().has(radio.b["selected"]) else "手里没有这一页", int(radio.b["completed"]), "" if why == "" else " · " + why])
 	if _radio_job != null:
 		var j: Dictionary = _radio_job
 		var here := Vector2(float(radio._c["x"]), float(radio._c["y"]))
@@ -2591,18 +4012,12 @@ func _show_crowd(radio: BroadcastModule) -> void:
 	if not is_instance_valid(_crowd_nodes):
 		_crowd_nodes = Node3D.new()
 		_crowd_nodes.name = "DismissalCrowd"
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(0.18, 0.2, 0.26)
-		var body := CapsuleMesh.new()
-		body.radius = 0.22
-		body.height = 1.65
-		body.material = mat
 		var rng := RandomNumberGenerator.new()
 		rng.seed = 11
 		for i in 26:
-			var fig := MeshInstance3D.new()
-			fig.mesh = body
-			fig.position = Vector3(rng.randf_range(-2.6, 2.6), 0.825, rng.randf_range(-3.5, 3.5))
+			var fig := FigureModel.make("person", Color(0.18, 0.2, 0.26), false, 0.9)
+			fig.rotation.y = rng.randf() * TAU
+			fig.position = Vector3(rng.randf_range(-2.6, 2.6), 0.0, rng.randf_range(-3.5, 3.5))
 			_crowd_nodes.add_child(fig)
 		world.add_child(_crowd_nodes)
 	var s := CampusGeometry.to_scene(null, Vector2(float(p["x"]), float(p["y"])))
@@ -2614,30 +4029,39 @@ func _open_mic() -> void:
 	var radio := broadcast()
 	if radio == null:
 		return
-	var papers := radio.papers()
-	if papers.is_empty():
+	if radio.papers().is_empty():
 		ui.show_notice("我：手里没有通知稿。")
 		return
-	_choice_count += 1
-	var mine := _choice_count
-	_choice_handler = func(index: int) -> void:
-		if mine != _choice_count or index < 0 or index >= papers.size():
-			return
-		radio.select(String(papers[index]))
-		_mic_open = true
-		ui.show_notice("话筒：按住 E 朗读，松开会重读当前段；走开或按 Esc 离开。")
+	if _mic_panel == null:
+		_mic_panel = MicPanel.new()
+		_mic_panel.paper_selected.connect(func(id: String) -> void:
+			if broadcast() != null:
+				broadcast().select(id))
+		_mic_panel.hold_changed.connect(func(on: bool) -> void: _mic_hold_button = on)
+		_mic_panel.closed.connect(_close_mic)
+		ui.get_node("Root").add_child(_mic_panel)
+	if not radio.papers().has(String(radio.b["selected"])):
+		radio.b["selected"] = radio.papers()[0]
+	_mic_open = true
+	_mic_hold_button = false
 	player.enabled = false
 	player.clear_input()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	var reason := radio.reason()
-	ui.show_choice("广播站 · 话筒%s\n手中的稿纸：" % ("" if reason == "" else "（" + reason + "）"), papers.map(func(id: String) -> String: return radio.paper_text(id)))
+	_mic_panel.visible = true
 
 
 func _close_mic() -> void:
+	var was := _mic_open
 	_mic_open = false
+	_mic_hold_button = false
+	if _mic_panel != null:
+		_mic_panel.visible = false
 	if broadcast() != null:
 		broadcast().hold(false)
 	ui.show_search(0.0)
+	if was and session != null and session.running and not get_tree().paused and not story().dead and not ui.choice_open():
+		player.enabled = true
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
 
 
 func _apply_broadcast_events() -> void:
@@ -2646,6 +4070,11 @@ func _apply_broadcast_events() -> void:
 		return
 	for e: Dictionary in radio.take_events():
 		match e["kind"]:
+			"dread_note":
+				if dread() != null:
+					dread().note(String(e["what"]), 1)
+			"record":
+				_record(e)
 			"notice", "toast":
 				ui.show_notice(String(e["text"]))
 			"san":
@@ -2664,9 +4093,9 @@ func _apply_broadcast_events() -> void:
 					facilities()._guard()
 					_apply_facility_events()
 			"note":
-				audio.cue("ding", -12.0, [1.0, 1.0, 1.12, 1.26, 1.0, 0.75][int(e["note"])])
+				audio.play("music.piano", {"pitch": [1.0, 1.0, 1.12, 1.26, 1.0, 0.75][int(e["note"])]})
 			"radio":
-				audio.cue("static", -6.0, 1.0 if bool(e["real"]) else 0.87)
+				audio.play("dread.radio", {"pitch": 1.0 if bool(e["real"]) else 0.87})
 			"bell_start":
 				_close_mic()
 				audio.loop("dismissal", true, -10.0)
@@ -2737,6 +4166,8 @@ func _apply_garage_events() -> void:
 		return
 	for e: Dictionary in cars.take_events():
 		match e["kind"]:
+			"record":
+				_record(e)
 			"notice", "toast":
 				ui.show_notice(String(e["text"]))
 			"san":
@@ -2744,7 +4175,7 @@ func _apply_garage_events() -> void:
 			"step":
 				var room: Variant = campus().room(session.world_id)
 				var s := CampusGeometry.to_scene(room, Vector2(float(e["x"]), float(e["y"])))
-				audio.cue_at("step_heavy", Vector3(s.x, float(player.capture_pose()["position"][1]) + 0.2, s.y), -2.0)
+				audio.step_on("garage", 1.1, {"pos": Vector3(s.x, float(player.capture_pose()["position"][1]) + 0.2, s.y)})
 			"fact":
 				fact({"kind": "garage", "what": e["what"], "tried": int(e.get("tried", 0))})
 			"save":
@@ -2763,7 +4194,7 @@ func _apply_garage_events() -> void:
 				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 				ui.show_choice(String(e["text"]), e["labels"])
 			"drive":
-				_enter_drive()
+				_play_car_intro()
 			"kill":
 				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
 				return
@@ -2774,6 +4205,32 @@ func _apply_garage_events() -> void:
 
 
 ## CarChase.start: out on the road north of the north gate, the campus hidden behind the drive.
+## The opening of the drive (cutscene.js car): headlights in the garage, then the gate seen from outside; then the real drive.
+func _play_car_intro() -> void:
+	var world := _campus_world()
+	if world == null or session == null or DisplayServer.get_name() == "headless":
+		_enter_drive()
+		return
+	if _ending_cut != null and is_instance_valid(_ending_cut):
+		_ending_cut.queue_free()
+	_ending_cut = EndingCut.new()
+	_ending_cut.name = "CarIntro"
+	add_child(_ending_cut)
+	var was_paused := get_tree().paused
+	player.enabled = false
+	get_tree().paused = true
+	_ending_cut.finished.connect(func(_skipped: bool) -> void:
+		get_tree().paused = was_paused
+		_enter_drive())
+	_ending_cut.audio = audio
+	var gate := EndingCut.gate_scene(CampusData.campus(), "n")
+	var switch_out := func() -> Node3D:
+		# Out of the garage and through the north gate: the real outdoors, in front of the gate (cutscene.js car, beginOutsideStage).
+		travel("out", {"position": [gate.x, 0.05, gate.z - 4.0], "yaw": 0.0, "pitch": 0.0}, false)
+		return _campus_world()
+	_ending_cut.begin("car", world, CampusData.campus(), player, ui, Callable(), {"switch": switch_out, "tsec": school().tsec if school() != null else 0.0})
+
+
 func _enter_drive() -> void:
 	var gates: Dictionary = CampusData.campus().get("gates", {})
 	var gn: Dictionary = gates.get("n", {"x": 514, "y": 95})
@@ -2799,7 +4256,7 @@ func _enter_drive() -> void:
 	night.fog_light_color = Color(0.04, 0.045, 0.06)
 	night.fog_density = 0.02
 	player.camera.environment = night
-	audio.loop("engine", true, -14.0)
+	audio.play("scene.engine")
 
 
 func _leave_drive() -> void:
@@ -2812,7 +4269,7 @@ func _leave_drive() -> void:
 	if player != null and player.camera != null:
 		player.camera.environment = null
 	if audio != null:
-		audio.loop("engine", false)
+		audio.stop("scene")
 
 
 func driving() -> bool:
@@ -2849,6 +4306,10 @@ func _routes_step(delta: float) -> void:
 func _apply_route_events(route: RoutesModule) -> void:
 	for e: Dictionary in route.take_events():
 		match e["kind"]:
+			"fact_face":
+				fact({"kind": "face", "correct": bool(e["correct"])})
+			"record":
+				_record(e)
 			"notice":
 				ui.show_notice(String(e["text"]))
 			"toast":
@@ -2885,7 +4346,7 @@ func _reach_ending(id: String) -> void:
 	player.enabled = false
 	player.clear_input()
 	audio.stop_all()
-	audio.cue("chime", -4.0)
+	audio.play("ui.achieve.epic")
 	ui.hide_choice()
 	ui.hide_bag()
 	if items() != null:
@@ -2915,12 +4376,39 @@ func _reach_ending(id: String) -> void:
 		achievements().face_wrong = maxi(0, routes().wrong_answers())
 	_write_side("last_life.json", null)
 	fact({"kind": "ending", "id": id, "day": school().day, "diff": story().diff, "talent": talent().id if talent() != null else "none"})
+	_last_result = _score_ending(id, String(card["title"]))
 	var meta := "第 %d 天" % school().day
 	if (items() != null and items().has_clock()) or (talent() != null and talent().has("watch")):
 		meta += " · " + SchoolClock.fmt_clock(school().tsec)
 	if run_line != "":
 		meta += "\n" + run_line
-	ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta)
+	var show_card := func() -> void:
+		ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta, achievements().run_new_labels() if achievements() != null else PackedStringArray(),
+			"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""))
+	var world := _campus_world()
+	if (id == "dismissal" or id == "cyber") and session != null and session.world_id != "out" and DisplayServer.get_name() != "headless":
+		# The last stage of the dismissal is the real campus at the north gate: take the player outside first, then play (Engine.beginOutsideStage).
+		var gate := EndingCut.gate_scene(CampusData.campus(), "n")
+		travel("out", {"position": [gate.x, 0.05, gate.z - 4.0], "yaw": 0.0, "pitch": 0.0}, false)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		world = _campus_world()
+	if EndingCut.has(id) and world != null and session != null and (session.world_id == "out" or not EndingCut.needs_outdoor(id)) and DisplayServer.get_name() != "headless":
+		if _ending_cut != null and is_instance_valid(_ending_cut):
+			_ending_cut.queue_free()
+		_ending_cut = EndingCut.new()
+		_ending_cut.name = "EndingCut"
+		add_child(_ending_cut)
+		var was_paused := get_tree().paused
+		get_tree().paused = true
+		_ending_cut.finished.connect(func(_skipped: bool) -> void:
+			get_tree().paused = was_paused
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+			show_card.call())
+		_ending_cut.audio = audio
+		_ending_cut.begin(id, world, CampusData.campus(), player, ui, func() -> void: audio.play("ui.click"), {"how": String(exchange().s.get("how", "exam")) if exchange() != null else "exam"})
+		return
+	show_card.call()
 
 
 func _anomaly_context(room: Variant, pose: Dictionary) -> Dictionary:
@@ -2936,15 +4424,71 @@ func _anomaly_context(room: Variant, pose: Dictionary) -> Dictionary:
 	var tile := ""
 	if room != null:
 		tile = CampusGeometry.tile_at(room, w)
-	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "tsec": day_rules.tsec, "day": day_rules.day,
+	return {"fence_x": float(CampusData.layout("out")["bound"]["x1"]) * 2.0 - 6.0, "scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "tsec": day_rules.tsec, "day": day_rules.day,
 		"diff": story().diff if story() != null else "easy", "san": day_rules.san, "viol": day_rules.viol, "moving": player.moving, "running": player.sprinting,
 		"seated": day_rules.seated, "night": SchoolClock.is_night(day_rules.tsec), "need_where": SchoolClock.need_where(day_rules.tsec), "tile": tile,
 		"on_field": day_rules.on_field(session.world_id, w), "in_classroom": day_rules.in_classroom_here(session.world_id, w),
 		"game_clock": day_rules.game_clock(), "pressure_anomaly": float(day_rules.pressure()["anomaly"]), "bag": bag.bag if bag != null else [],
 		"item_names": item_names, "dead": story() != null and story().dead, "hiding": watcher != null and bool(watcher.hide["on"]),
-		"patrol_chase": watcher != null and watcher.local_chase(), "choice_open": ui.choice_open(), "brolly": false,
+		"patrol_chase": watcher != null and watcher.local_chase(), "choice_open": ui.choice_open(), "brolly": items() != null and items().brolly_up,
 		"inspection_quiet": day_rules.inspection_pending() or day_rules.inspection_upcoming() or float(day_rules.inspection.get("calm", 0.0)) > 0.0,
 		"in_lift": session.world_id in ElevatorModule.RIDE_ROOMS, "can_stand": _can_stand.bind(room, float(p[1])), "drain_mul": _drain_mul()}
+
+
+## The chalk writing (world/campus/chalk_notes.gd): the forecast of the next anomaly and the truancy warnings.
+var _skip_on := false
+
+
+func _chalk_step(delta: float, weird: AnomalyModule, day_rules: SchoolModule, room: Variant, pose: Dictionary) -> bool:
+	var world := _campus_world()
+	if world == null or world.chalk == null:
+		return false
+	var p: Array = pose["position"]
+	var yaw := float(pose["yaw"])
+	var rd: Dictionary = room if room is Dictionary else {}
+	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var fwd := Vector2(-sin(yaw), -cos(yaw))
+	var here := Vector3(float(p[0]), float(p[1]), float(p[2]))
+	var playing := not story().dead and not get_tree().paused and not opening_busy()
+	var shown := false
+	if playing and weird.warning_visible():
+		var text := SchoolClock.fmt_clock(roundf(day_rules.tsec + float(weird.an["next"]) * SchoolClock.rate_at(day_rules.tsec) / 60.0))
+		shown = world.chalk.update_forecast(true, text, rd, w, fwd, here, delta)
+	else:
+		world.chalk.clear_forecast()
+	_skip_on = ChalkNotes.skip_active(day_rules.wrong, day_rules.viol, _skip_on) and playing and not day_rules.inspection_active()
+	world.chalk.update_skip(delta, _skip_on, day_rules.viol, rd, here)
+	return shown
+
+
+## The seen-but-harmless things (world/campus/phantoms.gd): the low-SAN figure at the edge of the view, the far figure, the smile.
+func _phantom_step(delta: float, day_rules: SchoolModule, room: Variant, pose: Dictionary, weird: AnomalyModule) -> void:
+	var world := _campus_world()
+	if world == null or world.phantoms == null:
+		return
+	var ph := world.phantoms
+	var p: Array = pose["position"]
+	var cam := player.camera.global_position
+	var ang := CampusGeometry.ang_from_yaw(float(pose["yaw"]))
+	var h := float(p[1])
+	var playing := not story().dead and not get_tree().paused and not opening_busy() and not ui.choice_open() and not ui.terminal_open() and not phone_open() and not driving()
+	var stand := func(w: Vector2) -> bool: return _can_stand(w, room, h)
+	var busy_anomaly := weird != null and weird.is_active()
+	ph.hallucinate(delta, playing and not busy_anomaly, day_rules.san, cam, ang, room, h, stand)
+	var watcher := patrol()
+	var dark: bool = room != null or SchoolClock.is_night(day_rules.tsec)
+	var calm := playing and not busy_anomaly and not (watcher != null and watcher.local_chase()) and not player.hiding
+	var inv := items()
+	ph.apparition(delta, calm, dark, inv != null and inv.torch_on, day_rules.san, cam, ang, room, h, stand, _line_clear.bind(room))
+	ph.tick_smile(delta, cam)
+	var tl := tales()
+	if world.canteen_view != null and tl != null:
+		var csc := CampusGeometry.to_scene(room, CampusGeometry.to_world(room, float(p[0]), float(p[2])))
+		world.canteen_view.update(session.world_id == CanteenView.ROOM and tl.canteen_open(), csc, tl.ate())
+	if world.mirror_view != null and tl != null:
+		if world.mirror_view.count() == 0:
+			world.mirror_view.build(room if room is Dictionary else {}, tl.mirrors(session.world_id))
+		world.mirror_view.update(delta, CampusGeometry.to_world(room, float(p[0]), float(p[2])), ang, day_rules.san, tl.raise, playing)
 
 
 func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: Dictionary) -> void:
@@ -2953,16 +4497,40 @@ func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 		return
 	var ctx := _anomaly_context(room, pose)
 	weird.set_context(ctx)
-	weird.warning_seen(false)
+	weird.warning_seen(_chalk_step(delta, weird, day_rules, room, pose))
+	CampusWorld.pending_traces = weird.traces
+	var tw := _campus_world()
+	if tw != null:
+		tw.sync_traces(weird.traces)
+		if campus() != null and campus().is_stairwell(session.world_id):
+			tw.update_shaft_previews(float(pose["position"][1]))
+	_phantom_step(delta, day_rules, room, pose, weird)
 	weird.tick(delta)
 	for e: Dictionary in weird.take_events():
 		match e["kind"]:
+			"clue":
+				if runscore() != null:
+					runscore().add_clue(String(e["id"]), school().day)
 			"notice":
 				ui.show_notice(String(e["text"]))
+			"smile":
+				var sw := _campus_world()
+				if sw != null and sw.phantoms != null:
+					var cp := player.camera.global_position
+					sw.phantoms.show_smile(String(e["mode"]), cp, CampusGeometry.ang_from_yaw(player.rotation.y))
+					if e["mode"] == "jump":
+						ui.flash_hurt(0.6)
+				# SFX.smile: behind you a held-in giggle; in your face a scream at the ear.
+				if e["mode"] == "jump":
+					audio.play("threat.smileJump")
+				else:
+					audio.play("threat.smileBack", {"pan": 0.3, "lp": 0.8})
 			"hurt":
+				if anomaly() != null and anomaly().active_id() != "":
+					fact({"kind": "anomaly", "phase": "hurt", "id": anomaly().active_id()})
 				day_rules.change_san(-float(e["amount"]), 0.0)
 				ui.flash_hurt(0.4 if e.get("quiet", false) else 0.65)
-				audio.cue("thud", -8.0 if e.get("quiet", false) else -3.0)
+				audio.play("foley.colaHit", {"k": 0.4 if e.get("quiet", false) else 0.8})
 				ui.show_notice(String(e["msg"]))
 			"san":
 				var after := day_rules.san + float(e["amount"])
@@ -3057,7 +4625,18 @@ func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
 		var from_room: Variant = campus().room(from_world)
 		patrol().set_context(_patrol_context(from_room, player.capture_pose()))
 		patrol().left_scene(from_world, world_id)
+	if from_world != world_id and campus() != null and (campus().is_stairwell(world_id) or campus().is_stairwell(from_world)) and not seamless:
+		audio.play("foley.stairs")
 	session.world_id = world_id
+	if dread() != null and from_world != world_id:
+		dread().set_context(_dread_context())
+		dread().enter(world_id)
+		_apply_dread_events()
+	if atmos() != null and from_world != world_id:
+		atmos().enter(world_id)
+	if runscore() != null and from_world != world_id:
+		runscore().enter_room(world_id)
+		_runlog_room(world_id)
 	_enter_cool = 0.0 if seamless else 0.9
 	if seamless:
 		player.place(pose)
@@ -3080,8 +4659,72 @@ func _interact(id: StringName) -> void:
 		session.interact(id)
 
 
+var _hands: HandsView
+
+
+func _process(delta: float) -> void:
+	if session != null and player != null and player.camera != null:
+		if _hands == null or not is_instance_valid(_hands):
+			_hands = HandsView.new()
+			_hands.name = "Hands"
+			player.camera.add_child(_hands)
+		var shown := not get_tree().paused and not story().dead and not driving() and not opening_busy()
+		var inv := items()
+		var torch_lit := inv != null and inv.torch_on and inv.has("torch")
+		_hands.update(delta, torch_lit, inv != null and inv.brolly_up, phone_open() and not snake_open(), shown, player.moving, player.sprinting)
+		var cw := _campus_world()
+		if cw != null and cw.lighting != null and cw.lighting.cam_light != null:
+			_hands.light(cw.lighting.cam_light.light_energy, cw.lighting.cam_light.light_color, torch_lit)
+	var m := "menu"
+	if session != null and not get_tree().paused and not opening_busy():
+		m = "death" if story().dead else "play"
+	playtest.frame(delta, m)
+
+
+## F9 (debug build or --dev): the developer tools.
+func _toggle_debug() -> void:
+	if not DebugPanel.enabled():
+		return
+	if debug_panel == null:
+		debug_panel = DebugPanel.new(audio._index)
+		ui.get_node("Root").add_child(debug_panel)
+		debug_panel.sound_play.connect(func(id: String) -> void: audio.play(id, {"k": 1.0}))
+		debug_panel.sound_stop.connect(func() -> void: audio.stop_all())
+		debug_panel.playtest_toggled.connect(func() -> void:
+			if playtest.recording:
+				playtest.stop()
+			else:
+				playtest.start(settings.values, get_viewport().get_visible_rect().size)
+			debug_panel.set_playtest(playtest.recording, playtest.data.get("events", []).size(), not playtest.data.is_empty()))
+		debug_panel.playtest_note.connect(func(t: String) -> void:
+			debug_panel.say("已记入" if playtest.note(t, _playtest_state()) else "先开始记录，并写一句话")
+			debug_panel.set_playtest(playtest.recording, playtest.data.get("events", []).size(), not playtest.data.is_empty()))
+		debug_panel.clear_debug_records.connect(func() -> void: debug_panel.say("已清除 %d 条调试记录" % runs().remove_debug()))
+		debug_panel.mark_untrusted.connect(func() -> void:
+			if runscore() != null:
+				runscore().trusted = false
+				debug_panel.say("本局已标为调试局：不计分，不进真实评级")
+			else:
+				debug_panel.say("没有进行中的一局"))
+	debug_panel.visible = not debug_panel.visible
+	if debug_panel.visible:
+		debug_panel.set_playtest(playtest.recording, playtest.data.get("events", []).size(), not playtest.data.is_empty())
+
+
+func _playtest_state() -> Dictionary:
+	if session == null:
+		return {}
+	return {"day": school().day, "gameMinutes": school().tsec, "room": session.world_id, "san": school().san}
+
+
 func _unhandled_input(event: InputEvent) -> void:
-	if ui.opening_on():
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F9:
+		_toggle_debug()
+		get_viewport().set_input_as_handled()
+		return
+	if opening_busy():
+		if _opening_cut != null and _opening_cut.on:
+			return
 		if event.is_action_pressed("pause"):
 			ui._end_opening(true)
 			get_viewport().set_input_as_handled()
@@ -3104,8 +4747,24 @@ func _notification(what: int) -> void:
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
+	if key != null and key.pressed and not key.echo and snake_open():
+		if key.keycode == KEY_ESCAPE:
+			_stop_snake()
+		get_viewport().set_input_as_handled()
+		return
+	if key != null and key.pressed and not key.echo and phone_open():
+		if key.keycode == KEY_ESCAPE:
+			_close_phone()
+		elif phone() != null and phone().page == "plane" and key.keycode in [KEY_SPACE, KEY_W]:
+			_phone_flap()
+		get_viewport().set_input_as_handled()
+		return
 	if key != null and key.pressed and not key.echo and key.keycode == KEY_R and days() != null and session != null and not story().over():
 		_lesson_press()
+		get_viewport().set_input_as_handled()
+		return
+	if key != null and key.pressed and not key.echo and key.keycode == KEY_N and investigation() != null and player.enabled and not story().over():
+		_show_notes("")
 		get_viewport().set_input_as_handled()
 		return
 	if key != null and key.pressed and not key.echo and key.keycode == KEY_H and facilities() != null and player.enabled and not story().over():
