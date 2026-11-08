@@ -140,15 +140,4 @@ func menu() -> void:
 		[("关闭" if app.settings.rules_armed else "启用")+"规则怪谈（新局）","规则怪谈记录","查看内置模块"])
 
 func show_records() -> void:
-	var rules:=RulesDlcModule.new(CampusData.rules_dlc(),CampusData.rooms())
-	var raw: Variant=app._read_side("rules_records.json")
-	rules.load_records(raw if raw is Dictionary else {})
-	var rows:=[]
-	var known:=rules.records.has("rules.h.reply")
-	rows.append({"text":"死亡 · 门外有你的名字" if known else "封存的死亡档案","on":known,"memo":"门外的人用我的声音应了一声。门牌上的名字又被描了一遍。" if known else ""})
-	for entry: Dictionary in rules.content["achievements"]:
-		known=rules.records.has(entry["id"])
-		var record: Dictionary=rules.records.get(entry["id"],{})
-		rows.append({"text":("？？？" if entry.get("hidden",false) and not known else String(entry["name"]))+" · "+String(entry["tier"]),"on":known,
-			"memo":"规则 v%s%s · 只记录，不给加成" % [record.get("ver","1.0.0")," · 规则组 "+String(record["bundle"]) if record.has("bundle") else ""] if known else "尚未记录"})
-	app.ui.show_list("规则怪谈 · 独立记录 %d / 8" % (rules.records.size()+(1 if rules.records.has("rules.h.reply") else 0)),rows)
+	app.archive_flow.open("规则怪谈")

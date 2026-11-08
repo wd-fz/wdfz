@@ -72,6 +72,8 @@ func _init() -> void:
 	feet.add_child(back_button)
 	box.add_child(feet)
 	add_child(box)
+	visibility_changed.connect(func() -> void:
+		if not visible: hero.cancel())
 
 
 static func fmt(sec: float) -> String:

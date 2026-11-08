@@ -40,6 +40,7 @@ def main():
     parser.add_argument("--traces-only", action="store_true", help="capture original persistent anomaly traces and stable spatial hashes")
     parser.add_argument("--remaining-death-only", action="store_true", help="capture original fallback death scenes and animations")
     parser.add_argument("--rules-dlc-only", action="store_true", help="capture built-in rules DLC data and original behaviour")
+    parser.add_argument("--archive-only", action="store_true", help="capture archive registry, migration and trusted unlocks")
     args = parser.parse_args()
     source = args.source.resolve()
     tree = subprocess.check_output(["git", "rev-parse", "HEAD:game3d"], cwd=source, text=True).strip()
@@ -62,13 +63,15 @@ def main():
             page.add_init_script("localStorage.setItem('wdfz_pro','1');localStorage.setItem('zw3d_set',JSON.stringify({q:%d,amb:0,vol:0,renderer:'webgl',rv:1}));" % initial_quality)
             page.goto(f"http://127.0.0.1:{server.server_port}/")
             page.wait_for_function("Engine.ready() && Assets.ready(Assets.want())", timeout=180000)
-            if args.save_only or args.story_only or args.grading_only or args.crowd_only or args.secret_items_only or args.inception_only or args.maze_patrol_only or args.anomaly_fx_only or args.falling_props_only or args.traces_only or args.remaining_death_only or args.rules_dlc_only:
-                stem = "rules_dlc" if args.rules_dlc_only else "remaining_death" if args.remaining_death_only else "traces" if args.traces_only else "falling_props" if args.falling_props_only else "anomaly_fx" if args.anomaly_fx_only else "maze_patrol" if args.maze_patrol_only else "inception" if args.inception_only else "secret_items" if args.secret_items_only else "crowd" if args.crowd_only else "grading" if args.grading_only else "routes" if args.story_only else "saves"
+            if args.save_only or args.story_only or args.grading_only or args.crowd_only or args.secret_items_only or args.inception_only or args.maze_patrol_only or args.anomaly_fx_only or args.falling_props_only or args.traces_only or args.remaining_death_only or args.rules_dlc_only or args.archive_only:
+                stem = "archive" if args.archive_only else "rules_dlc" if args.rules_dlc_only else "remaining_death" if args.remaining_death_only else "traces" if args.traces_only else "falling_props" if args.falling_props_only else "anomaly_fx" if args.anomaly_fx_only else "maze_patrol" if args.maze_patrol_only else "inception" if args.inception_only else "secret_items" if args.secret_items_only else "crowd" if args.crowd_only else "grading" if args.grading_only else "routes" if args.story_only else "saves"
                 if args.rules_dlc_only:
                     page.evaluate("() => {window.__rulesHooks={};window.__modRegister=GameModules.mod;GameModules.mod=def=>def.init({on:(name,fn)=>window.__rulesHooks[name]=fn,store:spec=>window.__rulesStore=spec,toast:()=>{}});}")
                     page.add_script_tag(path=str(source / "game3d/mods/campus-rules.js"))
                     page.evaluate("() => {GameModules.mod=window.__modRegister;}")
                 result = page.evaluate((ROOT / f"tools/reference_{stem}.js").read_text())
+                if args.archive_only:
+                    (ROOT / "assets/campus/archive.json").write_text(json.dumps(result.pop("content"),ensure_ascii=False,indent=2)+"\n")
                 if args.rules_dlc_only:
                     (ROOT / "assets/campus/rules_dlc.json").write_text(json.dumps(result.pop("content"),ensure_ascii=False,indent=2)+"\n")
                 if args.anomaly_fx_only:

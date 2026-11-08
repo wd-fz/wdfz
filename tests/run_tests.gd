@@ -42,6 +42,11 @@ func same_json(a: Variant, b: Variant) -> bool:
 
 
 func _run() -> void:
+	var archive := preload("res://tests/suites/archive.gd").new(self)
+	print("CASE: archive.test_reference")
+	archive.test_reference()
+	print("CASE: archive.test_app")
+	await archive.test_app()
 	var rules_dlc:=preload("res://tests/suites/rules_dlc.gd").new(self)
 	print("CASE: rules_dlc.test_reference")
 	rules_dlc.test_reference()

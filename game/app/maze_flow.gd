@@ -172,6 +172,7 @@ func _start_cut(kind: String, exit: Dictionary) -> void:
 
 
 func _cut_done(kind: String, exit_id: String) -> void:
+	app.archive_flow.mark_seen("cut:void_" + kind)
 	if is_instance_valid(cut):
 		cut.queue_free()
 	cut = null

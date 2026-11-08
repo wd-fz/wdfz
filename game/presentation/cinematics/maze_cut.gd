@@ -8,7 +8,7 @@ signal finished
 var on := false
 var kind := "in"
 var k := 0.0
-var app: GameApp
+var stage: MazeCutStage
 var cam: Camera3D
 var screen: MazeScreen
 var props: Node3D
@@ -38,7 +38,21 @@ static func phase(value: float, a: float, b: float) -> float:
 
 
 func begin(cut_kind: String, owner_app: GameApp, door: Dictionary, transfer: Callable) -> void:
-	app = owner_app
+	var context := MazeCutStage.new()
+	context.player = owner_app.player
+	context.ui = owner_app.ui
+	context.audio = owner_app.audio
+	context.settings = owner_app.settings
+	context.geometry = owner_app.maze().geometry
+	context.elevator = owner_app.elevator()
+	context.campus = owner_app.campus()
+	context.scene = func() -> String: return owner_app.session.world_id
+	context.can_stand = owner_app._can_stand
+	begin_stage(cut_kind, context, door, transfer)
+
+
+func begin_stage(cut_kind: String, context: MazeCutStage, door: Dictionary, transfer: Callable) -> void:
+	stage = context
 	kind = cut_kind
 	exit = door
 	_move = transfer
@@ -46,14 +60,14 @@ func begin(cut_kind: String, owner_app: GameApp, door: Dictionary, transfer: Cal
 	props = Node3D.new()
 	add_child(props)
 	cam = Camera3D.new()
-	cam.fov = app.player.camera.fov
-	cam.near = app.player.camera.near
-	cam.far = app.player.camera.far
+	cam.fov = stage.player.camera.fov
+	cam.near = stage.player.camera.near
+	cam.far = stage.player.camera.far
 	add_child(cam)
 	cam.make_current()
 	screen = MazeScreen.new()
 	add_child(screen)
-	app.ui.cut_mode(true)
+	stage.ui.cut_mode(true)
 	_controls = CanvasLayer.new()
 	_controls.layer = 5
 	add_child(_controls)
@@ -65,7 +79,7 @@ func begin(cut_kind: String, owner_app: GameApp, door: Dictionary, transfer: Cal
 	skip.pressed.connect(finish)
 	_controls.add_child(skip)
 	if kind == "in":
-		floor_num = int(app.elevator().ride.get("origin", 1))
+		floor_num = int(stage.elevator.ride.get("origin", 1))
 		_pick_entry()
 		_build_cabin()
 	else:
@@ -92,10 +106,10 @@ func _box(parent: Node3D, size: Vector3, pos: Vector3, color: Color) -> MeshInst
 
 
 func _pick_entry() -> void:
-	var shape := app.maze().geometry
-	base = app.player.position
+	var shape := stage.geometry
+	base = stage.player.position
 	base.y = shape.ground_at(base.x, base.z, base.y + 0.42)
-	ang = CampusGeometry.ang_from_yaw(app.player.rotation.y)
+	ang = CampusGeometry.ang_from_yaw(stage.player.rotation.y)
 	var score := -INF
 	var index := 0
 	for p: Vector3 in [base, Vector3(0, base.y, 0)]:
@@ -120,7 +134,7 @@ func _pick_entry() -> void:
 				ang = a
 		index += 1
 	forward = Vector3(cos(ang), 0, sin(ang))
-	app.player.restore_pose({"position": [base.x, base.y + 0.01, base.z], "yaw": CampusGeometry.yaw_from_ang(ang), "pitch": 0.0})
+	stage.player.restore_pose({"position": [base.x, base.y + 0.01, base.z], "yaw": CampusGeometry.yaw_from_ang(ang), "pitch": 0.0})
 
 
 func _build_cabin() -> void:
@@ -181,7 +195,7 @@ func _input(ev: InputEvent) -> void:
 func _sound(key: String, id: String) -> void:
 	if not _sounds.has(key):
 		_sounds[key] = true
-		app.audio.play(id)
+		stage.audio.play(id)
 
 
 func apply_frame(value: float) -> void:
@@ -218,7 +232,7 @@ func _entry_frame() -> void:
 	var look := phase(k,.72,.8) * (1.0-phase(k,.92,1.0))
 	var pos := base + forward * lerpf(-2.15,0.0,walk)
 	var a := ang + PI * look
-	var sway := sin(k*9.0)*.012 if app.settings.get_int("shake") != 0 and k > .16 and k < .46 else 0.0
+	var sway := sin(k*9.0)*.012 if stage.settings.get_int("shake") != 0 and k > .16 and k < .46 else 0.0
 	var look_y := base.y + 1.65 - (.05 if k < .5 else .18+.12*(1-walk))
 	if k < .12:
 		look_y = base.y + 1.65 + .42*(1.0-phase(k,.08,.12))
@@ -237,19 +251,19 @@ func _transfer_once() -> void:
 	moved = true
 	_move.call()
 	cabin.hide()
-	_hall_pose = app.player.capture_pose()
-	_hall_end = app.player.position
-	ang = CampusGeometry.ang_from_yaw(app.player.rotation.y)
-	var room: Dictionary = app.campus().room(app.session.world_id)
-	var lift := app.elevator()
-	var frame := lift.frame(app.session.world_id)
+	_hall_pose = stage.player.capture_pose()
+	_hall_end = stage.player.position
+	ang = CampusGeometry.ang_from_yaw(stage.player.rotation.y)
+	var room: Dictionary = stage.campus.room(String(stage.scene.call()))
+	var lift := stage.elevator
+	var frame := lift.frame(String(stage.scene.call()))
 	for distance in [1.9,1.6,1.3,1.0]:
-		var w := lift.world(app.session.world_id, distance, 0.0)
-		if distance == 1.0 or app._can_stand(w, room, 0.0):
+		var w := lift.world(String(stage.scene.call()), distance, 0.0)
+		if distance == 1.0 or bool(stage.can_stand.call(w, room, 0.0)):
 			var p := CampusGeometry.to_scene(room, w)
-			_hall_end = Vector3(p.x,app.player.position.y,p.y)
+			_hall_end = Vector3(p.x,stage.player.position.y,p.y)
 			break
-	var dc := CampusGeometry.to_scene(room, lift.world(app.session.world_id, ElevatorModule.GEO["landing"]+.05,0))
+	var dc := CampusGeometry.to_scene(room, lift.world(String(stage.scene.call()), ElevatorModule.GEO["landing"]+.05,0))
 	var strip := Node3D.new()
 	props.add_child(strip)
 	var dir: Vector2 = frame["out"]
@@ -261,7 +275,7 @@ func _transfer_once() -> void:
 
 
 func _exit_frame() -> void:
-	var flash := .55 if app.settings.get_int("reduce_flash") != 0 else 1.0
+	var flash := .55 if stage.settings.get_int("reduce_flash") != 0 else 1.0
 	if k < .44:
 		var push := phase(k,.06,.3)
 		var sw := cos(1.2*push)
@@ -296,7 +310,7 @@ func finish() -> void:
 	if kind == "out":
 		_transfer_once()
 		if phase(k,.62,.8) > .5:
-			app.player.restore_pose({"position":[_hall_end.x,_hall_end.y,_hall_end.z],"yaw":CampusGeometry.yaw_from_ang(ang+PI),"pitch":0.0})
+			stage.player.restore_pose({"position":[_hall_end.x,_hall_end.y,_hall_end.z],"yaw":CampusGeometry.yaw_from_ang(ang+PI),"pitch":0.0})
 	cancel()
 	finished.emit()
 
@@ -306,11 +320,13 @@ func cancel() -> void:
 	_move = Callable()
 	if is_instance_valid(screen):
 		screen.show_effect()
-	if is_instance_valid(app):
-		app.ui.cut_mode(false)
-		app.player.reset_view()
-		app.player.camera.make_current()
+	if stage != null and is_instance_valid(stage.player):
+		stage.ui.cut_mode(false)
+		stage.player.reset_view()
+		stage.player.camera.make_current()
 	if is_instance_valid(props):
 		props.hide()
 	if is_instance_valid(_controls):
 		_controls.hide()
+
+	stage = null

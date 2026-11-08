@@ -54,6 +54,12 @@ static func rules_dlc() -> Dictionary:
 	return _cache["rules_dlc"]
 
 
+static func archive() -> Dictionary:
+	if not _cache.has("archive"):
+		_cache["archive"] = JSON.parse_string(FileAccess.get_file_as_string("res://assets/campus/archive.json"))
+	return _cache["archive"]
+
+
 ## Every room id that has both a layout and an exported model.
 static func room_ids() -> PackedStringArray:
 	var result := PackedStringArray()

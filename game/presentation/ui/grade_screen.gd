@@ -38,6 +38,7 @@ func show_grade(letter: String, play_reveal: bool = true, mute: bool = false, re
 
 
 func _process(delta: float) -> void:
+	if not _playing: return
 	_t += delta
 	k = minf(1.0, _t / DURATION)
 	if not _fired and k >= 0.35:
@@ -47,6 +48,12 @@ func _process(delta: float) -> void:
 		_playing = false
 		set_process(false)
 	queue_redraw()
+
+
+func cancel() -> void:
+	_playing = false
+	_fired = true
+	set_process(false)
 
 
 static func _ease(x: float) -> float:

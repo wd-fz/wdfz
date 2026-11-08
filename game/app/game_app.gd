@@ -39,6 +39,7 @@ var maze_flow: MazeFlow
 var knife_flow: KnifeFlow
 var inception_flow: InceptionFlow
 var rules_dlc_flow: RulesDlcFlow
+var archive_flow: ArchiveFlow
 var wuda_roll: Callable = func() -> float: return randf()
 var _school_taps: Array = []
 
@@ -62,6 +63,9 @@ func _ready() -> void:
 	rules_dlc_flow=RulesDlcFlow.new()
 	rules_dlc_flow.app=self
 	add_child(rules_dlc_flow)
+	archive_flow = ArchiveFlow.new()
+	add_child(archive_flow)
+	archive_flow.setup(self)
 	settings.load_file(DisplayServer.is_touchscreen_available())
 	ui.set_wuda_armed(settings.wuda_armed)
 	ui.school_tapped.connect(_school_tapped)
@@ -274,15 +278,7 @@ func _show_achievements() -> void:
 
 
 func _show_archive() -> void:
-	var ends: Dictionary = {}
-	var path := saves.side_path("ends.json")
-	if FileAccess.file_exists(path):
-		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
-		if parsed is Dictionary:
-			ends = parsed
-	var rows := DeathArchive.rows(_read_death_log(), ends)
-	ui.show_archive(rows, DeathArchive.known(rows), rows.size())
-
+	archive_flow.open()
 
 func routes() -> RoutesModule:
 	return session.modules.get_module(&"story.routes") as RoutesModule if session != null else null
@@ -774,6 +770,7 @@ func resume_game() -> void:
 
 
 func _cancel_cinematics() -> void:
+	if is_instance_valid(archive_flow): archive_flow.stop()
 	if is_instance_valid(rules_dlc_flow): rules_dlc_flow.cancel()
 	if is_instance_valid(debug_flow): debug_flow.cancel()
 	if is_instance_valid(inception_flow): inception_flow.cancel()
@@ -859,6 +856,7 @@ func return_to_menu() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if is_instance_valid(archive_flow) and archive_flow.active(): return
 	if is_instance_valid(debug_flow) and debug_flow.frozen: return
 	if _choice_left > 0.0 and ui.choice_open():
 		_choice_left -= delta
@@ -1622,6 +1620,7 @@ func kill(msg: String, fx: String, source: String) -> void:
 		return
 	if not result.get("dead", false):
 		return
+	archive_flow.record(source, fx)
 	debug_flow.before_death()
 	fact({"kind": "death", "source": source, "fx": fx, "wake": bool(result["wake"])})
 	rules_dlc_flow.cancel()
@@ -4997,6 +4996,7 @@ var _hands: HandsView
 
 
 func _process(delta: float) -> void:
+	if is_instance_valid(archive_flow) and archive_flow.active(): return
 	if session != null and player != null and player.camera != null:
 		if patrol()!=null and patrol().nav.maze!=null: patrol().nav.maze.warm_step()
 		if _hands == null or not is_instance_valid(_hands):

@@ -243,6 +243,7 @@ func _resize() -> void:
 	_fit_ending.call_deferred()
 	_fit_settings.call_deferred()
 	_fit_menu_scrolls.call_deferred()
+	_resize_list.call_deferred()
 
 
 var _menu_scrolls: Array[ScrollContainer] = []
@@ -662,6 +663,7 @@ var _ach_head: Label
 
 var _ach_tab := "全部"
 var _ach_tabs: HBoxContainer
+var _list_extra: Button
 
 
 ## Tabs 全部 / 普通 / 精英 / 史诗 (achievements-ui.js); the head always counts all of them.
@@ -687,6 +689,7 @@ func show_achievements(entries: Array, points: int, tab: String = "") -> void:
 		box.move_child(_ach_tabs, 1)
 	for c in _ach_tabs.get_children():
 		c.queue_free()
+	_ach_tabs.show()
 	for name: String in ["全部", "普通", "精英", "史诗"]:
 		var b := Button.new()
 		b.name = "Tab_" + name
@@ -710,6 +713,8 @@ func show_list(head: String, rows: Array) -> void:
 	if ach_panel == null:
 		ach_panel = PanelContainer.new()
 		ach_panel.name = "AchievementsPanel"
+		ach_panel.resized.connect(_center_list)
+		ach_panel.minimum_size_changed.connect(func() -> void: _resize_list.call_deferred())
 		ach_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 		ach_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		ach_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
@@ -722,8 +727,10 @@ func show_list(head: String, rows: Array) -> void:
 		var box := VBoxContainer.new()
 		box.add_theme_constant_override("separation", 8)
 		_ach_head = Label.new()
+		_ach_head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		box.add_child(_ach_head)
 		var scroll := ScrollContainer.new()
+		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 		scroll.custom_minimum_size = Vector2(520, 360)
 		_ach_list = VBoxContainer.new()
 		_ach_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -735,20 +742,93 @@ func show_list(head: String, rows: Array) -> void:
 		box.add_child(close)
 		ach_panel.add_child(box)
 		$Root.add_child(ach_panel)
+	if is_instance_valid(_ach_tabs): _ach_tabs.hide()
+	if is_instance_valid(_list_extra):
+		_list_extra.hide()
+		_list_extra.queue_free()
+		_list_extra = null
 	for child in _ach_list.get_children():
+		_ach_list.remove_child(child)
 		child.queue_free()
 	for r: Dictionary in rows:
 		var line := Label.new()
 		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		line.custom_minimum_size = Vector2(500, 0)
 		var text := String(r["text"])
 		if r["on"] and not String(r["memo"]).is_empty():
 			text += "\n    " + String(r["memo"])
 		line.text = ("✓ " if r["on"] else "· ") + text
 		line.modulate = Color(1, 1, 1, 1) if r["on"] else Color(1, 1, 1, 0.55)
 		_ach_list.add_child(line)
+		var action: Callable = r.get("action",Callable())
+		if action.is_valid():
+			var replay := Button.new()
+			replay.text = r.get("label","查看")
+			replay.custom_minimum_size.y = 44
+			replay.set_meta("entry_id",r.get("id",""))
+			replay.pressed.connect(action)
+			_ach_list.add_child(replay)
 	_ach_head.text = head
+	_resize_list()
 	ach_panel.visible = true
+
+
+func list_tabs(tabs: Array) -> void:
+	if _ach_tabs == null:
+		_ach_tabs = HBoxContainer.new()
+		_ach_head.get_parent().add_child(_ach_tabs)
+		_ach_head.get_parent().move_child(_ach_tabs,1)
+	for child in _ach_tabs.get_children():
+		_ach_tabs.remove_child(child)
+		child.queue_free()
+	for tab: Dictionary in tabs:
+		var button := Button.new()
+		button.text = tab["text"]
+		button.toggle_mode = true
+		button.button_pressed = tab.get("on",false)
+		button.custom_minimum_size.y = 44
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.pressed.connect(tab["action"])
+		_ach_tabs.add_child(button)
+	_ach_tabs.show()
+	_resize_list()
+
+
+func list_footer(text: String, action: Callable) -> void:
+	_list_extra = Button.new()
+	_list_extra.text = text
+	_list_extra.pressed.connect(action)
+	_ach_head.get_parent().add_child(_list_extra)
+	_resize_list()
+
+
+func focus_list_entry(id: String) -> void:
+	var first: Button
+	for child in _ach_list.get_children():
+		if child is Button:
+			if first == null: first = child
+			if id != "" and child.get_meta("entry_id","") == id:
+				child.grab_focus()
+				return
+	if first != null: first.grab_focus()
+
+
+func _resize_list() -> void:
+	if not is_instance_valid(ach_panel): return
+	var view := get_viewport().get_visible_rect().size
+	var width := minf(720,maxf(240,view.x-32))
+	var scroll := _ach_list.get_parent() as ScrollContainer
+	_ach_head.custom_minimum_size.x = width-32
+	_ach_head.size.x = width-32
+	_ach_list.custom_minimum_size.x = width-46
+	scroll.custom_minimum_size = Vector2(width-32,maxf(80,minf(390,view.y-240)))
+	ach_panel.custom_minimum_size = Vector2(width,0)
+	ach_panel.reset_size()
+	_center_list()
+
+
+func _center_list() -> void:
+	if is_instance_valid(ach_panel):
+		ach_panel.position = (get_viewport().get_visible_rect().size-ach_panel.size)*.5
 
 
 ## The prologue (prologue.js PRO_PAGES): white text on black, page by page; E / Space / a tap goes on,
