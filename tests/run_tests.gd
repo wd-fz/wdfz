@@ -42,6 +42,11 @@ func same_json(a: Variant, b: Variant) -> bool:
 
 
 func _run() -> void:
+	var cyber_screen := preload("res://tests/suites/cyber_screen.gd").new(self)
+	print("CASE: cyber_screen.test_original_layout")
+	cyber_screen.test_original_layout()
+	print("CASE: cyber_screen.test_stage")
+	await cyber_screen.test_stage()
 	var classroom := preload("res://tests/suites/classroom_motion.gd").new(self)
 	print("CASE: classroom.test_original_motion")
 	await classroom.test_original_motion()

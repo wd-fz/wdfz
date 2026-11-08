@@ -51,6 +51,7 @@ var _dis_teach := Vector2.ZERO
 var _campus_env: Environment
 var _campus_light: CampusLighting
 var _cy_base := Vector3.ZERO
+var _cy_monitor: Dictionary = {}
 var _car_switch: Callable          # the app's world switch for the car intro (garage -> outside the gate)
 var _car_tsec := 0.0
 var _car_live := false
@@ -997,6 +998,8 @@ func _cy_archive_text(t: float) -> String:
 
 func _setup_cyber() -> void:
 	_lit = true
+	var view := cam.get_viewport().get_visible_rect().size
+	_cy_monitor = cy_monitor(view.x/view.y)
 	for i in 4:
 		var g := Node3D.new()
 		g.position.x = float(i) * 40.0
@@ -1102,10 +1105,15 @@ func _setup_cyber() -> void:
 	_prop(c, "desk_computer", -1.5, 0.0, -0.8, 0.0)
 	_prop(c, "desk_computer", 1.5, 0.0, -0.8, 0.0)
 	_prop(c, "chair_office", 0.95, 0.0, 0.15, PI * 0.8)
-	_box(c, 0.682, 0.442, 0.035, Color("#14181a"), 0, 1.05, -0.75)         # the monitor and its stand
-	_box(c, 0.06, 0.29, 0.04, Color("#1b2022"), 0, 0.4, -0.79)
+	var sw := float(_cy_monitor["w"])
+	var sh := float(_cy_monitor["h"])
+	var my := float(_cy_monitor["y"])
+	_box(c, sw+.06, sh+.07, 0.035, Color("#14181a"), 0, my, -0.75)
+	_box(c, 0.06, my-sh/2-.76, 0.04, Color("#1b2022"), 0, (my-sh/2+.76)/2, -0.79)
 	_box(c, 0.26, 0.02, 0.18, Color("#1b2022"), 0, 0.78, -0.77)
-	_arch = _screen(c, "archive", 1280, 768, Vector2(0.62, 0.372), Vector3(0, 1.05, -0.75 + 0.019))
+	var portrait := bool(_cy_monitor["portrait"])
+	_arch = _screen(c, "archive", 768 if portrait else 1280, 1280 if portrait else 768, Vector2(sw,sh), Vector3(0,my,-.75+.019))
+	_arch.portrait = portrait
 	# The last stage is the real campus at dawn, in front of the teaching building (the world comes back for it).
 	var base := CampusGeometry.to_scene(null, Vector2(560.0, 1008.0) * SC)
 	_cy_base = Vector3(base.x, 0.0, base.y)
@@ -1183,8 +1191,9 @@ func _apply_cyber(kk: float) -> void:
 			_lamps.visible = true
 	elif s == 2:
 		_arch.show_archive(t)
-		var push := phase(t, 7.2, 10.4)
-		_look(Vector3(ox + 0.12 * (1.0 - push), 1.12 * (1.0 - push) + 1.05 * push, -0.75 + lerpf(1.7, 0.62, push)), Vector3(ox, 1.05, -0.75))
+		var view := cam.get_viewport().get_visible_rect().size
+		var shot := cy_archive_camera(t,view.x/view.y,cam.fov,_cy_monitor)
+		_look(shot["eye"]+Vector3(ox,0,0),shot["target"]+Vector3(ox,0,0))
 		_sky_mat.albedo_color = Color(0.01, 0.012, 0.014)
 	else:
 		var rise := phase(t, 11.2, 16.0)
@@ -1194,6 +1203,19 @@ func _apply_cyber(kk: float) -> void:
 			_campus_light.update(0.0, (6.0 + 1.1 * clampf((t - 11.2) / 4.8, 0.0, 1.0)) * 60.0, cam)
 			_ui.scene_post().parameter("exposure",_campus_light.post_exposure)
 		_look(_cy_base + Vector3(2.0 * rise, 1.5 + 8.5 * rise, 6.0 + 12.0 * rise), _cy_base + Vector3(0.0, 3.0 + 19.0 * rise, -28.0))
+
+
+static func cy_monitor(aspect: float) -> Dictionary:
+	var portrait := aspect<.8
+	return {"portrait":portrait,"w":.372 if portrait else .62,"h":.62 if portrait else .372,"y":1.2 if portrait else 1.05}
+
+
+static func cy_archive_camera(t: float, aspect: float, fov: float, monitor: Dictionary) -> Dictionary:
+	var vf := tan(deg_to_rad(fov)*.5)
+	var hf := vf*aspect
+	var near_distance := maxf(float(monitor["w"])*.5/(hf*.72),float(monitor["h"])*.5/(vf*.72))
+	var push := phase(t,7.2,10.4)
+	return {"eye":Vector3(.12*(1-push),float(monitor["y"])+.07*(1-push),-.75+near_distance+1.1*(1-push)),"target":Vector3(0,monitor["y"],-.75)}
 
 
 # ---- 《闸门》 opening ----
