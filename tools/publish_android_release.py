@@ -70,11 +70,22 @@ def main():
             obj = api(f"git/tags/{obj['sha']}")["object"]
         if obj["type"] != "commit" or obj["sha"] != revision:
             raise ValueError("Existing release tag points at different source")
-    release = api(f"releases/tags/{args.tag}", optional=True)
+    def release_by_tag():
+        # REST /releases/tags does not expose an unpublished tag. gh resolves
+        # drafts through GraphQL; subsequent verification uses its numeric ID.
+        result = subprocess.run(["gh", "release", "view", args.tag, "--repo", repo, "--json", "apiUrl"], capture_output=True, text=True)
+        if result.returncode:
+            if "release not found" in result.stderr.lower(): return None
+            raise RuntimeError("GitHub could not resolve the release destination")
+        release_id = json.loads(result.stdout)["apiUrl"].rsplit("/",1)[-1]
+        if not release_id.isdigit(): raise ValueError("Invalid release identifier")
+        return api(f"releases/{release_id}")
+
+    release = release_by_tag()
     if release is None:
         subprocess.run(["gh", "release", "create", args.tag, "--repo", repo, "--draft", "--target", revision,
                         "--title", f"{args.tag} · 首个公开 Android 版", "--notes-file", str(args.notes)], check=True)
-        release = api(f"releases/tags/{args.tag}")
+        release = release_by_tag()
     if not release["draft"] or release["target_commitish"] != revision:
         raise ValueError("Refusing to modify a public release or a draft for different source")
     subprocess.run(["gh", "release", "upload", args.tag, "--repo", repo, "--clobber", *map(str, files)], check=True)
