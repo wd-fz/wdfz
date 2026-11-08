@@ -6,6 +6,12 @@ func _shot(label: String) -> void:
 	for _i in 4: await process_frame
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("res://build/previews/rules-dlc/"+label+".png")
+func _light(app: GameApp) -> void:
+	var world:=app._campus_world()
+	if world!=null and world.lighting!=null:
+		world.lighting.update(0,app.school().tsec,app.player.camera)
+		app.ui.scene_post().parameter("exposure",world.lighting.post_exposure)
+	app.ui.show_notice("")
 func _run() -> void:
 	root.size=Vector2i(1280,720)
 	root.content_scale_size=root.size
@@ -33,6 +39,7 @@ func _run() -> void:
 	flow.show_props()
 	app.ui.show_location(app._location_name())
 	app.ui.show_runtime(0)
+	_light(app)
 	flow.interact()
 	await _shot("规则载体与批注")
 	app._choice_made(1)
@@ -40,6 +47,7 @@ func _run() -> void:
 	app.school().tsec=1340
 	app.ui.show_location(app._location_name())
 	app.ui.show_runtime(0)
+	_light(app)
 	flow.step(8)
 	flow._process(3.6)
 	await _shot("第三声敲门")
