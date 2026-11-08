@@ -4053,7 +4053,7 @@ func _apply_garage_events() -> void:
 				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 				ui.show_choice(String(e["text"]), e["labels"])
 			"drive":
-				_enter_drive()
+				_play_car_intro()
 			"kill":
 				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
 				return
@@ -4064,6 +4064,26 @@ func _apply_garage_events() -> void:
 
 
 ## CarChase.start: out on the road north of the north gate, the campus hidden behind the drive.
+## The opening of the drive (cutscene.js car): headlights in the garage, then the gate seen from outside; then the real drive.
+func _play_car_intro() -> void:
+	var world := _campus_world()
+	if world == null or session == null or DisplayServer.get_name() == "headless":
+		_enter_drive()
+		return
+	if _ending_cut != null and is_instance_valid(_ending_cut):
+		_ending_cut.queue_free()
+	_ending_cut = EndingCut.new()
+	_ending_cut.name = "CarIntro"
+	add_child(_ending_cut)
+	var was_paused := get_tree().paused
+	player.enabled = false
+	get_tree().paused = true
+	_ending_cut.finished.connect(func(_skipped: bool) -> void:
+		get_tree().paused = was_paused
+		_enter_drive())
+	_ending_cut.begin("car", world, CampusData.campus(), player, ui)
+
+
 func _enter_drive() -> void:
 	var gates: Dictionary = CampusData.campus().get("gates", {})
 	var gn: Dictionary = gates.get("n", {"x": 514, "y": 95})

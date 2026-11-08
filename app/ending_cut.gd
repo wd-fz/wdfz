@@ -8,6 +8,9 @@ extends Node
 ##   dismissal (《放学》) — 18 s on four stages of its own: the broadcast room (the speakers light up one by one),
 ##   the classroom (dozens of chairs slide back at once), the stairwell seen from above (a stream of people and one
 ##   tall figure that does not move), the north gate and the teaching building behind it whose windows go dark.
+##   car (《闸门》 opening, then the real driving) — 10 s: in the garage the headlights flicker on twice and for a
+##   moment something stands in the light (then it is gone); black; outside the north gate, looking back: a row of
+##   black figures pours out of the gate and chases, the camera backing away.
 ##   cyber (《网安仙人》) — 16 s on four stages: the server room (the racks' lights go out one by one, the console
 ##   prints the shutdown log, the wall speaker breaks off), the corridor (the tube lights flicker two short one long, then
 ##   settle; the tall figure drops its shoulders and stands still), the archive (the company report against the original
@@ -22,8 +25,8 @@ extends Node
 
 signal finished(skipped: bool)
 
-const DEFS := {"face": {"dur": 10.0, "outdoor": true}, "international": {"dur": 20.0, "outdoor": false}, "dismissal": {"dur": 18.0, "outdoor": false}, "portal": {"dur": 10.0, "outdoor": false}, "cyber": {"dur": 16.0, "outdoor": false}}
-const STAGED := ["international", "dismissal", "portal", "cyber"]
+const DEFS := {"face": {"dur": 10.0, "outdoor": true}, "international": {"dur": 20.0, "outdoor": false}, "dismissal": {"dur": 18.0, "outdoor": false}, "portal": {"dur": 10.0, "outdoor": false}, "cyber": {"dur": 16.0, "outdoor": false}, "car": {"dur": 10.0, "outdoor": false}}
+const STAGED := ["international", "dismissal", "portal", "cyber", "car"]
 const COAT := [Color("#3a4a6a"), Color("#7a5a3a"), Color("#5a6a4a"), Color("#8a6a6a")]
 const SC := 2.0
 
@@ -57,6 +60,8 @@ var _ledger: Label3D
 var _dis_said := {}
 var _rails: Array = []
 var _leds: Array = []
+var _beam: MeshInstance3D
+var _thing: Node3D
 var _log: Label3D
 var _arch: Label3D
 var _lamps: Node3D
@@ -162,6 +167,11 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	cam.far = player.camera.far
 	_root.add_child(cam)
 	cam.current = true
+	if id == "car":
+		_setup_car()
+		_ui.cut_fade(0.0)
+		_apply(0.0)
+		return
 	if id == "cyber":
 		_setup_cyber()
 		_ui.cut_fade(0.0)
@@ -223,6 +233,9 @@ func _apply(kk: float) -> void:
 		return
 	if kind == "cyber":
 		_apply_cyber(kk)
+		return
+	if kind == "car":
+		_apply_car(kk)
 		return
 	_ui.cut_fade(clampf(face_fade(kk), 0.0, 1.0))
 	if kk < 0.3:
@@ -903,3 +916,112 @@ func _apply_cyber(kk: float) -> void:
 		var rise := phase(t, 11.2, 16.0)
 		_sky_mat.albedo_color = Color(0.02, 0.026, 0.03).lerp(Color(0.62, 0.72, 0.8), phase(t, 11.6, 14.2))
 		_look(Vector3(40.0 * 3.0 + 2.0 * rise, 1.5 + 8.5 * rise, 6.0 + 12.0 * rise), Vector3(120.0, 3.0 + 19.0 * rise, -28.0))
+
+
+# ---- 《闸门》 opening ----
+
+## The headlights: off, flicker twice, then steady; something shows only during the flicker.
+static func car_lights(kk: float) -> float:
+	if kk < 0.06:
+		return 0.0
+	if kk < 0.16:
+		return 1.0 if sin(kk * 120.0) > 0.0 else 0.2
+	return 1.0
+
+
+static func car_thing_visible(kk: float) -> bool:
+	return kk > 0.08 and kk < 0.16 and car_lights(kk) < 1.0
+
+
+static func car_fade(kk: float) -> float:
+	if kk < 0.3:
+		return 0.0
+	if kk < 0.36:
+		return (kk - 0.3) / 0.06
+	if kk < 0.42:
+		return 1.0 - (kk - 0.36) / 0.06
+	return (kk - 0.9) / 0.1 if kk > 0.9 else 0.0
+
+
+func _setup_car() -> void:
+	var a := Node3D.new()
+	_root.add_child(a)
+	_st.append(a)
+	_box(a, 16, 0.05, 30, Color("#2e3234"), 0, 0, 10)
+	_box(a, 16, 3.5, 0.2, Color("#3a4042"), 0, 1.75, 16)
+	_box(a, 0.2, 3.5, 30, Color("#3a4042"), -8, 1.75, 10)
+	_box(a, 0.2, 3.5, 30, Color("#3a4042"), 8, 1.75, 10)
+	_beam = MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 1.0
+	cm.bottom_radius = 1.0
+	cm.height = 0.01
+	_beam.mesh = cm
+	_beam.scale = Vector3(1.3, 1.0, 3.4)
+	_beam.position = Vector3(0, 0.02, 4.4)
+	var bm := StandardMaterial3D.new()
+	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bm.albedo_color = Color(1.0, 0.9, 0.69, 0.0)
+	_beam.material_override = bm
+	a.add_child(_beam)
+	_thing = FigureModel.make("roam", Color("#05070a"), true)
+	_thing.position = Vector3(0, 0, 6.5)
+	_thing.rotation.y = 0.0          # faces -z, towards the car
+	a.add_child(_thing)
+	var b := Node3D.new()
+	b.position.x = 60.0
+	_root.add_child(b)
+	_st.append(b)
+	_box(b, 80, 0.05, 120, Color("#3b3e3a"), 0, 0, -20)
+	_box(b, 0.6, 3.2, 0.6, Color("#6d6a62"), -2.4, 1.6, 0)
+	_box(b, 0.6, 3.2, 0.6, Color("#6d6a62"), 2.4, 1.6, 0)
+	_box(b, 5.4, 0.4, 0.6, Color("#6d6a62"), 0, 3.2, 0)
+	for i in 12:
+		var f := FigureModel.make("person", Color("#040506"), true, 1.0 + float((i * 7) % 3) * 0.05)
+		f.visible = false
+		b.add_child(f)
+		_walk.append(f)
+	_sky = MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 70.0
+	sm.height = 140.0
+	_sky.mesh = sm
+	_sky_mat = StandardMaterial3D.new()
+	_sky_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_sky_mat.cull_mode = BaseMaterial3D.CULL_FRONT
+	_sky_mat.disable_fog = true
+	_sky_mat.albedo_color = Color(0.02, 0.025, 0.035)
+	_sky.material_override = _sky_mat
+	_root.add_child(_sky)
+
+
+func _apply_car(kk: float) -> void:
+	var out := kk >= 0.36
+	(_st[0] as Node3D).visible = not out
+	(_st[1] as Node3D).visible = out
+	_ui.cut_fade(clampf(car_fade(kk), 0.0, 1.0))
+	if not out:
+		var on := car_lights(kk)
+		((_beam.material_override) as StandardMaterial3D).albedo_color = Color(1.0, 0.9, 0.69, 0.2 * on)
+		_thing.visible = car_thing_visible(kk)
+		var sh := sin(kk * 70.0) * 0.012 if kk > 0.16 else 0.0
+		_look(Vector3(0, 1.15 + sh, 0), Vector3(0, 1.0, 6))
+		_sky_mat.albedo_color = Color(0.02, 0.025, 0.035)
+		return
+	var t := clampf((kk - 0.36) / 0.64, 0.0, 1.0)
+	var gx := 60.0
+	var z := lerpf(-2.0, -30.0, ease_k(t))
+	var sway := sin(kk * 34.0) * 0.025
+	var cam_pos := Vector3(gx + sway, 1.25, z)
+	_look(cam_pos, Vector3(gx, 1.8, 24.0))
+	var i := 0
+	for f: Node3D in _walk:
+		var side := 1.0 if i % 2 == 1 else -1.0
+		var row := float(i / 2)
+		var c := clampf((t - 0.12 - float(i) * 0.03) / 0.7, 0.0, 1.0)
+		f.visible = c > 0.0
+		f.position = Vector3(side * (0.5 + row * 0.28) * (1.0 - 0.4 * c), absf(sin(kk * 30.0 + float(i))) * 0.06, lerpf(3.0, z + 5.0 + row * 1.5, c * 0.92))
+		f.rotation.y = atan2(f.position.x + gx - cam_pos.x, f.position.z - cam_pos.z)
+		i += 1
+	_sky_mat.albedo_color = Color(0.03, 0.035, 0.05)

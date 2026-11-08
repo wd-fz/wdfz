@@ -3218,7 +3218,7 @@ func _test_day_banner() -> void:
 
 
 func _test_ending_cut() -> void:
-	check(EndingCut.has("face") and EndingCut.has("international") and EndingCut.has("dismissal") and EndingCut.has("portal") and EndingCut.has("cyber") and not EndingCut.has("car"), "only the ported endings have a live scene")
+	check(EndingCut.has("face") and EndingCut.has("international") and EndingCut.has("dismissal") and EndingCut.has("portal") and EndingCut.has("cyber") and EndingCut.has("car"), "only the ported endings have a live scene")
 	check(EndingCut.needs_outdoor("face") and not EndingCut.needs_outdoor("international"), "the gate scene needs the outdoors, the stage scene does not")
 	check(EndingCut.intl_stage(3.9) == 0 and EndingCut.intl_stage(4.0) == 1 and EndingCut.intl_stage(9.0) == 2 and EndingCut.intl_stage(15.0) == 3 and EndingCut.intl_edge(4.0) == 1.0 and EndingCut.intl_edge(6.0) == 0.0 and is_equal_approx(EndingCut.intl_edge(19.6), 0.5), "the four stages and the fades between them")
 	check(EndingCut.intl_caption(0, "multilingual").begins_with("「Alle da?」") and EndingCut.intl_caption(0, "exam").begins_with("队尾的人回头") and EndingCut.intl_caption(3, "exam").contains("学校名字"), "the captions differ only in the first line by qualification")
@@ -3232,6 +3232,7 @@ func _test_ending_cut() -> void:
 	check(EndingCut.cy_stage(3.1) == 0 and EndingCut.cy_stage(3.2) == 1 and EndingCut.cy_stage(7.2) == 2 and EndingCut.cy_stage(11.2) == 3 and EndingCut.cy_log_lines(0.2) == 0 and EndingCut.cy_log_lines(2.8) == 6, "the four stages and the console log lines")
 	check(EndingCut.cy_flicker_on(3.25) and not EndingCut.cy_flicker_on(3.2 + 0.11) and EndingCut.cy_flicker_on(EndingCut.cy_flicker_end() + 1.0) and is_equal_approx(EndingCut.cy_flicker_end(), 3.2 + 1.97), "the tube lights flicker two short one long, then settle")
 	check(EndingCut.cy_archive_steps(7.0) == 0 and EndingCut.cy_archive_steps(7.4) == 1 and EndingCut.cy_archive_steps(10.3) == 9 and EndingCut.cy_fade(3.2) == 1.0 and EndingCut.cy_fade(5.0) == 0.0 and EndingCut.cy_fade(16.0) == 1.0, "the archive fills line by line, fades between stages")
+	check(EndingCut.car_lights(0.03) == 0.0 and EndingCut.car_lights(0.5) == 1.0 and not EndingCut.car_thing_visible(0.03) and not EndingCut.car_thing_visible(0.3) and EndingCut.car_fade(0.1) == 0.0 and EndingCut.car_fade(0.33) > 0.4 and EndingCut.car_fade(0.5) == 0.0 and is_equal_approx(EndingCut.car_fade(0.95), 0.5), "the garage lights flicker, something shows in the flicker only, black between garage and gate")
 	var g := EndingCut.gate_scene(CampusData.campus(), "w")
 	check(is_equal_approx(g.x, 200.0 * 2.0 / 9.0) and is_equal_approx(g.z, 624.0 * 2.0 / 9.0), "the gate is placed from the campus plan")
 
