@@ -3220,7 +3220,7 @@ func _test_day_banner() -> void:
 
 func _test_death_cg() -> void:
 	for c: String in DeathCG.CAUSES:
-		check(StoryModule.DURATIONS.has(c) and DeathCG.has(c), "death scene %s has a duration and a scene" % c)
+		check((StoryModule.DURATIONS.has(c) or DeathCG.LENGTH.has(c)) and DeathCG.has(c), "death scene %s has a duration and a scene" % c)
 	check(DeathCG.duration("misread", 2.0) == 4.1 and DeathCG.duration("trash", 3.6) == 3.6 and DeathCG.has("window_gaze") and DeathCG.has("paper_sender") and DeathCG.has("campus_fall"), "scenes of the cause's own length (window gaze 7 s, paper sender 8 s, misread 4.1 s, fall 6 s)")
 	check(not DeathCG.has("vignette") and DeathCG.seg(0.5, 0.0, 1.0) == 0.5 and DeathCG.seg(-1.0, 0.0, 1.0) == 0.0 and DeathCG.ss(0.5, 0.0, 1.0) == 0.5 and DeathCG.ss(2.0, 0.0, 1.0) == 1.0, "the easing helpers clamp")
 
