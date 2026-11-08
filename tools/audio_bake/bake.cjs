@@ -17,6 +17,7 @@ const CROWD = /^(death\.crowd$|event\.liftOverload$|threat\.crowd$)/;
 const MAZE = /^(void\.|step\.void$|death\.(void|abyss)$)/;
 const ONLY_MAZE = process.argv.includes('--maze-only');
 const ONLY_CROWD = process.argv.includes('--crowd-only');
+const ONLY_BELL_TAILS = process.argv.includes('--bell-tails-only');
 
 // ---- load the old data unchanged ----
 const pub = {};
@@ -167,10 +168,10 @@ const check = {};
 
 // ---- one-shots ----
 fs.mkdirSync(path.join(OUT, 'sfx'), {recursive: true});
-const index = ONLY_MAZE || ONLY_CROWD ? JSON.parse(fs.readFileSync(path.join(OUT, 'index.json'), 'utf8')) : {rate: SR, cats: {}, sfx: {}, beds: {}};
+const index = ONLY_MAZE || ONLY_CROWD || ONLY_BELL_TAILS ? JSON.parse(fs.readFileSync(path.join(OUT, 'index.json'), 'utf8')) : {rate: SR, cats: {}, sfx: {}, beds: {}};
 for (const c in CATS) index.cats[c] = {target: CATS[c].target, wet: CAT_WET[c] || 0.3};
 for (const id of Object.keys(BANK).sort()) {
-  if ((ONLY_MAZE && !MAZE.test(id)) || (ONLY_CROWD && !CROWD.test(id))) continue;
+  if (ONLY_BELL_TAILS || (ONLY_MAZE && !MAZE.test(id)) || (ONLY_CROWD && !CROWD.test(id))) continue;
   const D = BANK[id], vars = []; let stereo = false, len = 0;
   // Every play re-rolls the recipe's ranges in the Web version; here short sounds get three baked
   // takes, middle ones two and long ones (bells, scenes) one, plus pitch and gain variation at play time.
@@ -192,10 +193,32 @@ for (const id of Object.keys(BANK).sort()) {
   index.sfx[id] = {cat: D.cat, len: Math.round(len * 100) / 100, stereo, vary: {p: (D.vary || {}).p || 0, g: (D.vary || {}).g || 0}, wet: D.wet !== undefined ? D.wet : (CAT_WET[D.cat] || 0.3), files};
 }
 
+// Atmos.bellTune changes only note 8, preserving the first seven note frequencies and times.
+// Store these as variants of the original event, not extra player-facing sound IDs.
+if (!ONLY_MAZE && !ONLY_CROWD) {
+  const id='event.bellEnd', layer=BANK[id].layers[0];
+  rng=mulberry(1000);
+  const baseLength=render(id,{},true,null)+.35;
+  rng=mulberry(1000);
+  const base=new Buf(Math.ceil(baseLength*SR));render(id,{},false,base);
+  let tailAt=0;for(let i=0;i<7;i++)tailAt+=num(layer.every,{},i,.2);
+  index.bell_tails=[];
+  for(const [name,semi,length] of [['day2',.5,1],['day3',1,1],['night2',2.1,1.8],['night3',2.6,1.8]]){
+    const opts={tail:Math.pow(2,-semi/12),tailLength:length};
+    rng=mulberry(1000);const len=render(id,opts,true,null)+.35;
+    rng=mulberry(1000);const buf=new Buf(Math.ceil(len*SR));render(id,opts,false,buf);
+    for(let i=0;i<Math.floor(tailAt*SR);i++)if(buf.L[i]!==base.L[i]||buf.R[i]!==base.R[i])throw Error('Bell prefix changed: '+name);
+    const chans=buf.stereo?[buf.L,buf.R]:[buf.L],db=normalise(chans)+(LEVELS[id]||0),file=`${id}.${name}.ogg`;
+    writeWav(path.join(OUT,'sfx',file.replace(/\.ogg$/,'.wav')),chans,SR);
+    index.bell_tails.push({...opts,len,files:[{file,db:Math.round(db*100)/100}]});
+    console.log(`bell ${name}: first seven notes unchanged, tail ${opts.tail.toFixed(6)}, duration ${len.toFixed(2)} s`);
+  }
+}
+
 // ---- continuous beds (audio.js buildLayers), baked as seamless loops ----
 fs.mkdirSync(path.join(OUT, 'beds'), {recursive: true});
 function loopBake(name, seconds, rate, gen) {
-  if (ONLY_CROWD) return;
+  if (ONLY_CROWD || ONLY_BELL_TAILS) return;
   const fade = Math.min(1.5, seconds * 0.25), n = Math.round(seconds * rate), m = Math.round(fade * rate), raw = new Float32Array(n + m);
   for (let k = 0; k < n + m; k++) raw[k] = gen(k / rate);
   const out = new Float32Array(n);   // the tail crossfades into the head (equal power) so the loop has no seam
@@ -204,7 +227,7 @@ function loopBake(name, seconds, rate, gen) {
 }
 function noiseLoop(name, type, f, q, lfo) { const bq = new Biquad(type), nr = mulberry(name.length * 7919);
   const SRb = SR; loopBake(name, lfo ? 1 / lfo.rate * 2 : 6, SRb, (s) => { bq.set(f + (lfo ? lfo.depth * Math.sin(2 * Math.PI * lfo.rate * s) : 0), q); return bq.run(nr() * 2 - 1); }); }
-if (!ONLY_MAZE) {
+if (!ONLY_MAZE && !ONLY_CROWD && !ONLY_BELL_TAILS) {
 noiseLoop('wind', 'bandpass', 420, 0.7, {rate: 0.11, depth: 180});
 noiseLoop('rain', 'lowpass', 3600, 0.4);
 noiseLoop('rain2', 'highpass', 5200, 0.3);

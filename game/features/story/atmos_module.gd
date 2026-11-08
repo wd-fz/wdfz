@@ -558,7 +558,7 @@ func scene_event() -> Dictionary:
 
 # ---- A5: bell ----
 
-## {pitch, slow, caption} for a bell, or {} when it rings true (the start-of-class bell never changes).
+## {tail, tailLength, caption}: only the eighth note changes; the start bell never changes.
 func bell_tune(kind: String, tsec: float) -> Dictionary:
 	if kind == "start":
 		return {}
@@ -570,7 +570,7 @@ func bell_tune(kind: String, tsec: float) -> Dictionary:
 		semi += float(CFG["night_bell_drop"])
 	if not (semi > 0.0):
 		return {}
-	return {"pitch": pow(2.0, -semi / 12.0), "slow": night and d >= 2,
+	return {"tail": pow(2.0, -semi / 12.0), "tailLength": 1.8 if night and d >= 2 else 1.0,
 		"caption": "下课铃，拖得很长，最后一个音沉了下去" if night else "下课铃，最后一个音低了一点"}
 
 

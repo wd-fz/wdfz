@@ -238,6 +238,11 @@ func play(id: String, opts: Dictionary = {}) -> bool:
 		_delayed.append([_t + at, id, o])
 		return true
 	var files: Array = d["files"]
+	if id=="event.bellEnd" and opts.has("tail"):
+		for variant: Dictionary in _index.get("bell_tails",[]):
+			if is_equal_approx(variant["tail"],float(opts["tail"])) and is_equal_approx(variant["tailLength"],float(opts.get("tailLength",1))):
+				files = variant["files"]
+				break
 	var take: Dictionary = files[_rng.randi() % files.size()]
 	var vary: Dictionary = d["vary"]
 	var k := maxf(0.0, float(opts.get("k", 1.0))) * (1.0 + (_rng.randf() * 2.0 - 1.0) * float(vary.get("g", 0.0)))
@@ -370,13 +375,13 @@ func step_on(surface: String, k: float = 1.0, opts: Dictionary = {}) -> void:
 		play("step.wet", o)
 
 
-## tune: AtmosModule.bell_tune (A5) — the end-of-class bell sinks as the days pass. The baked bell is
-## one sample, so the whole bell is lowered (the Web version lowers only its last note).
+## tune: AtmosModule.bell_tune (A5) — only the last note sinks / lengthens as the days pass.
 func school_bell(kind: String, outdoor: bool, tune: Dictionary = {}) -> void:
 	var v := 0.45 if outdoor else 1.0
 	var opts := {"k": v, "lp": 0.6 if v < 0.7 else 1.0}
 	if not tune.is_empty():
-		opts["pitch"] = float(tune["pitch"]) * (0.97 if bool(tune.get("slow", false)) else 1.0)
+		opts["tail"] = float(tune.get("tail",1))
+		opts["tailLength"] = float(tune.get("tailLength",1))
 		opts["caption"] = String(tune["caption"])
 	play("event.bellStart" if kind == "start" else "event.bellEnd", opts)
 

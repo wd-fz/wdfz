@@ -3321,5 +3321,51 @@
    "db": 2.18,
    "len": 120
   }
- }
+ },
+ "bell_tails": [
+  {
+   "tail": 0.9715319411536059,
+   "tailLength": 1,
+   "len": 7.57,
+   "files": [
+    {
+     "file": "event.bellEnd.day2.ogg",
+     "db": -30.06
+    }
+   ]
+  },
+  {
+   "tail": 0.9438743126816935,
+   "tailLength": 1,
+   "len": 7.57,
+   "files": [
+    {
+     "file": "event.bellEnd.day3.ogg",
+     "db": -30.06
+    }
+   ]
+  },
+  {
+   "tail": 0.8857675191023606,
+   "tailLength": 1.8,
+   "len": 9.49,
+   "files": [
+    {
+     "file": "event.bellEnd.night2.ogg",
+     "db": -30.06
+    }
+   ]
+  },
+  {
+   "tail": 0.86055143724433,
+   "tailLength": 1.8,
+   "len": 9.49,
+   "files": [
+    {
+     "file": "event.bellEnd.night3.ogg",
+     "db": -29.99
+    }
+   ]
+  }
+ ]
 }
