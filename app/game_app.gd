@@ -4486,6 +4486,8 @@ func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 	var tw := _campus_world()
 	if tw != null:
 		tw.sync_traces(weird.traces)
+		if campus() != null and campus().is_stairwell(session.world_id):
+			tw.update_shaft_previews(float(pose["position"][1]))
 	_phantom_step(delta, day_rules, room, pose, weird)
 	weird.tick(delta)
 	for e: Dictionary in weird.take_events():

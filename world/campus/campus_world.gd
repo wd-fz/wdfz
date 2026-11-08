@@ -129,6 +129,46 @@ func _build_clinic() -> void:
 var link_previews: Array[Node3D] = []
 var stair_previews: Array[Node3D] = []
 var door_previews: Array[Node3D] = []
+var _shaft_levels: Dictionary = {}      # level → the preview of the floor beyond that level's door
+
+
+## In a stairwell: the floors beyond the doors of the level you are on and the next one (StairView.refresh). level from the height.
+func update_shaft_previews(height: float) -> void:
+	var st: Dictionary = {}
+	for e: Dictionary in CampusData.campus().get("stair_layout", []):
+		if String(e["id"]) == scene_id:
+			st = e
+	if st.is_empty():
+		return
+	var rise := float(st["rise"])
+	var rooms_list: Array = st["rooms"]
+	var level := clampi(roundi(height / rise), 0, rooms_list.size() - 1)
+	var want: Array = [level]
+	if level < rooms_list.size() - 1:
+		want.append(level + 1)
+	elif level > 0:
+		want.append(level - 1)
+	for l: int in _shaft_levels.keys():
+		if not want.has(l):
+			(_shaft_levels[l] as Node3D).queue_free()
+			_shaft_levels.erase(l)
+	var rooms := CampusData.rooms()
+	var outside := CampusData.layout("out")
+	for f: int in want:
+		if _shaft_levels.has(f):
+			continue
+		var id := String(rooms_list[f])
+		var model := _load_visual(id)
+		var port := CampusPortals.stair_port(st, f, rooms, outside)
+		if model == null or port.is_empty():
+			continue
+		var pp := CampusGeometry.to_scene(rooms[id] if id != "out" else null, port["p"])
+		var theta := CampusPortals.stair_turn(port["n"])
+		model.name = "ShaftPreview_%d" % f
+		model.rotation.y = theta
+		model.position = Vector3(-(cos(theta) * pp.x + sin(theta) * pp.y), float(f) * rise, -2.8 - (-sin(theta) * pp.x + cos(theta) * pp.y))
+		add_child(model)
+		_shaft_levels[f] = model
 
 
 func _load_visual(id: String) -> Node3D:
