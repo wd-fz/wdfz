@@ -131,7 +131,7 @@ def main():
         if not a.only or 'fx' in a.only.split(','):
             fx_dir = Path(a.out) / 'fx'
             fx_dir.mkdir(parents=True, exist_ok=True)
-            for name in ['hand', 'head', 'bigface', 'smile', 'neckhead', 'bell']:
+            for name in ['hand', 'head', 'bigface', 'smile', 'neckhead', 'bell', 'lantern']:
                 r = pg.evaluate("([k,i])=>window.__wdfzExport(k,i)", ['fx', name])
                 data = externalize_images(base64.b64decode(r['glb']), tex, '../textures/')
                 (fx_dir / f'{name}.glb').write_bytes(data)

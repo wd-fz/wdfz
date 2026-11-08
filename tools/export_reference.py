@@ -5,6 +5,7 @@ Requires Playwright and Chromium. The normal CI suite consumes the committed gzi
 it needs neither the Web repository nor a browser. Do not regenerate expectations from Godot.
 """
 import argparse
+import base64
 import functools
 import gzip
 import json
@@ -34,6 +35,7 @@ def main():
     parser.add_argument("--secret-items-only", action="store_true", help="capture original knife and additive starting-gift rules")
     parser.add_argument("--inception-only", action="store_true", help="capture original dream/sleep rules, settlements and cinematic")
     parser.add_argument("--maze-patrol-only", action="store_true", help="capture original height-aware patrol paths, gateway and saves")
+    parser.add_argument("--anomaly-fx-only", action="store_true", help="capture original world anomaly models, animation and textures")
     args = parser.parse_args()
     source = args.source.resolve()
     tree = subprocess.check_output(["git", "rev-parse", "HEAD:game3d"], cwd=source, text=True).strip()
@@ -53,9 +55,18 @@ def main():
             page.add_init_script("localStorage.setItem('wdfz_pro','1');localStorage.setItem('zw3d_set',JSON.stringify({q:0,amb:0,vol:0,renderer:'webgl',rv:1}));")
             page.goto(f"http://127.0.0.1:{server.server_port}/")
             page.wait_for_function("Engine.ready() && Assets.ready(Assets.want())", timeout=180000)
-            if args.save_only or args.story_only or args.grading_only or args.crowd_only or args.secret_items_only or args.inception_only or args.maze_patrol_only:
-                stem = "maze_patrol" if args.maze_patrol_only else "inception" if args.inception_only else "secret_items" if args.secret_items_only else "crowd" if args.crowd_only else "grading" if args.grading_only else "routes" if args.story_only else "saves"
+            if args.save_only or args.story_only or args.grading_only or args.crowd_only or args.secret_items_only or args.inception_only or args.maze_patrol_only or args.anomaly_fx_only:
+                stem = "anomaly_fx" if args.anomaly_fx_only else "maze_patrol" if args.maze_patrol_only else "inception" if args.inception_only else "secret_items" if args.secret_items_only else "crowd" if args.crowd_only else "grading" if args.grading_only else "routes" if args.story_only else "saves"
                 result = page.evaluate((ROOT / f"tools/reference_{stem}.js").read_text())
+                if args.anomaly_fx_only:
+                    texture_dir=ROOT / "assets/campus/anomalies"
+                    texture_dir.mkdir(parents=True,exist_ok=True)
+                    for name,data in result.pop("textures").items():
+                        (texture_dir / (name+".png")).write_bytes(base64.b64decode(data.split(",",1)[1]))
+                    page.add_script_tag(path=str(ROOT / "tools/export_scenes/vendor/gltf-exporter.js"))
+                    page.add_script_tag(path=str(ROOT / "tools/export_scenes/export.js"))
+                    model=page.evaluate("window.__wdfzExport('fx','lantern')")
+                    (ROOT / "assets/campus/fx/lantern.glb").write_bytes(base64.b64decode(model["glb"]))
                 result["game3d_tree"] = tree
                 target = ROOT / f"tests/fixtures/{stem if stem != 'saves' else 'save'}-reference.json.gz" if args.output == ROOT / "tests/fixtures/web-reference.json.gz" else args.output
                 target.parent.mkdir(parents=True, exist_ok=True)

@@ -649,6 +649,8 @@ func _on(id: String) -> void:
 				_say("我：背后有脚步声。很轻，一步一步走近……停在我身后。然后，有人拍了拍我的肩膀。很轻，像在叫我。", true)
 		"hand":
 			d["chosen"] = null
+			var src:=_ahead_point(8.0)
+			d["src"]={"x":src.x,"y":src.y}
 		"repeat", "cold":
 			d["chosen"] = null
 		"chalk":

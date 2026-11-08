@@ -249,7 +249,7 @@ func _test_audio(app: GameApp) -> void:
 	check(not fx.bed_playing("wind") and not fx.bed_playing("hum"), "stop_all stops the beds")
 
 
-## The placeholder anomaly props follow the module state and vanish when it ends.
+## Original anomaly props follow the module state and vanish when it ends.
 
 
 func _test_anomaly_fx(app: GameApp) -> void:
@@ -270,7 +270,7 @@ func _test_anomaly_fx(app: GameApp) -> void:
 		"moth": {"src": {"x": me.x + 40.0, "y": me.y}}, "exercise": {"src": {"x": me.x + 40.0, "y": me.y}}, "hand": {"chosen": null},
 		"chalk": {"until": 800.0}, "roster": {"rx": me.x, "ry": me.y, "done": false}, "leak": {"pts": [{"x": me.x + 20.0, "y": me.y}, {"x": me.x + 30.0, "y": me.y + 9.0}]},
 		"rite": {"c": {"x": me.x + 30.0, "y": me.y}}, "twin": {"x": me.x + 40.0, "y": me.y, "room": "teach1"},
-		"turn": {"chosen": null, "smile": true}, "repeat": {"chosen": null}, "stare": {}, "feast": {}, "shadow": {"acc": 0.0}, "lamps": {}, "cold": {"chosen": null},
+		"repeat": {"chosen": null}, "stare": {}, "feast": {}, "shadow": {"acc": 0.0}, "lamps": {}, "cold": {"chosen": null},
 	}
 	for id: String in datas:
 		weird.an["id"] = id
@@ -288,7 +288,11 @@ func _test_anomaly_fx(app: GameApp) -> void:
 	weird.an["active"] = true
 	weird.an["data"] = {"scene": "teach1"}
 	await _frames(2)
-	check(fx.shown_count() == 0, "a sound-only anomaly (the broadcast call) draws nothing")
+	check(fx.shown_count() > 0, "the broadcast call shows its original pulsing speakers")
+	weird.an["id"]="turn"
+	weird.an["data"]={"scene":"teach1","chosen":null,"smile":false}
+	await _frames(2)
+	check(fx.shown_count()==0,"the shoulder event uses its dedicated smile/choice presentation without an invented following figure")
 	weird.end_now()
 	weird.an["active"] = true
 	weird.an["data"] = {"scene": "out"}
