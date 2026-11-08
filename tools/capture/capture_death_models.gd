@@ -18,11 +18,16 @@ func _run() -> void:
 	app._stand_up()
 	app.player.camera.position.y = CameraMotion.EYE
 	app.ui.show_notice("")
+	app._campus_world().lighting.update(0,app.school().tsec,app.player.camera)
+	app.ui.scene_post().parameter("exposure",app._campus_world().lighting.post_exposure)
 	for spec: Array in [["floor",[.95,1.9]],["gaze",[2.1,2.6]],["swarm",[1.7,2.8]]]:
 		app._start_death_cg(spec[0])
 		var cg := app._death_cg
+		var sampled := 0.0
 		for time: float in spec[1]:
-			cg.update(time)
+			while sampled<time:
+				sampled = minf(time,sampled+1.0/60)
+				cg.update(sampled)
 			for _i in 4: await process_frame
 			await RenderingServer.frame_post_draw
 			root.get_texture().get_image().save_png("res://build/previews/death-models/%s-%.2f.png" % [spec[0],time])

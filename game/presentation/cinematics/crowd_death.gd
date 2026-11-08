@@ -16,7 +16,7 @@ static func build(c: DeathCG) -> void:
 		c.box(.9,.2,.05,Color("#5e6766"),-1,0,2.2,D+.02)]
 	for wall: MeshInstance3D in c.d["walls"]:
 		wall.set_meta("base_color",wall.material_override.albedo_color)
-	c.d["lamp"]=c.box(.6,.012,.4,Color("#d8ddd6"),-1,0,2.29,D-.8)
+	c.d["lamp"]=c.box(.6,.012,.4,Color("#d8ddd6"),-1,0,2.29,D-.8,false)
 	c.box(.04,.82,.19,Color("#262c2e"),-1,-.77,1.42,D-.4)
 	c.box(.2,.12,.008,Color("#070808"),-1,0,2.2,D-.008)
 	var text := LiftCrowdFx.display_label(.19)
@@ -26,10 +26,10 @@ static func build(c: DeathCG) -> void:
 	c.d["segs"]={}
 	for key: String in DeathCG.LIFT_SEG:
 		var q: Array=DeathCG.LIFT_SEG[key]
-		c.d["segs"][key]=c.box(q[2],q[3],.004,Color("#ff4a2a"),-1,-q[0],2.2+q[1],D-.013)
+		c.d["segs"][key]=c.box(q[2],q[3],.004,Color("#ff4a2a"),-1,-q[0],2.2+q[1],D-.013,false)
 	c.d["leaf_l"]=c.box(.45,2.1,.03,Color("#737b7a"),-1,.225,1.05,D)
 	c.d["leaf_r"]=c.box(.45,2.1,.03,Color("#737b7a"),-1,-.225,1.05,D)
-	c.d["out"]=c.box(1.6,2.3,.01,Color("#b9b6a8"),-1,0,1.15,D+.9)
+	c.d["out"]=c.box(1.6,2.3,.01,Color("#b9b6a8"),-1,0,1.15,D+.9,false)
 	c.d["card"]=c.box(.12,.004,.078,Color("#e9e4d6"),-1,.04,.004,D-.42)
 	c.d["photo"]=c.box(.03,.005,.04,Color("#47515a"),-1,.058,.005,D-.43)
 	c.d["card"].rotation.y=.5
@@ -45,7 +45,7 @@ static func build(c: DeathCG) -> void:
 	for i in 4:
 		var plane := QuadMesh.new()
 		plane.size=Vector2.ONE
-		c.d["edges"].append(c.mesh(plane,c._mat(Color.BLACK),0,-5,0))
+		c.d["edges"].append(c.mesh(plane,c._mat(Color.BLACK,-1,false,false,false),0,-5,0))
 	c.veil(Color.BLACK)
 
 

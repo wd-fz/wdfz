@@ -96,7 +96,7 @@ static func build_fall(c: DeathCG) -> void:
 	c.d["mark"] = mark
 	var pad := Node3D.new()
 	c.put(pad,0,0,1.2)
-	var slab := c.box(4.8,.3,4.8,Color("#8f9294"),-1,0,-.15,0)
+	var slab := c.box(4.8,.3,4.8,Color("#8f9294"),-1,0,-.15,0,false)
 	slab.reparent(pad,false)
 	for i in range(-6,7):
 		var t := i*.7
@@ -115,12 +115,12 @@ static func build_fall(c: DeathCG) -> void:
 	cone.top_radius = 0
 	cone.bottom_radius = .42
 	cone.height = 2
-	var volume := c.mesh(cone,c._mat(Color("#f4f8fa"),.22),0,0,1,beam)
+	var volume := c.mesh(cone,c._mat(Color("#f4f8fa"),.22,false,false,false),0,0,1,beam)
 	volume.rotation.x = -PI/2
 	var lens := SphereMesh.new()
 	lens.radius = .06
 	lens.height = .12
-	c.mesh(lens,c._mat(Color.WHITE),0,0,.01,beam)
+	c.mesh(lens,c._mat(Color.WHITE,-1,false,false,false),0,0,.01,beam)
 	c.d.merge({"pad":pad,"man":man,"beam":beam})
 	c.veil(Color.BLACK)
 

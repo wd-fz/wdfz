@@ -64,6 +64,7 @@ func begin(cause: String, player: PlayerController, world: Node3D, ui: GameUI, d
 	on = true
 	_player = player
 	_world = world
+	_world_was_visible = world.visible
 	_ui = ui
 	cam = player.camera if camera_override == null else camera_override
 	shk = 0.0 if reduce_shake else 1.0
@@ -99,6 +100,8 @@ func _restore() -> void:
 	if _restored:
 		return
 	_restored = true
+	if _ui != null and is_instance_valid(_ui):
+		_ui.cut_flash(0)
 	if cam != null and is_instance_valid(cam):
 		cam.rotation = Vector3(_base_pitch, 0.0, 0.0)
 		cam.position.y = _base_y
@@ -134,11 +137,11 @@ func finish() -> void:
 
 # ---- helpers (the old Ctx) ----
 
-func _mat(col: Color, op: float = -1.0, double: bool = false, over: bool = false) -> StandardMaterial3D:
+func _mat(col: Color, op: float = -1.0, double: bool = false, over: bool = false, fog_enabled: bool = true) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.albedo_color = col if op < 0.0 else Color(col.r, col.g, col.b, op)
-	m.disable_fog = true
+	m.disable_fog = not fog_enabled
 	if op >= 0.0:
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	if double:
@@ -158,23 +161,26 @@ func put(n: Node3D, x: float, y: float, z: float, parent: Node3D = null) -> Node
 func mesh(m: Mesh, mat: Material, x: float, y: float, z: float, parent: Node3D = null) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.mesh = m
+	mi.rotation_order = EULER_ORDER_XYZ
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	put(mi, x, y, z, parent)
 	return mi
 
 
-func box(w: float, h: float, dd: float, col: Color, op: float, x: float, y: float, z: float) -> MeshInstance3D:
+func box(w: float, h: float, dd: float, col: Color, op: float, x: float, y: float, z: float, fog_enabled: bool = true) -> MeshInstance3D:
 	var bm := BoxMesh.new()
 	bm.size = Vector3(w, h, dd)
-	return mesh(bm, _mat(col, op), x, y, z)
+	return mesh(bm, _mat(col, op,false,false,fog_enabled), x, y, z)
 
 
-func torus(radius: float, tube: float, mat: Material, x: float, y: float, z: float, parent: Node3D = null) -> MeshInstance3D:
+func torus(radius: float, tube: float, mat: Material, x: float, y: float, z: float, parent: Node3D = null, radial: int = 6, tubular: int = 24) -> MeshInstance3D:
 	var tm := TorusMesh.new()
 	tm.inner_radius = radius - tube
 	tm.outer_radius = radius + tube
-	return mesh(tm, mat, x, y, z, parent)
+	tm.rings = tubular
+	tm.ring_segments = radial
+	return mesh(_turned_mesh(tm,Basis(Vector3.RIGHT,PI/2)),mat,x,y,z,parent)
 
 
 ## A figure of the old build (front +z, the old rotations apply).
@@ -207,7 +213,7 @@ func fxm(name: String, scale: float, x: float, y: float, z: float) -> Node3D:
 		mat.vertex_color_use_as_albedo = true
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-		mat.disable_fog = true
+		mat.disable_fog = false
 		for mi: Node in inst.find_children("*", "MeshInstance3D", true, false):
 			(mi as MeshInstance3D).material_override = mat
 			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -225,7 +231,7 @@ func veil(col: Color) -> void:
 	veil_mesh = MeshInstance3D.new()
 	veil_mesh.name = "DeathVeil"
 	veil_mesh.mesh = sm
-	veil_mesh.material_override = _mat(col, 0.0, false, true)
+	veil_mesh.material_override = _mat(col, 0.0, false, true, false)
 	(veil_mesh.material_override as StandardMaterial3D).cull_mode = BaseMaterial3D.CULL_FRONT
 	cam.add_child(veil_mesh)
 
@@ -245,7 +251,7 @@ func hide_world(sky: Color = Color(0.02, 0.025, 0.03)) -> void:
 	sm.radius = 60.0
 	sm.height = 120.0
 	_sky.mesh = sm
-	var m := _mat(sky)
+	var m := _mat(sky,-1,false,false,false)
 	m.cull_mode = BaseMaterial3D.CULL_FRONT
 	_sky.material_override = m
 	cam.add_child(_sky)
@@ -268,7 +274,7 @@ func inst(m: Mesh, mat: Material, count: int) -> MultiMeshInstance3D:
 
 ## Place instance i; a scale of 0 hides it.
 func set_i(im: MultiMeshInstance3D, i: int, pos: Vector3, rot: Vector3 = Vector3.ZERO, scl: Vector3 = Vector3.ONE) -> void:
-	im.multimesh.set_instance_transform(i, Transform3D(Basis.from_euler(rot, EULER_ORDER_XYZ).scaled(scl), pos))
+	im.multimesh.set_instance_transform(i, Transform3D(Basis.from_euler(rot, EULER_ORDER_XYZ)*Basis.from_scale(scl), pos))
 
 
 func _original_random() -> float:
@@ -276,14 +282,39 @@ func _original_random() -> float:
 	return _original_random_state/4294967296.0
 
 
-func disc(radius: float, col: Color, op: float, x: float, y: float, z: float, sides: int = 24) -> MeshInstance3D:
-	var cm := CylinderMesh.new()
-	cm.top_radius = radius
-	cm.bottom_radius = radius
-	cm.height = 0.004
-	cm.radial_segments = sides
-	cm.rings = 1
-	return mesh(cm, _mat(col, op, true), x, y, z)
+func _turned_mesh(shape: Mesh, turn: Basis) -> ArrayMesh:
+	var arrays := shape.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+	for i in vertices.size():
+		vertices[i] = turn*vertices[i]
+		if i<normals.size(): normals[i] = turn*normals[i]
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	# The affected primitives are untextured; stale tangents must not survive a basis change.
+	arrays[Mesh.ARRAY_TANGENT] = null
+	var result := ArrayMesh.new()
+	result.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+	return result
+
+
+func disc(radius: float, col: Color, op: float, x: float, y: float, z: float, sides: int = 24, fog_enabled: bool = true) -> MeshInstance3D:
+	# Original CircleGeometry is flat in XY; the caller supplies its floor/ceiling/facing rotation.
+	var vertices := PackedVector3Array([Vector3.ZERO])
+	var normals := PackedVector3Array([Vector3.BACK])
+	var indices := PackedInt32Array()
+	for i in range(sides+1):
+		vertices.append(Vector3(cos(i*TAU/sides)*radius,sin(i*TAU/sides)*radius,0))
+		normals.append(Vector3.BACK)
+		if i>0: indices.append_array([0,i+1,i])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var shape := ArrayMesh.new()
+	shape.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+	return mesh(shape,_mat(col,op,true,false,fog_enabled),x,y,z)
 
 
 func cam_y() -> float:
@@ -340,11 +371,12 @@ func _build_trash() -> void:
 	cm.top_radius = 0.62
 	cm.bottom_radius = 0.55
 	cm.height = 1.25
+	cm.radial_segments = 22
 	cm.cap_top = false
 	cm.cap_bottom = false
 	mesh(cm, green, 0.0, 0.625, 0.0)
 	for i in 2:
-		torus(0.6 - float(i) * 0.03, 0.018, rib, 0.0, 0.3 + float(i) * 0.7, 0.0)
+		torus(0.6 - float(i) * 0.03, 0.018, rib, 0.0, 0.3 + float(i) * 0.7, 0.0).rotation.x = PI/2
 	for i in 5:
 		box(0.18 + float((i * 7) % 5) * 0.03, 0.04, 0.14, Color("#b8b2a6"), -1.0, float((i * 37) % 9 - 4) * 0.08, 0.03, float((i * 53) % 9 - 4) * 0.07)
 	var hinge := Node3D.new()
@@ -353,16 +385,15 @@ func _build_trash() -> void:
 	lm.top_radius = 0.64
 	lm.bottom_radius = 0.64
 	lm.height = 0.05
+	lm.radial_segments = 22
 	var lid := mesh(lm, _mat(Color("#24402c")), 0.62, 0.0, 0.0, hinge)
 	lid.rotation = Vector3.ZERO
 	hinge.rotation.z = 1.9
 	d["hinge"] = hinge
-	var lamp_m := CylinderMesh.new()
-	lamp_m.top_radius = 0.45
-	lamp_m.bottom_radius = 0.45
-	lamp_m.height = 0.01
-	d["lamp"] = mesh(lamp_m, _mat(Color("#e8e2cc")), 0.4, 3.0, 0.2)
-	d["slit"] = torus(0.63, 0.008, _mat(Color("#f0e6c8"), 0.5), 0.0, 1.24, 0.0)
+	d["lamp"] = disc(.45,Color("e8e2cc"),-1,.4,3,.2,20,false)
+	(d["lamp"] as Node3D).rotation.x = PI/2
+	d["slit"] = torus(.63,.008,_mat(Color("f0e6c8"),.5,false,false,false),0,1.24,0,null,4,40)
+	(d["slit"] as Node3D).rotation.x = PI/2
 	veil(Color.BLACK)
 
 
@@ -406,18 +437,19 @@ func _build_liftdoor() -> void:
 	box(0.35, 2.3, 0.05, Color("#5e6766"), -1.0, 0.625, 1.15, dd + 0.02)
 	box(0.9, 0.2, 0.05, Color("#5e6766"), -1.0, 0.0, 2.2, dd + 0.02)
 	box(0.9, 0.02, 0.1, Color("#464c4b"), -1.0, 0.0, 0.01, dd + 0.04)
-	d["lamp"] = box(0.6, 0.012, 0.4, Color("#d8ddd6"), -1.0, 0.0, 2.29, dd - 0.8)
+	d["lamp"] = box(0.6, 0.012, 0.4, Color("#d8ddd6"), -1.0, 0.0, 2.29, dd - 0.8,false)
 	box(0.04, 0.82, 0.19, Color("#262c2e"), -1.0, -0.77, 1.42, dd - 0.4)
 	box(0.16, 0.12, 0.008, Color("#070808"), -1.0, 0.0, 2.2, dd - 0.008)
-	var digit: String = LIFT_DIGIT[2]
+	var floor := int((_world as CampusWorld).layout.get("floor",2)) if _world is CampusWorld else 2
+	var digit: String = LIFT_DIGIT[floor if floor>=1 and floor<=5 else 2]
 	for key: String in LIFT_SEG:
 		if digit.find(key) < 0:
 			continue
 		var q: Array = LIFT_SEG[key]
-		box(float(q[2]), float(q[3]), 0.004, Color("#ffb257"), -1.0, -float(q[0]), 2.2 + float(q[1]), dd - 0.013)
+		box(float(q[2]), float(q[3]), 0.004, Color("#ffb257"), -1.0, -float(q[0]), 2.2 + float(q[1]), dd - 0.013,false)
 	d["leafL"] = box(0.45, 2.1, 0.03, Color("#737b7a"), -1.0, 0.225, 1.05, dd)
 	d["leafR"] = box(0.45, 2.1, 0.03, Color("#737b7a"), -1.0, -0.225, 1.05, dd)
-	d["out"] = box(1.6, 2.3, 0.01, Color("#a9ad9f"), -1.0, 0.0, 1.15, dd + 0.9)
+	d["out"] = box(1.6, 2.3, 0.01, Color("#a9ad9f"), -1.0, 0.0, 1.15, dd + 0.9,false)
 	var it := fig("tall", Color("#020303"), 1.0, 0.0, dd + 0.55)
 	it.rotation.y = PI
 	d["it"] = it
@@ -454,7 +486,7 @@ func _update_liftdoor(kk: float) -> void:
 	it.position.z = dd + 0.55 - 0.4 * ss(kk, 2.5, 3.2)
 	it.rotation.x = -0.18 * ss(kk, 2.6, 3.2)
 	var b := 1.0 - 0.85 * ss(kk, 2.0, 2.8)
-	((d["out"] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color = Color(0.66 * b, 0.68 * b, 0.62 * b)
+	((d["out"] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color = Color(0.66 * b, 0.68 * b, 0.62 * b).linear_to_srgb()
 	(d["out"] as Node3D).visible = not end or gap > 0.02
 	(d["lamp"] as Node3D).visible = false if end else (kk < 2.9 or (kk >= 2.98 and kk < 3.06) or (kk >= 3.12 and kk < 3.3))
 	if not end:
@@ -470,15 +502,12 @@ func _update_liftdoor(kk: float) -> void:
 # ---- grip: hands reach up from the floor ----
 
 func _build_grip() -> void:
-	var cmesh := CylinderMesh.new()
-	cmesh.top_radius = 1.0
-	cmesh.bottom_radius = 1.0
-	cmesh.height = 0.005
-	d["stain"] = mesh(cmesh, _mat(Color("#030405"), 0.92), 0.0, 0.012, 0.0)
+	d["stain"] = disc(1,Color("030405"),.92,0,.012,0)
+	(d["stain"] as Node3D).rotation.x = -PI/2
 	var hands: Array = []
 	for i in 12:
 		var h := fxm("hand", 1.0, 0.0, -0.5, 0.0)
-		h.set_meta("g", {"a": float(i) / 12.0 * TAU + (rand.randf() - 0.5) * 0.3, "r": 1.1 + rand.randf() * 0.9, "d": 0.55 + float((i * 5) % 12) * 0.07})
+		h.set_meta("g", {"a": float(i) / 12.0 * 6.283 + (_original_random() - 0.5) * 0.3, "r": 1.1 + _original_random() * 0.9, "d": 0.55 + float((i * 5) % 12) * 0.07})
 		hands.append(h)
 	d["hands"] = hands
 	veil(Color("#010101"))
@@ -557,9 +586,7 @@ func _update_neck(kk: float) -> void:
 		var len := maxf(dir.length(), 0.001)
 		var mid := prev + dir * 0.5
 		var y_axis := dir / len
-		var x_axis := y_axis.cross(Vector3.FORWARD if absf(y_axis.dot(Vector3.FORWARD)) < 0.99 else Vector3.RIGHT).normalized()
-		var z_axis := x_axis.cross(y_axis).normalized()
-		s.transform = Transform3D(Basis(x_axis, y_axis * len, z_axis), mid)
+		s.transform = Transform3D(Basis(Quaternion(Vector3.UP,y_axis))*Basis.from_scale(Vector3(1,len,1)),mid)
 		s.visible = kk > 0.5
 		prev = pt
 		i += 1
@@ -618,20 +645,12 @@ func _update_twin(kk: float) -> void:
 
 func _build_shatter() -> void:
 	var metal := _mat(Color("#9a9890"))
-	var dome := SphereMesh.new()
-	dome.radius = 0.08
-	dome.height = 0.08
-	dome.is_hemisphere = true
+	var dome := DeathGeometry.mesh("bell-dome")
 	var bells: Array = []
 	var shards: Array = []
 	for q in 8:
 		box(0.5, 0.03, 0.03, Color("#0b0c0d"), -1.0, -2.1 + float(q) * 0.6, 0.98, 2.0 + absf(float(q) - 3.5) * 0.25)
-	var sg := SphereMesh.new()
-	sg.radius = 0.04
-	sg.height = 0.08
-	sg.radial_segments = 4
-	sg.rings = 2
-	d["shardIM"] = inst(sg, _mat(Color("#c8c8c0")), 40)
+	d["shardIM"] = inst(DeathGeometry.mesh("bell-shard"), _mat(Color("#c8c8c0")), 40)
 	for i in 8:
 		var x := -2.1 + float(i) * 0.6
 		var z := 2.0 + absf(float(i) - 3.5) * 0.25
@@ -639,8 +658,8 @@ func _build_shatter() -> void:
 		bl.set_meta("b", {"x": x + 0.18, "z": z, "t": 1.0 + float((i * 3) % 8) * 0.07})
 		bells.append(bl)
 		for j in 5:
-			shards.append({"b": i, "az": (rand.randf() - 0.5) * 2.4, "el": (rand.randf() - 0.5) * 1.2, "rad": 0.55 + rand.randf() * 0.25, "spin": 2.0 + rand.randf() * 5.0,
-				"ox": (rand.randf() - 0.5) * 0.3, "oy": rand.randf() * 0.3})
+			shards.append({"b": i, "az": (_original_random() - 0.5) * 2.4, "el": (_original_random() - 0.5) * 1.2, "rad": 0.55 + _original_random() * 0.25, "spin": 2.0 + _original_random() * 5.0,
+				"ox": (_original_random() - 0.5) * 0.3, "oy": _original_random() * 0.3})
 	d["bells"] = bells
 	d["shards"] = shards
 	veil(Color("#050505"))
@@ -688,13 +707,14 @@ func _build_drown() -> void:
 	bm.size = Vector3(0.012, 0.5, 0.012)
 	d["rainIM"] = inst(bm, _mat(Color("#9fb6c4"), 0.5), 80)
 	for i in 80:
-		var a := rand.randf() * TAU
-		var dd := 0.6 + rand.randf() * 4.0
-		rain.append({"x": cos(a) * dd, "z": absf(sin(a)) * dd + 0.4, "off": rand.randf() * 5.0})
+		var a := _original_random() * 6.283
+		var dd := 0.6 + _original_random() * 4.0
+		rain.append({"x": cos(a) * dd, "z": absf(sin(a)) * dd + 0.4, "off": _original_random() * 5.0})
 	d["rain"] = rain
-	var pm := PlaneMesh.new()
+	var pm := QuadMesh.new()
 	pm.size = Vector2(16, 16)
 	d["water"] = mesh(pm, _mat(Color("#1d2c35"), 0.8, true), 0.0, 0.0, 0.0)
+	(d["water"] as Node3D).rotation.x = -PI/2
 	var sm := SphereMesh.new()
 	sm.radius = 0.025
 	sm.height = 0.05
@@ -703,7 +723,7 @@ func _build_drown() -> void:
 	d["bubIM"] = inst(sm, _mat(Color("#a8c8d8"), 0.6), 24)
 	var bub: Array = []
 	for i in 24:
-		bub.append({"x": (rand.randf() - 0.5) * 0.8, "z": 0.4 + rand.randf() * 0.8, "off": rand.randf() * 1.4})
+		bub.append({"x": (_original_random() - 0.5) * 0.8, "z": 0.4 + _original_random() * 0.8, "off": _original_random() * 1.4})
 	d["bub"] = bub
 	veil(Color("#081218"))
 
@@ -730,22 +750,17 @@ func _update_drown(kk: float) -> void:
 
 func _build_water() -> void:
 	d["stain"] = disc(1.0, Color("#4a5a52"), 0.85, 0.0, 2.88, 1.0)
+	(d["stain"] as Node3D).rotation.x = PI/2
 	var drips: Array = []
 	var bm := BoxMesh.new()
 	bm.size = Vector3(0.025, 0.08, 0.025)
 	var dm := _mat(Color("#a8c8d4"), 0.95)
 	for i in 16:
-		var n := mesh(bm, dm, (rand.randf() - 0.5) * 1.6, 2.8, 0.4 + rand.randf() * 1.4)
-		n.set_meta("off", rand.randf())
+		var n := mesh(bm, dm, (_original_random() - 0.5) * 1.6, 2.8, 0.4 + _original_random() * 1.4)
+		n.set_meta("off", _original_random())
 		drips.append(n)
 	d["drips"] = drips
-	var sm := SphereMesh.new()
-	sm.radius = 1.0
-	sm.height = 2.0
-	sm.is_hemisphere = true
-	var bulge := mesh(sm, _mat(Color("#3a5560"), 0.85, true), 0.0, 2.9, 1.0)
-	bulge.rotation.x = PI           # the lower half
-	d["bulge"] = bulge
+	d["bulge"] = mesh(DeathGeometry.mesh("ceiling-bulge"), _mat(Color("#3a5560"), 0.85, true), 0.0, 2.9, 1.0)
 	veil(Color("#0b1820"))
 
 
@@ -769,6 +784,7 @@ func _update_water(kk: float) -> void:
 
 func _build_freeze() -> void:
 	d["frost"] = disc(4.0, Color("#dfeef5"), 0.0, 0.0, 0.015, 0.0, 32)
+	(d["frost"] as Node3D).rotation.x = -PI/2
 	var cone := CylinderMesh.new()
 	cone.top_radius = 0.0
 	cone.bottom_radius = 0.07
@@ -777,7 +793,7 @@ func _build_freeze() -> void:
 	d["spikeIM"] = inst(cone, _mat(Color("#cfe4ee"), 0.85), 30)
 	var spikes: Array = []
 	for i in 30:
-		spikes.append({"a": float(i) / 30.0 * TAU + (rand.randf() - 0.5) * 0.2, "r": 2.4 + rand.randf() * 1.2, "h": 0.6 + rand.randf() * 1.4, "d": rand.randf() * 0.6})
+		spikes.append({"a": float(i) / 30.0 * 6.283 + (_original_random() - 0.5) * 0.2, "r": 2.4 + _original_random() * 1.2, "h": 0.6 + _original_random() * 1.4, "d": _original_random() * 0.6})
 	d["spikes"] = spikes
 	var puffs: Array = []
 	var pm := SphereMesh.new()
@@ -790,8 +806,8 @@ func _build_freeze() -> void:
 	d["puffs"] = puffs
 	var panes: Array = []
 	for i in 8:
-		var pn := disc(0.2 + rand.randf() * 0.12, Color("#d8eaf2"), 0.45, 0.0, 0.0, 0.0, 7)
-		pn.set_meta("a", float(i) / 8.0 * TAU + rand.randf() * 0.3)
+		var pn := disc(0.2 + _original_random() * 0.12, Color("#d8eaf2"), 0.45, 0.0, 0.0, 0.0, 7)
+		pn.set_meta("a", float(i) / 8.0 * 6.283 + _original_random() * 0.3)
 		panes.append(pn)
 	d["panes"] = panes
 	veil(Color("#c8dce4"))
@@ -822,7 +838,7 @@ func _update_freeze(kk: float) -> void:
 		var rr := 0.62 - 0.38 * cover
 		var a2 := float(pn.get_meta("a"))
 		pn.position = Vector3(cos(a2) * rr, cy + sin(a2) * rr * 0.6, 0.32)
-		pn.rotation = Vector3(PI / 2.0, 0.0, 0.0)
+		pn.rotation = Vector3(0,PI,a2)
 		pn.visible = cover > 0.0
 	shade(0.85 * ss(kk, 2.9, 3.4))
 
@@ -833,7 +849,7 @@ func _build_stare() -> void:
 	var spots: Array = []
 	for i in 3:
 		for j in 5:
-			spots.append({"x": -1.6 + float(j) * 0.8 + (rand.randf() - 0.5) * 0.1, "z": 1.5 + float(i), "i": i, "j": j})
+			spots.append({"x": -1.6 + float(j) * 0.8 + (_original_random() - 0.5) * 0.1, "z": 1.5 + float(i), "i": i, "j": j})
 	var heads: Array = []
 	for p: Dictionary in spots:
 		box(0.44, 0.5, 0.26, Color("#090a0b"), -1.0, float(p["x"]), 0.95, float(p["z"]))
@@ -879,12 +895,11 @@ func _build_voice() -> void:
 	var gr := disc(0.15, Color("#0a0c0e"), -1.0, 0.0, 0.0, -0.115, 16)
 	gr.get_parent().remove_child(gr)
 	spk.add_child(gr)
-	gr.rotation.x = PI / 2.0
+	gr.rotation.y = PI
 	d["spk"] = spk
 	var rings: Array = []
 	for i in 8:
-		rings.append(torus(0.3, 0.012, _mat(Color("#9aa4ac"), 0.5), 0.0, 2.55, 2.5))
-		(rings[i] as Node3D).rotation.x = PI / 2.0
+		rings.append(torus(0.3, 0.012, _mat(Color("#9aa4ac"), 0.5), 0.0, 2.55, 2.5,null,4,28))
 	d["rings"] = rings
 	veil(Color("#060606"))
 
@@ -916,6 +931,7 @@ func _update_voice(kk: float) -> void:
 func _build_bell() -> void:
 	d["bell"] = fxm("bell", 1.0, 0.0, 1.4, 0.0)
 	d["spot"] = disc(1.0, Color("#050608"), 0.6, 0.0, 0.012, 0.0)
+	(d["spot"] as Node3D).rotation.x = -PI/2
 	veil(Color("#020202"))
 
 
@@ -979,11 +995,11 @@ func _ring_mesh(inner: float, outer: float, segs: int) -> ArrayMesh:
 	for i in segs:
 		var a0 := float(i) / float(segs) * TAU
 		var a1 := float(i + 1) / float(segs) * TAU
-		var p0 := Vector3(cos(a0) * inner, 0.0, sin(a0) * inner)
-		var p1 := Vector3(cos(a0) * outer, 0.0, sin(a0) * outer)
-		var p2 := Vector3(cos(a1) * outer, 0.0, sin(a1) * outer)
-		var p3 := Vector3(cos(a1) * inner, 0.0, sin(a1) * inner)
-		for v: Vector3 in [p0, p1, p2, p0, p2, p3]:
+		var p0 := Vector3(cos(a0) * inner, sin(a0) * inner, 0.0)
+		var p1 := Vector3(cos(a0) * outer, sin(a0) * outer, 0.0)
+		var p2 := Vector3(cos(a1) * outer, sin(a1) * outer, 0.0)
+		var p3 := Vector3(cos(a1) * inner, sin(a1) * inner, 0.0)
+		for v: Vector3 in [p0, p2, p1, p0, p3, p2]:
 			st.add_vertex(v)
 	return st.commit()
 
@@ -1005,19 +1021,17 @@ func _build_deep() -> void:
 	pm.top_radius = 0.16
 	pm.bottom_radius = 0.13
 	pm.height = 0.03
-	var fm := SphereMesh.new()
-	fm.radius = 0.1
-	fm.height = 0.1
-	fm.is_hemisphere = true
+	var fm := DeathGeometry.mesh("feast-food")
 	for i in 6:
 		var g := Node3D.new()
 		mesh(pm, _mat(Color("#d8d0c0")), 0.0, 0.0, 0.0, g)
 		mesh(fm, _mat(Color("#8a2a1e")), 0.0, 0.015, 0.0, g)
 		put(g, -0.9 + float(i) * 0.36, 0.83, 0.18 if i % 2 == 1 else -0.15, table)
-		g.set_meta("ph", rand.randf() * 6.0)
+		g.set_meta("ph", _original_random() * 6.0)
 		dishes.append(g)
 	d["dishes"] = dishes
 	d["pit"] = disc(1.0, Color("#010203"), -1.0, 0.0, 0.014, 1.4, 32)
+	(d["pit"] as Node3D).rotation.x = -PI/2
 	var shaft := CylinderMesh.new()
 	shaft.top_radius = 1.2
 	shaft.bottom_radius = 1.2
@@ -1026,6 +1040,7 @@ func _build_deep() -> void:
 	shaft.cap_bottom = false
 	d["shaft"] = mesh(shaft, _mat(Color("#0a0c0e"), -1.0, true), 0.0, -7.0, 0.0)
 	d["mouth"] = mesh(_ring_mesh(1.2, 9.0, 32), _mat(Color("#6c7176"), -1.0, true), 0.0, 0.0, 0.0)
+	(d["mouth"] as Node3D).rotation.x = PI/2
 	veil(Color.BLACK)
 
 
@@ -1095,7 +1110,7 @@ func _update_floor(kk: float) -> void:
 
 func _build_ring() -> void:
 	var cm := _mat(Color("#d8d4cc"), 0.85, true)
-	mesh(_ring_mesh(2.0, 2.06, 48), cm, 0.0, 0.012, 0.0)
+	mesh(_ring_mesh(2.0, 2.06, 48), cm, 0.0, 0.012, 0.0).rotation.x = -PI/2
 	var flames: Array = []
 	var fm := SphereMesh.new()
 	fm.radius = 0.03
@@ -1103,7 +1118,7 @@ func _build_ring() -> void:
 	fm.radial_segments = 6
 	fm.rings = 4
 	for i in 5:
-		var a := float(i) / 5.0 * TAU + 0.3
+		var a := float(i) / 5.0 * 6.283 + 0.3
 		var x := cos(a) * 1.7
 		var z := sin(a) * 1.7
 		box(0.05, 0.2, 0.05, Color("#e8e0cc"), -1.0, x, 0.1, z)
@@ -1114,12 +1129,12 @@ func _build_ring() -> void:
 	var stones: Array = []
 	for i in 16:
 		var st := box(0.08, 0.08, 0.08, Color("#d8d4cc"), -1.0, 0.0, 0.0, 0.0)
-		st.set_meta("s", {"a": float(i) / 16.0 * TAU, "d": rand.randf() * 0.5, "h": 0.4 + float(i % 4) * 0.45})
+		st.set_meta("s", {"a": float(i) / 16.0 * 6.283, "d": _original_random() * 0.5, "h": 0.4 + float(i % 4) * 0.45})
 		stones.append(st)
 	d["stones"] = stones
 	var robes: Array = []
 	for i in 6:
-		var ra := float(i) / 6.0 * TAU + 0.5
+		var ra := float(i) / 6.0 * 6.283 + 0.5
 		var f := fig("tall", Color("#050607"), 1.0, cos(ra) * 3.3, sin(ra) * 3.3)
 		f.rotation.y = atan2(-f.position.x, -f.position.z)
 		robes.append(f)
@@ -1168,7 +1183,7 @@ func _build_loop() -> void:
 			mesh(bm, _mat(dark), float(b[0]), float(b[1]), 0.0, g)
 		var lm := BoxMesh.new()
 		lm.size = Vector3(0.5, 0.04, 0.12)
-		var lamp := mesh(lm, _mat(Color("#fff4dc")), 0.0, 2.72, 1.2, g)
+		var lamp := mesh(lm, _mat(Color("#fff4dc"),-1,false,false,false), 0.0, 2.72, 1.2, g)
 		g.set_meta("lamp", lamp)
 		put(g, 0.0, 0.0, 2.0 + float(i) * 2.4)
 		frames.append(g)
@@ -1211,7 +1226,7 @@ func _build_lamps() -> void:
 	var lm := BoxMesh.new()
 	lm.size = Vector3(0.9, 0.05, 0.16)
 	for i in 8:
-		lamps.append(mesh(lm, _mat(Color("#fff2d0"), -1.0, false, true), 0.0, 2.75, 0.5 + float(i) * 1.2))
+		lamps.append(mesh(lm, _mat(Color("#fff2d0"), -1.0, false, true,false), 0.0, 2.75, 0.5 + float(i) * 1.2))
 	d["lamps"] = lamps
 	var pale := fig("tall", Color("#a8aeb0"), 1.0, 0.0, 2.2, true)
 	pale.rotation.y = PI
@@ -1250,10 +1265,10 @@ func _update_lamps(kk: float) -> void:
 func _build_laugh() -> void:
 	var faces: Array = []
 	for i in 7:
-		var a := -1.2 + float(i) * 0.4 + (rand.randf() - 0.5) * 0.15
-		var dd := 2.2 + rand.randf() * 1.0
+		var a := -1.2 + float(i) * 0.4 + (_original_random() - 0.5) * 0.15
+		var dd := 2.2 + _original_random() * 1.0
 		var f := fxm("smile", 0.35, sin(a) * dd, 0.0, cos(a) * dd)
-		f.set_meta("l", {"a": a, "d": dd, "t": float(i) * 0.1 + rand.randf() * 0.1})
+		f.set_meta("l", {"a": a, "d": dd, "t": float(i) * 0.1 + _original_random() * 0.1})
 		faces.append(f)
 	d["faces"] = faces
 	var big := fxm("smile", 0.8, 0.0, 0.0, 0.9)
@@ -1310,10 +1325,10 @@ func _build_swarm() -> void:
 	sm.height = 0.12
 	sm.radial_segments = 10
 	sm.rings = 8
-	mesh(sm, _mat(Color("#ffe9c0")), 0.0, 2.26, 4.5)
+	mesh(sm, _mat(Color("#ffe9c0"),-1,false,false,false), 0.0, 2.26, 4.5)
 	var glow := QuadMesh.new()
 	glow.size = Vector2.ONE
-	var light := _mat(Color("ffd9a0"),.7)
+	var light := _mat(Color("ffd9a0"),.7,false,false,false)
 	light.albedo_texture = load("res://assets/campus/anomalies/moth-glow.png")
 	light.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	light.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
@@ -1402,8 +1417,8 @@ func _build_window_gaze() -> void:
 	wall.append(box(1.5, 1.25, 0.01, Color("#0b1013"), -1.0, 0.0, 1.625, dd + 0.02))
 	wall.append(box(0.04, 1.25, 0.05, Color("#8b9192"), -1.0, 0.0, 1.625, dd - 0.02))
 	wall.append(box(1.5, 0.04, 0.05, Color("#8b9192"), -1.0, 0.0, 1.625, dd - 0.02))
-	wall.append(box(0.045, 0.022, 0.01, Color("#e8e4d4"), -1.0, -0.05, 1.86, dd - 0.012))
-	wall.append(box(0.045, 0.022, 0.01, Color("#e8e4d4"), -1.0, 0.05, 1.86, dd - 0.012))
+	wall.append(box(0.045, 0.022, 0.01, Color("#e8e4d4"), -1.0, -0.05, 1.86, dd - 0.012,false))
+	wall.append(box(0.045, 0.022, 0.01, Color("#e8e4d4"), -1.0, 0.05, 1.86, dd - 0.012,false))
 	d["wall"] = wall
 	var refl := fig("person", Color("#3a4246"), 1.0, 0.12, dd - 0.03)
 	refl.scale = Vector3(0.98, 0.98, 0.05)
@@ -1413,7 +1428,7 @@ func _build_window_gaze() -> void:
 	var myself := fig("person", Color("#2c3337"), 1.0, 0.0, 2.4)
 	myself.rotation.y = 0.0
 	d["self"] = myself
-	d["selfEyes"] = [box(0.04, 0.02, 0.01, Color("#e8e4d4"), -1.0, -0.045, 1.66, 2.25), box(0.04, 0.02, 0.01, Color("#e8e4d4"), -1.0, 0.045, 1.66, 2.25)]
+	d["selfEyes"] = [box(0.04, 0.02, 0.01, Color("#e8e4d4"), -1.0, -0.045, 1.66, 2.25,false), box(0.04, 0.02, 0.01, Color("#e8e4d4"), -1.0, 0.045, 1.66, 2.25,false)]
 	veil(Color.BLACK)
 
 
@@ -1448,7 +1463,7 @@ func _build_paper_sender() -> void:
 	(fl.mesh as QuadMesh).size = Vector2(4, 4)
 	fl.rotation.x = -PI / 2.0
 	box(4, 3, 0.1, Color("#3d4446"), -1.0, 0.0, 1.5, dd + 0.05)
-	d["gap"] = box(0.9, 0.02, 0.01, Color("#d8d2b8"), -1.0, 0.0, 0.01, dd - 0.02)
+	d["gap"] = box(0.9, 0.02, 0.01, Color("#d8d2b8"), -1.0, 0.0, 0.01, dd - 0.02,false)
 	var door := Node3D.new()
 	put(door, 0.45, 0.0, dd - 0.03)
 	d["door"] = door
@@ -1578,6 +1593,7 @@ func _build_campus_fall() -> void:
 	shadow.get_parent().remove_child(shadow)
 	w.add_child(shadow)
 	shadow.position = Vector3(0.0, -19.48, 1.5)
+	shadow.rotation.x = -PI/2
 	d["shadow"] = shadow
 	veil(Color.BLACK)
 

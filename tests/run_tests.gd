@@ -47,6 +47,12 @@ func _run() -> void:
 	checkup_props.test_original_props()
 	print("CASE: checkup_props.test_world")
 	await checkup_props.test_world()
+
+	var death_timelines := preload("res://tests/suites/death_timelines.gd").new(self)
+	print("CASE: death_timelines.test_shapes")
+	death_timelines.test_shapes()
+	print("CASE: death_timelines.test_frames")
+	await death_timelines.test_frames()
 	var death_models := preload("res://tests/suites/death_models.gd").new(self)
 	print("CASE: death_models.test_geometry")
 	death_models.test_geometry()
