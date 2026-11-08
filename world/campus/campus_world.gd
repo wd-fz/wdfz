@@ -15,6 +15,7 @@ var banner: DayBanner
 var chalk: ChalkNotes
 var phantoms: Phantoms
 var traces: Traces
+var broadcast_props: BroadcastProps
 var lighting: CampusLighting
 var _door_bodies: Dictionary = {}   # key -> CollisionShape3D
 var _door_leaves: Dictionary = {}   # key -> {"closed": Node3D, "open": Node3D}
@@ -42,6 +43,11 @@ func _ready() -> void:
 	traces.name = "Traces"
 	add_child(traces)
 	traces.build(scene_id, layout if is_room() else null)
+	if is_room():
+		broadcast_props = BroadcastProps.new()
+		broadcast_props.name = "BroadcastProps"
+		add_child(broadcast_props)
+		broadcast_props.build(layout)
 	if not is_room():
 		_ready_banner()
 	if is_room():

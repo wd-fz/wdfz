@@ -50,3 +50,4 @@
 | [死亡CG](死亡CG/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_death.gd`：按死因的死亡演出各取 25%／55%／85% 三帧（trash 垃圾桶、liftdoor 电梯门缝、grip 脚下伸手、neck 长脖子、shadow 影子、twin 另一个你、shatter 车铃炸开、drown 溺水、water 天花板渗水、freeze 冷库、stare 全体回头、voice 广播点名、bell 十三下钟、follow 做操的人、deep 食堂盛宴坠坑、floor 水杯、ring 圈、loop 无尽走廊、lamps 熄灯、laugh 笑、swarm 蛾群、gaze 拍肩、window_gaze 窗内视线、paper_sender 纸飞机、misread 念错通知、campus_fall 坠落） |
 | [粉笔笔触](粉笔笔触/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture_chalk_marks.gd`：八种粉笔符号的贴图（灰边白芯、断续线条、颗粒），以及贴在教室黑板上的叉 |
 | [笑脸与幻觉](笑脸与幻觉/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_phantoms.gd`：拍肩的另一种——回头时身后一米多的笑脸（点头淡出）与不回头时的突脸（撑满视野） |
+| [广播站道具](广播站道具/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture_broadcast_props.gd`：行政楼二楼广播站的功放、话筒、记录本与「功放保险丝已烧」的牌子 |

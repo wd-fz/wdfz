@@ -748,6 +748,8 @@ func _sync_world() -> void:
 	var lift := elevator()
 	if world != null and lift != null:
 		world.set_lift_doors(lift.door_amount_in(session.world_id))
+	if world != null and world.broadcast_props != null and broadcast() != null:
+		world.broadcast_props.set_fuse(bool(broadcast().b["fuse"]))
 	if world != null and world.banner != null and days() != null and school() != null:
 		var want := days().today(school().day, school().tsec) == "anniversary"
 		if want != world.banner.is_on():

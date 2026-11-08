@@ -117,6 +117,7 @@ func _run() -> void:
 	_test_chalk_texture()
 	_test_phantoms()
 	_test_traces()
+	_test_broadcast_props()
 	_test_inspection_scatter()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
@@ -3200,6 +3201,20 @@ func _test_inspection_scatter() -> void:
 	var cw := CampusWorld.new()
 	check(not cw.scattering(), "no scatter before a check")
 	cw.free()
+
+
+func _test_broadcast_props() -> void:
+	check(BroadcastProps.tags_for("admin2").is_empty() and BroadcastProps.tags_for("gear1").size() == 1 and BroadcastProps.tags_for("teach6").size() == 1, "the tags sit in the rooms of the sources, the key and the fuse")
+	var bp := BroadcastProps.new()
+	root.add_child(bp)
+	bp.build(CampusData.rooms()["admin2"])
+	var n0 := bp.count()
+	check(n0 == 13, "the station has its door signs, amplifier, microphone and book (%d)" % n0)
+	bp.set_fuse(true)
+	check(bp.count() == n0, "mending the fuse only changes the sign")
+	bp.build(CampusData.rooms()["teach2"])
+	check(bp.count() == 0, "other rooms have no station props")
+	bp.queue_free()
 
 
 func _test_traces() -> void:
