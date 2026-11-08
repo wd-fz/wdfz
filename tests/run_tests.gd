@@ -3445,6 +3445,7 @@ func _test_opening() -> void:
 	check(OpeningCut.duration(false) == 26.0 and OpeningCut.duration(true) == 11.0 and OpeningCut.story_time(0.0, true) == OpeningCut.SHORT_FROM and OpeningCut.story_time(1.0, true) == 1.0 and OpeningCut.story_time(0.5, false) == 0.5,
 		"the opening is 26 s, the short version 11 s starting at the fourth part")
 	check(OpeningCut.line_at(0.1).begins_with("你是这学期转来的") and OpeningCut.line_at(0.22) == "" and OpeningCut.line_at(0.95).begins_with("下课铃没有响"), "the captions follow the storyboard")
+	check(OpeningCut.mate_pose("still", 0.0, 0.5, 0.0, 0.2) == Vector2.ZERO and OpeningCut.mate_pose("write", 0.08, 0.5, 0.0, 0.8) == Vector2.ZERO and OpeningCut.mate_pose("write", 0.08, 0.5, 0.0, 0.2).x > 0.0 and is_equal_approx(OpeningCut.mate_pose("turn", 0.08, 0.5, 1.0, 0.2).x, 0.02), "mates write, turn a page or stay, and sit up straight again after 70%")
 	check(OpeningCut.ease_k(-1.0) == 0.0 and OpeningCut.ease_k(2.0) == 1.0 and is_equal_approx(OpeningCut.ease_k(0.5), 0.5), "the easing is clamped")
 
 

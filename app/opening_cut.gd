@@ -52,6 +52,7 @@ var _board := Vector3.ZERO
 var _dust3 := Vector3.ZERO
 var _cams: Array = []
 var _caption := ""
+var _mates: Array = []          # {node, base_y, kind, amp, f, ph}
 
 
 static func duration(is_short: bool) -> float:
@@ -123,6 +124,19 @@ func begin(world: Node3D, room: Dictionary, player: PlayerController, ui: GameUI
 	_me.add_child(FigureModel.make("sit", Color(0.455, 0.502, 0.549)))
 	_root.add_child(_me)
 	_build_dust()
+	# The classmates' small movements: some write (nodding forward again and again), some turn a page (a little turn), some stay.
+	var crowd := world.get_node_or_null("Classmates")
+	if crowd != null:
+		var mr := RandomNumberGenerator.new()
+		mr.seed = 4141
+		for n: Node in crowd.get_children():
+			var node := n as Node3D
+			if node == null:
+				continue
+			var r := mr.randf()
+			var kind := "write" if r < 0.5 else ("turn" if r < 0.78 else "still")
+			node.rotation_order = EULER_ORDER_YXZ
+			_mates.append({"node": node, "base_y": node.rotation.y, "kind": kind, "amp": 0.0 if kind == "still" else (0.05 if kind == "write" else 0.06) + 0.05 * mr.randf(), "f": 0.35 + 0.55 * mr.randf(), "ph": mr.randf() * TAU})
 	_ui.cut_fade(0.0)
 	_apply(0.0)
 
@@ -170,7 +184,22 @@ func _look(from: Vector3, to: Vector3) -> void:
 		cam.look_at(to, Vector3.UP)
 
 
+## The mates at storyboard time K: still after 0.70 (they sit up straight again), frozen with the dust from 0.455.
+static func mate_pose(kind: String, amp: float, f: float, ph: float, kk: float) -> Vector2:
+	var t := minf(kk, 0.455) * DUR_FULL
+	if kk >= 0.70 or amp == 0.0:
+		return Vector2.ZERO
+	var w := sin(t * f * TAU + ph)
+	if kind == "write":
+		return Vector2(amp * (0.55 + 0.45 * w), 0.0)          # (lean forward, turn)
+	return Vector2(0.02, amp * w)
+
+
 func _apply(kk: float) -> void:
+	for m: Dictionary in _mates:
+		if is_instance_valid(m["node"]):
+			var pz := mate_pose(String(m["kind"]), float(m["amp"]), float(m["f"]), float(m["ph"]), kk)
+			(m["node"] as Node3D).rotation = Vector3(pz.x, float(m["base_y"]) + pz.y, 0.0)
 	var line := line_at(kk)
 	if line != _caption:
 		_caption = line
@@ -268,6 +297,10 @@ func end(skipped: bool) -> void:
 	if not on:
 		return
 	on = false
+	for m: Dictionary in _mates:
+		if is_instance_valid(m["node"]):
+			(m["node"] as Node3D).rotation = Vector3(0.0, float(m["base_y"]), 0.0)
+	_mates = []
 	_ui.cut_fade(0.0)
 	_ui.cut_caption("")
 	if is_instance_valid(_player) and _player.camera != null:
