@@ -111,6 +111,7 @@ func _run() -> void:
 	_test_hands()
 	_test_opening()
 	_test_scene_beats()
+	_test_portal_device()
 	_test_ending_cut()
 	_test_death_cg()
 	_test_day_banner()
@@ -3485,6 +3486,36 @@ func _test_scene_beats() -> void:
 		var parts := pair.split(":")
 		check(src.contains('cue("%s"' % parts[1]) and src.contains("func _update_%s(" % parts[0]), "death scene %s has its beat %s" % [parts[0], parts[1]])
 	cg.free()
+
+
+func _test_portal_device() -> void:
+	# The portal rig (model/portal.js): states base -> ready -> charge -> open -> enter.
+	var dev := PortalDevice.new()
+	dev.build(16)
+	check(is_equal_approx(dev.ring_y, 0.935 + 0.05 + 0.06 + 0.62), "the ring centre stands above the bench top (%.3f)" % dev.ring_y)
+	check(not dev._inner.visible and not (dev._parts["coil"] as Node3D).visible and (dev._sockets["coil"] as Node3D).visible, "base: sockets only, nothing inside the ring")
+	dev.set_state("ready")
+	check(((dev._leds["lens"] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color == Color("#ffb347") and not (dev._parts["lens"] as Node3D).visible, "ready: the socket lamps are on")
+	dev.set_state("charge", 0.4)
+	var closed := 0
+	for r: MeshInstance3D in dev._rails:
+		closed += 1 if r.visible else 0
+	check((dev._parts["coil"] as Node3D).visible and not (dev._sockets["coil"] as Node3D).visible and closed == 2 and not dev._inner.visible, "charge 0.4: parts fitted, two of three rails closed, door still shut")
+	dev.set_state("charge", 0.8)
+	check(dev._inner.visible and dev._inner.scale.x > 0.2 and dev._inner.scale.x < 1.0, "charge 0.8: the door starts to open")
+	dev.set_state("open")
+	check(dev._inner.visible and is_equal_approx(dev._inner.scale.x, 1.0), "open: the whole door")
+	dev.tick(0.1)
+	check(dev._coil_mat.emission.r > 0.0, "the coil pulses once powered")
+	dev.set_state("enter", 1.0)
+	var top: StandardMaterial3D = dev._layers[2].material_override
+	check(top.albedo_color.a > 0.35, "enter: the inside brightens (%.2f)" % top.albedo_color.a)
+	var tb := PortalDevice.bench_spot(CampusData.layout("lab1"))
+	check(tb != Vector2.ZERO, "the rig stands on the lab's first bench tile")
+	dev.free()
+	for prop_name: String in ["server_rack", "server_console", "speaker_box", "locker_bank_4", "window_in_150", "desk_computer", "chair_office"]:
+		check(ResourceLoader.exists("res://assets/campus/props/%s.glb" % prop_name), "the cyber ending's prop %s is exported" % prop_name)
+	check(ResourceLoader.exists("res://assets/campus/patrol/patrol_figure.glb"), "the patroller's own model is there for the corridor")
 
 
 func _test_ending_cut() -> void:

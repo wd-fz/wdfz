@@ -46,6 +46,7 @@
 | [结局分镜](结局分镜/) 续二 | 2026-11-08，同上，`tools/capture_endings_dis.gd`：公开结局《放学》的四个舞台（广播间、全班起立、楼梯井人流、北门与教学楼）；取的是分镜某一时刻的静帧 |
 | [结局分镜](结局分镜/) 续三 | 2026-11-08，同上，`tools/capture_endings_portal.gd`：公开结局《门》（简化的装置：充能、导轨闭合、门开、推进环面发白） |
 | [结局分镜](结局分镜/) 续四 | 2026-11-08，同上，`tools/capture_endings_cyber.gd`：公开结局《网安仙人》（简化布景：机柜指示灯与停机日志、走廊灯管闪与高个子垂肩、档案对照屏、天亮） |
+| [结局分镜](结局分镜/) 续五 | 2026-11-08，同上，`tools/capture_dismissal.gd`／`capture_cyber.gd`／`capture_portal_device.gd`（文件名带 `real`）：《放学》最后一段改在真实校园里（北门、教学楼前）；《网安仙人》机房／走廊／档案换成导出的设备模型、天亮在真实校园；《门》在真实物理实验室里用整台装置（充能、门开、推进环面） |
 | [结局分镜](结局分镜/) 续五 | 2026-11-08，同上，`tools/capture_endings_car.gd`：《闸门》开车前的片头（车库里车灯闪、门外黑影追出来；简化布景） |
 | [死亡CG](死亡CG/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_death.gd`：按死因的死亡演出各取 25%／55%／85% 三帧（trash 垃圾桶、liftdoor 电梯门缝、grip 脚下伸手、neck 长脖子、shadow 影子、twin 另一个你、shatter 车铃炸开、drown 溺水、water 天花板渗水、freeze 冷库、stare 全体回头、voice 广播点名、bell 十三下钟、follow 做操的人、deep 食堂盛宴坠坑、floor 水杯、ring 圈、loop 无尽走廊、lamps 熄灯、laugh 笑、swarm 蛾群、gaze 拍肩、window_gaze 窗内视线、paper_sender 纸飞机、misread 念错通知、campus_fall 坠落） |
 | [粉笔笔触](粉笔笔触/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture_chalk_marks.gd`：八种粉笔符号的贴图（灰边白芯、断续线条、颗粒），以及贴在教室黑板上的叉 |

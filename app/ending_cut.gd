@@ -43,6 +43,17 @@ var _lamp: MeshInstance3D
 var _figs: Array = []
 var _beeped := false
 var _on_beep: Callable
+var _campus: Dictionary = {}
+var _lit := false                   # blocks are shaded by the stage's ambient light (the cyber interiors)
+var _stage_env: Environment
+var _dis_gate := Vector3.ZERO
+var _dis_teach := Vector2.ZERO
+var _campus_env: Environment
+var _campus_light: CampusLighting
+var _cy_base := Vector3.ZERO
+var _device: PortalDevice          # the portal rig in the real lab (the staged fallback has plain blocks instead)
+var _device_at := Vector3.ZERO
+var _last_kk := 0.0
 var audio: AudioFx  ## set by the caller before begin(); the scenes' own sounds (engine, hum, the gate's second click, the cyber ending bed)
 var _world: Node3D
 var _world_was_visible := true
@@ -138,6 +149,7 @@ static func face_fade(kk: float) -> float:
 
 func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerController, ui: GameUI, on_beep: Callable = Callable(), opts: Dictionary = {}) -> void:
 	kind = id
+	_campus = campus
 	_ui = ui
 	_player = player
 	_on_beep = on_beep
@@ -148,7 +160,9 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	_root = Node3D.new()
 	_root.name = "EndingProps"
 	_world = world
-	if STAGED.has(id):
+	# 《门》 plays in the real lab with the real rig when the player is there (the ending only starts there).
+	var live_portal := id == "portal" and String(world.get("scene_id")) == "lab1"
+	if STAGED.has(id) and not live_portal:
 		# Its own stages far from the real scene: the world is hidden meanwhile.
 		_how = String(opts.get("how", "exam"))
 		_world_was_visible = world.visible
@@ -158,6 +172,13 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 		env.environment = Environment.new()
 		env.environment.background_mode = Environment.BG_COLOR
 		env.environment.background_color = Color(0.23, 0.25, 0.27)
+		_stage_env = env.environment
+		if id == "cyber":
+			# The interiors are lit by an ambient level the storyboard sets per stage (the old lightState hook), with fog.
+			env.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+			env.environment.ambient_light_color = Color(0.9, 0.95, 0.95)
+			env.environment.fog_enabled = true
+			env.environment.fog_mode = Environment.FOG_MODE_EXPONENTIAL
 		_root.add_child(env)
 	else:
 		world.add_child(_root)
@@ -185,7 +206,10 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 		return
 	if id == "portal":
 		snd("scene.hum")
-		_setup_portal()
+		if live_portal:
+			_setup_live_portal(world)
+		else:
+			_setup_portal()
 		_ui.cut_fade(0.0)
 		_apply(0.0)
 		return
@@ -322,15 +346,16 @@ func end(skipped: bool) -> void:
 
 # ---- 《外国语学生》 ----
 
-func _box(g: Node3D, w: float, h: float, d: float, c: Color, x: float, y: float, z: float) -> void:
+func _box(g: Node3D, w: float, h: float, d: float, c: Color, x: float, y: float, z: float, glow: bool = false) -> void:
 	var m := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = Vector3(w, h, d)
 	m.mesh = bm
 	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	# The scenes lit by the stage's ambient (the cyber interiors) get shaded blocks; lamps and everything else stay flat.
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED if (glow or not _lit) else BaseMaterial3D.SHADING_MODE_PER_PIXEL
 	mat.albedo_color = c
-	mat.disable_fog = true
+	mat.disable_fog = glow or not _lit
 	m.material_override = mat
 	m.position = Vector3(x, y, z)
 	g.add_child(m)
@@ -478,6 +503,18 @@ func _room(g: Node3D, w: float, d: float) -> void:
 	_box(g, 0.08, 3.0, d, Color("#4e5b58"), -w / 2.0, 1.5, 0)
 
 
+## An exported piece of equipment (tools/export_scenes --only props): feet at the origin, placed as the old Kit.asset did.
+func _prop(g: Node3D, prop_name: String, x: float, y: float, z: float, ry: float) -> Node3D:
+	var packed := load(("res://assets/campus/%s.glb" % prop_name) if prop_name.contains("/") else ("res://assets/campus/props/%s.glb" % prop_name)) as PackedScene
+	if packed == null:
+		return null
+	var n := packed.instantiate() as Node3D
+	n.position = Vector3(x, y, z)
+	n.rotation.y = ry
+	g.add_child(n)
+	return n
+
+
 func _label(text: String, size: float, color: Color) -> Label3D:
 	var l := Label3D.new()
 	l.text = text
@@ -536,18 +573,17 @@ func _setup_dis() -> void:
 	for i in 10:
 		_line.append(_fig(c, "person", Color("#465353"), -1.0, 1.5, 0.0))
 	_fig(c, "tall", Color("#465353"), 2.6, 3.7, 0.0)
+	# The last stage is the real campus: the north gate and the front of the teaching building (the world comes back for it).
 	var d: Node3D = _st[3]
-	_box(d, 60, 0.05, 80, Color("#3b3e3a"), 0, 0, -20)
-	_box(d, 0.6, 3.2, 0.6, Color("#6d6a62"), -2.4, 1.6, 0)
-	_box(d, 0.6, 3.2, 0.6, Color("#6d6a62"), 2.4, 1.6, 0)
-	_box(d, 5.4, 0.4, 0.6, Color("#6d6a62"), 0, 3.2, 0)
-	_box(d, 24, 12, 10, Color("#5a4e46"), 0, 6, -25)
+	_dis_gate = gate_scene(_campus, "n")
+	var spot := DayBanner.spot(_world.get("layout") as Dictionary if _world != null else {})
+	_dis_teach = Vector2(spot.x, spot.z - 0.82)   # x centre of the building, z of its front line
 	for i in 16:
-		_walkers.append(_fig(d, "person", Color("#3b4847"), 5.35, 3.8 - float(i) * 0.65, PI))
+		_walkers.append(_fig(_root, "person", Color("#3b4847"), _dis_gate.x + 5.35, _dis_gate.z + 3.8 - float(i) * 0.65, PI))
 	_ledger = _label("放学 · 全体\n准予离校", 0.12, Color("#e7e2ca"))
-	_ledger.position = Vector3(-1.3, 1.1, 1.0)
+	_ledger.position = _dis_gate + Vector3(-1.3, 1.1, 1.0)
 	_ledger.rotation.x = -0.4
-	d.add_child(_ledger)
+	_root.add_child(_ledger)
 	for i in 5:
 		var w := MeshInstance3D.new()
 		var wm := BoxMesh.new()
@@ -557,10 +593,17 @@ func _setup_dis() -> void:
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		mat.albedo_color = Color("#aba17c")
 		w.material_override = mat
-		w.position = Vector3(0, 2.7 + float(i) * 2.0, -19.96)
+		w.position = Vector3(_dis_teach.x, 2.7 + float(i) * 3.2, _dis_teach.y + 0.04)
 		w.visible = false
-		d.add_child(w)
+		_root.add_child(w)
 		_windows.append(w)
+	d.visible = false
+	# The camera environment of the real campus (the staged rooms sit in a flat grey one).
+	var lit: Variant = _world.get("lighting")
+	if lit is CampusLighting:
+		_campus_env = (lit as CampusLighting).env
+		# The last stage is at dusk (the old stage hour 17.4); the world's own lighting is paused with the tree.
+		(lit as CampusLighting).update(0.0, 17.4 * 60.0, cam)
 
 
 func _apply_dis(kk: float) -> void:
@@ -606,20 +649,29 @@ func _apply_dis(kk: float) -> void:
 				f2.rotation.y = 0.0
 	else:
 		var v := (t - 12.0) / 6.0
-		var gx := (_st[3] as Node3D).position.x
+		var g := _dis_gate
 		for i in _walkers.size():
-			(_walkers[i] as Node3D).position = Vector3(5.35, 0.0, 3.8 - float(i) * 0.65 - v * 8.0)
+			(_walkers[i] as Node3D).position = g + Vector3(5.35, 0.0, 3.8 - float(i) * 0.65 - v * 8.0)
 		_ledger.visible = true
 		if v < 0.2:
-			_look(Vector3(gx - 1.3, 1.6, 2.1), Vector3(gx - 1.3, 1.1, 1.0))
+			_look(g + Vector3(-1.3, 1.6, 2.1), g + Vector3(-1.3, 1.1, 1.0))
 		elif v < 0.6:
-			_look(Vector3(gx + 4.75, 1.9, -9.0 - (v - 0.2) * 10.0), Vector3(gx + 5.35, 1.4, 3.0))
+			_look(g + Vector3(4.75, 1.9, -9.0 - (v - 0.2) * 10.0), g + Vector3(5.35, 1.4, 3.0))
 		else:
-			_look(Vector3(gx, 8.5, 4.0), Vector3(gx, 8.0, -20.0))
+			_look(Vector3(_dis_teach.x, 8.5, _dis_teach.y + 24.0), Vector3(_dis_teach.x, 8.0, _dis_teach.y))
 		for i in _windows.size():
 			var w := _windows[i] as MeshInstance3D
 			w.visible = v >= 0.6
 			(w.material_override as StandardMaterial3D).albedo_color = Color("#050909") if v > 0.68 + float(i) * 0.055 else Color("#aba17c")
+	# Only the last stage is in the real campus.
+	if is_instance_valid(_world):
+		_world.visible = s == 3
+	cam.environment = _campus_env if s == 3 else _stage_env
+	for w2: MeshInstance3D in _windows:
+		w2.visible = w2.visible and s == 3
+	_ledger.visible = s == 3
+	for f3: Node3D in _walkers:
+		f3.visible = s == 3
 	_ui.cut_fade(clampf(dis_edge(t), 0.0, 1.0))
 
 
@@ -638,6 +690,20 @@ static func portal_camera(kk: float, p: Vector3, ring_y: float) -> Dictionary:
 	var z := lerpf(p.z + 3.4, p.z + 0.05, push) + 0.6 * hes
 	var x := p.x + sin(orbit) * 1.2
 	return {"from": Vector3(x, lerpf(1.45, ring_y, push), z), "to": Vector3(p.x, ring_y, p.z)}
+
+
+## The real rig on the lab's bench (the first K tile), the world around it as it is.
+func _setup_live_portal(world: Node3D) -> void:
+	var spot := PortalDevice.bench_spot(CampusData.layout("lab1"))
+	_device_at = Vector3(spot.x, 0.0, spot.y)
+	_device = PortalDevice.new()
+	_device.build()
+	_device.position = _device_at
+	_device.set_state("base", 0.0)
+	_root.add_child(_device)
+	_root.set_meta("ring_y", _device.ring_y)
+	if world.has_method("show_portal"):
+		world.call("show_portal", false)         # the light-circle marker steps aside for the cut
 
 
 func _setup_portal() -> void:
@@ -697,6 +763,20 @@ func _setup_portal() -> void:
 func _apply_portal(kk: float) -> void:
 	var st := portal_state(kk)
 	var ring_y := float(_root.get_meta("ring_y"))
+	if _device != null:
+		if kk < 0.45:
+			_device.set_state("charge", kk / 0.45)
+		elif kk < 0.62:
+			_device.set_state("open", 1.0)
+		else:
+			_device.set_state("enter", float(st["enter"]))
+		_device.tick(clampf((kk - _last_kk) * _dur, 0.0, 0.1))
+		_last_kk = kk
+		var live := portal_camera(kk, _device_at, ring_y)
+		_look(live["from"], live["to"])
+		_ui.cut_fade(0.0)
+		_ui.cut_flash((kk - 0.88) / 0.12 * 0.9 if kk > 0.88 else 0.0)
+		return
 	for i in _rails.size():
 		(_rails[i] as MeshInstance3D).visible = float(st["charge"]) > float(i) / 3.0
 	var dmat := _door.material_override as StandardMaterial3D
@@ -800,6 +880,7 @@ func _cy_archive_text(t: float) -> String:
 
 
 func _setup_cyber() -> void:
+	_lit = true
 	for i in 4:
 		var g := Node3D.new()
 		g.position.x = float(i) * 40.0
@@ -827,7 +908,7 @@ func _setup_cyber() -> void:
 	for i in 10:
 		var side := 1.0 if i % 2 == 1 else -1.0
 		var row := float(i / 2)
-		_box(a, 0.6, 2.1, 0.9, Color("#242a2d"), side * 1.45, 1.05, -4.0 + row * 1.25)
+		_prop(a, "server_rack", side * 1.45, 0.0, -4.0 + row * 1.25, -PI / 2.0 if side > 0.0 else PI / 2.0)
 		var rack_leds: Array = []
 		for j in 10:
 			var led := MeshInstance3D.new()
@@ -838,11 +919,19 @@ func _setup_cyber() -> void:
 			mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 			mat.albedo_color = Color("#6ff09a")
 			led.material_override = mat
-			led.position = Vector3(side * (1.45 - 0.32), 1.85 - float(j / 2) * 0.3, -4.0 + row * 1.25 - 0.25 + float(j % 2) * 0.1)
+			led.position = Vector3(side * (1.45 - 0.42), 1.85 - float(j / 2) * 0.3, -4.0 + row * 1.25 - 0.25 + float(j % 2) * 0.1)
 			a.add_child(led)
 			rack_leds.append(led)
 		_leds.append({"rack": i, "leds": rack_leds, "off": 0.55 + float((i / 2) * 2 + i % 2) * 0.22 * 0.5})
-	_box(a, 1.0, 1.1, 0.5, Color("#2f3638"), 0, 0.55, -4.75)
+	_prop(a, "server_console", 0.0, 0.0, -4.75, 0.0)
+	_prop(a, "speaker_box", 3.38, 2.65, -0.6, -PI / 2.0)       # on the wall, above the racks, where you can see it
+	_box(a, 0.9, 0.04, 0.18, Color("#9fb8b8"), -1.2, 3.12, 1.5, true)    # the two emergency lights
+	_box(a, 0.9, 0.04, 0.18, Color("#9fb8b8"), 1.2, 3.12, -2.5, true)
+	_box(a, 0.25, 0.06, 8.0, Color("#2c3234"), 0, 3.05, -1.0)     # the cable trunking
+	for i in range(-3, 4):
+		_box(a, 0.02, 0.003, 11.0, Color("#2e3436"), float(i) * 0.6, 0.004, 0.0)   # the raised floor's seams
+	for i in range(-9, 10):
+		_box(a, 7.0, 0.003, 0.02, Color("#2e3436"), 0.0, 0.004, float(i) * 0.6)
 	_log = _label("", 0.13, Color("#5fbf86"))
 	_log.position = Vector3(0, 1.45, -4.75 + 0.4)
 	_log.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -855,19 +944,54 @@ func _setup_cyber() -> void:
 	_box(b, 0.12, 1.2, 24, Color("#5d7267"), 1.65, 0.6, -6)
 	_box(b, 3.2, 0.1, 24, Color("#a9aea4"), 0, 3.12, -6)
 	_box(b, 3.2, 3.1, 0.12, Color("#9fa59a"), 0, 1.55, -18)
+	for i in 4:
+		var dz := 3.0 - float(i) * 6.0
+		# The classroom door: leaf, frame (the frame asset is half a metre deep, so it is built here) and the small window.
+		_box(b, 0.05, 2.06, 0.92, Color("#6a4b33"), -1.58, 1.03, dz)
+		_box(b, 0.07, 0.08, 1.06, Color("#4a3424"), -1.56, 2.1, dz)
+		_box(b, 0.07, 2.1, 0.07, Color("#4a3424"), -1.56, 1.05, dz - 0.51)
+		_box(b, 0.07, 2.1, 0.07, Color("#4a3424"), -1.56, 1.05, dz + 0.51)
+		_box(b, 0.02, 0.36, 0.24, Color("#151a1c"), -1.55, 1.6, dz + 0.18)
+		_prop(b, "locker_bank_4", -1.36, 0.0, dz - 2.6, PI / 2.0)
+		for wz: float in [dz - 1.5, dz - 4.5]:
+			_box(b, 0.02, 1.36, 1.62, Color("#0c1218"), 1.595, 1.64, wz)    # still night outside: a dark pane behind the glass
+			_prop(b, "window_in_150", 1.58, 0.0, wz, -PI / 2.0)
+	_box(b, 0.32, 0.13, 0.03, Color("#58c27a"), -1.5, 2.55, -17.4, true)           # the exit sign
 	_lamps = Node3D.new()
 	b.add_child(_lamps)
 	for i in 6:
-		_box(_lamps, 1.2, 0.03, 0.18, Color("#e8f0ea"), 0, 3.01, 4.0 - float(i) * 4.0)
-	_tall = FigureModel.make("teacher", Color("#050607"), true, 1.12)
-	_tall.position = Vector3(0, 0, -3)
-	_tall.rotation.y = PI          # faces +z, towards the camera
-	b.add_child(_tall)
+		_box(b, 1.3, 0.06, 0.26, Color("#7c8280"), 0, 3.05, 4.0 - float(i) * 4.0)
+		_box(_lamps, 1.2, 0.03, 0.18, Color("#e8f0ea"), 0, 3.01, 4.0 - float(i) * 4.0, true)
+	# The thing in the corridor: the patroller's own model, body and gear (its front is +z, towards the camera).
+	_tall = _prop(b, "patrol/patrol_figure", 0.0, 0.0, -3.0, 0.0)
+	if _tall != null:
+		_tall.set_meta("patrol", true)
+		for mi: MeshInstance3D in _tall.find_children("*", "MeshInstance3D", true, false):
+			for si in mi.mesh.get_surface_count():
+				var pm := mi.mesh.surface_get_material(si) as BaseMaterial3D
+				if pm != null:
+					pm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	else:
+		_tall = FigureModel.make("teacher", Color("#050607"), true, 1.12)
+		_tall.position = Vector3(0, 0, -3)
+		_tall.rotation.y = PI
+		b.add_child(_tall)
 	var c: Node3D = _st[2]
 	_box(c, 6, 0.1, 6, Color("#4e5553"), 0, -0.05, 0)
 	_box(c, 6, 3.2, 0.12, Color("#434b49"), 0, 1.6, -1.2)
-	_box(c, 1.3, 0.04, 0.7, Color("#6c5a46"), 0, 0.74, -0.62)
-	_box(c, 0.62, 0.372, 0.035, Color("#14181a"), 0, 1.05, -0.75)
+	_box(c, 0.12, 3.2, 6, Color("#3e4544"), -3, 1.6, 1.8)
+	_box(c, 0.12, 3.2, 6, Color("#3e4544"), 3, 1.6, 1.8)
+	_box(c, 6, 0.1, 6, Color("#2f3534"), 0, 3.2, 1.8)
+	_box(c, 1.3, 0.04, 0.7, Color("#6c5a46"), 0, 0.74, -0.62)               # the desk top and its legs
+	for q: Vector2 in [Vector2(-0.6, -0.3), Vector2(0.6, -0.3), Vector2(-0.6, 0.3), Vector2(0.6, 0.3)]:
+		_box(c, 0.04, 0.72, 0.04, Color("#3a3f42"), q.x, 0.37, -0.62 + q.y)
+	_box(c, 0.44, 0.02, 0.14, Color("#22272a"), -0.05, 0.775, -0.38)       # the keyboard
+	_prop(c, "desk_computer", -1.5, 0.0, -0.8, 0.0)
+	_prop(c, "desk_computer", 1.5, 0.0, -0.8, 0.0)
+	_prop(c, "chair_office", 0.95, 0.0, 0.15, PI * 0.8)
+	_box(c, 0.682, 0.442, 0.035, Color("#14181a"), 0, 1.05, -0.75)         # the monitor and its stand
+	_box(c, 0.06, 0.29, 0.04, Color("#1b2022"), 0, 0.4, -0.79)
+	_box(c, 0.26, 0.02, 0.18, Color("#1b2022"), 0, 0.78, -0.77)
 	_arch = _label("", 0.05, Color("#9fd6b4"))
 	_arch.position = Vector3(-0.29, 1.2, -0.73)
 	_arch.vertical_alignment = VERTICAL_ALIGNMENT_TOP
@@ -875,11 +999,42 @@ func _setup_cyber() -> void:
 	_arch.pixel_size = 0.00018
 	_arch.font_size = 64
 	c.add_child(_arch)
-	var d: Node3D = _st[3]
-	_box(d, 120, 0.05, 120, Color("#4a5a46"), 0, 0, -20)
-	_box(d, 36, 14, 10, Color("#6a5448"), 0, 7, -28)
-	for i in 5:
-		_box(d, 33, 0.9, 0.05, Color("#d8dfe3"), 0, 2.2 + float(i) * 2.4, -22.95)
+	# The last stage is the real campus at dawn, in front of the teaching building (the world comes back for it).
+	var base := CampusGeometry.to_scene(null, Vector2(560.0, 1008.0) * SC)
+	_cy_base = Vector3(base.x, 0.0, base.y)
+	var lit: Variant = _world.get("lighting")
+	if lit is CampusLighting:
+		_campus_env = (lit as CampusLighting).env
+		_campus_light = lit as CampusLighting
+
+	_lit = false
+
+
+## The old lightState hook of the ending: ambient, hemisphere and fog per interior stage (the dawn stage uses the world's own light).
+func _cy_light(t: float, s: int) -> void:
+	if _stage_env == null or s == 3:
+		return
+	var amb := 0.0
+	var hemi := 0.0
+	var fog := Color(0.02, 0.026, 0.03)
+	var dens := 0.045
+	if s == 0:
+		var dim := clampf((t - 0.6) / 2.2, 0.0, 1.0)
+		amb = 0.22 - 0.1 * dim
+		hemi = 0.16 - 0.08 * dim
+	elif s == 1:
+		var lamp := 1.0 if t >= cy_flicker_end() else (0.95 if cy_flicker_on(t) else 0.22)
+		amb = 0.17 * lamp
+		hemi = 0.12 * lamp
+		fog = Color(0.045, 0.05, 0.05)
+	else:
+		amb = 0.06
+		hemi = 0.04
+		fog = Color(0.01, 0.012, 0.014)
+		dens = 0.07
+	_stage_env.ambient_light_energy = (amb + hemi * 0.5) * CampusLighting.ENERGY_AMBIENT * 2.2
+	_stage_env.fog_light_color = fog
+	_stage_env.fog_density = dens
 
 
 func _apply_cyber(kk: float) -> void:
@@ -888,6 +1043,12 @@ func _apply_cyber(kk: float) -> void:
 	var ox := float(s) * 40.0
 	for i in _st.size():
 		(_st[i] as Node3D).visible = i == s
+	# Only the last stage is in the real campus; the first three are the lit interiors under a flat dark sky.
+	if is_instance_valid(_world):
+		_world.visible = s == 3
+	cam.environment = _campus_env if s == 3 else _stage_env
+	_sky.visible = s != 3
+	_cy_light(t, s)
 	_ui.cut_fade(cy_fade(t))
 	if s == 0:
 		for r: Dictionary in _leds:
@@ -911,7 +1072,7 @@ func _apply_cyber(kk: float) -> void:
 		var settled := t >= cy_flicker_end()
 		_lamps.visible = on2
 		var slump := phase(t, cy_flicker_end() + 0.1, cy_flicker_end() + 1.3)
-		_tall.rotation = Vector3(0.12 * slump, PI, 0.0)
+		_tall.rotation = Vector3(0.12 * slump, 0.0 if _tall.get_meta("patrol", false) else PI, 0.0)
 		_tall.position.y = -0.05 * slump
 		var go := phase(t, 3.2, 7.2)
 		_look(Vector3(ox + 0.35 - 0.15 * go, 1.6, 4.6 - 3.2 * go), Vector3(ox, 1.75 - 0.25 * slump, -3.0))
@@ -931,8 +1092,10 @@ func _apply_cyber(kk: float) -> void:
 		_sky_mat.albedo_color = Color(0.01, 0.012, 0.014)
 	else:
 		var rise := phase(t, 11.2, 16.0)
-		_sky_mat.albedo_color = Color(0.02, 0.026, 0.03).lerp(Color(0.62, 0.72, 0.8), phase(t, 11.6, 14.2))
-		_look(Vector3(40.0 * 3.0 + 2.0 * rise, 1.5 + 8.5 * rise, 6.0 + 12.0 * rise), Vector3(120.0, 3.0 + 19.0 * rise, -28.0))
+		# Day breaks: sunrise to seven in the morning, the colours come back with the normal light.
+		if _campus_light != null:
+			_campus_light.update(0.0, (6.0 + 1.1 * clampf((t - 11.2) / 4.8, 0.0, 1.0)) * 60.0, cam)
+		_look(_cy_base + Vector3(2.0 * rise, 1.5 + 8.5 * rise, 6.0 + 12.0 * rise), _cy_base + Vector3(0.0, 3.0 + 19.0 * rise, -28.0))
 
 
 # ---- 《闸门》 opening ----

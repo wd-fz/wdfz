@@ -106,7 +106,7 @@ def main():
         if a.only:
             want = set(a.only.split(','))
             todo = [t for t in todo if t in want]
-            if a.only in ('patrol', 'figures', 'hands', 'fx'):
+            if a.only in ('patrol', 'figures', 'hands', 'fx', 'props'):
                 todo = []
         patrol_dir = Path(a.out) / 'patrol'
         patrol_dir.mkdir(parents=True, exist_ok=True)
@@ -137,6 +137,16 @@ def main():
                 (fx_dir / f'{name}.glb').write_bytes(data)
                 print(f'fx {name}: {len(data)/1e3:.0f} kB', flush=True)
             if a.only == 'fx':
+                todo = []
+        if not a.only or 'props' in a.only.split(','):
+            prop_dir = Path(a.out) / 'props'
+            prop_dir.mkdir(parents=True, exist_ok=True)
+            for name in ['server_rack', 'server_console', 'speaker_box', 'locker_bank_4', 'window_in_150', 'desk_computer', 'chair_office']:
+                r = pg.evaluate("([k,i])=>window.__wdfzExport(k,i)", ['prop', name])
+                data = externalize_images(base64.b64decode(r['glb']), tex, '../textures/')
+                (prop_dir / f'{name}.glb').write_bytes(data)
+                print(f'prop {name}: {len(data)/1e3:.0f} kB', flush=True)
+            if a.only == 'props':
                 todo = []
         if not a.only or 'hands' in a.only.split(','):
             hand_dir = Path(a.out) / 'hands'

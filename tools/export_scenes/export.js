@@ -206,6 +206,11 @@
       xg.add(window.fxMesh(id));
       return exportScene(xg, 'fx_' + id);
     }
+    if(kind === 'prop'){   /* 一件家具／设备（旧版 Kit.asset，合并网格）：结局分镜的布景用，原点在脚下 */
+      var pk = new window.Kit();
+      pk.asset(id, 0, 0, 0, 0, {merge:true, mat:{emit:''}});
+      return exportScene(pk.build(), 'prop_' + id);
+    }
     if(kind === 'figure'){   /* 旧版 figMesh 的人形（tall / roam / person / teacher / neck / sit），白色，颜色由 Godot 侧给 */
       var fg = new T.Group();
       fg.add(window.figMesh(id, new T.MeshBasicMaterial({color:0xffffff, vertexColors:true}), 1));

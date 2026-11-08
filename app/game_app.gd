@@ -4381,6 +4381,13 @@ func _reach_ending(id: String) -> void:
 		ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta, achievements().run_new_labels() if achievements() != null else PackedStringArray(),
 			"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""))
 	var world := _campus_world()
+	if (id == "dismissal" or id == "cyber") and session != null and session.world_id != "out" and DisplayServer.get_name() != "headless":
+		# The last stage of the dismissal is the real campus at the north gate: take the player outside first, then play (Engine.beginOutsideStage).
+		var gate := EndingCut.gate_scene(CampusData.campus(), "n")
+		travel("out", {"position": [gate.x, 0.05, gate.z - 4.0], "yaw": 0.0, "pitch": 0.0}, false)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		world = _campus_world()
 	if EndingCut.has(id) and world != null and session != null and (session.world_id == "out" or not EndingCut.needs_outdoor(id)) and DisplayServer.get_name() != "headless":
 		if _ending_cut != null and is_instance_valid(_ending_cut):
 			_ending_cut.queue_free()
