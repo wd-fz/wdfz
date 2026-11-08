@@ -7,6 +7,9 @@ inputs:
   android-debug:
     description: Install the Android debug APK export template
     default: 'false'
+  android-release:
+    description: Install the Android release APK export template
+    default: 'false'
 runs:
   using: composite
   steps:
@@ -16,15 +19,17 @@ runs:
     - uses: actions/cache@v4
       with:
         path: ${{ runner.tool_cache }}/wdfz-godot
-        key: godot-${{ runner.os }}-${{ hashFiles('.godot-version') }}-templates-${{ inputs.templates }}-android-${{ inputs.android-debug }}-v2
+        key: godot-${{ runner.os }}-${{ hashFiles('.godot-version') }}-templates-${{ inputs.templates }}-android-${{ inputs.android-debug }}-release-${{ inputs.android-release }}-v3
     - name: Install verified Godot
       shell: bash
       env:
         INSTALL_TEMPLATES: ${{ inputs.templates }}
         INSTALL_ANDROID_DEBUG: ${{ inputs.android-debug }}
+        INSTALL_ANDROID_RELEASE: ${{ inputs.android-release }}
         GODOT_CACHE: ${{ runner.tool_cache }}/wdfz-godot
       run: |
         args=(--cache "$GODOT_CACHE")
         if [[ "$INSTALL_TEMPLATES" == true ]]; then args+=(--templates); fi
         if [[ "$INSTALL_ANDROID_DEBUG" == true ]]; then args+=(--android-debug); fi
+        if [[ "$INSTALL_ANDROID_RELEASE" == true ]]; then args+=(--android-release); fi
         python tools/ci/install_godot.py "${args[@]}"

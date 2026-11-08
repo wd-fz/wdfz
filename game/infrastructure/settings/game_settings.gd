@@ -7,13 +7,13 @@ extends RefCounted
 ## vol 0–100 (default 70) · amb 1/0 ambient layers · captions 0 auto / 1 on / 2 off (default on) ·
 ## sub 0/1/2 caption size · distortion 0 off / 1 reduced / 2 full · reduce_flash 1/0 · bright 50–150 ·
 ## grain 1/0 · mouse, touch 25–250 look sensitivity % · text 85–150 % · touch_size 85–125 % ·
-## quality 0–4 (流畅、均衡、精细、超精细、真实) · auto_land 1/0 · full_screen 1/0.
+## quality 0–4 (流畅、均衡、精细、超精细、真实) · auto_land rotates between landscape sides only · full_screen 1/0 (default on).
 ## The Web "graphics mode" (WebGL / WebGPU) is replaced by Godot's renderer. Touch layout is
 ## stored separately from numeric settings and from gameplay saves.
 
 const VERSION := 1
 const DEFAULTS := {"vol": 70, "amb": 1, "captions": 1, "sub": 1, "distortion": 2, "reduce_flash": 0, "bright": 100, "grain": 1,
-	"mouse": 100, "touch": 100, "text": 100, "touch_size": 100, "quality": 2, "auto_land": 1, "full_screen": 0, "shake": 1}
+	"mouse": 100, "touch": 100, "text": 100, "touch_size": 100, "quality": 2, "auto_land": 1, "full_screen": 1, "shake": 1}
 const LIMITS := {"vol": [0, 100], "bright": [50, 150], "mouse": [25, 250], "touch": [25, 250], "text": [85, 150], "touch_size": [85, 125]}
 const CHOICES := {"amb": 2, "captions": 3, "sub": 3, "distortion": 3, "reduce_flash": 2, "grain": 2, "quality": 5, "auto_land": 2, "full_screen": 2, "shake": 2}
 const QUALITY_LABELS := ["流畅", "均衡", "精细", "超精细", "真实"]

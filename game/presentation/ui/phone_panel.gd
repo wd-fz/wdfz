@@ -22,6 +22,9 @@ var action_button: Button
 var extra: VBoxContainer     # the camera page: shoot, flash, the album
 var flash_button: Button
 var album: VBoxContainer
+var _layout: HBoxContainer
+var _body_scroll: ScrollContainer
+var _nav_scroll: ScrollContainer
 
 
 func _init() -> void:
@@ -30,39 +33,60 @@ func _init() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
-	var back := StyleBoxFlat.new()
-	back.bg_color = Color(0.04, 0.07, 0.09, 0.99)
-	back.set_content_margin_all(12)
-	back.set_corner_radius_all(14)
-	back.border_color = Color(0.3, 0.45, 0.5)
-	back.set_border_width_all(2)
+	var back := UISkin.panel(16)
 	add_theme_stylebox_override("panel", back)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
+	box.add_theme_constant_override("separation", 12)
+	var header := HBoxContainer.new()
+	box.add_child(header)
 	var top := Label.new()
 	top.text = "校园手机"
-	box.add_child(top)
+	top.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_theme_color_override("font_color",UISkin.ACCENT)
+	header.add_child(top)
 	status = Label.new()
-	status.modulate = Color(0.7, 0.9, 0.8)
+	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status.add_theme_color_override("font_color",UISkin.MUTED)
 	box.add_child(status)
-	var nav := HFlowContainer.new()
+	_layout = HBoxContainer.new()
+	_layout.add_theme_constant_override("separation",16)
+	box.add_child(_layout)
+	_nav_scroll = ScrollContainer.new()
+	_nav_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_nav_scroll.follow_focus = true
+	_layout.add_child(_nav_scroll)
+	var nav := VBoxContainer.new()
+	nav.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_nav_scroll.add_child(nav)
+	_body_scroll = ScrollContainer.new()
+	_body_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_body_scroll.follow_focus = true
+	_body_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_layout.add_child(_body_scroll)
+	var body := VBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation",12)
+	_body_scroll.add_child(body)
 	for a: Array in APPS:
 		var b := Button.new()
 		b.name = "App_" + String(a[0])
 		b.text = String(a[1])
 		b.toggle_mode = true
+		b.custom_minimum_size.y = 44
 		b.pressed.connect(func() -> void: app_selected.emit(String(a[0])))
 		nav.add_child(b)
 		app_buttons[a[0]] = b
-	box.add_child(nav)
 	copy = Label.new()
 	copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	copy.custom_minimum_size = Vector2(300, 90)
-	box.add_child(copy)
+	copy.custom_minimum_size = Vector2(0, 90)
+	body.add_child(copy)
 	action_button = Button.new()
 	action_button.name = "PhoneAction"
+	action_button.theme_type_variation = "PrimaryButton"
+	action_button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	action_button.custom_minimum_size.y = 48
 	action_button.pressed.connect(func() -> void: action_pressed.emit(String(action_button.get_meta("action", ""))))
-	box.add_child(action_button)
+	body.add_child(action_button)
 	extra = VBoxContainer.new()
 	extra.name = "PhoneExtra"
 	var shoot := Button.new()
@@ -76,23 +100,41 @@ func _init() -> void:
 	flash_button.pressed.connect(func() -> void: flash_pressed.emit())
 	extra.add_child(flash_button)
 	var shelf := ScrollContainer.new()
-	shelf.custom_minimum_size = Vector2(300, 150)
+	shelf.custom_minimum_size = Vector2(0, 150)
+	shelf.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	album = VBoxContainer.new()
+	album.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	album.add_theme_constant_override("separation", 6)
 	shelf.add_child(album)
 	extra.add_child(shelf)
-	box.add_child(extra)
+	body.add_child(extra)
 	screen = PlaneView.new()
 	screen.pressed.connect(func() -> void: flap.emit())
-	box.add_child(screen)
+	body.add_child(screen)
 	hint = Label.new()
-	hint.modulate = Color(1, 1, 1, 0.55)
-	box.add_child(hint)
+	hint.add_theme_color_override("font_color",UISkin.MUTED)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.add_child(hint)
 	var close := Button.new()
-	close.text = "✕ 收起"
+	close.text = "收起"
+	close.name = "PhoneClose"
+	close.custom_minimum_size.y = 44
 	close.pressed.connect(func() -> void: closed.emit())
-	box.add_child(close)
+	header.add_child(close)
 	add_child(box)
+	minimum_size_changed.connect(func() -> void: _fit.call_deferred())
+	visibility_changed.connect(func() -> void: _fit.call_deferred())
+
+
+func _ready() -> void:
+	get_viewport().size_changed.connect(_fit)
+	_fit.call_deferred()
+
+
+func _fit() -> void:
+	if not is_inside_tree() or not visible: return
+	_nav_scroll.custom_minimum_size.x = 145*get_theme_default_font_size()/16.0
+	PanelLayout.fit(self,_layout,820,360)
 
 
 ## Select the app visually. action: "" hides the button; label its text.
@@ -107,6 +149,7 @@ func select(app: String, action: String, label: String, disabled: bool) -> void:
 	action_button.set_meta("action", action)
 	action_button.text = label
 	action_button.disabled = disabled
+	_fit.call_deferred()
 
 
 ## The album: newest first; each a thumbnail and its line.
@@ -131,7 +174,7 @@ func show_album(photos: Array, flash_on: bool) -> void:
 		var cap := Label.new()
 		cap.text = "第 %d 天 · %s · %s" % [int(p["day"]), p["place"], p["cap"]]
 		cap.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		cap.custom_minimum_size = Vector2(190, 0)
+		cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		cap.add_theme_font_size_override("font_size", 12)
 		row.add_child(cap)
 		album.add_child(row)

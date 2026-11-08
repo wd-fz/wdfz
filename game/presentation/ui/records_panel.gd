@@ -50,15 +50,13 @@ func _init(store: RunRecords = null, rooms: Dictionary = {}) -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
-	var back := StyleBoxFlat.new()
-	back.bg_color = Color(0.06, 0.05, 0.04, 0.99)
-	back.set_content_margin_all(12)
-	back.set_corner_radius_all(6)
+	var back := UISkin.panel(12)
 	add_theme_stylebox_override("panel", back)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)
 	_head = Label.new()
 	_head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_head.add_theme_color_override("font_color",UISkin.ACCENT)
 	box.add_child(_head)
 	_tabs = HFlowContainer.new()
 	box.add_child(_tabs)
@@ -67,7 +65,7 @@ func _init(store: RunRecords = null, rooms: Dictionary = {}) -> void:
 	_scroll.follow_focus = true
 	_body = VBoxContainer.new()
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_body.add_theme_constant_override("separation", 4)
+	_body.add_theme_constant_override("separation", 10)
 	_scroll.add_child(_body)
 	box.add_child(_scroll)
 	_close_button = Button.new()
@@ -229,7 +227,8 @@ func _build_list() -> void:
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		var tag := "（调试）" if not RunRecords.is_real(x) else ""
-		b.text = "%s　%s · %s%s　积分 %d　%s　%s%s" % [x["grade"], x["routeName"], "梦魇" if x["diff"] == "hard" else "预知梦", tag, int(x["score"]["total"]),
+		b.custom_minimum_size.y = 76
+		b.text = "%s　%s · %s%s\n积分 %d　用时 %s\n%s%s" % [x["grade"], x["routeName"], "梦魇" if x["diff"] == "hard" else "预知梦", tag, int(x["score"]["total"]),
 			ResultsPanel.fmt(float(x["time"]["used"])), _fmt_date(float(x["at"])), "　▶" if int(x.get("replay", 0)) != 0 else ""]
 		b.pressed.connect(func() -> void: detail_requested.emit(String(x["id"])))
 		_body.add_child(b)

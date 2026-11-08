@@ -15,7 +15,7 @@ const PAGES := [
 		["bright", "亮度", "调整游戏画面的整体明暗。", [50,150,5]],
 		["grain", "胶片颗粒", "为画面添加细微的颗粒质感。", []],
 		["full_screen", "全屏显示", "在窗口与全屏之间切换。", []],
-		["auto_land", "自动横屏", "手机推荐开启；竖屏不受维护。", []],
+		["auto_land", "横屏自动旋转", "开启时可左右翻转；关闭后固定横屏。", []],
 	]],
 	["声音", "让环境线索更容易听清", [
 		["vol", "主音量", "控制游戏音乐、环境声与音效的音量。", [0,100,5]],
@@ -64,7 +64,6 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	theme = preload("res://content/ui/theme.tres").duplicate()
-	_style_theme()
 	var shade := ColorRect.new()
 	shade.color = Color(0.008, 0.016, 0.025, 0.88)
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -147,30 +146,6 @@ func _ready() -> void:
 	select_page(selected)
 	fit()
 
-
-func _style_theme() -> void:
-	theme.set_color("font_color", "Label", INK)
-	for state: String in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
-		var color := Color("20303d")
-		if state == "hover": color = Color("2b4251")
-		if state in ["pressed", "hover_pressed"]: color = Color("24594f")
-		theme.set_stylebox(state, "Button", _box(color, Color("405663"), 10, 10))
-		theme.set_color("font_" + state + "_color" if state != "normal" else "font_color", "Button", INK)
-	theme.set_stylebox("focus", "Button", _box(Color(0,0,0,0), ACCENT, 10, 0, 2))
-	theme.set_stylebox("slider", "HSlider", _box(Color("30414f"), Color("30414f"), 3, 3))
-	theme.set_stylebox("grabber_area", "HSlider", _box(ACCENT, ACCENT, 3, 3))
-	theme.set_stylebox("grabber_area_highlight", "HSlider", _box(ACCENT.lightened(0.15), ACCENT, 3, 3))
-	var thumb := GradientTexture2D.new()
-	thumb.width = 24
-	thumb.height = 24
-	thumb.fill = GradientTexture2D.FILL_RADIAL
-	thumb.fill_from = Vector2(0.5,0.5)
-	thumb.fill_to = Vector2(1,0.5)
-	thumb.gradient = Gradient.new()
-	thumb.gradient.offsets = PackedFloat32Array([0,0.8,0.9,1])
-	thumb.gradient.colors = PackedColorArray([INK,INK,ACCENT,Color(ACCENT,0)])
-	theme.set_icon("grabber", "HSlider", thumb)
-	theme.set_icon("grabber_highlight", "HSlider", thumb)
 
 
 func _box(color: Color, border: Color, radius: int, margin: int, thickness: int = 1) -> StyleBoxFlat:

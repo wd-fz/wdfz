@@ -26,7 +26,7 @@ def main():
             summary["engine"] = check_version(reports)
             run("import", [ENGINE, "--headless", "--path", str(ROOT), "--editor", "--import"], reports, timeout=900)
             for display in (("headless", "windowed") if mode == "both" else (mode,)):
-                args = ["--headless"] if display == "headless" else ["--rendering-method", "gl_compatibility"]
+                args = ["--headless"] if display == "headless" else ["--windowed", "--rendering-method", "gl_compatibility"]
                 output = run(display, [ENGINE, *args, "--path", str(ROOT), "--audio-driver", "Dummy",
                                       "--fixed-fps", "60", "--script", "res://tests/run_tests.gd"], reports,
                              timeout=3600 if display == "windowed" else 900)

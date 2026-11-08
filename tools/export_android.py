@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export and verify an Android debug APK on Linux using the official Godot template."""
+"""Export and verify Android debug or signed release APKs with official Godot templates."""
 import argparse
 import hashlib
 import json
@@ -16,13 +16,57 @@ from ci.common import ENGINE, ROOT, check_version, run
 
 BUILD_TOOLS = "36.0.0"
 PACKAGE = "org.wdfz.godot.debug"
+RELEASE_PACKAGE = "org.wdfz.godot"
+RELEASE_VERSION = "0.1.0"
+
+
+def verify_manifest(manifest, release=False):
+    package = RELEASE_PACKAGE if release else PACKAGE
+    for expected in (f"package: name='{package}'", "sdkVersion:'24'", "targetSdkVersion:'36'", "native-code: 'arm64-v8a'"):
+        if expected not in manifest:
+            raise RuntimeError(f"APK manifest did not confirm {expected}")
+    if ("application-debuggable" in manifest) == release:
+        raise RuntimeError("APK debuggable flag does not match the requested build type")
+    if release and (f"versionName='{RELEASE_VERSION}'" not in manifest or "versionCode='1'" not in manifest):
+        raise RuntimeError("APK release version does not match the release preset")
+
+
+def verify_launcher_orientation(tree):
+    """Check the launch activity, not an unrelated activity or a runtime setting."""
+    lines = tree.splitlines()
+    launchers = []
+    for index, line in enumerate(lines):
+        activity = re.match(r"^( *)E: activity(?: |$)", line)
+        if not activity:
+            continue
+        indent = len(activity[1])
+        block = []
+        attributes = []
+        nested = False
+        for child in lines[index + 1:]:
+            if child.strip() and len(child) - len(child.lstrip()) <= indent:
+                break
+            block.append(child)
+            nested |= child.lstrip().startswith("E:")
+            if not nested:
+                attributes.append(child)
+        text = "\n".join(block)
+        if '"android.intent.action.MAIN"' in text and '"android.intent.category.LAUNCHER"' in text:
+            launchers.append("\n".join(attributes))
+    if len(launchers) != 1:
+        raise RuntimeError("APK must have exactly one verifiable launcher activity")
+    orientation = re.search(r"android:screenOrientation\([^)]*\)=\(type 0x10\)(0x[0-9a-fA-F]+)", launchers[0])
+    if not orientation or int(orientation[1], 16) != 6:
+        raise RuntimeError("APK launcher must declare sensorLandscape (6) before Godot starts")
+    return "sensorLandscape"
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sdk", default=os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT"))
     parser.add_argument("--jdk", default=os.environ.get("JAVA_HOME"))
-    parser.add_argument("--keystore", type=Path, default=Path.home() / ".android/wdfz-debug.keystore")
+    parser.add_argument("--keystore", type=Path)
+    parser.add_argument("--release", action="store_true", help="sign with ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD and --keystore")
     args = parser.parse_args()
     if not sys.platform.startswith("linux"):
         raise RuntimeError("This automation runs on Linux; use the Android Debug preset in Godot on other systems")
@@ -41,10 +85,15 @@ def main():
     if not (sdk / "platform-tools" / ("adb" + suffix)).is_file():
         raise RuntimeError("Android SDK platform-tools are missing")
 
-    reports = ROOT / "build/reports/android"
+    if args.release:
+        if not args.keystore or not args.keystore.is_file():
+            raise RuntimeError("Release requires an existing signing keystore; no fallback debug key is allowed")
+        if not os.environ.get("ANDROID_KEY_ALIAS") or not os.environ.get("ANDROID_KEY_PASSWORD"):
+            raise RuntimeError("Release requires ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD")
+    reports = ROOT / ("build/reports/android-release" if args.release else "build/reports/android")
     reports.mkdir(parents=True, exist_ok=True)
     (ROOT / "build/.gdignore").touch()
-    summary = {"passed": False, "package": PACKAGE, "runtime_verified": False}
+    summary = {"passed": False, "package": RELEASE_PACKAGE if args.release else PACKAGE, "runtime_verified": False}
     try:
         print(quality.check(ROOT), flush=True)
         summary["engine"] = check_version(reports)
@@ -52,33 +101,49 @@ def main():
         config = ROOT / "build/android-editor"
         settings = config / "godot" / ("editor_settings-" + ".".join((ROOT / ".godot-version").read_text().strip().split(".")[:2]) + ".tres")
         settings.parent.mkdir(parents=True, exist_ok=True)
-        keystore = args.keystore.expanduser().resolve()
+        keystore = (args.keystore or Path.home() / ".android/wdfz-debug.keystore").expanduser().resolve()
         keystore.parent.mkdir(parents=True, exist_ok=True)
-        if not keystore.exists():
+        if not args.release and not keystore.exists():
             run("debug-key", [str(jdk / "bin" / ("keytool" + suffix)), "-genkeypair", "-noprompt",
                 "-keystore", str(keystore), "-storetype", "JKS", "-storepass", "android", "-keypass", "android",
                 "-alias", "androiddebugkey", "-keyalg", "RSA", "-keysize", "2048", "-validity", "10000",
                 "-dname", "CN=Android Debug,O=Android,C=US"], reports, timeout=60)
             keystore.chmod(0o600)
-        values = {"android_sdk_path": str(sdk), "java_sdk_path": str(jdk), "debug_keystore": str(keystore),
-                  "debug_keystore_user": "androiddebugkey", "debug_keystore_pass": "android"}
+        values = {"android_sdk_path": str(sdk), "java_sdk_path": str(jdk)}
+        if not args.release:
+            values.update(debug_keystore=str(keystore), debug_keystore_user="androiddebugkey", debug_keystore_pass="android")
         settings.write_text('[gd_resource type="EditorSettings" format=3]\n\n[resource]\n' +
             "".join("export/android/" + key + " = " + json.dumps(value) + "\n" for key, value in values.items()), encoding="utf-8")
         env = {**os.environ, "XDG_CONFIG_HOME": str(config), "JAVA_HOME": str(jdk)}
         run("import", [ENGINE, "--headless", "--path", str(ROOT), "--editor", "--import"], reports, timeout=900, env=env)
         packages = ROOT / "build/packages"
         packages.mkdir(parents=True, exist_ok=True)
-        apk = packages / "wdfz-android-debug-arm64.apk"
+        apk = packages / (f"wdfz-{RELEASE_VERSION}-android-arm64.apk" if args.release else "wdfz-android-debug-arm64.apk")
         apk.unlink(missing_ok=True)
-        run("export-android", [ENGINE, "--headless", "--path", str(ROOT), "--export-debug", "Android Debug", str(apk)],
+        unsigned = packages / ".release-unsigned.apk" if args.release else apk
+        run("export-android", [ENGINE, "--headless", "--path", str(ROOT), "--export-release" if args.release else "--export-debug",
+                              "Android Release" if args.release else "Android Debug", str(unsigned)],
             reports, timeout=900, env=env)
         signer = build_tools / ("apksigner.bat" if os.name == "nt" else "apksigner")
-        run("signature", [str(signer), "verify", "--verbose", "--print-certs", str(apk)], reports, env=env)
+        if args.release:
+            aligned = packages / ".release-aligned.apk"
+            run("align-release", [str(build_tools / "zipalign"), "-f", "-P", "16", "4", str(unsigned), str(aligned)], reports)
+            # Passwords stay in the environment, never in arguments, preset files or build reports.
+            run("sign-release", [str(signer), "sign", "--ks", str(keystore), "--ks-key-alias", env["ANDROID_KEY_ALIAS"],
+                "--ks-pass", "env:ANDROID_KEY_PASSWORD", "--key-pass", "env:ANDROID_KEY_PASSWORD", "--v4-signing-enabled", "false", "--out", str(apk), str(aligned)], reports, env=env)
+            unsigned.unlink()
+            aligned.unlink()
+        signature = run("signature", [str(signer), "verify", "--verbose", "--print-certs", str(apk)], reports, env=env)
+        if args.release:
+            match = re.search(r"Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]{64})", signature)
+            if not match:
+                raise RuntimeError("Release signature certificate digest is missing")
+            summary.update(version=RELEASE_VERSION, version_code=1, signing_certificate_sha256=match[1].lower())
         run("alignment", [str(build_tools / ("zipalign" + suffix)), "-c", "-P", "16", "-v", "4", str(apk)], reports)
         manifest = run("manifest", [str(build_tools / ("aapt" + suffix)), "dump", "badging", str(apk)], reports)
-        for expected in (f"package: name='{PACKAGE}'", "application-debuggable", "sdkVersion:'24'", "targetSdkVersion:'36'", "native-code: 'arm64-v8a'"):
-            if expected not in manifest:
-                raise RuntimeError(f"APK manifest did not confirm {expected}")
+        verify_manifest(manifest,args.release)
+        manifest_tree = run("manifest-tree", [str(build_tools / ("aapt" + suffix)), "dump", "xmltree", str(apk), "AndroidManifest.xml"], reports)
+        summary["launch_orientation"] = verify_launcher_orientation(manifest_tree)
         with zipfile.ZipFile(apk) as archive:
             names = archive.namelist()
             entries = set(names)
@@ -138,10 +203,10 @@ def main():
                 sha.update(block)
         digest = sha.hexdigest()
         summary.update(passed=True, revision=revision, working_tree_dirty=dirty, file=apk.name,
-                       bytes=apk.stat().st_size, sha256=digest, abi="arm64-v8a", min_sdk=24, target_sdk=36, debug=True)
+                       bytes=apk.stat().st_size, sha256=digest, abi="arm64-v8a", min_sdk=24, target_sdk=36, debug=not args.release)
         apk.with_suffix(".apk.sha256").write_text(f"{digest}  {apk.name}\n")
         apk.with_suffix(".build.json").write_text(json.dumps(summary, indent=2) + "\n")
-        print(f"ANDROID DEBUG: verified {apk.relative_to(ROOT)} ({apk.stat().st_size / 1024 / 1024:.1f} MiB)", flush=True)
+        print(f"ANDROID {'RELEASE' if args.release else 'DEBUG'}: verified {apk.relative_to(ROOT)} ({apk.stat().st_size / 1024 / 1024:.1f} MiB)", flush=True)
     finally:
         (reports / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
 

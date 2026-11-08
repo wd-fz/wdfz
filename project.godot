@@ -3,7 +3,8 @@ config_version=5
 
 [application]
 config/name="武大附中 · 里世界 — Godot 移植版"
-config/description="正式校园与公开玩法的 Godot 移植开发版。"
+config/description="探索校园、遵守规则，寻找里世界的出口。"
+config/version="0.1.0"
 config/icon="res://assets/branding/icon.svg"
 run/main_scene="res://game/app/app.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
@@ -13,11 +14,12 @@ config/custom_user_dir_name="wdfz-godot"
 [display]
 window/size/viewport_width=1280
 window/size/viewport_height=720
+window/size/mode=3
 window/size/window_width_override=1280
 window/size/window_height_override=720
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
-window/handheld/orientation=6
+window/handheld/orientation=4
 
 [input_devices]
 pointing/emulate_touch_from_mouse=false

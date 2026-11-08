@@ -29,10 +29,7 @@ func _init() -> void:
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BEGIN
 	offset_bottom = -70.0
-	var back := StyleBoxFlat.new()
-	back.bg_color = Color(0.04, 0.06, 0.08, 0.97)
-	back.set_content_margin_all(12)
-	back.set_corner_radius_all(8)
+	var back := UISkin.panel(12)
 	add_theme_stylebox_override("panel", back)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)

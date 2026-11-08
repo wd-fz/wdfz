@@ -51,7 +51,7 @@ func _init(index: Dictionary = {}) -> void:
 	box.add_theme_constant_override("separation", 6)
 	var head := Label.new()
 	head.text = "开发工具（不属于玩家的游戏）"
-	head.modulate = Color(1.0, 0.9, 0.55)
+	head.add_theme_color_override("font_color",UISkin.ACCENT)
 	box.add_child(head)
 	# Sound audition.
 	var n := Label.new()

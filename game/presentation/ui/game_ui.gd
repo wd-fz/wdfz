@@ -108,7 +108,7 @@ func _ready() -> void:
 	sound.text = "声音"
 	sound.button_pressed = true
 	sound.toggled.connect(func(on: bool) -> void: sound_toggled.emit(on))
-	# Same menu height as before: the load button shares a row with the list, the touch toggle with the sound toggle.
+	# Collect controls before MenuScreen arranges them into their responsive groups.
 	var load_row := HFlowContainer.new()
 	var option_row := HFlowContainer.new()
 	var load_button: Button = %LoadGame
@@ -202,8 +202,8 @@ func _ready() -> void:
 			anchor.add_sibling(dev)
 	load_button.owner = self
 	touch_toggle.owner = self
-	_scroll_menu(menu)
-	_scroll_menu(pause_panel)
+	menu_screen = _build_menu_screen(menu,false)
+	pause_screen = _build_menu_screen(pause_panel,true)
 	set_touch_enabled(DisplayServer.is_touchscreen_available())
 	get_tree().root.size_changed.connect(_resize)
 	_resize()
@@ -259,34 +259,34 @@ func _resize() -> void:
 	_fit_documents.call_deferred()
 
 
-var _menu_scrolls: Array[ScrollContainer] = []
+var menu_screen: MenuScreen
+var pause_screen: MenuScreen
 
 
-func _scroll_menu(panel: Control) -> void:
+func _build_menu_screen(panel: Control, is_pause: bool) -> MenuScreen:
 	var content: VBoxContainer = panel.get_node("Margin/Center/Content")
-	var scroll := ScrollContainer.new()
-	scroll.name = "MenuScroll"
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.follow_focus = true
-	content.add_sibling(scroll)
-	content.reparent(scroll,false)
-	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	content.custom_minimum_size.x = 0
-	_menu_scrolls.append(scroll)
-	for child: Node in content.find_children("*","Label",true,false):
-		(child as Label).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var screen := MenuScreen.new()
+	panel.add_child(screen)
+	screen.setup(content,is_pause)
+	panel.get_node("Margin").hide()
+	panel.get_node("Margin").queue_free()
+	return screen
 
 
 func _fit_menu_scrolls() -> void:
-	var view := get_viewport().get_visible_rect().size
-	for scroll: ScrollContainer in _menu_scrolls:
-		scroll.custom_minimum_size = Vector2(minf(560,view.x-48),maxf(160,view.y-64))
+	for screen: MenuScreen in [menu_screen,pause_screen]:
+		if is_instance_valid(screen): screen.refit()
 
 
 func show_pause_detail(text: String) -> void:
-	var description: Label = pause_panel.get_node("Margin/Center/MenuScroll/Content/Description")
-	description.text = "时间已暂停，进度保存在本机。\n" + text
+	pause_screen.description.text = "时间已暂停，进度保存在本机。\n" + text
 	show_notice("")
+
+
+func set_fullscreen(value: bool) -> void:
+	for screen: MenuScreen in [menu_screen,pause_screen]:
+		var button := screen.find_child("Fullscreen*",true,false) as Button
+		button.text = "退出全屏" if value else "进入全屏"
 
 
 func _update_orient_hint() -> void:
@@ -294,7 +294,7 @@ func _update_orient_hint() -> void:
 	if _orient_hint == null:
 		_orient_hint = Label.new()
 		_orient_hint.name = "OrientationHint"
-		_orient_hint.text = "请横屏游玩。竖屏不受维护；设置里的「自动横屏」会在手机上替你锁定横屏。"
+		_orient_hint.text = "请横屏游玩。竖屏不受维护。"
 		_orient_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_orient_hint.custom_minimum_size = Vector2(320, 0)
 		_orient_hint.modulate = Color(1, 1, 1, 0.6)
@@ -423,13 +423,16 @@ func _build_bag() -> void:
 	bag_panel.custom_minimum_size = Vector2(440, 0)
 	var box := VBoxContainer.new()
 	var title := Label.new()
-	title.text = "背包"
+	title.text = "随身物品 · 背包"
+	title.add_theme_color_override("font_color",UISkin.ACCENT)
 	box.add_child(title)
 	_bag_scroll = ScrollContainer.new()
 	_bag_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_bag_scroll.follow_focus = true
 	_bag_scroll.custom_minimum_size.y = 300
 	_bag_list = VBoxContainer.new()
 	_bag_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_bag_list.add_theme_constant_override("separation",12)
 	_bag_scroll.add_child(_bag_list)
 	box.add_child(_bag_scroll)
 	var close := Button.new()
@@ -440,6 +443,7 @@ func _build_bag() -> void:
 	box.add_child(close)
 	bag_panel.add_child(box)
 	$Root.add_child(bag_panel)
+	bag_panel.minimum_size_changed.connect(func() -> void: _fit_bag.call_deferred())
 	_search_ring = ProgressBar.new()
 	_search_ring.name = "SearchRing"
 	_search_ring.show_percentage = false
@@ -459,21 +463,26 @@ func _build_bag() -> void:
 
 func show_bag(entries: Array) -> void:
 	for child in _bag_list.get_children():
+		_bag_list.remove_child(child)
 		child.queue_free()
 	if entries.is_empty():
 		var empty := Label.new()
-		empty.text = "背包是空的。"
+		empty.text = "背包是空的。\n探索时找到的物品会收在这里。"
+		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty.add_theme_color_override("font_color",UISkin.MUTED)
 		_bag_list.add_child(empty)
 	for e: Dictionary in entries:
-		var row := VBoxContainer.new()
+		var row := UISkin.card(_bag_list)
 		var name := Label.new()
 		name.text = String(e["name"])
+		name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		name.add_theme_color_override("font_color",UISkin.ACCENT)
 		row.add_child(name)
 		var desc := Label.new()
 		desc.text = String(e["text"])
 		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		desc.custom_minimum_size.x = 0
-		desc.modulate = Color(0.8, 0.85, 0.82)
+		desc.add_theme_color_override("font_color",UISkin.MUTED)
 		row.add_child(desc)
 		var buttons := HFlowContainer.new()
 		var id := String(e["id"])
@@ -483,27 +492,21 @@ func show_bag(entries: Array) -> void:
 			b.custom_minimum_size.y = 44
 			b.name = "Drop_" + id if spec[1] == -2 else "Item_%s_%d" % [id, int(spec[1])]
 			if spec[1] == -1:
+				b.theme_type_variation = "PrimaryButton"
 				b.pressed.connect(item_use_requested.emit.bind(id))
 			elif spec[1] == -2:
+				b.theme_type_variation = "DangerButton"
 				b.pressed.connect(item_drop_requested.emit.bind(id))
 			else:
 				b.pressed.connect(item_hot_requested.emit.bind(int(spec[1]), id))
 			buttons.add_child(b)
 		row.add_child(buttons)
-		_bag_list.add_child(row)
 	bag_panel.visible = true
 	_fit_bag()
 
 
 func _fit_bag() -> void:
-	if bag_panel == null or not bag_panel.visible:
-		return
-	var view := get_viewport().get_visible_rect().size
-	var width := minf(560,view.x-24)
-	bag_panel.custom_minimum_size.x = width
-	_bag_scroll.custom_minimum_size.y = minf(420,view.y-150)
-	bag_panel.size = Vector2(width,0)
-	bag_panel.position = (view-bag_panel.size)*.5
+	PanelLayout.fit(bag_panel,_bag_scroll,640,420)
 
 
 func hide_bag() -> void:
@@ -743,21 +746,21 @@ func show_list(head: String, rows: Array) -> void:
 		ach_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		ach_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 		ach_panel.custom_minimum_size = Vector2(560, 0)
-		var back := StyleBoxFlat.new()
-		back.bg_color = Color(0.06, 0.05, 0.04, 0.98)
-		back.set_content_margin_all(16)
-		back.set_corner_radius_all(6)
+		var back := UISkin.panel(16)
 		ach_panel.add_theme_stylebox_override("panel", back)
 		var box := VBoxContainer.new()
 		box.add_theme_constant_override("separation", 8)
 		_ach_head = Label.new()
 		_ach_head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_ach_head.add_theme_color_override("font_color",UISkin.ACCENT)
 		box.add_child(_ach_head)
 		var scroll := ScrollContainer.new()
 		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		scroll.follow_focus = true
 		scroll.custom_minimum_size = Vector2(520, 360)
 		_ach_list = VBoxContainer.new()
 		_ach_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_ach_list.add_theme_constant_override("separation",10)
 		scroll.add_child(_ach_list)
 		box.add_child(scroll)
 		var close := Button.new()
@@ -775,6 +778,7 @@ func show_list(head: String, rows: Array) -> void:
 		_ach_list.remove_child(child)
 		child.queue_free()
 	for r: Dictionary in rows:
+		var row := UISkin.card(_ach_list)
 		var line := Label.new()
 		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		var text := String(r["text"])
@@ -782,7 +786,7 @@ func show_list(head: String, rows: Array) -> void:
 			text += "\n    " + String(r["memo"])
 		line.text = ("✓ " if r["on"] else "· ") + text
 		line.modulate = Color(1, 1, 1, 1) if r["on"] else Color(1, 1, 1, 0.55)
-		_ach_list.add_child(line)
+		row.add_child(line)
 		var action: Callable = r.get("action",Callable())
 		if action.is_valid():
 			var replay := Button.new()
@@ -790,7 +794,7 @@ func show_list(head: String, rows: Array) -> void:
 			replay.custom_minimum_size.y = 44
 			replay.set_meta("entry_id",r.get("id",""))
 			replay.pressed.connect(action)
-			_ach_list.add_child(replay)
+			row.add_child(replay)
 	_ach_head.text = head
 	_resize_list()
 	ach_panel.visible = true
@@ -827,7 +831,7 @@ func list_footer(text: String, action: Callable) -> void:
 
 func focus_list_entry(id: String) -> void:
 	var first: Button
-	for child in _ach_list.get_children():
+	for child in _ach_list.find_children("*","Button",true,false):
 		if child is Button:
 			if first == null: first = child
 			if id != "" and child.get_meta("entry_id","") == id:
@@ -951,10 +955,7 @@ func show_import() -> void:
 		_import_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 		_import_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		_import_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-		var back := StyleBoxFlat.new()
-		back.bg_color = Color(0.03, 0.05, 0.07, 0.99)
-		back.set_content_margin_all(14)
-		back.set_corner_radius_all(6)
+		var back := UISkin.panel(14)
 		_import_panel.add_theme_stylebox_override("panel", back)
 		var box := VBoxContainer.new()
 		box.add_theme_constant_override("separation", 8)
@@ -1290,10 +1291,7 @@ func show_notes(data: Dictionary) -> void:
 		notes_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 		notes_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		notes_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-		var back := StyleBoxFlat.new()
-		back.bg_color = Color(0.03, 0.05, 0.07, 0.99)
-		back.set_content_margin_all(14)
-		back.set_corner_radius_all(6)
+		var back := UISkin.panel(14)
 		notes_panel.add_theme_stylebox_override("panel", back)
 		var outer := VBoxContainer.new()
 		outer.add_theme_constant_override("separation", 8)
@@ -1328,7 +1326,7 @@ func show_notes(data: Dictionary) -> void:
 	var query := String(data.get("query", ""))
 	if _notes_search.text != query:
 		_notes_search.text = query
-	_note_label("当前调查" + ("  ·  %s路线" % _route_name(data) if not String(data.get("focus", "")).is_empty() else ""), Color(1, 0.9, 0.55))
+	_note_label("当前调查" + ("  ·  %s路线" % _route_name(data) if not String(data.get("focus", "")).is_empty() else ""), UISkin.ACCENT)
 	_note_label(String(data["goal"]), Color.WHITE)
 	var routes: Array = data["routes"]
 	if routes.size() > 1:
@@ -1357,7 +1355,7 @@ func show_notes(data: Dictionary) -> void:
 		_note_label(("找到 %d 条" % int(data["found"])) if int(data["found"]) > 0 else "没有找到仍能回忆的对应记录。", Color(1, 1, 1, 0.7))
 	var recent: Array = data["recent"]
 	if not recent.is_empty():
-		_note_label("最近发现", Color(1, 0.9, 0.55))
+		_note_label("最近发现", UISkin.ACCENT)
 		for e: Dictionary in recent:
 			_note_label("[%s] %s" % [e["kind"], e["text"]], NOTE_COLORS[e["kind"]])
 	for kind: String in InvestigationModule.KINDS:
@@ -1366,11 +1364,12 @@ func show_notes(data: Dictionary) -> void:
 			continue
 		_note_label("%s  %d" % [kind, rows.size()], NOTE_COLORS[kind])
 		for e: Dictionary in rows:
-			_note_label("  第 %d 天 · %s" % [int(e.get("day", 1)), e["source"]], Color(1, 1, 1, 0.5))
-			_note_label("  " + String(e["text"]), Color(1, 1, 1, 0.92))
+			var entry := UISkin.card(_notes_box)
+			_note_label("第 %d 天 · %s" % [int(e.get("day", 1)), e["source"]], UISkin.MUTED,entry)
+			_note_label(String(e["text"]), UISkin.INK,entry)
 	var progress: Array = data["progress"]
 	if not progress.is_empty():
-		_note_label("路线进度", Color(1, 0.9, 0.55))
+		_note_label("路线进度", UISkin.ACCENT)
 		for p: Array in progress:
 			_note_label("%s %s：%s" % ["✓" if bool(p[2]) else "·", p[0], p[1]], Color(0.65, 0.9, 0.7) if bool(p[2]) else Color.WHITE)
 	notes_panel.visible = true
@@ -1384,12 +1383,12 @@ func _route_name(data: Dictionary) -> String:
 	return {"car": "车辆", "face": "白名单", "portal": "造门", "cyber": "网安仙人"}.get(String(data["focus"]), "")
 
 
-func _note_label(text: String, color: Color) -> void:
+func _note_label(text: String, color: Color, parent: Control = null) -> void:
 	var l := Label.new()
 	l.text = text
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.modulate = color
-	_notes_box.add_child(l)
+	l.add_theme_color_override("font_color",color)
+	(parent if parent != null else _notes_box).add_child(l)
 
 
 # ---- the map page: the campus plan or the sketch of a walked floor ----
@@ -1414,10 +1413,7 @@ func open_map(options: Array, selected: String, head: String, note: String) -> M
 		map_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 		map_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		map_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-		var back := StyleBoxFlat.new()
-		back.bg_color = Color(.06,.05,.04,.99)
-		back.set_content_margin_all(12)
-		back.set_corner_radius_all(6)
+		var back := UISkin.panel(12)
 		map_panel.add_theme_stylebox_override("panel", back)
 		var outer := VBoxContainer.new()
 		outer.add_theme_constant_override("separation", 6)
@@ -1523,9 +1519,7 @@ func show_terminal(history: String, status: String) -> void:
 		terminal_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 		terminal_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		terminal_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-		var back := StyleBoxFlat.new()
-		back.bg_color = Color(0.01, 0.03, 0.02, 0.97)
-		back.set_content_margin_all(12)
+		var back := UISkin.panel(12)
 		terminal_panel.add_theme_stylebox_override("panel", back)
 		var box := VBoxContainer.new()
 		var head := Label.new()
@@ -1891,6 +1885,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func set_touch_enabled(value: bool) -> void:
 	_touch_enabled = value
+	if is_instance_valid(menu_screen): menu_screen.set_touch(value)
 	%TouchToggle.set_pressed_no_signal(value)
 	touch_controls.visible = value and _mode == "play" and not _paper_flying
 	_refresh_paper_pad()
@@ -2005,6 +2000,7 @@ func set_mode(mode: String) -> void:
 func set_save_available(available: bool) -> void:
 	%LoadGame.disabled = not available
 	%Reload.disabled = not available
+	menu_screen.set_save_available(available)
 
 
 func show_notice(text: String) -> void:

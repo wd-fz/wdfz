@@ -68,6 +68,9 @@ func _ready() -> void:
 	archive_flow.setup(self)
 	add_child(ApplicationExit.new())
 	settings.load_file(DisplayServer.is_touchscreen_available())
+	# Honor the engine's explicit launch flags (also used by window-size tests).
+	if OS.get_cmdline_args().has("--windowed"): settings.set_value("full_screen",0)
+	elif OS.get_cmdline_args().has("--fullscreen"): settings.set_value("full_screen",1)
 	ui.set_wuda_armed(settings.wuda_armed)
 	ui.school_tapped.connect(_school_tapped)
 	ui.ending_wake_requested.connect(knife_flow.wake)
@@ -2305,8 +2308,9 @@ func _apply_settings() -> void:
 	if cw != null and cw.lighting != null:
 		cw.lighting.sun_light.shadow_enabled = CampusLighting.shadows_on
 	if DisplayServer.is_touchscreen_available():
-		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE if settings.get_int("auto_land") == 1 else DisplayServer.SCREEN_SENSOR)
+		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE if settings.get_int("auto_land") == 1 else DisplayServer.SCREEN_LANDSCAPE)
 	var want := DisplayServer.WINDOW_MODE_FULLSCREEN if settings.get_int("full_screen") == 1 else DisplayServer.WINDOW_MODE_WINDOWED
+	ui.set_fullscreen(settings.get_int("full_screen") == 1)
 	if DisplayServer.window_get_mode() != want and DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_mode(want)
 

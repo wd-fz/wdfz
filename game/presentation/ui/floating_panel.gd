@@ -25,10 +25,7 @@ var _placed := false
 func _init() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	var back := StyleBoxFlat.new()
-	back.bg_color = Color(.04,.05,.07,.97)
-	back.set_content_margin_all(8)
-	back.set_corner_radius_all(8)
+	var back := UISkin.panel(8)
 	add_theme_stylebox_override("panel",back)
 	_frame = VBoxContainer.new()
 	_frame.add_theme_constant_override("separation",6)
@@ -66,7 +63,7 @@ func _init() -> void:
 	_dot.mouse_filter = Control.MOUSE_FILTER_STOP
 	_dot.tooltip_text = "开发工具 · 轻点展开，拖动移动"
 	_dot.draw.connect(func() -> void:
-		_dot.draw_circle(_dot.size*.5,7.0,Color(.94,.8,.43,.95))
+		_dot.draw_circle(_dot.size*.5,7.0,UISkin.ACCENT)
 		_dot.draw_circle(_dot.size*.5,8.5,Color(.05,.06,.08,.9),false,2))
 	_dot.gui_input.connect(_drag_input.bind(true))
 	add_child(_dot)

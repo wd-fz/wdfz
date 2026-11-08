@@ -190,7 +190,7 @@ func _test_app() -> void:
 	for viewport_size: Vector2i in [Vector2i(1280, 720), Vector2i(390, 844), Vector2i(844, 390)]:
 		root.size = viewport_size
 		await _frames()
-		var content: ScrollContainer = app.ui.menu.get_node("Margin/Center/MenuScroll")
+		var content: ScrollContainer = app.ui.menu_screen.scroll
 		check(root.get_visible_rect().encloses(content.get_global_rect()), "scrollable menu fits viewport %s" % viewport_size)
 		await _tap(app.ui.get_node("%NewGame"))
 		check(app.ui.choice_open(), "the talent pick opens after resize %s" % viewport_size)

@@ -31,10 +31,7 @@ func _init() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
-	var back := StyleBoxFlat.new()
-	back.bg_color = Color(0.06, 0.05, 0.04, 0.99)
-	back.set_content_margin_all(12)
-	back.set_corner_radius_all(6)
+	var back := UISkin.panel(12)
 	add_theme_stylebox_override("panel", back)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)

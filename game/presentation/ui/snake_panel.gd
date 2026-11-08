@@ -17,16 +17,21 @@ func _init() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
-	var back := StyleBoxFlat.new()
-	back.bg_color = Color(0.02, 0.05, 0.04, 0.99)
-	back.set_content_margin_all(10)
-	back.set_corner_radius_all(8)
+	var back := UISkin.panel(16)
 	add_theme_stylebox_override("panel", back)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
+	var box := HBoxContainer.new()
+	box.add_theme_constant_override("separation",20)
 	board = Board.new()
 	board.swiped.connect(func(d: Vector2i) -> void: turned.emit(d))
 	box.add_child(board)
+	var controls := VBoxContainer.new()
+	controls.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	controls.add_theme_constant_override("separation",12)
+	box.add_child(controls)
+	var title := Label.new()
+	title.text = "机房 · 贪吃蛇"
+	title.add_theme_color_override("font_color",UISkin.ACCENT)
+	controls.add_child(title)
 	var pad := GridContainer.new()
 	pad.columns = 3
 	pad.name = "Pad"
@@ -37,18 +42,35 @@ func _init() -> void:
 			continue
 		var b := Button.new()
 		b.text = String(sp[0])
-		b.custom_minimum_size = Vector2(48, 32)
+		b.custom_minimum_size = Vector2(52, 48)
 		b.button_down.connect(func() -> void: turned.emit(sp[1]))
 		pad.add_child(b)
-	box.add_child(pad)
+	controls.add_child(pad)
 	hint = Label.new()
-	hint.modulate = Color(1, 1, 1, 0.6)
-	box.add_child(hint)
+	hint.add_theme_color_override("font_color",UISkin.MUTED)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	controls.add_child(hint)
 	var out := Button.new()
 	out.text = "离开"
+	out.name = "SnakeClose"
+	out.custom_minimum_size.y = 44
 	out.pressed.connect(func() -> void: closed.emit())
-	box.add_child(out)
+	controls.add_child(out)
 	add_child(box)
+	minimum_size_changed.connect(func() -> void: _fit.call_deferred())
+	visibility_changed.connect(func() -> void: _fit.call_deferred())
+
+
+func _ready() -> void:
+	get_viewport().size_changed.connect(_fit)
+	_fit.call_deferred()
+
+
+func _fit() -> void:
+	if not is_inside_tree() or not visible: return
+	custom_minimum_size.x = minf(680,get_viewport_rect().size.x-24)
+	reset_size()
+	position = (get_viewport_rect().size-size)*.5
 
 
 class Board extends Control:
