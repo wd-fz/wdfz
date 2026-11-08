@@ -26,7 +26,9 @@ static func make(kind: String, color: Color, unlit: bool = false, scale: float =
 	inst.rotation.y = PI
 	root.add_child(inst)
 	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
+	# Original figMesh callers tint the whole person; they do not enable vertexColors.
+	# The exported asset carries baked vertex shades for other uses, which must not darken this tint.
+	mat.vertex_color_use_as_albedo = false
 	mat.albedo_color = color
 	mat.roughness = 1.0
 	mat.emission_enabled = emission != Color.BLACK

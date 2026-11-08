@@ -22,6 +22,11 @@ func compare(actual: Variant, expected: Variant, label: String, errors: Array) -
 	if not near(actual.position,expected["p"]): errors.append(label+" position")
 	if actual.basis.x.distance_to(basis.x)>.0002 or actual.basis.y.distance_to(basis.y)>.0002 or actual.basis.z.distance_to(basis.z)>.0002: errors.append(label+" rotation/scale")
 	if actual.visible!=expected["visible"]: errors.append(label+" visibility")
+	var figure_colors := []
+	for figure: Node in actual.find_children("Figure_*","Node3D",true,false):
+		for part: MeshInstance3D in figure.find_children("*","MeshInstance3D",true,false):
+			figure_colors.append(part.material_override.vertex_color_use_as_albedo)
+	if not same_json(figure_colors,expected["figureColors"]): errors.append(label+" figure vertex tint")
 	if expected.has("alpha"):
 		var material := actual.material_override as BaseMaterial3D
 		if material==null or absf(material.albedo_color.a-float(expected["alpha"]))>.00001: errors.append(label+" alpha")

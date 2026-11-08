@@ -5,6 +5,7 @@
   const snap=o=>{
     if(Array.isArray(o))return o.map(snap);
     const result={p:o.position.toArray(),q:o.quaternion.toArray(),s:o.scale.toArray(),visible:o.visible};
+    result.figureColors=[];o.traverse(n=>{if(n.geometry?.userData.figKind)result.figureColors.push(n.material.vertexColors);});
     if(o.material){result.alpha=o.material.opacity;result.fog=o.material.fog;result.depthTest=o.material.depthTest;result.color=o.material.color?.toArray();}
     if(o.isInstancedMesh)result.instances=Array.from({length:o.count},(_,i)=>{const m=new THREE.Matrix4();o.getMatrixAt(i,m);return m.toArray();});
     if(o.userData.lamp)result.lamp=snap(o.userData.lamp);

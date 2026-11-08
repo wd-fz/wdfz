@@ -231,7 +231,6 @@ func show_window(w: Dictionary, cam: Camera3D) -> bool:
 		_fig.add_child(person)
 		for child: Node in person.find_children("*","MeshInstance3D",true,false):
 			var material := (child as MeshInstance3D).material_override as BaseMaterial3D
-			material.vertex_color_use_as_albedo = false
 			material.albedo_color.a = .82
 			material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 			material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED

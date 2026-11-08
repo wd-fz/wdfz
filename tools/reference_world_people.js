@@ -1,11 +1,11 @@
 () => {
   running=false;
-  const original=figMesh, dayIs=DayEvents.is, next=PresentationRandom.next;
+  const original=figMesh, dayIs=DayEvents.is;
   const result={reference:'wd-fz/wd-fz.github.io@0bf508a47eac154c2a7047cdb45d314f61c48fdc',exchange:[],gaze:[]};
   figMesh=(kind,mat,scale)=>{const mesh=original(kind,mat,scale);mesh.userData.referenceKind=kind;return mesh;};
   const snap=f=>({kind:f.userData.referenceKind,p:f.position.toArray(),yaw:f.rotation.y,scale:f.scale.toArray(),
     color:'#'+f.material.color.getHexString(),emission:f.material.emissive?'#'+f.material.emissive.getHexString():null,
-    unlit:f.material.isMeshBasicMaterial||false,fog:f.material.fog,visible:f.visible});
+    unlit:f.material.isMeshBasicMaterial||false,fog:f.material.fog,vertexColors:f.material.vertexColors,visible:f.visible});
   const frame=()=>GameModules.emit('frame',0);
   try{
     S.screen='play';S.dead=false;S.floorY=0;S.mode='out';S.room=null;
@@ -43,11 +43,11 @@
     const check=GLR.scene.getObjectByName('checkup-day');if(!check)throw Error('checkup group missing');
     result.checkup=check.children[check.children.length-1].children.map(snap);
     S.room='teach1';const T=INTERIORS.teach1;S.x=T.ox+48.8*T.tw;S.y=T.oy+11.39*T.th;
-    let n=0;PresentationRandom.next=()=>((n++*37+11)%997)/997;
+    PresentationRandom.seed(1);
     fnPeopleBuild();result.fake={room:S.room,player:[S.x,S.y],figures:FN_P.grp.children.map(f=>({p:f.position.toArray(),yaw:f.rotation.y,body:snap(f.children[0])}))};
     fnPeopleClear();
     const errors=GameModules.errors().filter(e=>['exchange','window-gaze','checkup'].includes(e.who));
     if(errors.length)throw Error(JSON.stringify(errors));
     return result;
-  }finally{figMesh=original;DayEvents.is=dayIs;PresentationRandom.next=next;InspectionView.clearFx();}
+  }finally{figMesh=original;DayEvents.is=dayIs;InspectionView.clearFx();}
 }

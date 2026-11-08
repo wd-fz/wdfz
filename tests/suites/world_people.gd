@@ -14,7 +14,7 @@ func material(fig: Node3D) -> StandardMaterial3D:
 func appearance(fig: Node3D, old: Dictionary) -> void:
 	check(fig.get_child(0).scene_file_path.ends_with("/"+String(old["kind"])+".glb") and fig.scale.distance_to(v3(old["scale"]))<.00001,"original person asset and scale: %s / %s" % [fig.get_child(0).scene_file_path,fig.scale])
 	var mat := material(fig)
-	check(mat.albedo_color.is_equal_approx(Color(old["color"])) and (mat.shading_mode==BaseMaterial3D.SHADING_MODE_UNSHADED)==old["unlit"] and mat.disable_fog==not old["fog"],"original colour, lighting and fog")
+	check(mat.albedo_color.is_equal_approx(Color(old["color"])) and (mat.shading_mode==BaseMaterial3D.SHADING_MODE_UNSHADED)==old["unlit"] and mat.disable_fog==not old["fog"] and mat.vertex_color_use_as_albedo==old["vertexColors"],"original colour, lighting, fog and vertex tint flag")
 	if old["emission"]!=null:
 		check(mat.emission_enabled and mat.emission.is_equal_approx(Color(old["emission"])),"original faint emissive silhouette")
 
