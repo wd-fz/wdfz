@@ -5,6 +5,9 @@ extends Node
 ## The world stands still (the app pauses the tree), click / Space / Enter / Esc skip. Ported so far:
 ##   face (《白名单》) — the gate's lamp turns from red to white, a beep, black; outside the gate you turn and look
 ##   back: one by one the gate fills with people watching you leave.
+##   dismissal (《放学》) — 18 s on four stages of its own: the broadcast room (the speakers light up one by one),
+##   the classroom (dozens of chairs slide back at once), the stairwell seen from above (a stream of people and one
+##   tall figure that does not move), the north gate and the teaching building behind it whose windows go dark.
 ##   international (《外国语学生》) — 20 s on four little stages of its own (the world is hidden): the visitors pass
 ##   the north gate, the guard checks the reception list while two searchers stop inside, outside the colours are
 ##   ordinary and a temporary reception pass is handed back, the pass names a school that sounds unfamiliar.
@@ -12,7 +15,8 @@ extends Node
 
 signal finished(skipped: bool)
 
-const DEFS := {"face": {"dur": 10.0, "outdoor": true}, "international": {"dur": 20.0, "outdoor": false}}
+const DEFS := {"face": {"dur": 10.0, "outdoor": true}, "international": {"dur": 20.0, "outdoor": false}, "dismissal": {"dur": 18.0, "outdoor": false}}
+const STAGED := ["international", "dismissal"]
 const COAT := [Color("#3a4a6a"), Color("#7a5a3a"), Color("#5a6a4a"), Color("#8a6a6a")]
 const SC := 2.0
 
@@ -37,6 +41,13 @@ var _walk: Array = []
 var _list: Node3D
 var _pass: Node3D
 var _pass2: Node3D
+var _speakers: Array = []
+var _students: Array = []
+var _line: Array = []
+var _walkers: Array = []
+var _windows: Array = []
+var _ledger: Label3D
+var _dis_said := {}
 
 
 static func has(id: String) -> bool:
@@ -112,7 +123,7 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	_root = Node3D.new()
 	_root.name = "EndingProps"
 	_world = world
-	if id == "international":
+	if STAGED.has(id):
 		# Its own stages far from the real scene: the world is hidden meanwhile.
 		_how = String(opts.get("how", "exam"))
 		_world_was_visible = world.visible
@@ -132,6 +143,11 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	cam.far = player.camera.far
 	_root.add_child(cam)
 	cam.current = true
+	if id == "dismissal":
+		_setup_dis()
+		_ui.cut_fade(0.0)
+		_apply(0.0)
+		return
 	if id == "international":
 		_setup_intl()
 		_ui.cut_fade(0.0)
@@ -167,6 +183,9 @@ func _look(from: Vector3, to: Vector3) -> void:
 func _apply(kk: float) -> void:
 	if kind == "international":
 		_apply_intl(kk)
+		return
+	if kind == "dismissal":
+		_apply_dis(kk)
 		return
 	_ui.cut_fade(clampf(face_fade(kk), 0.0, 1.0))
 	if kk < 0.3:
@@ -222,7 +241,7 @@ func end(skipped: bool) -> void:
 	if not on:
 		return
 	on = false
-	if kind == "international" and is_instance_valid(_world):
+	if STAGED.has(kind) and is_instance_valid(_world):
 		_world.visible = _world_was_visible
 	_ui.cut_caption("")
 	_ui.cut_fade(0.0)
@@ -357,3 +376,179 @@ func _apply_intl(kk: float) -> void:
 	else:
 		_look(Vector3(180.0, 1.45, 0.3), Vector3(180.0, 1.3, -0.5))
 	_ui.cut_fade(clampf(intl_edge(t), 0.0, 1.0))
+
+
+# ---- 《放学》 ----
+
+## The four stages by time (seconds): broadcast room, classroom, stairwell, gate.
+static func dis_stage(t: float) -> int:
+	return 0 if t < 3.2 else (1 if t < 7.8 else (2 if t < 12.0 else 3))
+
+
+static func dis_edge(t: float) -> float:
+	var edge := 0.0
+	for x: float in [3.2, 7.8, 12.0, 13.2, 15.6]:
+		edge = maxf(edge, maxf(0.0, 1.0 - absf(t - x) / 0.12))
+	return maxf(edge, (t - 17.4) / 0.6 if t > 17.4 else 0.0)
+
+
+static func dis_caption(t: float) -> String:
+	var s := dis_stage(t)
+	if s == 0:
+		return "广播：放学。全体同学，从北门离校。\n你的声音从走廊尽头传回来，慢了半拍。"
+	if s == 1:
+		return "几十把椅子同时往后挪。没有人说话。"
+	if s == 2:
+		return "走廊尽头的高个子没有动。人流从它身边经过。"
+	return "登记簿翻到了新的一页：放学 · 全体。" if (t - 12.0) / 6.0 < 0.6 else "你回过头。教学楼的灯，一层一层熄灭。"
+
+
+func _room(g: Node3D, w: float, d: float) -> void:
+	_box(g, w, 0.08, d, Color("#414944"), 0, -0.04, 0)
+	_box(g, w, 3.0, 0.08, Color("#65706a"), 0, 1.5, -d / 2.0)
+	_box(g, 0.08, 3.0, d, Color("#4e5b58"), -w / 2.0, 1.5, 0)
+
+
+func _label(text: String, size: float, color: Color) -> Label3D:
+	var l := Label3D.new()
+	l.text = text
+	l.font_size = 64
+	l.pixel_size = size / 64.0 * 1.6
+	l.modulate = color
+	l.shaded = false
+	l.double_sided = true
+	return l
+
+
+func _setup_dis() -> void:
+	for i in 4:
+		var g := Node3D.new()
+		g.position.x = float(i) * 28.0 if i < 3 else 84.0
+		_root.add_child(g)
+		_st.append(g)
+	var a: Node3D = _st[0]
+	_room(a, 5, 5)
+	_box(a, 2, 0.12, 0.7, Color("#564d3e"), 0, 0.88, 0)
+	_box(a, 0.1, 0.42, 0.1, Color("#202c29"), -0.4, 1.15, 0)
+	var rec := _label("放学通知\n第二天 · 全体离校", 0.2, Color("#e7e2ca"))
+	rec.position = Vector3(0, 1.7, -2.35)
+	a.add_child(rec)
+	for i in 5:
+		var m := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.35, 0.22, 0.12)
+		m.mesh = bm
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = Color("#313b34")
+		m.material_override = mat
+		m.position = Vector3(-1.6 + float(i) * 0.8, 2.55, -2.37)
+		a.add_child(m)
+		_speakers.append(m)
+	var b: Node3D = _st[1]
+	_room(b, 12, 10)
+	var board := _label("放  学", 0.5, Color("#e7e2ca"))
+	board.position = Vector3(0, 1.8, -4.93)
+	b.add_child(board)
+	for i in 24:
+		var x := float(i % 6 - 2) * 1.6 - 0.8
+		var z := float(i / 6) * 1.8 - 2.5
+		_box(b, 0.9, 0.08, 0.55, Color("#655944"), x, 0.76, z + 0.4)
+		_box(b, 0.42, 0.55, 0.08, Color("#605541"), x, 0.64, z - 0.3)
+		var chair: MeshInstance3D = b.get_child(b.get_child_count() - 1)
+		var stu := _fig(b, "sit", Color("#465353"), x, z, PI)
+		_students.append({"fig": stu, "chair": chair, "z": z, "x": x, "stood": false})
+	var c: Node3D = _st[2]
+	_room(c, 7, 10)
+	for i in 12:
+		_box(c, 1.5, float(i + 1) * 0.17, 0.28, Color("#737c75"), -1, float(i + 1) * 0.17 / 2.0, 2.5 - float(i) * 0.28)
+		_box(c, 1.5, 0.13, 0.28, Color("#626d69"), 1, 2.04 + float(i + 1) * 0.17 - 0.065, -0.58 + float(i) * 0.28)
+	_box(c, 3.6, 0.12, 1.0, Color("#7e8780"), 0, 2.04, -1.1)
+	for i in 10:
+		_line.append(_fig(c, "person", Color("#465353"), -1.0, 1.5, 0.0))
+	_fig(c, "tall", Color("#465353"), 2.6, 3.7, 0.0)
+	var d: Node3D = _st[3]
+	_box(d, 60, 0.05, 80, Color("#3b3e3a"), 0, 0, -20)
+	_box(d, 0.6, 3.2, 0.6, Color("#6d6a62"), -2.4, 1.6, 0)
+	_box(d, 0.6, 3.2, 0.6, Color("#6d6a62"), 2.4, 1.6, 0)
+	_box(d, 5.4, 0.4, 0.6, Color("#6d6a62"), 0, 3.2, 0)
+	_box(d, 24, 12, 10, Color("#5a4e46"), 0, 6, -25)
+	for i in 16:
+		_walkers.append(_fig(d, "person", Color("#3b4847"), 5.35, 3.8 - float(i) * 0.65, PI))
+	_ledger = _label("放学 · 全体\n准予离校", 0.12, Color("#e7e2ca"))
+	_ledger.position = Vector3(-1.3, 1.1, 1.0)
+	_ledger.rotation.x = -0.4
+	d.add_child(_ledger)
+	for i in 5:
+		var w := MeshInstance3D.new()
+		var wm := BoxMesh.new()
+		wm.size = Vector3(20, 0.5, 0.03)
+		w.mesh = wm
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = Color("#aba17c")
+		w.material_override = mat
+		w.position = Vector3(0, 2.7 + float(i) * 2.0, -19.96)
+		w.visible = false
+		d.add_child(w)
+		_windows.append(w)
+
+
+func _apply_dis(kk: float) -> void:
+	var t := kk * 18.0
+	var s := dis_stage(t)
+	for i in _st.size():
+		(_st[i] as Node3D).visible = i == s
+	_ui.cut_caption(dis_caption(t))
+	if s == 0:
+		_look(Vector3(1.5, 1.55, 2.1), Vector3(0.0, 1.25, -1.4))
+		for i in _speakers.size():
+			var mat := (_speakers[i] as MeshInstance3D).material_override as StandardMaterial3D
+			mat.albedo_color = Color("#8b9d83") if t > 0.25 + float(i) * 0.35 else Color("#313b34")
+	elif s == 1:
+		var p := phase(kk, 3.2 / 18.0, 7.8 / 18.0)
+		_look(Vector3(28.0 + 5.0, 2.1, 3.9), Vector3(28.0 - 0.5, 1.2, -2.0))
+		for i in _students.size():
+			var o: Dictionary = _students[i]
+			var u := maxf(0.0, minf(1.0, (p - float(i) * 0.012) * 3.0))
+			(o["chair"] as Node3D).position.z = float(o["z"]) - 0.3 - u * 0.3
+			var f: Node3D = o["fig"]
+			f.position.z = float(o["z"]) + maxf(0.0, u - 0.65) * 0.8
+			if u > 0.45 and not bool(o["stood"]):
+				o["stood"] = true
+				var pos := f.position
+				var rot := f.rotation
+				f.queue_free()
+				var nf := _fig(_st[1] as Node3D, "person", Color("#465353"), float(o["x"]), float(o["z"]), PI)
+				nf.position = pos
+				nf.rotation = rot
+				o["fig"] = nf
+	elif s == 2:
+		var u2 := (t - 7.8) / 4.2
+		_look(Vector3(56.0 + 3.6, 6.2, 7.6), Vector3(56.0, 1.4, 0.4))
+		for i in _line.size():
+			var f2: Node3D = _line[i]
+			var p2 := fmod(u2 * 0.7 + float(i) * 0.08, 1.0)
+			if p2 < 0.5:
+				f2.position = Vector3(-1.0, 2.04 * (1.0 - p2 * 2.0), -0.9 + p2 * 6.7)
+				f2.rotation.y = PI
+			else:
+				f2.position = Vector3(1.0, 4.08 - (p2 - 0.5) * 4.08, 2.5 - (p2 - 0.5) * 6.7)
+				f2.rotation.y = 0.0
+	else:
+		var v := (t - 12.0) / 6.0
+		var gx := (_st[3] as Node3D).position.x
+		for i in _walkers.size():
+			(_walkers[i] as Node3D).position = Vector3(5.35, 0.0, 3.8 - float(i) * 0.65 - v * 8.0)
+		_ledger.visible = true
+		if v < 0.2:
+			_look(Vector3(gx - 1.3, 1.6, 2.1), Vector3(gx - 1.3, 1.1, 1.0))
+		elif v < 0.6:
+			_look(Vector3(gx + 4.75, 1.9, -9.0 - (v - 0.2) * 10.0), Vector3(gx + 5.35, 1.4, 3.0))
+		else:
+			_look(Vector3(gx, 8.5, 4.0), Vector3(gx, 8.0, -20.0))
+		for i in _windows.size():
+			var w := _windows[i] as MeshInstance3D
+			w.visible = v >= 0.6
+			(w.material_override as StandardMaterial3D).albedo_color = Color("#050909") if v > 0.68 + float(i) * 0.055 else Color("#aba17c")
+	_ui.cut_fade(clampf(dis_edge(t), 0.0, 1.0))
