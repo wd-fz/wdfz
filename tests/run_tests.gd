@@ -42,6 +42,11 @@ func same_json(a: Variant, b: Variant) -> bool:
 
 
 func _run() -> void:
+	var checkup_props := preload("res://tests/suites/checkup_props.gd").new(self)
+	print("CASE: checkup_props.test_original_props")
+	checkup_props.test_original_props()
+	print("CASE: checkup_props.test_world")
+	await checkup_props.test_world()
 	var death_models := preload("res://tests/suites/death_models.gd").new(self)
 	print("CASE: death_models.test_geometry")
 	death_models.test_geometry()

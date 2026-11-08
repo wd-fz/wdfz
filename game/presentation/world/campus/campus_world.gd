@@ -691,47 +691,9 @@ func show_checkup(on: bool, queue: bool, line: String) -> void:
 			var w := Vector2(float(room["ox"]) + c * float(room["tw"]), float(room["oy"]) + r * float(room["th"]))
 			var sp := CampusGeometry.to_scene(room, w)
 			return Vector3(sp.x, 0.0, sp.y)
-		var white := StandardMaterial3D.new()
-		white.albedo_color = Color(0.91, 0.91, 0.89)
-		var metal := StandardMaterial3D.new()
-		metal.albedo_color = Color(0.55, 0.58, 0.59)
-		var box := func(size: Vector3, pos: Vector3, mat: Material) -> void:
-			var m := MeshInstance3D.new()
-			var b := BoxMesh.new()
-			b.size = size
-			m.mesh = b
-			m.material_override = mat
-			m.position = pos
-			_checkup.add_child(m)
-		var rp: Vector3 = at.call(1.16, 15.45)
-		box.call(Vector3(0.05, 2.0, 0.16), rp + Vector3(0, 1.0, 0), white)
-		box.call(Vector3(0.26, 0.025, 0.12), rp + Vector3(0.14, 1.92, 0), metal)
-		box.call(Vector3(0.34, 0.04, 0.36), rp + Vector3(0.17, 0.02, 0), metal)
-		box.call(Vector3(0.34, 0.06, 0.4), at.call(2.7, 15.45) + Vector3(0, 0.03, 0), white)
-		var chart := Label3D.new()
-		chart.text = "E\nE  E\nE  E  E\nE  E  E  E\n\n" + line
-		chart.font_size = 28
-		chart.pixel_size = 0.0015
-		chart.modulate = Color(0.08, 0.08, 0.08)
-		chart.outline_size = 0
-		var back := MeshInstance3D.new()
-		var quad := QuadMesh.new()
-		quad.size = Vector2(0.5, 0.88)
-		back.mesh = quad
-		back.material_override = white
-		var cp: Vector3 = at.call(8.84, 15.45)
-		back.position = cp + Vector3(0, 1.45, 0)
-		back.rotation.y = -PI * 0.5
-		chart.position = cp + Vector3(-0.01, 1.45, 0)
-		chart.rotation.y = -PI * 0.5
-		_checkup.add_child(back)
-		_checkup.add_child(chart)
-		var sign := Label3D.new()
-		sign.text = "医 务 室\n（体检）"
-		sign.font_size = 40
-		sign.pixel_size = 0.0012
-		sign.position = at.call(7.0, 17.14) + Vector3(0, 1.55, 0)
-		_checkup.add_child(sign)
+		var props := CheckupProps.new()
+		props.build(room,line)
+		_checkup.add_child(props)
 		_checkup_queue = StaticBody3D.new()
 		_checkup_queue.name = "Queue"
 		_checkup_queue.collision_layer = 1
