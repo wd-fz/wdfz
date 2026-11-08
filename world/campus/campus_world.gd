@@ -538,7 +538,7 @@ func show_garage_shadow(visible_now: bool, scene_pos: Vector2, height: float) ->
 
 
 ## The opened door of the portal route (portal.js): a ring of coloured light in front of the physics bench.
-var _portal_ring: Node3D
+var _portal_dev: PortalDevice
 
 
 ## The checkup day in admin1 (checkup.js, placeholder): height rule, scale and eye chart in the
@@ -689,68 +689,33 @@ func dread_note_text() -> String:
 	return (_dread_note.get_child(1) as Label3D).text
 
 
-func show_portal(visible_now: bool) -> void:
-	if not visible_now or scene_id != "lab1":
-		if is_instance_valid(_portal_ring):
-			_portal_ring.visible = false
+func show_portal(open_now: bool, sketch_now: bool = false) -> void:
+	# The rig stands on the lab's first bench tile in every stage (PortalDevice.sync): bare, sockets lit once the plans are
+	# complete, door open.
+	if scene_id != "lab1":
+		if is_instance_valid(_portal_dev):
+			_portal_dev.visible = false
 		return
-	if not is_instance_valid(_portal_ring):
-		var room := CampusData.layout("lab1")
-		var bench := Vector2.ZERO
-		var n := 0
-		var grid: Array = room["grid"]
-		for r in grid.size():
-			for c in String(grid[r]).length():
-				if String(grid[r]).substr(c, 1) == "K":
-					bench += CampusGeometry.tile_center(room, c, r)
-					n += 1
-		bench /= maxf(1.0, float(n))
-		var mid := Vector2(float(room["cx"]), float(room["cy"]))
-		var at := bench + (mid - bench).normalized() * 14.0
-		var s := CampusGeometry.to_scene(room, at)
-		_portal_ring = Node3D.new()
-		_portal_ring.name = "PortalRing"
-		var ring := MeshInstance3D.new()
-		var torus := TorusMesh.new()
-		torus.inner_radius = 0.85
-		torus.outer_radius = 1.0
-		ring.mesh = torus
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(0.6, 0.9, 1.0)
-		mat.emission_enabled = true
-		mat.emission = Color(0.5, 0.85, 1.0)
-		mat.emission_energy_multiplier = 3.0
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		ring.material_override = mat
-		ring.rotation.x = PI * 0.5
-		_portal_ring.add_child(ring)
-		var inside := MeshInstance3D.new()
-		var disc := CylinderMesh.new()
-		disc.top_radius = 0.86
-		disc.bottom_radius = 0.86
-		disc.height = 0.01
-		inside.mesh = disc
-		var glow := StandardMaterial3D.new()
-		glow.albedo_color = Color(0.95, 0.8, 0.5, 0.55)
-		glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		inside.material_override = glow
-		inside.rotation.x = PI * 0.5
-		_portal_ring.add_child(inside)
-		var lamp := OmniLight3D.new()
-		lamp.light_color = Color(0.7, 0.9, 1.0)
-		lamp.light_energy = 1.2
-		lamp.omni_range = 5.0
-		_portal_ring.add_child(lamp)
-		_portal_ring.position = Vector3(s.x, 1.15, s.y)
-		var face := (mid - bench)
-		_portal_ring.rotation.y = atan2(face.x, face.y)
-		add_child(_portal_ring)
-	_portal_ring.visible = true
+	if not is_instance_valid(_portal_dev):
+		var spot := PortalDevice.bench_spot(CampusData.layout("lab1"))
+		_portal_dev = PortalDevice.new()
+		_portal_dev.build()
+		_portal_dev.position = Vector3(spot.x, 0.0, spot.y)
+		add_child(_portal_dev)
+	_portal_dev.visible = true
+	var st := "open" if open_now else ("ready" if sketch_now else "base")
+	if _portal_dev.state != st:
+		_portal_dev.set_state(st, 1.0)
+
+
+## Hide the rig for a cutscene that brings its own.
+func hide_portal() -> void:
+	if is_instance_valid(_portal_dev):
+		_portal_dev.visible = false
 
 
 func portal_shown() -> bool:
-	return is_instance_valid(_portal_ring) and _portal_ring.visible
+	return is_instance_valid(_portal_dev) and _portal_dev.visible and _portal_dev.state == "open"
 
 
 func garage_shadow_shown() -> bool:

@@ -1734,7 +1734,7 @@ func _facility_step() -> void:
 	fac.spot_tick()
 	var world := _campus_world()
 	if world != null:
-		world.show_portal(bool(fac.portal["open"]))
+		world.show_portal(bool(fac.portal["open"]), bool(fac.portal["sketch"]))
 
 
 func _apply_facility_events() -> void:

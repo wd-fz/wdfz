@@ -4608,7 +4608,7 @@ func _test_portal_route(app: GameApp) -> void:
 	await _frames(2)
 	check(bool(app.facilities().portal["open"]), "the circle opens")
 	await _frames(2)
-	check(app._campus_world().portal_shown(), "the circle of light stands in front of the bench")
+	check(app._campus_world().portal_shown(), "the rig stands on the bench with its door open")
 	await create_timer(2.8).timeout
 	await _frames(2)
 	check(app.ui.choice_open(), "after a moment the circle asks")

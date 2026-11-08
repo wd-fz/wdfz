@@ -32,6 +32,12 @@ func _run() -> void:
 	app.travel("lab1", {"position": [spot.x, 0.05, spot.y + 3.0], "yaw": 0.0, "pitch": 0.0}, false)
 	for _i in 30:
 		await process_frame
+	var fac := app.facilities()
+	for spec: Array in [["live-1-base", false, false], ["live-2-ready", true, false], ["live-3-open", true, true]]:
+		fac.portal["sketch"] = bool(spec[1])
+		fac.portal["open"] = bool(spec[2])
+		app._facility_step()
+		await _shot(String(spec[0]))
 	app.player.enabled = false
 	app._reach_ending("portal")
 	var cut: EndingCut = app._ending_cut

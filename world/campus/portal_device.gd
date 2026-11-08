@@ -16,6 +16,7 @@ var state := "base"
 var k := 0.0
 var t := 0.0
 var ring_y := 0.0
+var self_tick := true    ## ticks itself every frame (a cutscene that drives it by progress turns this off)
 var shake := true      ## the ring trembles a little while charging (off with the camera-shake setting)
 
 var _ring: Node3D
@@ -25,6 +26,7 @@ var _layers: Array[MeshInstance3D] = []
 var _layer_op: Array[float] = []
 var _layer_spin: Array[float] = []
 var _inner: Node3D
+var _glow: OmniLight3D      # a lamp 3 m inside the doorway so the far end is not black (kept from the first ring)
 var _coil_mat: StandardMaterial3D
 var _liquid_mat: StandardMaterial3D
 var _parts := {}
@@ -281,6 +283,13 @@ func build(seg: int = 40) -> void:
 		_layers.append(d)
 		_layer_op.append(float(sp[2]))
 		_layer_spin.append((-1.0 if j % 2 == 1 else 1.0) * (0.3 + float(j) * 0.25))
+	_glow = OmniLight3D.new()
+	_glow.light_color = Color(0.7, 0.9, 1.0)
+	_glow.light_energy = 1.2
+	_glow.omni_range = 5.0
+	_glow.position = Vector3(0, ring_y, 0.6)
+	_glow.visible = false
+	add_child(_glow)
 	_apply()
 
 
@@ -297,6 +306,11 @@ func _socket(id: String, parent: Node3D, pos: Vector3, mat: Material) -> void:
 	var led := _mesh(s, sp, bas(Color("#332211")), Vector3(0.035, 0.02, 0.035))
 	_leds[id] = led
 	_sockets[id] = s
+
+
+func _process(delta: float) -> void:
+	if self_tick and visible:
+		tick(delta)
 
 
 func set_state(new_state: String, kk: float = 1.0) -> void:
@@ -324,6 +338,8 @@ func _apply() -> void:
 		mat.albedo_color = Color(0.5, 0.91, 1.0, 0.35 + 0.6 * on)
 	var open_k := clampf((k - 0.6) / 0.4, 0.0, 1.0) if state == "charge" else (1.0 if (state == "open" or state == "enter") else 0.0)
 	_inner.visible = open_k > 0.01
+	if _glow != null:
+		_glow.visible = open_k > 0.5
 	_inner.scale = Vector3.ONE * (0.2 + 0.8 * open_k)
 	for j in range(1, _layers.size()):
 		var lm := _layers[j].material_override as StandardMaterial3D

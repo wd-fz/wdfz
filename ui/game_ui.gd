@@ -712,10 +712,20 @@ func _build_menu_photo() -> void:
 
 
 var _cut_fade: ColorRect
+var _hud_was := true
 var _cut_caption: Label
 
 
 ## Over the live cutscenes: a black fade (0 clear … 1 black) and a caption line at the bottom.
+## body.cut: while a cutscene plays the HUD (status, hotbar, prompt, crosshair, captions) is hidden.
+func cut_mode(on: bool) -> void:
+	if on:
+		_hud_was = hud.visible
+		hud.visible = false
+	else:
+		hud.visible = _hud_was
+
+
 func cut_fade(v: float) -> void:
 	if _cut_fade == null:
 		_cut_fade = ColorRect.new()

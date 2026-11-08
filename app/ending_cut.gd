@@ -74,8 +74,8 @@ var _rails: Array = []
 var _leds: Array = []
 var _beam: MeshInstance3D
 var _thing: Node3D
-var _log: Label3D
-var _arch: Label3D
+var _log: CutScreen
+var _arch: CutScreen
 var _lamps: Node3D
 var _tall: Node3D
 var _sky: MeshInstance3D
@@ -149,6 +149,7 @@ static func face_fade(kk: float) -> float:
 
 func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerController, ui: GameUI, on_beep: Callable = Callable(), opts: Dictionary = {}) -> void:
 	kind = id
+	ui.cut_mode(true)
 	_campus = campus
 	_ui = ui
 	_player = player
@@ -330,6 +331,7 @@ func end(skipped: bool) -> void:
 	if not on:
 		return
 	on = false
+	_ui.cut_mode(false)
 	if kind == "cyber" and audio != null and is_instance_valid(audio):
 		audio.stop("scene")
 	if STAGED.has(kind) and is_instance_valid(_world):
@@ -513,6 +515,25 @@ func _prop(g: Node3D, prop_name: String, x: float, y: float, z: float, ry: float
 	n.rotation.y = ry
 	g.add_child(n)
 	return n
+
+
+## A text screen on a quad (the old screen()): the canvas is redrawn only when its content changes.
+func _screen(parent: Node3D, screen_mode: String, w: int, h: int, quad: Vector2, pos: Vector3) -> CutScreen:
+	var vp := CutScreen.new()
+	vp.setup(screen_mode, w, h)
+	parent.add_child(vp)
+	var q := QuadMesh.new()
+	q.size = quad
+	var mi := MeshInstance3D.new()
+	mi.mesh = q
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_texture = vp.get_texture()
+	m.disable_fog = true
+	mi.material_override = m
+	mi.position = pos
+	parent.add_child(mi)
+	return vp
 
 
 func _label(text: String, size: float, color: Color) -> Label3D:
@@ -708,8 +729,9 @@ func _setup_live_portal(world: Node3D) -> void:
 	_device.set_state("base", 0.0)
 	_root.add_child(_device)
 	_root.set_meta("ring_y", _device.ring_y)
-	if world.has_method("show_portal"):
-		world.call("show_portal", false)         # the light-circle marker steps aside for the cut
+	_device.self_tick = false                  # the cut drives it by progress
+	if world.has_method("hide_portal"):
+		world.call("hide_portal")                # the lab's own rig steps aside for the cut
 
 
 func _setup_portal() -> void:
@@ -938,10 +960,7 @@ func _setup_cyber() -> void:
 		_box(a, 0.02, 0.003, 11.0, Color("#2e3436"), float(i) * 0.6, 0.004, 0.0)   # the raised floor's seams
 	for i in range(-9, 10):
 		_box(a, 7.0, 0.003, 0.02, Color("#2e3436"), 0.0, 0.004, float(i) * 0.6)
-	_log = _label("", 0.13, Color("#5fbf86"))
-	_log.position = Vector3(0, 1.45, -4.75 + 0.4)
-	_log.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	a.add_child(_log)
+	_log = _screen(a, "log", 1024, 320, Vector2(1.04, 0.325), Vector3(0, 1.45, -4.75 + 0.4))
 	var b: Node3D = _st[1]
 	_box(b, 3.2, 0.1, 24, Color("#8e9690"), 0, -0.05, -6)
 	_box(b, 0.12, 2.3, 24, Color("#b3b8ad"), -1.66, 1.95, -6)
@@ -998,13 +1017,7 @@ func _setup_cyber() -> void:
 	_box(c, 0.682, 0.442, 0.035, Color("#14181a"), 0, 1.05, -0.75)         # the monitor and its stand
 	_box(c, 0.06, 0.29, 0.04, Color("#1b2022"), 0, 0.4, -0.79)
 	_box(c, 0.26, 0.02, 0.18, Color("#1b2022"), 0, 0.78, -0.77)
-	_arch = _label("", 0.05, Color("#9fd6b4"))
-	_arch.position = Vector3(-0.29, 1.2, -0.73)
-	_arch.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-	_arch.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_arch.pixel_size = 0.00018
-	_arch.font_size = 64
-	c.add_child(_arch)
+	_arch = _screen(c, "archive", 1280, 768, Vector2(0.62, 0.372), Vector3(0, 1.05, -0.75 + 0.019))
 	# The last stage is the real campus at dawn, in front of the teaching building (the world comes back for it).
 	var base := CampusGeometry.to_scene(null, Vector2(560.0, 1008.0) * SC)
 	_cy_base = Vector3(base.x, 0.0, base.y)
@@ -1063,13 +1076,7 @@ func _apply_cyber(kk: float) -> void:
 			var on := t < off and not blink
 			for led: MeshInstance3D in r["leds"]:
 				(led.material_override as StandardMaterial3D).albedo_color = Color("#6ff09a") if on else Color("#0e1712")
-		var n := cy_log_lines(t)
-		if n != _log_n:
-			_log_n = n
-			var txt := ""
-			for i in n:
-				txt += String(CY_LOG[i][1]) + "\n"
-			_log.text = txt
+		_log.show_log(CutScreen.log_lines(t))
 		var dolly := phase(kk, 0.0, 0.2)
 		_look(Vector3(ox + 0.18, 1.5, 1.6 - 1.7 * dolly), Vector3(ox, 1.3, -4.75))
 		_sky_mat.albedo_color = Color(0.02, 0.026, 0.03)
@@ -1087,12 +1094,7 @@ func _apply_cyber(kk: float) -> void:
 		if settled:
 			_lamps.visible = true
 	elif s == 2:
-		var n2 := cy_archive_steps(t)
-		var blink_key := int((t - 10.25) / 0.45) if t >= 10.25 else -1
-		var key := n2 * 10 + (blink_key % 2 if blink_key >= 0 else 0)
-		if key != _arch_n:
-			_arch_n = key
-			_arch.text = _cy_archive_text(t)
+		_arch.show_archive(t)
 		var push := phase(t, 7.2, 10.4)
 		_look(Vector3(ox + 0.12 * (1.0 - push), 1.12 * (1.0 - push) + 1.05 * push, -0.75 + lerpf(1.7, 0.62, push)), Vector3(ox, 1.05, -0.75))
 		_sky_mat.albedo_color = Color(0.01, 0.012, 0.014)

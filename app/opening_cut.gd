@@ -94,6 +94,7 @@ func begin(world: Node3D, room: Dictionary, player: PlayerController, ui: GameUI
 	_player = player
 	_ui = ui
 	short = is_short
+	ui.cut_mode(true)
 	k = 0.0
 	on = true
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -314,6 +315,7 @@ func end(skipped: bool) -> void:
 	if not on:
 		return
 	on = false
+	_ui.cut_mode(false)
 	for m: Dictionary in _mates:
 		if is_instance_valid(m["node"]):
 			(m["node"] as Node3D).rotation = Vector3(0.0, float(m["base_y"]), 0.0)
