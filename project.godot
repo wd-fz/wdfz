@@ -2,9 +2,9 @@
 config_version=5
 
 [application]
-config/name="武大附中 · 里世界 — Godot 移植框架"
-config/description="可运行的移植工作台；正式校园、玩法与美术尚待迁移。"
-run/main_scene="res://scenes/app.tscn"
+config/name="武大附中 · 里世界 — Godot 移植版"
+config/description="正式校园与公开玩法的 Godot 移植开发版。"
+run/main_scene="res://game/app/app.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/use_custom_user_dir=true
 config/custom_user_dir_name="wdfz-godot"

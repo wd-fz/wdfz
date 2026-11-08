@@ -1,70 +1,45 @@
 #!/usr/bin/env python3
-"""Import and test with the actual Godot engine; fail on script errors too."""
+"""Check structure, import resources and run the real Godot regression suites."""
 import argparse
-import os
-from pathlib import Path
+import json
 import re
-import subprocess
 import sys
-
-ROOT = Path(__file__).resolve().parents[1]
-ENGINE = os.environ.get("GODOT_BIN", "godot")
-
-
-def run(*args, timeout=120):
-    result = subprocess.run(args, cwd=ROOT, text=True, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, timeout=timeout)
-    print(result.stdout, end="", flush=True)
-    # Godot may return zero on a script parse error. Never accept that as success.
-    if result.returncode or re.search(r"(?:SCRIPT ERROR:|ERROR:)", result.stdout):
-        raise SystemExit(result.returncode or 1)
-    return result.stdout
-
-
-def check_boundaries():
-    forbidden = re.compile(
-        r"\b(?:Input|FileAccess|DirAccess|RenderingServer|DisplayServer)\s*\."
-        r"|\b(?:get_tree|get_node)\s*\(|^\s*extends\s+(?:Node\w*|Control)\b"
-    )
-    paths = list((ROOT / "core/domain").glob("*.gd"))
-    paths += list((ROOT / "core/modules").glob("*.gd"))
-    paths += list((ROOT / "core/session").glob("*.gd"))
-    for path in (ROOT / "features").rglob("*.gd"):
-        if re.search(r"^extends FeatureModule$", path.read_text(), re.M):
-            paths.append(path)
-    for path in paths:
-        for number, line in enumerate(path.read_text().splitlines(), 1):
-            code = line.split("#", 1)[0]
-            if forbidden.search(code):
-                raise SystemExit(f"Rule layer depends on an adapter: {path.relative_to(ROOT)}:{number}")
-    print(f"Layer boundary check: {len(paths)} rule scripts passed.", flush=True)
+from ci import quality
+from ci.common import ENGINE, ROOT, check_version, run
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--windowed", action="store_true", help="also verify real window input (requires a display)")
+    parser.add_argument("--static-only", action="store_true", help="structure and tooling tests; no engine needed")
+    parser.add_argument("--mode", choices=("headless", "windowed", "both"), default="headless")
+    parser.add_argument("--windowed", action="store_true", help="alias for --mode both")
     options = parser.parse_args()
-    expected = (ROOT / ".godot-version").read_text().strip()
-    version = run(ENGINE, "--version").strip()
-    if not version.startswith(expected + "."):
-        raise SystemExit(f"Use Godot {expected}; found {version}")
-    check_boundaries()
-    run(ENGINE, "--headless", "--path", str(ROOT), "--editor", "--import")
-    run(ENGINE, "--headless", "--path", str(ROOT), "--fixed-fps", "60",
-        "--script", "res://tests/run_tests.gd")
-    if options.windowed:
-        # The window run renders every scene in software and runs the long walking tests.
-        run(ENGINE, "--path", str(ROOT), "--rendering-method", "gl_compatibility",
-            "--audio-driver", "Dummy", "--fixed-fps", "60",
-            "--script", "res://tests/run_tests.gd", timeout=600)
+    mode = "static" if options.static_only else "both" if options.windowed else options.mode
+    reports = ROOT / "build/reports" / mode
+    reports.mkdir(parents=True, exist_ok=True)
+    (ROOT / "build/.gdignore").touch()
+    summary = {"mode": mode, "passed": False, "suites": {}}
+    try:
+        print(quality.check(ROOT), flush=True)
+        run("tooling", [sys.executable, "-m", "unittest", "discover", "-s", "tests/tooling", "-v"], reports)
+        if not options.static_only:
+            summary["engine"] = check_version(reports)
+            run("import", [ENGINE, "--headless", "--path", str(ROOT), "--editor", "--import"], reports, timeout=900)
+            for display in (("headless", "windowed") if mode == "both" else (mode,)):
+                args = ["--headless"] if display == "headless" else ["--rendering-method", "gl_compatibility"]
+                output = run(display, [ENGINE, *args, "--path", str(ROOT), "--audio-driver", "Dummy",
+                                      "--fixed-fps", "60", "--script", "res://tests/run_tests.gd"], reports, timeout=900)
+                result = re.search(r"FRAMEWORK TESTS: (\d+) checks, 0 failures", output)
+                if not result or int(result[1]) == 0:
+                    raise RuntimeError(f"{display}: test runner did not confirm a completed, nonempty suite")
+                summary["suites"][display] = int(result[1])
+        summary["passed"] = True
+    finally:
+        (reports / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
 
 
 if __name__ == "__main__":
     try:
         main()
-    except subprocess.TimeoutExpired as error:
-        if error.stdout:
-            print(error.stdout.decode(errors="replace") if isinstance(error.stdout, bytes) else error.stdout)
-        sys.exit(str(error))
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         sys.exit(str(error))

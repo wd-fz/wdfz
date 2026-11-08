@@ -1,6 +1,6 @@
 # 开场 CG
 
-旧版 `opening.js` 与 `CUT_DEF.opening`（`wd-fz/wd-fz.github.io@0bf508a`）：新局在真正的第一节教室里实时演一段，再把镜头原样交给玩家。`app/opening_cut.gd`（`OpeningCut`）。
+旧版 `opening.js` 与 `CUT_DEF.opening`（`wd-fz/wd-fz.github.io@0bf508a`）：新局在真正的第一节教室里实时演一段，再把镜头原样交给玩家。`game/presentation/cinematics/opening_cut.gd`（`OpeningCut`）。
 
 ## 待办与进度
 
@@ -12,7 +12,7 @@
 | 演出期间 | 已完成 | 游戏暂停，不扣 SAN、不出异象、不能存档 |
 | 无画面环境 | 已完成 | 无窗口（测试）与没有教学楼场景时退回文字版前情提要，行为同旧版的兜底 |
 | 同学的小动作 | 已完成 | 演出里同学一半低头写字（一下一下前倾）、一小半翻书（侧一下身）、其余不动；第 3 段粉笔灰停住时一起定格，第 5 段起坐端正；演完或跳过都还原原来的朝向（`OpeningCut.mate_pose`） |
-| 声音已接 | `app/opening_cut.gd` `_beats` | 电流声（`world.crackle`，0.37）、闭眼的「滴」（`ui.blink`，0.72）、醒来（`foley.wake`，0.78），时刻照旧版；没有人耳试听 |
+| 声音已接 | `game/presentation/cinematics/opening_cut.gd` `_beats` | 电流声（`world.crackle`，0.37）、闭眼的「滴」（`ui.blink`，0.72）、醒来（`foley.wake`，0.78），时刻照旧版；没有人耳试听 |
 | 已完成 | `GameUI.cut_mode` | 演出时隐藏 HUD |
 | 不适用 | — | 颜色随剧情褪掉（`worldNorm`）：旧版的基准画面是压低饱和度、暗角的恐怖调色，`worldNorm` 把它临时关掉；Godot 版没有这层基准调色（常态就是正常色），所以没有可以「褪掉」的东西。要做须先整体加这层调色，属于另立的画面计划，需用户确认 |
 

@@ -1,4 +1,4 @@
-name: Godot framework
+name: Godot CI
 
 on:
   push:
@@ -9,35 +9,79 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: godot-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  framework:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  structure:
+    name: Structure and tooling
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install pinned Godot from the official release
-        shell: bash
-        run: |
-          set -euo pipefail
-          GODOT_VERSION="$(cat .godot-version)"
-          GODOT_ARCHIVE="Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
-          GODOT_RELEASE="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable"
-          curl --fail --location --retry 3 "$GODOT_RELEASE/$GODOT_ARCHIVE" -o "$RUNNER_TEMP/$GODOT_ARCHIVE"
-          curl --fail --location --retry 3 "$GODOT_RELEASE/SHA512-SUMS.txt" -o "$RUNNER_TEMP/godot-sha512.txt"
-          cd "$RUNNER_TEMP"
-          awk -v file="$GODOT_ARCHIVE" '$2 == file {print}' godot-sha512.txt > godot-checksum.txt
-          test -s godot-checksum.txt
-          sha512sum --check godot-checksum.txt
-          unzip -q "$GODOT_ARCHIVE" -d godot
-          mv "godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot/godot
-          chmod +x godot/godot
-          echo "$RUNNER_TEMP/godot" >> "$GITHUB_PATH"
-      - name: Install the software-rendered window test runtime
+      - run: python tools/check.py --static-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports-structure
+          path: build/reports/
+          retention-days: 14
+
+  regression:
+    name: Regression (${{ matrix.mode }})
+    needs: structure
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [headless, windowed]
+    env:
+      LIBGL_ALWAYS_SOFTWARE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-godot
+      - name: Install display runtime and Chinese fonts
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri fonts-noto-cjk
-      - name: Import, enforce boundaries and run headless plus window regressions
-        run: xvfb-run -a python tools/check.py --windowed
+      - name: Import and run regression suite
+        env:
+          TEST_MODE: ${{ matrix.mode }}
+        run: xvfb-run -a python tools/check.py --mode "$TEST_MODE"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports-${{ matrix.mode }}
+          path: build/reports/
+          retention-days: 14
+
+  desktop-build:
+    name: Desktop builds
+    needs: regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-godot
+        with:
+          templates: 'true'
+      - name: Export Linux and Windows; smoke-test Linux package
+        run: python tools/export.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-builds-${{ github.sha }}
+          path: build/packages/*.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports-export
+          path: build/reports/export/
+          retention-days: 14
