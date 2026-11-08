@@ -21,6 +21,8 @@ var foot_button: Button
 var replay_button: Button
 var back_button: Button
 var current: Dictionary = {}
+var _scroll: ScrollContainer
+var _feet: HFlowContainer
 
 
 func _init() -> void:
@@ -30,50 +32,81 @@ func _init() -> void:
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
 	var back := StyleBoxFlat.new()
-	back.bg_color = Color(0.03, 0.05, 0.07, 0.99)
+	back.bg_color = Color(0.06, 0.05, 0.04, 0.99)
 	back.set_content_margin_all(12)
 	back.set_corner_radius_all(6)
 	add_theme_stylebox_override("panel", back)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_scroll.follow_focus = true
+	var content := VBoxContainer.new()
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scroll.add_child(content)
+	box.add_child(_scroll)
 	hero = GradeScreen.new()
+	hero.custom_minimum_size.x = 0
 	hero.sound.connect(func(b: String) -> void: sound.emit(b))
-	box.add_child(hero)
-	var names := HBoxContainer.new()
-	names.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_child(names)
+	content.add_child(hero)
 	line = Label.new()
 	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	line.custom_minimum_size = Vector2(540, 0)
-	box.add_child(line)
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(540, 190)
+	content.add_child(line)
 	body = VBoxContainer.new()
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", 6)
-	scroll.add_child(body)
-	box.add_child(scroll)
-	var feet := HBoxContainer.new()
+	content.add_child(body)
+	_feet = HFlowContainer.new()
 	foot_button = Button.new()
 	foot_button.name = "Footprint"
 	foot_button.text = "足迹图"
 	foot_button.pressed.connect(func() -> void: footprint_pressed.emit(String(current.get("id", ""))))
-	feet.add_child(foot_button)
+	_feet.add_child(foot_button)
 	replay_button = Button.new()
 	replay_button.name = "Replay"
 	replay_button.text = "回放"
 	replay_button.pressed.connect(func() -> void: replay_pressed.emit(String(current.get("id", ""))))
-	feet.add_child(replay_button)
+	_feet.add_child(replay_button)
 	back_button = Button.new()
 	back_button.name = "ResultsBack"
 	back_button.text = "回到主菜单"
 	back_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	back_button.pressed.connect(func() -> void: back_pressed.emit())
-	feet.add_child(back_button)
-	box.add_child(feet)
+	_feet.add_child(back_button)
+	box.add_child(_feet)
 	add_child(box)
 	visibility_changed.connect(func() -> void:
-		if not visible: hero.cancel())
+		if not visible: hero.cancel()
+		else: _fit.call_deferred())
+	minimum_size_changed.connect(func() -> void: _fit.call_deferred())
+
+
+func _ready() -> void:
+	get_viewport().size_changed.connect(_fit)
+	_fit.call_deferred()
+
+
+func _fit() -> void:
+	if not is_inside_tree() or not visible: return
+	var screen := get_viewport_rect().size
+	custom_minimum_size.x = minf(720, screen.x - 24)
+	_scroll.custom_minimum_size.y = minf(550, maxf(60, screen.y - _feet.get_combined_minimum_size().y - 56))
+	reset_size()
+	position = (screen - size) * .5
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_THEME_CHANGED and is_instance_valid(body):
+		_scale_labels(body)
+		_fit.call_deferred()
+
+
+func _scale_labels(node: Node) -> void:
+	for child in node.get_children():
+		if child is Label and child.has_meta("base_font"):
+			var font_size := roundi(float(child.get_meta("base_font")) * get_theme_default_font_size() / 16.0)
+			if child.get_theme_font_size("font_size") != font_size: child.add_theme_font_size_override("font_size",font_size)
+		_scale_labels(child)
 
 
 static func fmt(sec: float) -> String:
@@ -139,9 +172,9 @@ func _label(text: String, color: Color = Color.WHITE, size: int = 14) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.custom_minimum_size = Vector2(520, 0)
 	l.modulate = color
-	l.add_theme_font_size_override("font_size", size)
+	l.set_meta("base_font",size)
+	l.add_theme_font_size_override("font_size",roundi(size * get_theme_default_font_size() / 16.0))
 	return l
 
 
@@ -185,6 +218,7 @@ func open(m: Dictionary, opts: Dictionary = {}) -> void:
 			sum += int(it["pts"]) * int(it.get("n", 1))
 		var toggle := Button.new()
 		toggle.text = "%s　%s%d" % [cat, "+" if sum > 0 else "", sum]
+		toggle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		toggle.toggle_mode = true
 		toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		var rows := VBoxContainer.new()
@@ -230,4 +264,6 @@ func open(m: Dictionary, opts: Dictionary = {}) -> void:
 	foot_button.visible = has
 	replay_button.visible = has
 	back_button.text = String(opts.get("back_label", "回到主菜单"))
+	_scroll.scroll_vertical = 0
 	visible = true
+	_fit.call_deferred()

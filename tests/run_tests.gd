@@ -50,6 +50,8 @@ func _run() -> void:
 	var interface := preload("res://tests/suites/interface.gd").new(self)
 	print("CASE: interface.test_theme_and_clock")
 	await interface.test_theme_and_clock()
+	print("CASE: interface.test_records_layout")
+	await interface.test_records_layout()
 	var rules_dlc:=preload("res://tests/suites/rules_dlc.gd").new(self)
 	print("CASE: rules_dlc.test_reference")
 	rules_dlc.test_reference()

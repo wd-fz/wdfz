@@ -20,7 +20,9 @@ var _route := ""
 var _sort := "time"
 var _body: VBoxContainer
 var _head: Label
-var _tabs: HBoxContainer
+var _tabs: HFlowContainer
+var _scroll: ScrollContainer
+var _close_button: Button
 
 # The viewer.
 var _rec: Dictionary = {}
@@ -35,7 +37,7 @@ var _map: MapView
 var _slider: HSlider
 var _time_label: Label
 var _play: Button
-var _scene_tabs: HBoxContainer
+var _scene_tabs: HFlowContainer
 var _event_box: VBoxContainer
 var _view: VBoxContainer
 
@@ -49,29 +51,49 @@ func _init(store: RunRecords = null, rooms: Dictionary = {}) -> void:
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
 	var back := StyleBoxFlat.new()
-	back.bg_color = Color(0.03, 0.05, 0.07, 0.99)
+	back.bg_color = Color(0.06, 0.05, 0.04, 0.99)
 	back.set_content_margin_all(12)
 	back.set_corner_radius_all(6)
 	add_theme_stylebox_override("panel", back)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)
 	_head = Label.new()
+	_head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_head)
-	_tabs = HBoxContainer.new()
+	_tabs = HFlowContainer.new()
 	box.add_child(_tabs)
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(540, 340)
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_scroll.follow_focus = true
 	_body = VBoxContainer.new()
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_body.add_theme_constant_override("separation", 4)
-	scroll.add_child(_body)
-	box.add_child(scroll)
-	var close := Button.new()
-	close.name = "RecordsClose"
-	close.text = "关闭"
-	close.pressed.connect(_close)
-	box.add_child(close)
+	_scroll.add_child(_body)
+	box.add_child(_scroll)
+	_close_button = Button.new()
+	_close_button.name = "RecordsClose"
+	_close_button.text = "关闭"
+	_close_button.pressed.connect(_close)
+	box.add_child(_close_button)
 	add_child(box)
+	minimum_size_changed.connect(func() -> void: _fit.call_deferred())
+	visibility_changed.connect(func() -> void: _fit.call_deferred())
+
+
+func _ready() -> void:
+	get_viewport().size_changed.connect(_fit)
+	_fit.call_deferred()
+
+
+func _fit() -> void:
+	if not is_inside_tree() or not visible: return
+	var screen := get_viewport_rect().size
+	custom_minimum_size.x = minf(720, screen.x - 24)
+	var fixed := _head.get_combined_minimum_size().y + _tabs.get_combined_minimum_size().y + _close_button.get_combined_minimum_size().y + 66
+	_scroll.custom_minimum_size.y = minf(480, maxf(60, screen.y - fixed))
+	reset_size()
+	position = (screen - size) * .5
+	if _mode == "view": _redraw()
 
 
 func _close() -> void:
@@ -100,6 +122,7 @@ func reopen() -> void:
 
 func _btn(text: String, on: bool, call: Callable) -> Button:
 	var b := Button.new()
+	b.custom_minimum_size.y = 44
 	b.text = text
 	b.toggle_mode = true
 	b.button_pressed = on
@@ -144,6 +167,8 @@ func _refresh() -> void:
 		c.queue_free()
 	for c in _tabs.get_children():
 		c.queue_free()
+	_scroll.scroll_vertical = 0
+	_fit.call_deferred()
 	if _mode == "view":
 		_build_view()
 		return
@@ -166,13 +191,13 @@ func _refresh() -> void:
 
 
 func _build_list() -> void:
-	var filt := HBoxContainer.new()
+	var filt := HFlowContainer.new()
 	for pair: Array in [["", "全部难度"], ["easy", "预知梦"], ["hard", "梦魇"]]:
 		filt.add_child(_btn(String(pair[1]), _diff == pair[0], func() -> void:
 			_diff = String(pair[0])
 			_refresh()))
 	_body.add_child(filt)
-	var rt := HBoxContainer.new()
+	var rt := HFlowContainer.new()
 	rt.add_child(_btn("全部路线", _route == "", func() -> void:
 		_route = ""
 		_refresh()))
@@ -184,7 +209,7 @@ func _build_list() -> void:
 			_route = k
 			_refresh()))
 	_body.add_child(rt)
-	var srt := HBoxContainer.new()
+	var srt := HFlowContainer.new()
 	srt.add_child(Label.new())
 	(srt.get_child(0) as Label).text = "排序："
 	for k: String in SORTS:
@@ -195,11 +220,13 @@ func _build_list() -> void:
 	var rows := filtered()
 	if rows.is_empty():
 		var l := Label.new()
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.text = "还没有记录。通关一次（有评级的局）才会留下。"
 		l.modulate = Color(1, 1, 1, 0.6)
 		_body.add_child(l)
 	for x: Dictionary in rows:
 		var b := Button.new()
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		var tag := "（调试）" if not RunRecords.is_real(x) else ""
 		b.text = "%s　%s · %s%s　积分 %d　%s　%s%s" % [x["grade"], x["routeName"], "梦魇" if x["diff"] == "hard" else "预知梦", tag, int(x["score"]["total"]),
@@ -222,6 +249,7 @@ func _build_grades() -> void:
 	_body.add_child(h)
 	for g: Dictionary in ScoreRules.GRADES:
 		var b := Button.new()
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		if got.has(g["g"]):
 			var v: Dictionary = got[g["g"]]
@@ -258,6 +286,7 @@ func _build_rank() -> void:
 			for x: Dictionary in rows:
 				n += 1
 				var b := Button.new()
+				b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 				b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 				b.text = "%d　%s　%s　%s" % [n, Speedrun.fmt(roundi(float(x["time"]["rta"]) * 1000.0)), x["grade"], _fmt_date(float(x["at"]))]
 				b.pressed.connect(func() -> void: detail_requested.emit(String(x["id"])))
@@ -281,6 +310,8 @@ func open_view(id: String, foot: bool) -> bool:
 	_pack = pack
 	_foot = foot
 	_playing = false
+	_time_label = null
+	_slider = null
 	_t = 0.0
 	var samples: Array = RunTrack.decode(String(pack.get("track", "")))
 	_pack["samples"] = samples
@@ -310,7 +341,7 @@ func _build_view() -> void:
 	if int(_pack.get("partial", 0)) != 0:
 		_head.text += "（只记录了读档之后的部分）"
 	_view = _body
-	_scene_tabs = HBoxContainer.new()
+	_scene_tabs = HFlowContainer.new()
 	for s: Variant in _pack.get("scenes", []):
 		var id := String(s)
 		if not _drawable(id):
@@ -324,10 +355,12 @@ func _build_view() -> void:
 	_body.add_child(_scene_tabs)
 	var scroll := ScrollContainer.new()
 	_map = MapView.new()
+	_map.scroll_min_width = 0
+	_map.scroll_max_height = 230
 	scroll.add_child(_map)
 	_body.add_child(scroll)
 	if not _foot:
-		var ctl := HBoxContainer.new()
+		var ctl := HFlowContainer.new()
 		_play = Button.new()
 		_play.text = "播放"
 		_play.pressed.connect(func() -> void:
@@ -347,13 +380,14 @@ func _build_view() -> void:
 		_slider.value_changed.connect(func(v: float) -> void:
 			_t = v
 			_redraw())
-		ctl.add_child(_slider)
 		_time_label = Label.new()
 		ctl.add_child(_time_label)
 		_body.add_child(ctl)
+		_body.add_child(_slider)
 		_event_box = VBoxContainer.new()
 		for e: Array in _pack.get("events", []):
 			var b := Button.new()
+			b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			b.text = "%s　%s" % [ResultsPanel.fmt(float(e[0]) / 10.0), e[2]]
 			b.modulate = KIND_COL.get(String(e[1]), Color.WHITE)
@@ -399,10 +433,7 @@ func _redraw() -> void:
 	trails.append({"pts": pat, "col": Color(0.85, 0.28, 0.24, 0.5)})
 	var cur: Array = RunTrack.at(samples, _t)
 	var here := not _foot and not cur.is_empty() and int(cur[1]) == si
-	_map.show_floor(room, bits, Callable(), Vector2(float(cur[2]), float(cur[3])) * 2.0 if here else Vector2.ZERO, float(cur[4]) / 64.0 * TAU if here else 0.0, here, 440.0)
-	var sc := _map.get_parent() as ScrollContainer
-	if sc != null:
-		sc.custom_minimum_size.y = 230.0
+	_map.show_floor(room, bits, Callable(), Vector2(float(cur[2]), float(cur[3])) * 2.0 if here else Vector2.ZERO, float(cur[4]) / 64.0 * TAU if here else 0.0, here, minf(440, get_viewport_rect().size.x - 76))
 	_map.trails = trails
 	var dws: Array = []
 	if _foot:

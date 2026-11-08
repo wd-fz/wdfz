@@ -3055,6 +3055,7 @@ func _open_records() -> void:
 		panel.detail_requested.connect(_record_detail)
 		panel.sample_requested.connect(func(g: String) -> void:
 			var m := ScoreRules.sample_meta(g, "car")
+			m["routeName"] = String(RoutesModule.ENDINGS["car"]["t"]).replace(" ","")
 			m["source"] = "archive"
 			panel.visible = false
 			ui.show_results(m, {"back_label": "返回记录", "silent": true})

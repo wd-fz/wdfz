@@ -146,6 +146,7 @@ func _play_grade(id: String) -> bool:
 	var meta := app.runs().get_record(String(earned["best"])) if earned.get("best") is String else {}
 	if meta.is_empty():
 		meta = ScoreRules.sample_meta(letter,"car")
+		meta["routeName"] = String(RoutesModule.ENDINGS["car"]["t"]).replace(" ","")
 		meta["source"] = "archive"
 	_last_id = id
 	_grade_open = true

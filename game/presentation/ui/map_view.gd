@@ -19,6 +19,8 @@ var me := Vector2.ZERO           # world position and facing on this sketch
 var ang := 0.0
 var here := false
 var cell := 12.0
+var scroll_min_width := 480.0
+var scroll_max_height := 400.0
 ## Overlays for the replay and the footprint map: {pts: PackedVector2Array (world), col: Color} polylines, {p: Vector2, r: float} dwell circles.
 var trails: Array = []
 var dwells: Array = []
@@ -75,7 +77,7 @@ func show_plan(p: Dictionary, avail: Vector2 = Vector2(440, 520)) -> void:
 func _fit_scroll() -> void:
 	var sc := get_parent() as ScrollContainer
 	if sc != null:
-		sc.custom_minimum_size = Vector2(480, clampf(custom_minimum_size.y + 14.0, 120.0, 400.0))
+		sc.custom_minimum_size = Vector2(scroll_min_width, clampf(custom_minimum_size.y + 14.0, 120.0, scroll_max_height))
 
 
 func _draw() -> void:

@@ -667,7 +667,7 @@ var _ach_head: Label
 
 
 var _ach_tab := "全部"
-var _ach_tabs: HBoxContainer
+var _ach_tabs: HFlowContainer
 var _list_extra: Button
 
 
@@ -687,7 +687,7 @@ func show_achievements(entries: Array, points: int, tab: String = "") -> void:
 			rows.append({"text": text, "on": e["unlocked"], "memo": e["memo"]})
 	show_list("成就  %d / %d　·　积分 %d" % [got, entries.size(), points], rows)
 	if _ach_tabs == null:
-		_ach_tabs = HBoxContainer.new()
+		_ach_tabs = HFlowContainer.new()
 		_ach_tabs.name = "AchievementTabs"
 		var box: Node = _ach_head.get_parent()
 		box.add_child(_ach_tabs)
@@ -725,7 +725,7 @@ func show_list(head: String, rows: Array) -> void:
 		ach_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 		ach_panel.custom_minimum_size = Vector2(560, 0)
 		var back := StyleBoxFlat.new()
-		back.bg_color = Color(0.03, 0.05, 0.07, 0.98)
+		back.bg_color = Color(0.06, 0.05, 0.04, 0.98)
 		back.set_content_margin_all(16)
 		back.set_corner_radius_all(6)
 		ach_panel.add_theme_stylebox_override("panel", back)
@@ -779,7 +779,7 @@ func show_list(head: String, rows: Array) -> void:
 
 func list_tabs(tabs: Array) -> void:
 	if _ach_tabs == null:
-		_ach_tabs = HBoxContainer.new()
+		_ach_tabs = HFlowContainer.new()
 		_ach_head.get_parent().add_child(_ach_tabs)
 		_ach_head.get_parent().move_child(_ach_tabs,1)
 	for child in _ach_tabs.get_children():
@@ -825,7 +825,11 @@ func _resize_list() -> void:
 	_ach_head.custom_minimum_size.x = width-32
 	_ach_head.size.x = width-32
 	_ach_list.custom_minimum_size.x = width-46
-	scroll.custom_minimum_size = Vector2(width-32,maxf(80,minf(390,view.y-240)))
+	var fixed := 32.0
+	for child in _ach_head.get_parent().get_children():
+		if child is Control and child != scroll and child.visible:
+			fixed += child.get_combined_minimum_size().y + 8
+	scroll.custom_minimum_size = Vector2(width-32,maxf(60,minf(390,view.y-fixed-32)))
 	ach_panel.custom_minimum_size = Vector2(width,0)
 	ach_panel.reset_size()
 	_center_list()
@@ -1152,7 +1156,7 @@ func show_settings(values: Dictionary) -> void:
 		settings_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 		settings_panel.custom_minimum_size = Vector2(440, 0)
 		var back := StyleBoxFlat.new()
-		back.bg_color = Color(0.03, 0.05, 0.07, 0.98)
+		back.bg_color = Color(0.06, 0.05, 0.04, 0.98)
 		back.set_content_margin_all(14)
 		back.set_corner_radius_all(6)
 		settings_panel.add_theme_stylebox_override("panel", back)
