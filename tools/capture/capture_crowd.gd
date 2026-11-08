@@ -39,6 +39,8 @@ func _run() -> void:
 		lift.step(.1,"teach2",app.player.capture_pose())
 		app._lift_crowd_step(.1)
 	app._campus_world().apply_lift_doors(lift)
+	app._school_step(0,app.campus())
+	app.ui.show_runtime(app.session.clock.active_seconds)
 	var lighting := app._campus_world().lighting
 	lighting.crowd_state=app.lift_crowd().state
 	lighting.update(0,760,app.player.camera)
@@ -46,7 +48,7 @@ func _run() -> void:
 	await _shot("满员-重新开门")
 	app._lift_crowd_fx.clear()
 	app.player.set_pitch(0)
-	app._start_death_cg("crowd")
+	app.kill("满员的时候，最后进来的人留在了里面。","crowd","crowd")
 	for frame: Array in [[.4,"满员-门关闭"],[2.4,"满员-楼层跳动"],[3.9,"满员-学生证"]]:
 		app._death_cg.update(frame[0])
 		await _shot(frame[1])

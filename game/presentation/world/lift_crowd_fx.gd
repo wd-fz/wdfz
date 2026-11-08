@@ -82,7 +82,9 @@ func _build(scene: String, world: Node3D, lift: ElevatorModule) -> void:
 	var p := CampusGeometry.to_scene(CampusData.layout(scene),lift.world(scene,ElevatorModule.GEO["inner"]-.22,0))
 	sign=Node3D.new()
 	sign.name="LiftFullDisplay"
-	sign.position=Vector3(p.x,2.14,p.y)
+	# The exported car roof ends at 2.14 m (2.3 - .08 - .08).
+	# Suspend the 16 cm housing below it; centering it at 2.14 buries half the text.
+	sign.position=Vector3(p.x,2.06,p.y)
 	var out: Vector2=frame["out"]
 	sign.rotation.y=atan2(-out.x,-out.y)
 	var mesh := MeshInstance3D.new()

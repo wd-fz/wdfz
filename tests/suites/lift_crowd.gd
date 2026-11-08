@@ -142,6 +142,7 @@ func test_app() -> void:
 	check(app._camera_context()["crowd"] and is_instance_valid(app._lift_crowd_fx.sign),"photo subject and physical red sign use the same active event")
 	var sign := app._lift_crowd_fx.sign
 	check(sign.global_basis.z.dot((app.player.camera.global_position-sign.global_position).normalized())>0,"red sign faces into the actual cabin")
+	check(sign.position.y+.08<=2.14+.00001,"entire full-cabin display fits below the exported ceiling")
 	app.elevator().close_door("teach3",app.elevator().world("teach3",-1.225,0))
 	check(app.elevator().lifts["teach"]["dir"]==0 and app.elevator().controls("teach3",app.elevator().world("teach3",-1.225,0)).has("notice"),"close key and panel cannot bypass the six-second decision")
 	app.save_game()
