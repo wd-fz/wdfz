@@ -18,6 +18,7 @@ const EXPLORE := ["teach1", "teach2", "teach3", "teach4", "teach5", "teach6", "a
 const EXPLORE_ANY := [["dorm1", "dorm2", "dorm3"], ["dorm4", "dorm5", "dorm6"]]
 ## id -> [tier, name, memory]
 const LIST := {
+	"h.inception":["h","《盗梦空间》","桌上的陀螺还在转。"],
 	"h.beast":["h","《先辈》","穿旧校服的人回头看了我一眼。"],
 	"h.knife":["h","《管制刀具》","东西被收走了。我还在这里。"],
 	"h.crowd":["h","最后一个进来的人","门合上以前我走了出来。显示屏上还是「满员」。"],
@@ -289,6 +290,8 @@ func _test(id: String, f: Dictionary) -> bool:
 			return kind == "ending" and f.get("id") == "beast"
 		"h.knife":
 			return kind == "ending" and f.get("id") == "knife"
+		"h.inception":
+			return kind == "ending" and f.get("id") == "inception"
 		"h.crowd":
 			return kind == "anomaly" and f.get("id") == "crowd" and f.get("phase") == "end" and bool(f.get("survived",false))
 		"h.beast_run":

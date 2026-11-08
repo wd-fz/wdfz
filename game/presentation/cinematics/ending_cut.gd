@@ -25,8 +25,8 @@ extends Node
 
 signal finished(skipped: bool)
 
-const DEFS := {"knife":{"dur":16.0,"outdoor":false},"beast":{"dur":9.0,"outdoor":false}, "face": {"dur": 10.0, "outdoor": true}, "international": {"dur": 20.0, "outdoor": false}, "dismissal": {"dur": 18.0, "outdoor": false}, "portal": {"dur": 10.0, "outdoor": false}, "cyber": {"dur": 16.0, "outdoor": false}, "car": {"dur": 10.0, "outdoor": false}}
-const STAGED := ["knife","international", "dismissal", "portal", "cyber", "car"]
+const DEFS := {"inception":{"dur":20.0,"outdoor":false},"knife":{"dur":16.0,"outdoor":false},"beast":{"dur":9.0,"outdoor":false}, "face": {"dur": 10.0, "outdoor": true}, "international": {"dur": 20.0, "outdoor": false}, "dismissal": {"dur": 18.0, "outdoor": false}, "portal": {"dur": 10.0, "outdoor": false}, "cyber": {"dur": 16.0, "outdoor": false}, "car": {"dur": 10.0, "outdoor": false}}
+const STAGED := ["inception","knife","international", "dismissal", "portal", "cyber", "car"]
 const COAT := [Color("#3a4a6a"), Color("#7a5a3a"), Color("#5a6a4a"), Color("#8a6a6a")]
 const SC := 2.0
 
@@ -94,6 +94,8 @@ var _door: MeshInstance3D
 var _flash: ColorRect
 var _beast: BeastScene
 var _knife: KnifeScene
+var _inception: InceptionScene
+var _frame_delta := 0.0
 var _normal_before := 0.0
 var _cut_clock := 700.0
 var _live_lighting: CampusLighting
@@ -212,6 +214,12 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	cam.far = player.camera.far
 	_root.add_child(cam)
 	cam.current = true
+	if id=="inception":
+		_inception=InceptionScene.new()
+		_root.add_child(_inception)
+		_inception.begin()
+		_apply(0)
+		return
 	if id=="knife":
 		_knife=KnifeScene.new()
 		_root.add_child(_knife)
@@ -297,6 +305,11 @@ func _look(from: Vector3, to: Vector3) -> void:
 
 
 func _apply(kk: float) -> void:
+	if kind=="inception":
+		var frame:=_inception.apply(kk,cam,_frame_delta)
+		_ui.cut_fade(frame["fade"])
+		if frame.has("caption"): _ui.cut_caption(frame["caption"])
+		return
 	if kind=="knife":
 		var frame := _knife.apply(kk,cam)
 		_ui.cut_fade(frame["fade"])
@@ -379,6 +392,7 @@ func tick(delta: float) -> void:
 		cancel()
 		return
 	k += delta / _dur
+	_frame_delta=delta
 	if k >= 1.0:
 		end(false)
 		return

@@ -22,6 +22,7 @@ static func create() -> GameSession:
 		StoryModule.new(),
 		KnifeModule.new(),
 		WudaKidModule.new(),
+		InceptionModule.new(rooms),
 		CampusData.make_patrol(),
 		CampusData.make_anomaly(),
 		RoutesModule.new(campus),

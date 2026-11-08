@@ -45,6 +45,7 @@ var flags: Dictionary = {}
 var spots: Dictionary = {}
 var portal: Dictionary = {}
 var events: Array = []
+var rest_intercept := Callable()
 
 var _rng := RandomNumberGenerator.new()
 var _c: Dictionary = {}
@@ -244,10 +245,20 @@ func rest(key: String) -> void:
 	if act_cool.has(key) and _clock() < float(act_cool[key]):
 		_say("我：刚做过。现在没那个心情。")
 		return
+	if rest_intercept.is_valid() and bool(rest_intercept.call(key)):
+		return
 	_emit("advance", {"minutes": float(a["min"])})
-	var gain := snappedf(float(a["san"]) * float(_c.get("rest_mul", 1.0)), 0.1)
-	_san(gain)
-	act_cool[key] = _clock() + float(a["min"]) + float(a["cd"])
+	_emit("rest_gain", {"base":float(a["san"])}) # The app applies pressure after advance, including a midnight boundary.
+	# Cooldown starts at the destination clock, including 01:00 -> 07:20.
+	var remaining:=float(a["min"])
+	var time:=float(_c.get("tsec",700.0))
+	var day:=int(_c.get("day",1))
+	while remaining>0:
+		var slice:=SchoolClock.forward_slice(time,day,remaining)
+		time=slice["time"]
+		day=slice["day"]
+		remaining=slice["remaining"]
+	act_cool[key] = SchoolClock.continuous(day,time)+float(a["cd"])
 	_emit("fact", {"key": key})
 	_emit("stamina", {"amount": 25.0})
 	_emit("skip", {"minutes": float(a["min"]), "name": String(a["n"])})

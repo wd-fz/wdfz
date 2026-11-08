@@ -413,17 +413,17 @@ func _test_facility_rules() -> void:
 		if o["id"] == "field":
 			field = Vector2((float(o["x"]) + float(o["w"]) / 2.0) * 2.0, (float(o["y"]) + float(o["h"]) / 2.0) * 2.0)
 	check(fac.rest_out(field) == "run" and FacilitiesModule.rest_hint("run") == "沿跑道跑两圈（12 分钟）", "the field is for running two laps")
-	fac.set_context(_fctx("teach1", {"rest_mul": 0.5, "clock": 800.0}))
+	fac.set_context(_fctx("teach1", {"rest_mul": 0.5, "clock": 800.0,"tsec":800.0}))
 	fac.rest("wash")
 	var ev := fac.take_events()
-	check(_of_kind(ev, "advance")[0]["minutes"] == 4.0 and absf(float(_of_kind(ev, "san")[0]["amount"]) - 4.0) < 0.001 and _of_kind(ev, "fact")[0]["key"] == "wash" and _of_kind(ev, "stamina")[0]["amount"] == 25.0,
-		"washing takes 4 minutes, gives 8 SAN scaled by the pressure, 25 stamina")
+	check(_of_kind(ev, "advance")[0]["minutes"] == 4.0 and _of_kind(ev,"rest_gain")[0]["base"]==8.0 and _of_kind(ev, "fact")[0]["key"] == "wash" and _of_kind(ev, "stamina")[0]["amount"] == 25.0,
+		"washing advances four minutes before applying the pressure to its eight SAN and 25 stamina")
 	fac.set_context(_fctx("teach1", {"clock": 820.0}))
 	fac.rest("wash")
 	check(_notices(fac.take_events()).has("我：刚做过。现在没那个心情。"), "a rest has a cooldown in game minutes")
 	fac.set_context(_fctx("teach1", {"clock": 900.0}))
 	fac.rest("wash")
-	check(not _of_kind(fac.take_events(), "san").is_empty(), "after the cooldown it works again")
+	check(not _of_kind(fac.take_events(), "rest_gain").is_empty(), "after the cooldown it works again")
 	# Lab devices.
 	var bag: Array = []
 	fac.set_context(_fctx("lab1", {"bag": bag, "anomaly": {"active": false, "pre": "rain", "warn_ok": true, "minutes": 7, "cn": "下不完的雨"}}))

@@ -36,6 +36,7 @@ var playtest := Playtest.new()
 var debug_panel: DebugPanel
 var maze_flow: MazeFlow
 var knife_flow: KnifeFlow
+var inception_flow: InceptionFlow
 var wuda_roll: Callable = func() -> float: return randf()
 var _school_taps: Array = []
 
@@ -50,6 +51,9 @@ func _ready() -> void:
 	knife_flow=KnifeFlow.new()
 	knife_flow.app=self
 	add_child(knife_flow)
+	inception_flow=InceptionFlow.new()
+	inception_flow.app=self
+	add_child(inception_flow)
 	settings.load_file(DisplayServer.is_touchscreen_available())
 	ui.set_wuda_armed(settings.wuda_armed)
 	ui.school_tapped.connect(_school_tapped)
@@ -292,6 +296,10 @@ func knife() -> KnifeModule:
 
 func wuda_kid() -> WudaKidModule:
 	return session.modules.get_module(&"story.wuda_kid") as WudaKidModule if session != null else null
+
+
+func inception() -> InceptionModule:
+	return session.modules.get_module(&"story.inception") as InceptionModule if session!=null else null
 
 
 func _school_tapped(now_ms: float = -1.0) -> void:
@@ -567,6 +575,8 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 func _unwire(old: GameSession) -> void:
 	if old == null:
 		return
+	var fac := old.modules.get_module(&"campus.facilities") as FacilitiesModule
+	if fac!=null: fac.rest_intercept=Callable()
 	var lift := old.modules.get_module(&"campus.elevator") as ElevatorModule
 	if lift != null:
 		lift.unsafe_check = Callable()
@@ -613,6 +623,7 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 		campus().desk_taken = classmates().occupied
 	if campus() != null and facilities() != null:
 		campus().facility_hint = facilities().hint
+		facilities().rest_intercept=inception_flow.rest
 	var gift_now := talent()
 	if gift_now != null:
 		if school() != null:
@@ -656,6 +667,7 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	_sync_world()
 	player.restore_pose(pose)
 	maze_flow.changed_world(true)
+	inception_flow.changed_world()
 	player.show()
 	ui.set_save_available(saves.exists())
 	resume_game()
@@ -743,6 +755,7 @@ func resume_game() -> void:
 
 
 func _cancel_cinematics() -> void:
+	if is_instance_valid(inception_flow): inception_flow.cancel()
 	if is_instance_valid(_lift_crowd_fx):
 		_lift_crowd_fx.clear()
 	if is_instance_valid(maze_flow):
@@ -885,10 +898,15 @@ func _campus_step(delta: float) -> void:
 	maze_flow.step(delta)
 	if _dead():
 		return
-	_school_step(delta, rules)
+	# The original module tick resolves a dream before SAN/death settlement. A wake's
+	# 90-minute advance must not also receive a frame of ordinary calendar time.
+	var calendar_before:=router.current.advances_calendar
+	inception_flow.step(delta)
+	if _dead(): return
+	_school_step(delta, rules, calendar_before)
 	knife_flow.step(delta)
 	_handle_deaths()
-	if fate != null and fate.dead:
+	if _dead():
 		return
 	var lift := elevator()
 	if lift != null:
@@ -915,6 +933,7 @@ func _campus_step(delta: float) -> void:
 			ui.show_prompt(maze_flow.hint())
 			return
 		var radio_hint := knife_flow.hint()
+		if radio_hint=="": radio_hint=inception_flow.hint()
 		if radio_hint=="" and broadcast()!=null: radio_hint=broadcast().hint()
 		if radio_hint == "" and marks() != null:
 			marks().set_context(_marks_context())
@@ -970,7 +989,7 @@ func _campus_interact() -> void:
 	var rules := campus()
 	if session == null or get_tree().paused or rules == null or not rules.knows(session.world_id):
 		return
-	if knife_flow.captured() or knife_flow.interact():
+	if knife_flow.captured() or knife_flow.interact() or inception_flow.interact():
 		return
 	if maze_flow.here():
 		maze_flow.interact()
@@ -1192,7 +1211,7 @@ func _stand_up(text: String = "") -> void:
 		ui.show_notice(text)
 
 
-func _school_step(delta: float, rules: CampusModule) -> void:
+func _school_step(delta: float, rules: CampusModule, advance_calendar: bool = true) -> void:
 	var day_rules := school()
 	if day_rules == null:
 		return
@@ -1233,7 +1252,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 		watcher.set_context(_patrol_context(room, pose))
 	var weird_now := anomaly()
 	day_rules.step(delta, {"anomaly_active": weird_now != null and weird_now.is_active(), "hiding": hiding_now, "patrol_threat": watcher != null and watcher.local_threat(), "world_id": session.world_id, "w": CampusGeometry.to_world(room, float(p[0]), float(p[2])),
-		"height": float(p[1]), "moving": player.moving, "running": player.sprinting, "calendar": router.current.advances_calendar,
+		"height": float(p[1]), "moving": player.moving, "running": player.sprinting, "calendar": router.current.advances_calendar and advance_calendar,
 		"ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "pitch": float(pose["pitch"]),
 		"can_stand": _can_stand.bind(room, float(p[1])), "line_clear": _line_clear.bind(room), "snack": snack, "pill_san": pill_san})
 	var world := _campus_world()
@@ -1296,7 +1315,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 		period = tale_now.checkup_period()
 	if watcher != null and bool(watcher.pat["permanent"]) and not frozen:
 		period += " · 持续追踪"
-	ui.show_status(day_rules.place_name(session.world_id, float(p[1])), period, day_rules.period_class(frozen), "???" if maze_flow.here() else day_rules.clock_text((bag != null and bag.has_clock()) or (talent() != null and talent().has("watch"))))
+	ui.show_status(day_rules.place_name(session.world_id, float(p[1])), period, day_rules.period_class(frozen), "??:??" if inception_flow.here() else ("???" if maze_flow.here() else day_rules.clock_text((bag != null and bag.has_clock()) or (talent() != null and talent().has("watch")))))
 	if hiding_now:
 		ui.show_prompt("出来")
 	elif weird_now != null and weird_now.near_roster():
@@ -1394,6 +1413,7 @@ func _item_keys(bag: InventoryModule) -> void:
 	for i in 2:
 		if Input.is_action_just_pressed("hot_%d" % (i + 1)):
 			if bag.hot[i]!=null and knife_flow.use(String(bag.hot[i]),"hot"): continue
+			if bag.hot[i]!=null and inception_flow.use(String(bag.hot[i])): continue
 			if bag.hot[i] == null or not maze_flow.intercept_item(String(bag.hot[i])):
 				_apply_result(bag.use_hot(i, tsec))
 
@@ -1420,6 +1440,7 @@ func _touch_hot(index: int) -> void:
 		return
 	if index in [0,1] and items().hot[index]!=null and knife_flow.use(String(items().hot[index]),"hot"):
 		return
+	if index in [0,1] and items().hot[index]!=null and inception_flow.use(String(items().hot[index])): return
 	if session != null and player.enabled and not story().over():
 		_apply_result(items().use_hot(index,school().tsec))
 
@@ -1470,7 +1491,7 @@ func _use_item(id: String) -> void:
 		if ui.bag_open(): ui.show_bag(_bag_entries())
 		return
 	_close_bag()
-	if maze_flow.intercept_item(id):
+	if maze_flow.intercept_item(id) or inception_flow.use(id):
 		return
 	_apply_result(bag.use(id, school().tsec if school() != null else 0.0))
 
@@ -1888,7 +1909,7 @@ func _facility_context_base() -> Dictionary:
 	for m: Array in CampusData.campus().get("meals", []):
 		if day_rules.tsec >= float(m[0]) and day_rules.tsec < float(m[1]):
 			meal = true
-	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "tsec": day_rules.tsec,
+	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "tsec": day_rules.tsec,"day":day_rules.day,
 		"clock": day_rules.game_clock(), "meal": meal, "rest_mul": float(day_rules.pressure()["rest"]), "exam": day_rules.exam,
 		"has": func(id: String) -> bool: return bag != null and bag.has(id),
 		"add": func(id: String) -> bool: return _add_item(id),
@@ -1940,6 +1961,8 @@ func _apply_facility_events() -> void:
 				ui.show_notice(String(e["text"]))
 			"san":
 				school().san = clampf(school().san + float(e["amount"]), float(e.get("min", -INF)), float(e.get("max", INF)))
+			"rest_gain":
+				school().san=minf(100,school().san+snappedf(float(e["base"])*float(school().pressure()["rest"]),.1))
 			"advance":
 				school().advance_game_time(float(e["minutes"]))
 			"stamina":
@@ -2460,6 +2483,9 @@ func _map_label(r: Dictionary, c: int, row: int) -> String:
 
 
 func _show_map(selected: String = "") -> void:
+	if inception_flow.here():
+		ui.show_notice("我：这里没有地图。走廊一直在变。")
+		return
 	if maze_flow.here():
 		ui.show_notice("我：打开地图，纸上什么也没有。这里不在任何一张图上。")
 		return
@@ -3844,7 +3870,7 @@ func _body_step(delta: float) -> void:
 	limbs.tick(delta)
 	if limbs.hold > 0.0:
 		ui.show_search(limbs.hold / BodyModule.VAULT_HOLD)
-	player.update_view(delta, limbs.eye_drop())
+	player.update_view(delta, limbs.eye_drop()+(inception().eye_drop() if inception_flow.here() else 0.0))
 	if limbs.fall != null:
 		player.enabled = false
 	var cap := school().stamina_max() - limbs.stamina_cap_drop()
@@ -4905,6 +4931,7 @@ func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
 	else:
 		player.restore_pose(pose)
 	maze_flow.changed_world()
+	inception_flow.changed_world()
 	_sync_world()
 	_hint_cooldown = 0.0
 	return ""

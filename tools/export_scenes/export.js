@@ -317,7 +317,7 @@
       id:id, name:R.name, host:R.host || null, floor:R.floor === undefined ? null : R.floor,
       cols:R.cols, rows:R.rows, tw:R.tw, th:R.th, ox:R.ox, oy:R.oy, cx:R.cx, cy:R.cy,
       shift:shift, exit_world:exit, grid:grid, spawn:spawn, start:start, seats:seatList(R),
-      flags:{principal:!!R.principal, stairwell:!!R.stairwell, spiral:!!R.spiral, custom:!!R.build, collide:!!R.collide, noClock:!!R.noClock, gallery:!!R.gallery, noMap:!!R.noMap},
+      flags:{principal:!!R.principal, stairwell:!!R.stairwell, spiral:!!R.spiral, custom:!!R.build, collide:!!R.collide, noClock:!!R.noClock, gallery:!!R.gallery, noMap:!!R.noMap,noAnomaly:!!R.noAnomaly},
       walls:mergeCells(walls, R, toM), boxes:boxes, doors:doors, stairs:stairs
     };
   }

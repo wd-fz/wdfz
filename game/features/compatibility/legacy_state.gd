@@ -55,6 +55,16 @@ func convert(plan: Dictionary, defaults: Dictionary, rooms: Dictionary, campus: 
 	kid["told"]=_flag(old_kid.get("told",false))
 	kid["via"]=("menu" if old_kid.get("via")=="menu" else "chance") if kid["on"] else ""
 	kid["t"]=6.0 if kid["told"] else 0.0
+	var dream := _module(data,"story.inception")
+	var old_dream := _object(rt.get("inception"),"inception")
+	dream["top"]=_flag(old_dream.get("top",false))
+	for pair: Array in [["classDay","class_day"],["entered","entered"],["settled","settled"]]:
+		var original := _object(old_dream.get(pair[0]),"inception."+pair[0])
+		for key: String in original: dream[pair[1]][key]=_flag(original[key])
+	dream["dream"]=_object(old_dream.get("dream"),"inception.dream").duplicate(true)
+	if not dream["dream"].is_empty():
+		if dream["dream"].get("spin")==null: dream["dream"]["spin"]=""
+		if dream["dream"].get("id")==null: dream["dream"]["id"]=""
 	var talent := _module(data, "story.talent")
 	talent["id"] = plan["talent"]
 	var ts := _object(s.get("talentState"), "talentState")

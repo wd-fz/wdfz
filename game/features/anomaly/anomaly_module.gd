@@ -1271,6 +1271,9 @@ func tick(dt: float) -> void:
 	if not an["active"]:
 		if String(_c.get("scene", "")) == "portal_tunnel":
 			return
+		var room: Variant=_room()
+		if room!=null and room.get("flags",{}).get("noAnomaly",false):
+			return
 		if _cola_drive(dt):
 			return
 		if bool(_c.get("inspection_quiet", false)):
