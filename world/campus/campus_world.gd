@@ -14,6 +14,7 @@ var layout: Dictionary = {}
 var banner: DayBanner
 var chalk: ChalkNotes
 var phantoms: Phantoms
+var traces: Traces
 var lighting: CampusLighting
 var _door_bodies: Dictionary = {}   # key -> CollisionShape3D
 var _door_leaves: Dictionary = {}   # key -> {"closed": Node3D, "open": Node3D}
@@ -37,6 +38,10 @@ func _ready() -> void:
 	add_child(chalk)
 	phantoms = Phantoms.new()
 	add_child(phantoms)
+	traces = Traces.new()
+	traces.name = "Traces"
+	add_child(traces)
+	traces.build(scene_id, layout if is_room() else null)
 	if not is_room():
 		_ready_banner()
 	if is_room():

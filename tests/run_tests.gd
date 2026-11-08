@@ -116,6 +116,7 @@ func _run() -> void:
 	_test_chalk_notes()
 	_test_chalk_texture()
 	_test_phantoms()
+	_test_traces()
 	_test_inspection_scatter()
 	await _test_campus_app()
 	for suffix: String in ["", ".bak", ".tmp"]:
@@ -3199,6 +3200,17 @@ func _test_inspection_scatter() -> void:
 	var cw := CampusWorld.new()
 	check(not cw.scattering(), "no scatter before a check")
 	cw.free()
+
+
+func _test_traces() -> void:
+	check(Traces.for_scene("garage1").size() == 1 and Traces.for_scene("out").size() == 1 and Traces.for_scene("teach2").is_empty(), "each fixed trace belongs to one scene")
+	var tr := Traces.new()
+	root.add_child(tr)
+	tr.build("garage1", CampusData.rooms()["garage1"])
+	check(tr.count() == 52, "the drag marks are 26 pairs of shoe prints (%d)" % tr.count())
+	tr.build("teach1", CampusData.rooms()["teach1"])
+	check(tr.count() == 5, "five scratches by the toilet door")
+	tr.queue_free()
 
 
 func _test_phantoms() -> void:
