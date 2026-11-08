@@ -15,7 +15,7 @@ static func available(kind: String) -> bool:
 
 ## A figure of the kind, tinted; scale multiplies the old size (1 = as built). unlit = the dark, unlit
 ## silhouette used by the anomalies. Returns an empty Node3D when the model is missing.
-static func make(kind: String, color: Color, unlit: bool = false, scale: float = 1.0) -> Node3D:
+static func make(kind: String, color: Color, unlit: bool = false, scale: float = 1.0, emission: Color = Color.BLACK, fog_enabled: bool = true) -> Node3D:
 	var root := Node3D.new()
 	root.name = "Figure_" + kind
 	if not available(kind):
@@ -29,6 +29,9 @@ static func make(kind: String, color: Color, unlit: bool = false, scale: float =
 	mat.vertex_color_use_as_albedo = true
 	mat.albedo_color = color
 	mat.roughness = 1.0
+	mat.emission_enabled = emission != Color.BLACK
+	mat.emission = emission
+	mat.disable_fog = not fog_enabled
 	if unlit:
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	for mi: Node in inst.find_children("*", "MeshInstance3D", true, false):

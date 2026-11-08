@@ -509,6 +509,7 @@ func set_lift_doors(amount: float) -> void:
 ## away from the player at 1.5 m/s, fading out over 0.8 s (scatter_t).
 var _silhouettes: Node3D
 var _silhouette_key := ""
+var _silhouette_dirs: Array = []
 var _scatter: Node3D
 var _scatter_t := 0.0
 var _scatter_dirs: Array = []
@@ -554,13 +555,13 @@ func show_silhouettes(points: Array, room: Variant, height: float) -> void:
 		return
 	_silhouette_key = key
 	if is_instance_valid(_silhouettes):
-		if points.is_empty() and not _scatter_dirs_of(_silhouettes, room).is_empty():
+		if points.is_empty() and not _silhouette_dirs.is_empty():
 			# The check is over: they scatter instead of vanishing.
 			if is_instance_valid(_scatter):
 				_scatter.queue_free()
 			_scatter = _silhouettes
 			_scatter_t = 0.0
-			_scatter_dirs = _scatter_dirs_of(_silhouettes, room)
+			_scatter_dirs = _silhouette_dirs.duplicate()
 			for f: Node in _scatter.get_children():
 				for mi: Node in f.find_children("*", "MeshInstance3D", true, false):
 					var m := (mi as MeshInstance3D).material_override as StandardMaterial3D
@@ -576,9 +577,11 @@ func show_silhouettes(points: Array, room: Variant, height: float) -> void:
 	add_child(_silhouettes)
 	for xy: Array in points:
 		var s := CampusGeometry.to_scene(room, Vector2(xy[0], xy[1]))
-		var fig := FigureModel.make("person", Color(0.02, 0.02, 0.025), false, 0.95)
+		var fig := FigureModel.make("person", Color("030405"), true)
 		fig.position = Vector3(s.x, height, s.y)
+		fig.rotation.y = PI
 		_silhouettes.add_child(fig)
+	_silhouette_dirs = _scatter_dirs_of(_silhouettes,room)
 
 
 ## Directions (x, z) from the player to each figure; the player is where the camera looks from (the first person).
@@ -737,7 +740,7 @@ func show_checkup(on: bool, queue: bool, line: String) -> void:
 		var k := 0
 		for q: Vector2 in [Vector2(1.45, 17.32), Vector2(2.22, 17.32), Vector2(3.0, 17.32), Vector2(3.78, 17.32), Vector2(4.55, 17.32)]:
 			var p: Vector3 = at.call(q.x, q.y)
-			var fig := FigureModel.make("person", Color(0.29, 0.34, 0.41), false, (1.6 + 0.05 * float((k * 37) % 3)) / 1.85)
+			var fig := FigureModel.make("person",Color("4a5668"),false,.96+.03*float((k*37)%3),Color("252b35"))
 			fig.position = p
 			_checkup_queue.add_child(fig)
 			var shape := CollisionShape3D.new()

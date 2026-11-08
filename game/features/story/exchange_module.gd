@@ -6,7 +6,7 @@ extends FeatureModule
 ## admin building's north side until 17:20; German and French checks (5 questions, 4 to pass, one
 ## retake each); qualifying grants the day's outing permit; departing walks the group along the
 ## navigation path to the north gate while up to three searchers patrol ahead and chase anyone they
-## see away from the group. Losing the group for 4 s ends the chance. The ending cut is not ported.
+## see away from the group. Losing the group for 4 s ends the chance. Presentation is separate.
 
 const STATE_VERSION := 1
 const CHANCE := 0.05
@@ -165,15 +165,20 @@ func at(dist: float) -> Dictionary:
 
 ## Leader first, then the three visitors (world points).
 func members() -> Array:
+	return member_poses().map(func(p: Dictionary) -> Vector2: return p["p"])
+
+
+## Keep the route tangent for presentation, including each follower around a corner.
+func member_poses() -> Array:
 	var out: Array = []
 	if s["phase"] == "escort":
-		out.append(at(float(s["prog"]))["p"])
+		out.append(at(float(s["prog"])))
 		for m: float in GAP:
-			out.append(at(float(s["prog"]) - m / U2M)["p"])
+			out.append(at(float(s["prog"]) - m / U2M))
 	else:
-		out.append(_gather)
+		out.append({"p":_gather,"yaw":PI*.5})
 		for i in GAP.size():
-			out.append(_gather + Vector2(float(i - 1) * 12.0, -14.0))
+			out.append({"p":_gather + Vector2(float(i - 1) * 12.0, -14.0),"yaw":PI*.5})
 	return out
 
 

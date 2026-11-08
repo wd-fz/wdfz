@@ -122,7 +122,7 @@ func build(room: Dictionary) -> void:
 	_bowl.add_child(rm)
 	_bowl.position = Vector3(dish.x, 0.98, dish.y)
 	add_child(_bowl)
-	_fig = FigureModel.make("person", Color("#2a2a2c"), false)
+	_fig = FigureModel.make("person", Color("#2a2a2c"), false,1,Color("0d0b08"))
 	_fig.position = Vector3(back.x, 0.0, back.y)
 	add_child(_fig)
 	var lamp := OmniLight3D.new()

@@ -3493,7 +3493,7 @@ func _apply_paper_events() -> void:
 
 # ---- the gaze behind a window (game/features/story/window_gaze_module.gd) ----
 
-var _gaze_nodes: Node3D
+var _gaze_nodes: WindowGazeView
 
 
 func _gaze_context() -> Dictionary:
@@ -3532,26 +3532,18 @@ func _show_gaze(g: WindowGazeModule) -> void:
 	var win: Dictionary = cur["w"]
 	var sp := CampusGeometry.to_scene(room, win["p"])
 	var nz := float(win["nz"])
+	var key := "%s:%s:%s" % [session.world_id,win["c"],win["r"]]
+	if is_instance_valid(_gaze_nodes) and (_gaze_nodes.get_meta("window")!=key or _gaze_nodes.get_parent()!=world):
+		_gaze_nodes.queue_free()
+		_gaze_nodes = null
 	if not is_instance_valid(_gaze_nodes):
-		_gaze_nodes = Node3D.new()
-		_gaze_nodes.name = "WindowGaze"
-		var body := FigureModel.make("person", Color(0.04, 0.05, 0.06), true, 0.92)
-		body.position = Vector3(0, -0.05, -nz * 0.35)
-		_gaze_nodes.add_child(body)
-		for dx: float in [-0.045, 0.045]:
-			var eye := MeshInstance3D.new()
-			var ball := SphereMesh.new()
-			ball.radius = 0.016
-			ball.height = 0.02
-			eye.mesh = ball
-			var white := StandardMaterial3D.new()
-			white.albedo_color = Color(0.91, 0.89, 0.83)
-			white.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-			eye.material_override = white
-			eye.position = Vector3(dx, WindowGazeModule.EYE, nz * 0.16)
-			_gaze_nodes.add_child(eye)
+		_gaze_nodes = WindowGazeView.new()
+		_gaze_nodes.set_meta("window",key)
+		_gaze_nodes.build(nz)
 		world.add_child(_gaze_nodes)
-	_gaze_nodes.position = Vector3(sp.x, 0.0, sp.y)
+	_gaze_nodes.position = Vector3(sp.x,0,sp.y)
+	# The original uses the standing EYE height, independently of crouch/temporary camera offsets.
+	_gaze_nodes.track(Vector3(player.position.x,CameraMotion.EYE,player.position.z))
 
 
 func _apply_gaze_events() -> void:
@@ -3794,7 +3786,9 @@ func _show_visit(visit: ExchangeModule) -> void:
 		_visit_nodes.name = "ExchangeVisit"
 		world.add_child(_visit_nodes)
 		for i in 7:
-			var fig := FigureModel.make("person", Color(0.2, 0.25, 0.4) if i == 0 else (Color(0.7, 0.62, 0.5) if i < 4 else Color(0.03, 0.03, 0.04)), i >= 4, 0.93)
+			var coat := ["3a4a6a","7a5a3a","5a6a4a","8a6a6a"]
+			var fig := FigureModel.make("person" if i<4 else "tall",Color(coat[i] if i<4 else "22262a"),false,
+				(1.03 if i==0 else .97) if i<4 else 1.0,Color("101010" if i<4 else "0a0a0a"))
 			_visit_nodes.add_child(fig)
 		# The bilingual reception sign outside the north gate of the administration building (exchange-fx.js sign()).
 		var gp: Vector2 = visit.members()[0]
@@ -3831,15 +3825,16 @@ func _show_visit(visit: ExchangeModule) -> void:
 		leg.material_override = legm
 		leg.position = Vector3(sp.x, 0.6, sp.y + 0.02)
 		_visit_nodes.add_child(leg)
-	var spots: Array = visit.members()
-	for h: Dictionary in visit.s.get("search", []):
-		spots.append(Vector2(float(h["x"]), float(h["y"])))
+	var members := visit.member_poses()
+	var search: Array = visit.s.get("search",[])
 	for i in 7:
 		var fig := _visit_nodes.get_child(i) as Node3D
-		fig.visible = i < spots.size()
-		if fig.visible:
-			var sp := CampusGeometry.to_scene(null, spots[i])
-			fig.position = Vector3(sp.x, 0.0, sp.y)
+		fig.visible = i<4 or (visit.s["phase"]=="escort" and i-4<search.size())
+		if not fig.visible: continue
+		var point: Vector2 = members[i]["p"] if i<4 else Vector2(search[i-4]["x"],search[i-4]["y"])
+		var sp := CampusGeometry.to_scene(null,point)
+		fig.position = Vector3(sp.x,0,sp.y)
+		fig.rotation.y = -PI*.5-float(members[i]["yaw"]) if i<4 else atan2(sp.x-player.position.x,sp.y-player.position.z)
 
 
 func _apply_exchange_events() -> void:
@@ -4050,7 +4045,7 @@ func _fake_people_step(fnm: FakeNormalModule, room: Variant) -> void:
 		var d := s.distance_to(me)
 		if d < 2.2 or d > 7.5:
 			continue
-		var fig := FigureModel.make("person", Color("#41505c"), true, 0.92)
+		var fig := FigureModel.make("person", Color("#41505c"), true)
 		fig.position = Vector3(s.x, 0.0, s.y)
 		fig.rotation.y = atan2(s.x - me.x, s.y - me.y)
 		_fake_people.add_child(fig)
