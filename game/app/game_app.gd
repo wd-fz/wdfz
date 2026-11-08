@@ -787,9 +787,10 @@ func _sync_world() -> void:
 	var rules := campus()
 	if world != null and rules != null:
 		world.apply_doors(rules.open_doors())
+		world.set_player_scene(player.position)
 	var lift := elevator()
 	if world != null and lift != null:
-		world.set_lift_doors(lift.door_amount_in(session.world_id))
+		world.apply_lift_doors(lift)
 	if world != null and world.broadcast_props != null and broadcast() != null:
 		world.broadcast_props.set_fuse(bool(broadcast().b["fuse"]))
 	if world != null and world.banner != null and days() != null and school() != null:
@@ -826,7 +827,7 @@ func _campus_step(delta: float) -> void:
 			ui.show_notice(text)
 		var world := _campus_world()
 		if world != null:
-			world.set_lift_doors(lift.door_amount_in(session.world_id))
+			world.apply_lift_doors(lift)
 		ui.set_lift_close(lift.show_close_button(session.world_id, player.capture_pose()) and not ui.choice_open())
 		if player.enabled and Input.is_action_just_pressed("lift_close"):
 			_lift_close()
@@ -1197,7 +1198,7 @@ func _school_step(delta: float, rules: CampusModule) -> void:
 		if weird_light != null and lit.anomaly_fx != null:
 			var cam_pos := player.camera.global_position
 			var fwd := -player.camera.global_transform.basis.z
-			lit.anomaly_fx.update(delta, weird_light.an, room, session.world_id, Vector3(cam_pos.x, float(p[1]), cam_pos.z), Vector2(fwd.x, fwd.z))
+			lit.anomaly_fx.update(delta, weird_light.an, room, session.world_id, Vector3(cam_pos.x, float(p[1]), cam_pos.z), Vector2(fwd.x, fwd.z), cam_pos, story().diff == "hard")
 
 
 ## canStand (world.js): is there room for the body (radius 3 units) at this old world point?
@@ -1627,10 +1628,12 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 		big = int(room["cols"]) * int(room["rows"]) > 900
 	audio.update(delta, {"scene": scene, "out": scene == "out", "night": night, "dead": story().dead,
 		"surface": AudioFx.surface(scene, scene == "bell1" and float(p[1]) > 0.4, w_here, out_room.get("objects", []), float(out_room.get("SC", 1.0))),
-		"san": day_rules.san, "viol": day_rules.viol, "anomaly": an_id, "shelter": false, "brolly": items() != null and items().brolly_up, "moving": player.moving, "running": player.sprinting,
+		"san": day_rules.san, "viol": day_rules.viol, "anomaly": an_id, "shelter": weird != null and weird.under_roof(), "brolly": items() != null and items().brolly_up, "moving": player.moving, "running": player.sprinting,
 		"hiding": player.hiding, "body": maxf(0.0, _sense_body), "bpm": float(_sense_view.get("bpm", 0.0)),
 		"chase": watcher != null and bool(watcher.pat["locked"]), "threat": watcher != null and watcher.local_threat(),
-		"patrol_pos": patrol_pos, "patrol_behind": behind, "big": big, "blackout": weird != null and weird.blackout_now(), "moth_near": 0.5 if an_id == "moth" else 0.0, "busy": ui.terminal_open() or (days() != null and days().waiting != null), "echo": dread() != null and dread().echo})
+		"patrol_pos": patrol_pos, "patrol_behind": behind, "big": big, "blackout": weird != null and weird.blackout_now(),
+		"moth_near": cw.anomaly_fx.moth_nearness() if cw != null and cw.anomaly_fx != null and an_id == "moth" else 0.0,
+		"busy": ui.terminal_open() or (days() != null and days().waiting != null), "echo": dread() != null and dread().echo})
 	ui.show_captions(audio.captions.lines() if audio.captions.enabled(audio.volume, audio.muted) else PackedStringArray())
 	# fx/weather.js: in the rain a bolt every 6–14 s, the screen whitens twice and the thunder comes late.
 	if an_id in ["rain", "raindots"]:
@@ -1980,6 +1983,7 @@ func _apply_settings() -> void:
 	ui.set_grain(settings.get_int("grain") == 1)
 	player.mouse_sensitivity = 0.0025 * float(settings.get_int("mouse")) / 100.0
 	player.touch_sensitivity = 0.004 * float(settings.get_int("touch")) / 100.0
+	player.view_motion.shake_enabled = settings.get_int("shake") == 1
 	var q := settings.get_int("quality")
 	CampusData.tier = q if CampusData.tiers_available().has(q) else CampusData.DEFAULT_TIER   # models of the chosen tier, if exported
 	var vp := get_viewport()
@@ -1987,6 +1991,9 @@ func _apply_settings() -> void:
 	vp.msaa_3d = int(GameSettings.QUALITY_MSAA[q]) as Viewport.MSAA
 	CampusLighting.shadows_on = bool(GameSettings.QUALITY_SHADOW[q])
 	var cw := _campus_world()
+	if cw != null and cw.visual_tier != CampusData.tier:
+		cw.reload_models(player.position)
+		_sync_world()
 	if cw != null and cw.lighting != null:
 		cw.lighting.sun_light.shadow_enabled = CampusLighting.shadows_on
 	if DisplayServer.is_touchscreen_available():
@@ -3588,7 +3595,6 @@ func _apply_exchange_events() -> void:
 # ---- vaulting, injury and the clinic (features/body) ----
 
 var _fall_back: Variant = null
-var _eye_base := -1.0
 
 
 func _body_context() -> Dictionary:
@@ -3610,9 +3616,7 @@ func _body_step(delta: float) -> void:
 	limbs.tick(delta)
 	if limbs.hold > 0.0:
 		ui.show_search(limbs.hold / BodyModule.VAULT_HOLD)
-	if _eye_base < 0.0:
-		_eye_base = player.camera.position.y
-	player.camera.position.y = _eye_base - limbs.eye_drop()
+	player.update_view(delta, limbs.eye_drop())
 	if limbs.fall != null:
 		player.enabled = false
 	var cap := school().stamina_max() - limbs.stamina_cap_drop()
@@ -3663,7 +3667,7 @@ func _apply_body_events() -> void:
 				ui.show_choice(String(e["text"]), e["labels"], false)
 			"kill":
 				_fall_back = e.get("back")
-				player.camera.position.y = _eye_base
+				player.reset_view()
 				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
 				if not story().dead:
 					player.enabled = true
@@ -4286,7 +4290,7 @@ func _drive_step(delta: float) -> void:
 		var eye := _drive_view.position + CarChaseView.eye(d)
 		player.global_position = eye - Vector3(0, player.camera.position.y, 0)
 		player.rotation.y = 0.0
-		player.camera.rotation.x = -0.04
+		player.set_pitch(-0.04)
 		ui.show_status("校外道路", "速度 %d · 车况 %d/3 · %d%%" % [roundi(float(d["speed"]) * 3.6), int(d["hp"]), roundi(float(d["distance"]) / CarChaseRules.DISTANCE * 100.0)], "warn" if float(d["pursuit"]) > 40.0 else "", "")
 		if not story().dead:
 			ui.show_death_scene("vignette", float(d["pursuit"]) / CarChaseRules.PURSUIT_LIMIT * 0.6)

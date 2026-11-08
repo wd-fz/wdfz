@@ -24,12 +24,16 @@ var canteen_view: CanteenView
 var lighting: CampusLighting
 var _door_bodies: Dictionary = {}   # key -> CollisionShape3D
 var _door_leaves: Dictionary = {}   # key -> {"closed": Node3D, "open": Node3D}
+var _preview_doors: Dictionary = {} # key -> all neighbouring views of that door
+var _preview_lifts: Array[Dictionary] = []
+var _open_doors: Dictionary = {}
 var _lift_leaves: Array[Node3D] = []
 var _lift_bodies: Array[CollisionShape3D] = []
 var _lift_amount := -1.0
 var anomaly_fx: AnomalyFx
 var atmos_fx: AtmosFx
 var duty: DutyRoster
+var visual_tier := -1
 
 
 func _ready() -> void:
@@ -148,6 +152,8 @@ func _build_gallery_view() -> void:
 	model.name = "GalleryCampus"
 	model.position = Vector3(-(sh.x + float(layout["cx"])) * CampusGeometry.U2M, -float(f - 1) * GALLERY_RISE, -(sh.y + float(layout["cy"])) * CampusGeometry.U2M)
 	add_child(model)
+	# The exterior is a view beyond the open gallery, not a second set of interior walls.
+	CampusPreview.clip(model, Plane(Vector3.BACK, _extent().end.y - float(layout["th"]) * CampusGeometry.U2M))
 	gallery_campus = model
 var _shaft_levels: Dictionary = {}      # level → the preview of the floor beyond that level's door
 
@@ -188,6 +194,7 @@ func update_shaft_previews(height: float) -> void:
 		model.rotation.y = theta
 		model.position = Vector3(-(cos(theta) * pp.x + sin(theta) * pp.y), float(f) * rise, -2.8 - (-sin(theta) * pp.x + cos(theta) * pp.y))
 		add_child(model)
+		CampusPreview.clip(model, Plane(Vector3.FORWARD, 2.8))
 		_shaft_levels[f] = model
 
 
@@ -199,7 +206,26 @@ func _load_visual(id: String) -> Node3D:
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
 			_to_multimesh(mesh)
+	_register_preview_doors(model, id)
 	return model
+
+
+func _register_preview_doors(model: Node3D, id: String) -> void:
+	for holder: Node in model.get_children():
+		var extras: Dictionary = holder.get_meta("extras", {})
+		if extras.has("door_key"):
+			var key := String(extras["door_key"])
+			var entries: Array = _preview_doors.get(key, [])
+			entries = entries.filter(func(entry: Dictionary) -> bool: return is_instance_valid(entry["node"]))
+			entries.append({"node": holder, "state": String(extras["state"])})
+			_preview_doors[key] = entries
+			(holder as Node3D).visible = _open_doors.has(key) == (extras["state"] == "open")
+		if extras.get("liftLeaf", false):
+			_preview_lifts.append({"node": holder, "scene": id, "closed": (holder as Node3D).position})
+
+
+static func _preview_plane(point: Vector2, outward: Vector2) -> Plane:
+	return Plane(Vector3(outward.x, 0.0, outward.y), outward.dot(point))
 
 
 ## The campus doors seen through (modules/campus-link/doors.js views): from outside the ground-floor room behind each door of
@@ -220,6 +246,11 @@ func _build_door_preview() -> void:
 			model.name = "DoorPreview_" + rid
 			model.position = Vector3(c.x * CampusGeometry.U2M, 0.0, c.y * CampusGeometry.U2M)
 			add_child(model)
+			var port := CampusGeometry.door_port(r, d)
+			var threshold := ((port["p"] as Vector2) + CampusGeometry.shift_of(r)) * CampusGeometry.U2M
+			CampusPreview.clip(model, _preview_plane(threshold, -(port["n"] as Vector2)))
+			model.set_meta("door_threshold", threshold)
+			model.hide()
 			door_previews.append(model)
 		return
 	for d: Dictionary in doors:
@@ -232,6 +263,11 @@ func _build_door_preview() -> void:
 		model.name = "DoorPreview_out"
 		model.position = Vector3(-c.x * CampusGeometry.U2M, 0.0, -c.y * CampusGeometry.U2M)
 		add_child(model)
+		var port := CampusGeometry.door_port(layout, d)
+		var threshold := CampusGeometry.to_scene(layout, port["p"])
+		CampusPreview.clip(model, _preview_plane(threshold, port["n"]))
+		model.set_meta("door_threshold", threshold)
+		model.hide()
 		door_previews.append(model)
 		return
 
@@ -253,11 +289,8 @@ func _build_stair_preview() -> void:
 		var port := CampusPortals.stair_port(st, level, rooms, outside)
 		if port.is_empty():
 			continue
-		var shaft := (load(path) as PackedScene).instantiate() as Node3D
+		var shaft := _load_visual(String(st["id"]))
 		shaft.name = "StairPreview_" + String(st["id"])
-		for mesh: MeshInstance3D in shaft.find_children("*", "MeshInstance3D", true, false):
-			if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
-				_to_multimesh(mesh)
 		var pos := CampusGeometry.to_scene(layout if is_room() else null, port["p"])
 		var n: Vector2 = port["n"]
 		shaft.position = Vector3(pos.x + 2.8 * n.x, -float(level) * float(st["rise"]), pos.y + 2.8 * n.y)
@@ -269,6 +302,7 @@ func _build_stair_preview() -> void:
 		lamp.position = Vector3(0, 2.4 + float(level) * float(st["rise"]), 0)
 		shaft.add_child(lamp)
 		add_child(shaft)
+		CampusPreview.clip(shaft, _preview_plane(pos, n))
 		stair_previews.append(shaft)
 
 
@@ -279,11 +313,8 @@ func _build_link_preview() -> void:
 		var peer_id := String(v["peer"]["room"])
 		if not rooms.has(peer_id) or not ResourceLoader.exists(CampusData.scene_path(peer_id)):
 			continue
-		var model := (load(CampusData.scene_path(peer_id)) as PackedScene).instantiate() as Node3D
+		var model := _load_visual(peer_id)
 		model.name = "LinkPreview_" + peer_id
-		for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
-			if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
-				_to_multimesh(mesh)
 		var t := CampusPortals.link_between(v["peer"], v["self"])
 		var peer_room: Dictionary = rooms[peer_id]
 		var phi := float(t["phi"])
@@ -303,10 +334,53 @@ func _build_link_preview() -> void:
 		lamp.position = Vector3((inner.x - c_there.x) * CampusGeometry.U2M, 2.7, (inner.y - c_there.y) * CampusGeometry.U2M)
 		model.add_child(lamp)
 		add_child(model)
+		CampusPreview.clip(model, _preview_plane(CampusGeometry.to_scene(layout, v["self"]["p"]), v["self"]["n"]))
 		link_previews.append(model)
 
 
 # ---- model ----
+
+## A quality change replaces only rendering nodes. Keep physics, interaction actors and all
+## rule modules alive: changing a setting must not end an anomaly or reset a room visit.
+func reload_models(player_position: Vector3) -> void:
+	if visual_tier == CampusData.tier:
+		return
+	var doors := _open_doors.duplicate()
+	var lift_amount := _lift_amount
+	var models: Array[Node3D] = []
+	models.append_array(link_previews)
+	models.append_array(stair_previews)
+	models.append_array(door_previews)
+	for node: Node3D in _shaft_levels.values():
+		models.append(node)
+	models.append(gallery_campus)
+	models.append(get_node_or_null("Model"))
+	for model: Node3D in models:
+		if is_instance_valid(model):
+			model.free()
+	link_previews.clear()
+	stair_previews.clear()
+	door_previews.clear()
+	_shaft_levels.clear()
+	gallery_campus = null
+	_door_leaves.clear()
+	_lift_leaves.clear()
+	_preview_doors.clear()
+	_preview_lifts.clear()
+	_lift_amount = -1.0
+	_build_model()
+	if is_room():
+		_build_link_preview()
+	_build_stair_preview()
+	_build_door_preview()
+	_build_gallery_view()
+	update_shaft_previews(player_position.y)
+	apply_doors(doors)
+	set_lift_doors(maxf(0.0, lift_amount))
+	set_player_scene(player_position)
+	if lighting != null:
+		lighting.rebind_model(get_node_or_null("Model"))
+
 
 func _build_model() -> void:
 	var packed := load(CampusData.scene_path(scene_id)) as PackedScene
@@ -314,6 +388,7 @@ func _build_model() -> void:
 		push_error("校园模型缺失：%s" % scene_id)
 		return
 	var model := packed.instantiate() as Node3D
+	visual_tier = CampusData.tier
 	model.name = "Model"
 	add_child(model)
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
@@ -361,12 +436,18 @@ static func _to_multimesh(source: MeshInstance3D) -> void:
 	node.name = source.name
 	node.multimesh = mm
 	node.transform = source.transform
+	node.set_meta("campus_transforms", xf)
+	node.set_meta("campus_colors", colors)
 	source.get_parent().add_child(node)
 	source.get_parent().remove_child(source)
 	source.free()
 
 
 func set_door_open(key: String, open: bool) -> void:
+	if open:
+		_open_doors[key] = true
+	else:
+		_open_doors.erase(key)
 	if _door_leaves.has(key):
 		var leaves: Dictionary = _door_leaves[key]
 		if leaves.has("closed"):
@@ -375,14 +456,31 @@ func set_door_open(key: String, open: bool) -> void:
 			(leaves["open"] as Node3D).visible = open
 	if _door_bodies.has(key):
 		(_door_bodies[key] as CollisionShape3D).set_deferred("disabled", open)
+	for entry: Dictionary in _preview_doors.get(key, []):
+		if is_instance_valid(entry["node"]):
+			(entry["node"] as Node3D).visible = open == (entry["state"] == "open")
 
 
 func apply_doors(open_doors: Dictionary) -> void:
+	_open_doors = open_doors.duplicate()
 	for key: String in _door_bodies:
 		set_door_open(key, open_doors.has(key))
 	for key: String in _door_leaves:
 		if not _door_bodies.has(key):
 			set_door_open(key, open_doors.has(key))
+	for key: String in _preview_doors:
+		set_door_open(key, open_doors.has(key))
+
+
+func apply_lift_doors(lift: ElevatorModule) -> void:
+	set_lift_doors(lift.door_amount_in(scene_id))
+	_preview_lifts = _preview_lifts.filter(func(entry: Dictionary) -> bool: return is_instance_valid(entry["node"]))
+	for entry: Dictionary in _preview_lifts:
+		var leaf: Node3D = entry["node"]
+		var amount := lift.door_amount_in(String(entry["scene"]))
+		var smooth := amount * amount * (3.0 - 2.0 * amount)
+		var extras: Dictionary = leaf.get_meta("extras")
+		leaf.position = (entry["closed"] as Vector3) + Vector3(float(extras.get("ox", 0.0)) * smooth, 0.0, float(extras.get("oz", 0.0)) * smooth)
 
 
 ## Elevator doors (model/lift.js LiftDoors + Elevator.doorDepth): leaves slide by smoothstep of the
@@ -481,6 +579,20 @@ var _player_scene := Vector3.ZERO
 
 func set_player_scene(p: Vector3) -> void:
 	_player_scene = p
+	# CampusDoor.frame: only the nearest entrance is previewed, with 12/15 m hysteresis.
+	# Rendering every interior while crossing the campus was both misleading and expensive.
+	var nearest: Node3D
+	var distance := INF
+	var here := Vector2(p.x, p.z)
+	for model: Node3D in door_previews:
+		var at: Vector2 = model.get_meta("door_threshold")
+		var d := here.distance_to(at)
+		if d < distance:
+			distance = d
+			nearest = model
+	var show_nearest := nearest != null and distance <= (15.0 if nearest.visible else 12.0)
+	for model: Node3D in door_previews:
+		model.visible = model == nearest and show_nearest
 
 
 func _scatter_dirs_of(group: Node3D, _room: Variant) -> Array:
@@ -802,23 +914,29 @@ func _cut_doorways(r: Rect2, doorways: Array[Dictionary]) -> Array[Rect2]:
 	var parts: Array[Rect2] = [r]
 	for d: Dictionary in doorways:
 		var c: Vector2 = d["center"]
+		var n: Vector2 = d["normal"]
+		var lateral: Vector2 = d["lateral"]
 		var half := float(d["half"])
-		if r.get_center().distance_to(c) > 2.0:
-			continue
-		var lateral_x := absf((d["lateral"] as Vector2).x) > 0.5
+		# portalAt accepts body centres -0.85 < depth < 0.5 metres. Expand
+		# that interval by the body radius to construct the physical opening.
+		# In particular, do not cut through the second row of roof stair cells.
+		var radius := CampusGeometry.PRAD * CampusGeometry.U2M
+		var a := c + n * (-0.85 - radius) - lateral * half
+		var b := c + n * (0.5 + radius) + lateral * half
+		var cut := Rect2(a.min(b), (b - a).abs())
 		var next: Array[Rect2] = []
 		for q: Rect2 in parts:
-			var lo := (c.x if lateral_x else c.y) - half
-			var hi := (c.x if lateral_x else c.y) + half
-			var a0 := q.position.x if lateral_x else q.position.y
-			var a1 := q.end.x if lateral_x else q.end.y
-			if hi <= a0 or lo >= a1:
+			var overlap := q.intersection(cut)
+			if not overlap.has_area():
 				next.append(q)
 				continue
-			if lo > a0:
-				next.append(Rect2(q.position, Vector2(lo - a0, q.size.y)) if lateral_x else Rect2(q.position, Vector2(q.size.x, lo - a0)))
-			if hi < a1:
-				next.append(Rect2(Vector2(hi, q.position.y), Vector2(a1 - hi, q.size.y)) if lateral_x else Rect2(Vector2(q.position.x, hi), Vector2(q.size.x, a1 - hi)))
+			for piece: Rect2 in [
+				Rect2(q.position, Vector2(q.size.x, overlap.position.y - q.position.y)),
+				Rect2(Vector2(q.position.x, overlap.end.y), Vector2(q.size.x, q.end.y - overlap.end.y)),
+				Rect2(Vector2(q.position.x, overlap.position.y), Vector2(overlap.position.x - q.position.x, overlap.size.y)),
+				Rect2(Vector2(overlap.end.x, overlap.position.y), Vector2(q.end.x - overlap.end.x, overlap.size.y))]:
+				if piece.has_area():
+					next.append(piece)
 		parts = next
 	return parts
 

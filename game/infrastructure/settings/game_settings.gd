@@ -8,21 +8,21 @@ extends RefCounted
 ## sub 0/1/2 caption size · distortion 0 off / 1 reduced / 2 full · reduce_flash 1/0 · bright 50–150 ·
 ## grain 1/0 · mouse, touch 25–250 look sensitivity % · text 85–150 % · touch_size 85–125 % ·
 ## quality 0–4 (流畅、均衡、精细、超精细、真实) · auto_land 1/0 · full_screen 1/0.
-## Not ported: the Web "graphics mode" (WebGL / WebGPU; Godot has one renderer) and the camera-shake
-## toggle (the Godot build has no head bob or shake yet), the draggable touch layout.
+## The Web "graphics mode" (WebGL / WebGPU) is replaced by Godot's renderer. The draggable
+## touch layout remains a separate migration item.
 
 const VERSION := 1
 const DEFAULTS := {"vol": 70, "amb": 1, "captions": 1, "sub": 1, "distortion": 2, "reduce_flash": 0, "bright": 100, "grain": 1,
-	"mouse": 100, "touch": 100, "text": 100, "touch_size": 100, "quality": 2, "auto_land": 1, "full_screen": 0}
+	"mouse": 100, "touch": 100, "text": 100, "touch_size": 100, "quality": 2, "auto_land": 1, "full_screen": 0, "shake": 1}
 const LIMITS := {"vol": [0, 100], "bright": [50, 150], "mouse": [25, 250], "touch": [25, 250], "text": [85, 150], "touch_size": [85, 125]}
-const CHOICES := {"amb": 2, "captions": 3, "sub": 3, "distortion": 3, "reduce_flash": 2, "grain": 2, "quality": 5, "auto_land": 2, "full_screen": 2}
+const CHOICES := {"amb": 2, "captions": 3, "sub": 3, "distortion": 3, "reduce_flash": 2, "grain": 2, "quality": 5, "auto_land": 2, "full_screen": 2, "shake": 2}
 const QUALITY_LABELS := ["流畅", "均衡", "精细", "超精细", "真实"]
 ## Rendering scale, MSAA (Viewport enum: 0 off, 2 = 4x, 3 = 8x) and sun shadows per quality (quality.js: scale, samples,
-## shadow; the Web 精细 tier had shadows, here they start at 超精细 so the default stays cheap).
+## shadow). As in the reference, 精细 and above cast sun shadows.
 const QUALITY_SCALE := [0.55, 0.7, 1.0, 1.0, 1.0]
 const QUALITY_MSAA := [0, 0, 0, 2, 3]
 ## Default 精细 (2): the imported models are the old tier-2 build, so this keeps the picture as it was.
-const QUALITY_SHADOW := [false, false, false, true, true]
+const QUALITY_SHADOW := [false, false, true, true, true]
 const SUB_MULT := [0.6, 1.0, 1.6]
 
 var path: String

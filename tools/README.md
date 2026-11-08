@@ -2,6 +2,7 @@
 
 | 入口 | 用途 |
 | --- | --- |
+| `python tools/export_reference.py --source <旧版目录> --chromium <浏览器路径>` | 从真实 Web 运行时生成碰撞、课表、镜头和画质对照样本；正常 CI 直接读取已提交样本 |
 | `python tools/check.py` | 结构、依赖边界、真实 Godot 导入与回归 |
 | `python tools/export.py` | Linux／Windows 开发包与 Linux 包检查 |
 | `python tools/export_android.py` | Linux 上生成并验证签名 Android Debug APK（ARM64） |

@@ -222,7 +222,7 @@ func _test_weather_fx() -> void:
 	rain.setup_rain(Vector3.ZERO)
 	for i in 30:
 		rain.update_rain(0.05, Vector3.ZERO, 0.0)
-	check(rain._seeds.size() == WeatherFx.RAIN_COUNT and rain._puddles.size() == 9, "the rain has its drops and puddles")
+	check(rain._seeds.size() == int(WeatherFx.RAIN_COUNTS[CampusData.tier]) and rain._puddles.size() == 9, "the rain has its drops and puddles at the selected quality")
 	var seen := 0
 	for m in rain._rings:
 		seen += 1 if m.visible else 0

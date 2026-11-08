@@ -9,10 +9,10 @@ extends Node3D
 ##  off, so the picture is never wholly covered; the dust of the wings falls all the time.
 ## Presentation only. The random numbers are the old "presentation random" (a fixed seed here).
 
-const RAIN_COUNT := 900
+const RAIN_COUNTS := [500, 900, 1500, 2200, 3000]
 const AREA := 18.0
 const HEIGHT := 9.0
-const MOTHS := 70
+const MOTH_COUNTS := [50, 80, 120, 180, 220]
 const DUST := 140
 
 var kind := ""                       # "rain" | "moth"
@@ -46,7 +46,7 @@ static func wetness(t: float) -> float:
 	return minf(1.0, t / 10.0)
 
 
-## The moth threat from the time the anomaly has run (hard: 4.5 s to full, easy: 6.5 s).
+## Threat uses accumulated exposure, which recedes when the player escapes the swarm.
 static func threat(t: float, hard: bool) -> float:
 	return clampf(t / (4.5 if hard else 6.5), 0.0, 1.0)
 
@@ -62,7 +62,7 @@ func _mat(c: Color, op: float = 1.0, double: bool = false) -> StandardMaterial3D
 	return m
 
 
-func setup_rain(feet: Vector3) -> void:
+func setup_rain(feet: Vector3, quality: int = -1) -> void:
 	kind = "rain"
 	_rng.seed = 2024
 	_mesh = ImmediateMesh.new()
@@ -72,7 +72,7 @@ func setup_rain(feet: Vector3) -> void:
 	lines.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	lines.custom_aabb = AABB(Vector3(-40, -5, -40), Vector3(80, 30, 80))
 	add_child(lines)
-	for i in RAIN_COUNT:
+	for i in int(RAIN_COUNTS[CampusData.tier if quality < 0 else clampi(quality, 0, 4)]):
 		_seeds.append(Vector3((_rng.randf() - 0.5) * AREA, _rng.randf() * HEIGHT, (_rng.randf() - 0.5) * AREA))
 	var ring := TorusMesh.new()
 	ring.inner_radius = 0.035
@@ -172,7 +172,7 @@ func update_rain(dt: float, cam: Vector3, floor_y: float) -> void:
 		_splash(pp.position.x + cos(ra) * rr * pp.scale.x, pp.position.y, pp.position.z + sin(ra) * rr * pp.scale.z, true)
 
 
-func setup_moths(source: Vector3) -> void:
+func setup_moths(source: Vector3, quality: int = -1) -> void:
 	kind = "moth"
 	_rng.seed = 909
 	var wing := QuadMesh.new()
@@ -180,10 +180,11 @@ func setup_moths(source: Vector3) -> void:
 	wing.center_offset = Vector3(0.035, 0, 0)
 	var body := BoxMesh.new()
 	body.size = Vector3(0.016, 0.016, 0.06)
-	_wings = _multi(wing, _mat(Color("#111111"), 1.0, true), MOTHS * 2)
-	_bodies = _multi(body, _mat(Color("#080808")), MOTHS)
+	var count := int(MOTH_COUNTS[CampusData.tier if quality < 0 else clampi(quality, 0, 4)])
+	_wings = _multi(wing, _mat(Color("#111111"), 1.0, true), count * 2)
+	_bodies = _multi(body, _mat(Color("#080808")), count)
 	_center = Vector3(source.x, 1.9, source.z)
-	for i in MOTHS:
+	for i in count:
 		_moths.append({"p": Vector3(source.x + (_rng.randf() - 0.5) * 2.4, 1.2 + _rng.randf() * 1.6, source.z + (_rng.randf() - 0.5) * 2.4), "v": Vector3.ZERO, "a": _rng.randf() * TAU,
 			"r": 0.35 + _rng.randf() * 1.5, "sp": (-1.0 if _rng.randf() < 0.5 else 1.0) * (1.0 + _rng.randf() * 1.4), "ph": _rng.randf() * TAU, "fl": 26.0 + _rng.randf() * 16.0, "h": 1.3 + _rng.randf() * 1.4})
 	var dm := BoxMesh.new()

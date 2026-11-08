@@ -31,6 +31,8 @@ var _touch_move := Vector2.ZERO
 var _touch_sprint := false
 var _focus: WorldInteractable
 var _prompt := ""
+var view_motion := CameraMotion.new()
+var _look_pitch := 0.0
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -125,13 +127,34 @@ func look_from_touch(relative: Vector2) -> void:
 
 func apply_look(delta: Vector2) -> void:
 	rotation.y = wrapf(rotation.y - delta.x, -PI, PI)
-	camera.rotation.x = clampf(camera.rotation.x - delta.y, -1.4, 1.4)
+	set_pitch(_look_pitch - delta.y)
+
+
+func set_pitch(value: float) -> void:
+	_look_pitch = clampf(value, -1.4, 1.4)
+	camera.rotation.x = _look_pitch + (-0.06 if seated else 0.0)
+
+
+func update_view(dt: float, drop: float = 0.0, shake: float = 0.0) -> void:
+	var size := get_viewport().get_visible_rect().size
+	var view := view_motion.advance(dt, seated, moving, sprinting, drop, size.x / maxf(1.0, size.y), shake)
+	camera.position.y = float(view["height"])
+	camera.rotation.x = _look_pitch + float(view["pitch"])
+	camera.fov = float(view["fov"])
+	camera.near = float(view["near"])
+
+
+func reset_view(drop: float = 0.0) -> void:
+	view_motion.reset(seated)
+	update_view(0.0, drop)
 
 
 func clear_input() -> void:
 	_touch_move = Vector2.ZERO
 	_touch_sprint = false
 	velocity = Vector3.ZERO
+	moving = false
+	sprinting = false
 	_focus = null
 	_prompt = ""
 	focus_changed.emit("")
@@ -141,7 +164,7 @@ func capture_pose() -> Dictionary:
 	return {
 		"position": [position.x, position.y, position.z],
 		"yaw": wrapf(rotation.y, -PI, PI),
-		"pitch": camera.rotation.x,
+		"pitch": _look_pitch,
 	}
 
 
@@ -150,7 +173,7 @@ func place(data: Dictionary) -> void:
 	var coordinates: Array = data["position"]
 	position = Vector3(coordinates[0], coordinates[1], coordinates[2])
 	rotation = Vector3(0.0, float(data["yaw"]), 0.0)
-	camera.rotation = Vector3(float(data["pitch"]), 0.0, 0.0)
+	set_pitch(float(data["pitch"]))
 	reset_physics_interpolation()
 
 
@@ -163,5 +186,6 @@ func restore_pose(data: Dictionary) -> void:
 	var coordinates: Array = data["position"]
 	position = Vector3(coordinates[0], coordinates[1], coordinates[2])
 	rotation = Vector3(0.0, float(data["yaw"]), 0.0)
-	camera.rotation = Vector3(float(data["pitch"]), 0.0, 0.0)
+	set_pitch(float(data["pitch"]))
+	reset_view()
 	reset_physics_interpolation()

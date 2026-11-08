@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Capture independent compatibility fixtures from a running checkout of the original Web game.
+
+Requires Playwright and Chromium. The normal CI suite consumes the committed gzip fixture;
+it needs neither the Web repository nor a browser. Do not regenerate expectations from Godot.
+"""
+import argparse
+import functools
+import gzip
+import json
+import subprocess
+import threading
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class Quiet(SimpleHTTPRequestHandler):
+    def log_message(self, *_):
+        pass
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source", type=Path, required=True, help="read-only original Web checkout")
+    parser.add_argument("--chromium", help="optional installed Chromium executable")
+    parser.add_argument("--output", type=Path, default=ROOT / "tests/fixtures/web-reference.json.gz")
+    args = parser.parse_args()
+    source = args.source.resolve()
+    tree = subprocess.check_output(["git", "rev-parse", "HEAD:game3d"], cwd=source, text=True).strip()
+    dirty = subprocess.check_output(["git", "status", "--porcelain", "--", "game3d"], cwd=source, text=True)
+    if dirty:
+        parser.error("The reference game3d directory must be clean.")
+    from playwright.sync_api import sync_playwright
+    server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=str(source)))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with sync_playwright() as p:
+            launch = {"args": ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"]}
+            if args.chromium:
+                launch["executable_path"] = args.chromium
+            browser = p.chromium.launch(**launch)
+            page = browser.new_page(viewport={"width": 640, "height": 480})
+            page.add_init_script("localStorage.setItem('wdfz_pro','1');localStorage.setItem('zw3d_set',JSON.stringify({q:0,amb:0,vol:0,renderer:'webgl',rv:1}));")
+            page.goto(f"http://127.0.0.1:{server.server_port}/")
+            page.wait_for_function("Engine.ready() && Assets.ready(Assets.want())", timeout=180000)
+            known = [p.stem for p in (ROOT / "assets/campus/layout").glob("*.json") if p.stem not in ["campus", "out"]]
+            result = page.evaluate(r'''ids => {
+      S.mode='out';S.room=null;S.floorY=0;S.viol=0;S.seated=false;
+      Object.keys(OPENDOORS).forEach(k=>delete OPENDOORS[k]);
+      const scenes=[],excluded=[],radius=PRAD-0.01;
+      const sample=(x,y,room)=>{
+        const depth=Collision.depth(x,y,radius,room);
+        if(Number.isFinite(depth) && depth>0 && depth<0.025)return null;
+        return [Math.round((x-(room?room.cx:0))*U2M*1e5)/1e5,Math.round((y-(room?room.cy:0))*U2M*1e5)/1e5,depth>0];
+      };
+      ids.sort().forEach(id=>{
+        const r=INTERIORS[id];if(!r)return; if(r.stairwell||r.spiral||id==='lift_dream'){excluded.push({id,reason:'height-dependent collision; covered separately'});return;}
+        SpaceLayout.ensureRoom(r);
+        const points=[];
+        for(let y=0;y<r.rows;y++)for(let x=0;x<r.cols;x++)for(const q of [[.5,.5],[.18,.72]]){
+          const v=sample(r.ox+(x+q[0])*r.tw,r.oy+(y+q[1])*r.th,r);if(v)points.push(v);
+        }
+        scenes.push({id,points});
+      });
+      SpaceLayout.ensureOutside();const points=[];
+      for(let y=(BOUND.y0+3)*SC;y<=(BOUND.y1-3)*SC;y+=47.1)for(let x=(BOUND.x0+3)*SC;x<=(BOUND.x1-3)*SC;x+=43.7){const v=sample(x,y,null);if(v)points.push(v);}
+      scenes.push({id:'out',points});
+      const clock=[];
+      for(let t=440;t<1500;t+=.5)clock.push([t,rateAt(t),needWhere(t),(S.tsec=t,isNight()),fmtClock(t),clockBoundary(t)]);
+      for(const t of [705,705+14/60,705+20/60,1349.99,1350,1499.99])clock.push([t,rateAt(t),needWhere(t),(S.tsec=t,isNight()),fmtClock(t),clockBoundary(t)]);
+      const camera=[];
+      S.mode='out';S.room=null;S.dead=false;S.floorY=0;S.pitch=0;S.ang=0;GLR.gazeShake=0;
+      VisualState.camera.walkPhase=0;VisualState.camera.eyeH=1.65;VisualState.camera.fov=72;
+      const stages=[[false,true,false,true,16/9,0],[false,true,true,true,16/9,0],
+        [true,false,false,true,16/9,0],[false,false,false,true,16/9,.35],
+        [false,true,false,false,16/9,0],[false,true,true,false,12,0]];
+      for(const stage of stages)for(let i=0;i<60;i++){
+        const [seated,moving,run,shake,aspect,drop]=stage;
+        S.seated=seated;S.moving=moving;S.run=run;SHAKE_ON=shake;S.eyeLift=-drop;GLR.cam.aspect=aspect;
+        ThreeBackend.syncCamera(1/60);
+        camera.push([1/60,...stage,GLR.cam.position.y,GLR.cam.fov,GLR.cam.near]);
+      }
+      return {excluded,camera,quality:Quality.profiles.map(q=>({rain:q.rain,moths:q.moths,shadows:!!q.shadow})),reference:'wd-fz/wd-fz.github.io@0bf508a47eac154c2a7047cdb45d314f61c48fdc',radius:radius*U2M,scenes,clock};
+    }''', known)
+            result["game3d_tree"] = tree
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            raw = (json.dumps(result, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
+            args.output.write_bytes(gzip.compress(raw, mtime=0))
+            print(f"{len(result['scenes'])} scenes, {sum(len(r['points']) for r in result['scenes'])} collision samples, "
+                  f"{len(result['clock'])} clock samples, {len(result['camera'])} camera frames → {args.output}")
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+if __name__ == "__main__":
+    main()

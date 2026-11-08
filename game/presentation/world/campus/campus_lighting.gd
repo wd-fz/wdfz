@@ -420,6 +420,12 @@ func _lamps(dt: float, night: float, camera: Camera3D, sky: Array[Color], day: f
 		lamp_pool[i].light_energy = lamp_i * smooth01(0.15, 0.7, night) * fl * ENERGY_POINT * 2.0 if lamp_pool[i].get_meta("on", false) else 0.0
 
 
+func rebind_model(model: Node) -> void:
+	live_mats.clear()
+	if model != null:
+		_collect_live(model)
+
+
 func _collect_live(model: Node) -> void:
 	var meshes: Array[Mesh] = []
 	for n: Node in model.find_children("*", "MeshInstance3D", true, false):

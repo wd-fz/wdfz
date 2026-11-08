@@ -14,20 +14,22 @@ const COLA_H := AnomalyModule.COLA_H
 
 var _props: Node3D
 var _key := ""
+var _quality := -1
 var _extra: Dictionary = {}
 
 
 ## `an`: the module's state; `room`: the current room layout (null outside); `feet`: the player's
 ## position in scene metres (x, floor height, z); `yaw_dir`: the player's facing as a scene xz vector.
-func update(dt: float, an: Dictionary, room: Variant, scene: String, feet: Vector3, facing: Vector2) -> void:
+func update(dt: float, an: Dictionary, room: Variant, scene: String, feet: Vector3, facing: Vector2, eye: Vector3 = Vector3.INF, hard: bool = false) -> void:
 	var id := String(an.get("id", "")) if an.get("active", false) else ""
 	var data: Dictionary = an.get("data", {})
 	if id != "" and data.has("scene") and String(data["scene"]) != scene:
 		id = ""
 	var key := id
-	if key != _key:
+	if key != _key or _quality != CampusData.tier:
 		_clear()
 		_key = key
+		_quality = CampusData.tier
 		if key != "":
 			_props = Node3D.new()
 			_props.name = "Anomaly_" + key
@@ -35,6 +37,16 @@ func update(dt: float, an: Dictionary, room: Variant, scene: String, feet: Vecto
 			_build(key, data, room, feet, facing)
 	if _props != null:
 		_animate(id, float(an.get("t", 0.0)), data, room, feet, facing, dt)
+		var camera_pos := eye if eye.is_finite() else feet + Vector3(0, CameraMotion.EYE, 0)
+		if _extra.has("rain"):
+			(_extra["rain"] as WeatherFx).update_rain(dt, camera_pos, feet.y)
+		if _extra.has("swarm"):
+			# Exposure recedes when the player gets away; elapsed anomaly time does not.
+			(_extra["swarm"] as WeatherFx).update_moths(dt, camera_pos, float(an.get("acc", 0.0)), hard)
+
+
+func moth_nearness() -> float:
+	return clampf(1.0 - (_extra["swarm"] as WeatherFx).distance / 12.0, 0.0, 1.0) if _extra.has("swarm") else 0.0
 
 
 func current() -> String:
@@ -276,10 +288,6 @@ func _build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vec
 func _animate(id: String, t: float, d: Dictionary, room: Variant, feet: Vector3, facing: Vector2, dt: float) -> void:
 	var me := Vector3(feet.x, feet.y, feet.z)
 	match id:
-		"rain", "raindots":
-			(_extra["rain"] as WeatherFx).update_rain(dt, Vector3(me.x, me.y + 1.7, me.z), me.y)
-		"moth":
-			(_extra["swarm"] as WeatherFx).update_moths(dt, Vector3(me.x, me.y + 1.7, me.z), t, bool(d.get("hard", false)))
 		"exercise":
 			var swing := sin(t * 5.0) * 0.12
 			for f: Node3D in _extra["figs"]:
