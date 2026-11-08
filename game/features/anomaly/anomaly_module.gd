@@ -4,9 +4,8 @@ extends FeatureModule
 ## wd-fz.github.io@0bf508a). Context in (player state), events out (notice / hurt / san / kill /
 ## violation / remove_item / advance_time / choice / turn / clue); the app applies them.
 ##
-## Not ported yet: the on-screen effects (fx/anomaly-fx.js, fx/cup.js, fx/cola.js, traces, the smile
-## face, the blackboard / roster / wall paper models), their sounds, exam mode, the fake-normal
-## second day, talents and the umbrella. The rules, numbers, timings and messages are the old ones.
+## World effects, sounds and scene transitions are connected by the app/presentation
+## boundary; this module owns eligibility, timings, choices, damage and saved state.
 
 const STATE_VERSION := 1
 const U2M := CampusGeometry.U2M
@@ -305,7 +304,7 @@ func _cup_wall() -> Dictionary:
 		var py := clampf(my, float(o["y"]), float(o["y"]) + float(o["h"]))
 		var dd := Vector2(mx - px, my - py).length()
 		if dd > 0.01 and (best.is_empty() or dd < float(best["d"])):
-			best = {"x": px, "y": py, "d": dd, "id": id}
+			best = {"x": px, "y": py, "d": dd, "nx":(mx-px)/dd, "ny":(my-py)/dd, "id": id}
 	if not best.is_empty():
 		best["m"] = float(best["d"]) * SC * U2M
 	return best

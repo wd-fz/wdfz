@@ -212,6 +212,8 @@ func _feast(p: Vector3, room: Variant) -> void:
 			if count>=30: break
 			var at:=CampusGeometry.to_scene(room,CampusGeometry.tile_center(room,c,r))
 			var lantern: Node3D=load("res://assets/campus/fx/lantern.glb").instantiate()
+			for mesh: MeshInstance3D in lantern.find_children("*","MeshInstance3D",true,false):
+				mesh.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			lantern.position=Vector3(at.x,0,at.y)
 			add_child(lantern)
 			count+=1

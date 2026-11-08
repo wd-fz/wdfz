@@ -36,6 +36,8 @@ def main():
     parser.add_argument("--inception-only", action="store_true", help="capture original dream/sleep rules, settlements and cinematic")
     parser.add_argument("--maze-patrol-only", action="store_true", help="capture original height-aware patrol paths, gateway and saves")
     parser.add_argument("--anomaly-fx-only", action="store_true", help="capture original world anomaly models, animation and textures")
+    parser.add_argument("--falling-props-only", action="store_true", help="capture original cup/cola models, fall animation and ground rays")
+    parser.add_argument("--traces-only", action="store_true", help="capture original persistent anomaly traces and stable spatial hashes")
     args = parser.parse_args()
     source = args.source.resolve()
     tree = subprocess.check_output(["git", "rev-parse", "HEAD:game3d"], cwd=source, text=True).strip()
@@ -52,11 +54,14 @@ def main():
                 launch["executable_path"] = args.chromium
             browser = p.chromium.launch(**launch)
             page = browser.new_page(viewport={"width": 640, "height": 480})
-            page.add_init_script("localStorage.setItem('wdfz_pro','1');localStorage.setItem('zw3d_set',JSON.stringify({q:0,amb:0,vol:0,renderer:'webgl',rv:1}));")
+            # Ground-ray comparison needs the same q2 asset pack as the exported
+            # campus, not q0 placeholders with QUALITY changed after assets load.
+            initial_quality=2 if args.falling_props_only or args.traces_only else 0
+            page.add_init_script("localStorage.setItem('wdfz_pro','1');localStorage.setItem('zw3d_set',JSON.stringify({q:%d,amb:0,vol:0,renderer:'webgl',rv:1}));" % initial_quality)
             page.goto(f"http://127.0.0.1:{server.server_port}/")
             page.wait_for_function("Engine.ready() && Assets.ready(Assets.want())", timeout=180000)
-            if args.save_only or args.story_only or args.grading_only or args.crowd_only or args.secret_items_only or args.inception_only or args.maze_patrol_only or args.anomaly_fx_only:
-                stem = "anomaly_fx" if args.anomaly_fx_only else "maze_patrol" if args.maze_patrol_only else "inception" if args.inception_only else "secret_items" if args.secret_items_only else "crowd" if args.crowd_only else "grading" if args.grading_only else "routes" if args.story_only else "saves"
+            if args.save_only or args.story_only or args.grading_only or args.crowd_only or args.secret_items_only or args.inception_only or args.maze_patrol_only or args.anomaly_fx_only or args.falling_props_only or args.traces_only:
+                stem = "traces" if args.traces_only else "falling_props" if args.falling_props_only else "anomaly_fx" if args.anomaly_fx_only else "maze_patrol" if args.maze_patrol_only else "inception" if args.inception_only else "secret_items" if args.secret_items_only else "crowd" if args.crowd_only else "grading" if args.grading_only else "routes" if args.story_only else "saves"
                 result = page.evaluate((ROOT / f"tools/reference_{stem}.js").read_text())
                 if args.anomaly_fx_only:
                     texture_dir=ROOT / "assets/campus/anomalies"
@@ -67,6 +72,18 @@ def main():
                     page.add_script_tag(path=str(ROOT / "tools/export_scenes/export.js"))
                     model=page.evaluate("window.__wdfzExport('fx','lantern')")
                     (ROOT / "assets/campus/fx/lantern.glb").write_bytes(base64.b64decode(model["glb"]))
+                if args.falling_props_only:
+                    from export_scenes.export_scenes import externalize_images
+                    page.add_script_tag(path=str(ROOT / "tools/export_scenes/vendor/gltf-exporter.js"))
+                    page.add_script_tag(path=str(ROOT / "tools/export_scenes/export.js"))
+                    textures=ROOT / "assets/campus/textures"
+                    for tier in range(5):
+                        target_dir=ROOT / f"assets/campus/anomalies/falling/q{tier}"
+                        target_dir.mkdir(parents=True,exist_ok=True)
+                        page.evaluate("q=>QUALITY=q",tier)
+                        for name in ("cup","lid","cola","foam"):
+                            model=page.evaluate("name=>window.__wdfzExport('falling',name)",name)
+                            (target_dir / f"{name}.glb").write_bytes(externalize_images(base64.b64decode(model["glb"]),textures,"../../../textures/"))
                 result["game3d_tree"] = tree
                 target = ROOT / f"tests/fixtures/{stem if stem != 'saves' else 'save'}-reference.json.gz" if args.output == ROOT / "tests/fixtures/web-reference.json.gz" else args.output
                 target.parent.mkdir(parents=True, exist_ok=True)

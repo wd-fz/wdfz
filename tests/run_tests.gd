@@ -42,6 +42,18 @@ func same_json(a: Variant, b: Variant) -> bool:
 
 
 func _run() -> void:
+	var traces:=preload("res://tests/suites/traces.gd").new(self)
+	print("CASE: traces.test_reference")
+	traces.test_reference()
+	var falling_props:=preload("res://tests/suites/falling_props.gd").new(self)
+	print("CASE: falling_props.test_reference")
+	falling_props.test_reference()
+	print("CASE: falling_props.test_models")
+	falling_props.test_models()
+	print("CASE: falling_props.test_world")
+	await falling_props.test_world()
+	print("CASE: falling_props.test_app")
+	await falling_props.test_app()
 	var anomaly_fx:=preload("res://tests/suites/anomaly_fx.gd").new(self)
 	print("CASE: anomaly_fx.test_reference")
 	anomaly_fx.test_reference()

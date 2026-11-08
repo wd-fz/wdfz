@@ -3,7 +3,8 @@ extends Node3D
 ## The traces that are always there (fx/traces.js TRACE_STATIC, reference wd-fz.github.io@0bf508a): marks of things that
 ## happened before you came — scratches by the toilet door, two drag marks in the garage, wet footprints at the dormitory
 ## stairs (only the way in), a chalk outline on the roof, a white sneaker by the sports ground, hand prints on the lab glass
-## (pressed from outside). Flat, unlit, no collision. (The ones an anomaly leaves behind are not ported: docs/plan/笑脸与幻觉.md.)
+## (pressed from outside). Dynamic leftovers keep their original global list index,
+## stable hash and models across scene changes, quality changes and saved games.
 
 const STATIC := [
 	{"k": "scratch", "room": "teach1", "c": 56.98, "r": 17.2},
@@ -14,6 +15,7 @@ const STATIC := [
 	{"k": "hands", "room": "lab1", "c": 24.0, "r": 16.01}]
 
 var _count := 0
+var ground_height: Callable
 
 
 static func for_scene(scene_id: String) -> Array:
@@ -34,11 +36,13 @@ func _mat(col: Color, op: float) -> StandardMaterial3D:
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	if op < 1.0:
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.depth_draw_mode=BaseMaterial3D.DEPTH_DRAW_ALWAYS
 	return m
 
 
 func _box(m: Material, w: float, h: float, d: float, x: float, y: float, z: float, rot: float = 0.0) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
+	mi.rotation_order=EULER_ORDER_XYZ
 	var bm := BoxMesh.new()
 	bm.size = Vector3(w, h, d)
 	mi.mesh = bm
@@ -67,29 +71,58 @@ func _footprints(m: Material, x: float, z: float, a: float, n: int, gap: float) 
 static func dynamic_for(list: Array, scene_id: String) -> Array:
 	var out: Array = []
 	for t: Variant in list:
-		if t is Dictionary and String(t.get("room", "")) == ("" if scene_id == "out" else scene_id):
+		if t is Dictionary and _room_id(t) == ("" if scene_id == "out" else scene_id):
 			out.append(t)
 	return out
 
 
+static func _room_id(trace: Dictionary) -> String:
+	return "" if trace.get("room")==null else String(trace["room"])
+
+
 func _hash2(a: int, b: int) -> float:
-	return fposmod(sin(float(a) * 127.1 + float(b) * 311.7) * 43758.5453, 1.0)
+	var h:=_int32(float(a)*374761393+float(b)*668265263)^0x5bf03635
+	h=_int32(float(h^(h>>13))*1274126177)
+	return ((h^(h>>16))&0xffffffff)/4294967295.0
+
+
+func _int32(value: float) -> int:
+	var n:=int(fmod(value,4294967296.0))&0xffffffff
+	return n-4294967296 if n>=2147483648 else n
 
 
 func _disc(m: Material, radius: float, x: float, z: float, y: float = 0.018) -> void:
-	var cm := CylinderMesh.new()
-	cm.top_radius = radius
-	cm.bottom_radius = radius
-	cm.height = 0.004
-	cm.radial_segments = 10
-	cm.rings = 1
+	var cm:=_circle(radius,10)
 	var mi := MeshInstance3D.new()
 	mi.mesh = cm
 	mi.material_override = m
 	mi.position = Vector3(x, y, z)
+	mi.rotation.x=-PI/2
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
 	_count += 1
+
+
+func _circle(radius: float, segments: int, inner: float = 0) -> ArrayMesh:
+	var vertices:=PackedVector3Array()
+	var indices:=PackedInt32Array()
+	if inner==0:
+		vertices.append(Vector3.ZERO)
+		for i in segments+1: vertices.append(Vector3(cos(i*TAU/segments),sin(i*TAU/segments),0)*radius)
+		for i in segments: indices.append_array([0,i+2,i+1])
+	else:
+		for i in segments+1:
+			var p:=Vector3(cos(i*TAU/segments),sin(i*TAU/segments),0)
+			vertices.append(p*inner)
+			vertices.append(p*radius)
+		for i in segments: indices.append_array([i*2,i*2+2,i*2+1,i*2+1,i*2+2,i*2+3])
+	var arrays:=[]
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX]=vertices
+	arrays[Mesh.ARRAY_INDEX]=indices
+	var mesh:=ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+	return mesh
 
 
 func _leftover(t: Dictionary, idx: int, room: Variant, dark: Material, wet: Material, chalk: Material) -> void:
@@ -108,10 +141,10 @@ func _leftover(t: Dictionary, idx: int, room: Variant, dark: Material, wet: Mate
 			for j in 30:
 				if _hash2(idx, j) < 0.3:
 					continue
-				var ra := float(j) / 30.0 * TAU
+				var ra := float(j) / 30.0 * 6.283
 				_flat(chalk, 0.28, 0.05, p.x + cos(ra) * 2.1, p.y + sin(ra) * 2.1, -ra + PI / 2.0)
 			for j in 4:
-				var ca := float(j) / 4.0 * TAU + 0.6
+				var ca := float(j) / 4.0 * 6.283 + 0.6
 				_box(pale, 0.12, 0.03, 0.12, p.x + cos(ca) * 1.6, 0.03, p.y + sin(ca) * 1.6)
 		"moths":
 			for j in 40:
@@ -138,25 +171,29 @@ func _leftover(t: Dictionary, idx: int, room: Variant, dark: Material, wet: Mate
 			for j in 14:
 				_flat(chalk, 0.08, 0.08, p.x + (_hash2(idx, j) - 0.5) * 1.4, p.y + (_hash2(j, idx) - 0.5) * 1.4, 0.0)
 		"cup":
-			# The dented flask lying on the ground, a white mark in the paving, the pale-purple lid rolled aside.
-			var cm := CylinderMesh.new()
-			cm.top_radius = 0.1
-			cm.bottom_radius = 0.09
-			cm.height = 0.3
-			var mi := MeshInstance3D.new()
-			mi.mesh = cm
-			mi.material_override = _mat(Color("#ece8e0"), 1.0)
-			mi.position = Vector3(p.x, 0.09, p.y)
-			mi.rotation = Vector3(0.0, _hash2(idx, 7) * TAU, PI / 2.0)
+			var gy:=float(ground_height.call(p.x,p.y)) if ground_height.is_valid() else 0.0
+			var mi:=Node3D.new()
+			mi.add_child(FallingProps.model("cup",CampusData.tier))
+			mi.rotation_order=EULER_ORDER_XYZ
+			mi.position = Vector3(p.x, gy+.07, p.y)
+			mi.rotation = Vector3(0.0, _hash2(idx, 7) * 6.28, PI / 2.0)
+			mi.scale=Vector3(2.2,2.2,1.7)
 			add_child(mi)
-			_count += 1
-			var la := _hash2(idx, 11) * TAU
-			_disc(_mat(Color("#b8a8d8"), 1.0), 0.09, p.x + cos(la + 1.2) * 0.9, p.y + sin(la + 1.2) * 0.9, 0.03)
-			_flat(_mat(Color("#d8d4cc"), 0.5), 0.22, 0.18, p.x + 0.05, p.y - 0.02, _hash2(idx, 3) * 3.0, 0.014)
+			var la := _hash2(idx, 11) * 6.28
+			var lid:=Node3D.new()
+			lid.add_child(FallingProps.model("lid",CampusData.tier))
+			lid.rotation_order=EULER_ORDER_XYZ
+			lid.scale=Vector3.ONE*2.2
+			lid.rotation=Vector3(0,la,PI/2)
+			lid.position=Vector3(p.x+cos(la+1.2)*.9,gy+.0462*2.2,p.y+sin(la+1.2)*.9)
+			add_child(lid)
+			_count += 2
+			_flat(_mat(Color("#d8d4cc"), 0.5), 0.22, 0.18, p.x + 0.05, p.y - 0.02, _hash2(idx, 3) * 3.0, gy+.014)
 
 
 func build(scene_id: String, room: Variant, dynamic: Array = []) -> void:
 	for c in get_children():
+		(c as Node3D).hide()
 		c.queue_free()
 	_count = 0
 	var dark := _mat(Color("#101418"), 0.55)
@@ -179,18 +216,15 @@ func build(scene_id: String, room: Variant, dynamic: Array = []) -> void:
 					_flat(dark, 0.12, 0.42, p.x + float(j) * 0.55, p.y - 0.2, PI / 2.0)
 					_flat(dark, 0.12, 0.42, p.x + float(j) * 0.55, p.y + 0.2, PI / 2.0)
 			"wetfeet":
-				_footprints(wet, p.x, p.y, PI, 10, 0.58)
+				_footprints(dark, p.x, p.y, PI, 10, 0.58)
 			"outline":
 				var seg := [[0.0, 0.95, 0.5, 0.0], [0.0, 0.1, 0.06, 0.5], [-0.22, -0.4, 0.06, 0.9], [0.22, -0.4, 0.06, 0.9], [-0.42, 0.45, 0.06, 0.7], [0.42, 0.45, 0.06, 0.7]]
 				for s: Array in seg:
 					_flat(chalk, float(s[2]) if float(s[2]) != 0.0 else 0.06, float(s[3]) if float(s[3]) != 0.0 else 0.06, p.x + float(s[0]), p.y + float(s[1]), 0.0)
 				var ring := MeshInstance3D.new()
-				var tm := TorusMesh.new()
-				tm.inner_radius = 0.16
-				tm.outer_radius = 0.2
-				ring.mesh = tm
+				ring.mesh = _circle(.2,14,.16)
 				ring.material_override = chalk
-				ring.scale = Vector3(1, 0.02, 1)
+				ring.rotation.x=-PI/2
 				ring.position = Vector3(p.x, 0.017, p.y + 1.25)
 				add_child(ring)
 				_count += 1
@@ -202,7 +236,7 @@ func build(scene_id: String, room: Variant, dynamic: Array = []) -> void:
 				for j in 4:
 					_box(hm, 0.14, 0.18, 0.01, p.x - 0.6 + float(j) * 0.38, 1.2 + float(j % 2) * 0.3, p.y)
 		h += 0.0
-	var idx := 0
-	for t: Dictionary in dynamic_for(dynamic, scene_id):
-		_leftover(t, idx, room, dark, wet, chalk)
-		idx += 1
+	for idx in dynamic.size():
+		var t: Dictionary=dynamic[idx]
+		if _room_id(t) == ("" if scene_id=="out" else scene_id):
+			_leftover(t,STATIC.size()+idx,room,dark,wet,chalk)

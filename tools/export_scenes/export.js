@@ -191,6 +191,16 @@
   window.__wdfzPatrolData = patrolData;
   window.__wdfzHandPlace = function(){ return window.HAND_PLACE; };
   window.__wdfzExport = function(kind, id){
+    if(kind === 'falling'){
+      var falling = new T.Group(), object;
+      if(id === 'cup') object = window.cupModel(false);
+      else if(id === 'lid') object = window.cupLidMesh();
+      else if(id === 'cola') { object = window.colaModel(); object.scale.setScalar(1); }
+      else if(id === 'foam') object = new T.Mesh(new T.SphereGeometry(0.05,6,4),window.colaMats().foam);
+      else throw new Error('Unknown falling prop: ' + id);
+      falling.add(object);
+      return exportScene(falling, id);
+    }
     if(kind === 'patrol') return exportScene(patrolFigure(), 'patrol_figure');
     if(kind === 'hand'){   /* 第一人称的手与手里的东西：id = torch_R / torch_L / phone_R / … / brolly_L；原点在握持中心，前方 -z */
       var parts = id.split('_'), item = parts[0], side = parts[1] === 'L' ? -1 : 1;

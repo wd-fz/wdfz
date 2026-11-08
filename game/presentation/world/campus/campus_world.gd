@@ -18,6 +18,7 @@ var chalk: ChalkNotes
 var phantoms: Phantoms
 var traces: Traces
 var _traces_seen := -1
+var _trace_data: Array=[]
 var broadcast_props: BroadcastProps
 var mirror_view: MirrorView
 var canteen_view: CanteenView
@@ -34,6 +35,7 @@ var anomaly_fx: AnomalyFx
 var atmos_fx: AtmosFx
 var duty: DutyRoster
 var visual_tier := -1
+var visual_ground:=VisualGround.new()
 
 
 func _ready() -> void:
@@ -42,6 +44,7 @@ func _ready() -> void:
 	_build_collision()
 	_build_lighting()
 	anomaly_fx = AnomalyFx.new()
+	anomaly_fx.ground_height=visual_ground.height
 	anomaly_fx.name = "AnomalyFx"
 	add_child(anomaly_fx)
 	chalk = ChalkNotes.new()
@@ -49,10 +52,12 @@ func _ready() -> void:
 	phantoms = Phantoms.new()
 	add_child(phantoms)
 	traces = Traces.new()
+	traces.ground_height=visual_ground.height
 	traces.name = "Traces"
 	add_child(traces)
 	traces.build(scene_id, layout if is_room() else null, CampusWorld.pending_traces)
 	_traces_seen = CampusWorld.pending_traces.size()
+	_trace_data=CampusWorld.pending_traces.duplicate(true)
 	if is_room():
 		broadcast_props = BroadcastProps.new()
 		broadcast_props.name = "BroadcastProps"
@@ -380,6 +385,7 @@ func reload_models(player_position: Vector3) -> void:
 	set_player_scene(player_position)
 	if lighting != null:
 		lighting.rebind_model(get_node_or_null("Model"))
+	if traces!=null: traces.build(scene_id,layout if is_room() else null,_trace_data)
 
 
 func _build_model() -> void:
@@ -406,6 +412,7 @@ func _build_model() -> void:
 			_door_leaves[key][String(extras["state"])] = holder
 	for key: String in _door_leaves:
 		set_door_open(key, false)
+	visual_ground.set_model(model)
 
 
 ## Instances were kept as one prototype + per-instance transforms/colours in glTF extras.
@@ -530,9 +537,10 @@ func _process(delta: float) -> void:
 
 ## Rebuild the leftovers when an anomaly has just left one (the list of AnomalyModule.traces).
 func sync_traces(list: Array) -> void:
-	if traces == null or list.size() == _traces_seen:
+	if traces == null or (list.size() == _traces_seen and list==_trace_data):
 		return
 	_traces_seen = list.size()
+	_trace_data=list.duplicate(true)
 	traces.build(scene_id, layout if is_room() else null, list)
 
 
