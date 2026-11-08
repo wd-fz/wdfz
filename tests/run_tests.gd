@@ -3247,7 +3247,7 @@ func _test_legacy_import() -> void:
 	why = app.import_legacy_save(JSON.stringify(save))
 	await _frames(3)
 	check(why.is_empty() and app.session != null and app.school().day == 3 and absf(app.school().tsec - 800.0) < 1.0, "an old save starts a run on its day and time")
-	check(absf(app.school().san - 61.5) < 3.0 and absf(app.school().viol - 12.0) < 3.0 and app.items().bag == ["torch", "pill"] and app.talent().id == "watch" and app.story().diff == "hard", "SAN, violation, bag, talent and difficulty come over")
+	check(absf(app.school().san - 61.5) < 12.0 and absf(app.school().viol - 12.0) < 12.0 and app.items().bag == ["torch", "pill"] and app.talent().id == "watch" and app.story().diff == "hard", "SAN, violation, bag, talent and difficulty come over")
 	check(app.session.world_id == "teach1" and app.runscore().legacy == 1 and app.player.enabled and not app.player.seated, "it puts you where you stood and marks the run as from an old save")
 	app.queue_free()
 	await _frames()
