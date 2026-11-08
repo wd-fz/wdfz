@@ -4219,7 +4219,7 @@ func _reach_ending(id: String) -> void:
 		ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta, achievements().run_new_labels() if achievements() != null else PackedStringArray(),
 			"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""))
 	var world := _campus_world()
-	if EndingCut.has(id) and world != null and session != null and session.world_id == "out" and DisplayServer.get_name() != "headless":
+	if EndingCut.has(id) and world != null and session != null and (session.world_id == "out" or not EndingCut.needs_outdoor(id)) and DisplayServer.get_name() != "headless":
 		if _ending_cut != null and is_instance_valid(_ending_cut):
 			_ending_cut.queue_free()
 		_ending_cut = EndingCut.new()
@@ -4231,7 +4231,7 @@ func _reach_ending(id: String) -> void:
 			get_tree().paused = was_paused
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 			show_card.call())
-		_ending_cut.begin(id, world, CampusData.campus(), player, ui, func() -> void: audio.play("ui.click"))
+		_ending_cut.begin(id, world, CampusData.campus(), player, ui, func() -> void: audio.play("ui.click"), {"how": String(exchange().s.get("how", "exam")) if exchange() != null else "exam"})
 		return
 	show_card.call()
 
