@@ -55,3 +55,4 @@
 | [旧存档导入](旧存档导入/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_import.gd`：主菜单「导入旧存档」面板（粘贴旧版 JSON，不合法时显示原因） |
 | [镜中轮廓](镜中轮廓/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_mirror.gd`：教学楼洗手池上方的镜子，SAN 高时轮廓与你同步；SAN 极低时它先抬起一只手 |
 | [午夜食堂](午夜食堂/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture_canteen.gd`：熄灯后食堂里唯一亮着的灯、地上的光圈与背对着你的打饭的人 |
+| [医务室药柜](医务室药柜/) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture_clinic.gd`：行政楼一楼西头第一间办公室（医务室）墙上带红十字的药柜 |

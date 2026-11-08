@@ -50,6 +50,8 @@ func _ready() -> void:
 		broadcast_props.name = "BroadcastProps"
 		add_child(broadcast_props)
 		broadcast_props.build(layout)
+		if scene_id == BodyModule.CLINIC["room"]:
+			_build_clinic()
 		if scene_id == CanteenView.ROOM:
 			canteen_view = CanteenView.new()
 			canteen_view.name = "CanteenView"
@@ -84,6 +86,35 @@ func _ready_banner() -> void:
 
 func is_room() -> bool:
 	return scene_id != "out"
+
+
+## The clinic's wall cabinet in the first office of the administration building (modules/body/injury.js, presentation): white, a red cross.
+func _build_clinic() -> void:
+	var rm := layout
+	var p := CampusGeometry.to_scene(rm, Vector2(float(rm["ox"]) + 6.0 * float(rm["tw"]), float(rm["oy"]) + 16.0 * float(rm["th"])))
+	var cab := MeshInstance3D.new()
+	cab.name = "ClinicCabinet"
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.6, 0.7, 0.22)
+	cab.mesh = bm
+	var white := StandardMaterial3D.new()
+	white.albedo_color = Color("#eef0ee")
+	white.emission_enabled = true
+	white.emission = Color("#2c2e2c")
+	cab.material_override = white
+	cab.position = Vector3(p.x, 1.55, p.y - 0.12)
+	add_child(cab)
+	var red := StandardMaterial3D.new()
+	red.albedo_color = Color("#c02a2a")
+	red.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	for dims: Vector3 in [Vector3(0.2, 0.06, 0.01), Vector3(0.06, 0.2, 0.01)]:
+		var bar := MeshInstance3D.new()
+		var rb := BoxMesh.new()
+		rb.size = dims
+		bar.mesh = rb
+		bar.material_override = red
+		bar.position = Vector3(p.x, 1.6, p.y - 0.235)
+		add_child(bar)
 
 
 ## The corridor bridges seen from both ends (modules/campus-link/link-view.js): the neighbouring room's model placed by the rigid
