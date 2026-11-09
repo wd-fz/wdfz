@@ -106,6 +106,8 @@ class PublicReleaseTests(unittest.TestCase):
         presets = configparser.ConfigParser(interpolation=None)
         presets.read(root / "export_presets.cfg")
         self.assertEqual(project['application']['config/version'], f'"{RELEASE_VERSION}"')
+        self.assertEqual(project['application']['config/use_custom_user_dir'], 'true')
+        self.assertEqual(project['application']['config/custom_user_dir_name'], '"wdfz-godot"')
         self.assertEqual(presets['preset.3.options']['version/name'], f'"{RELEASE_VERSION}"')
         self.assertEqual(int(presets['preset.3.options']['version/code']), RELEASE_VERSION_CODE)
         self.assertEqual(presets['preset.3.options']['screen/immersive_mode'], 'true')
