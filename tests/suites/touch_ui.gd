@@ -10,7 +10,7 @@ func test_layout() -> void:
 				for id: String in TouchLayout.IDS:
 					raw[id] = {"x":p.x,"y":p.y}
 				var rects := TouchLayout.resolve(view,raw,scale,[Rect2(0,0,view.x,68)])
-				for i in 3:
+				for i in TouchLayout.IDS.size():
 					var r: Rect2 = rects[TouchLayout.IDS[i]]
 					valid = valid and Rect2(Vector2(8,8),view-Vector2(16,16)).encloses(r)
 					valid = valid and not r.intersects(Rect2(0,0,view.x,68))
@@ -65,9 +65,9 @@ func test_controls() -> void:
 	ui.torch_requested.connect(func() -> void: signals.torch += 1)
 	ui.interact_requested.connect(func() -> void: signals.interact += 1)
 	ui.touch_look.connect(func(v: Vector2) -> void: signals.look += v)
-	await _tap(ui._touch_tools.get_node("Manual"))
-	await _tap(ui._touch_tools.get_node("Torch"))
-	await _tap(ui._touch_tools.get_node("Hot2"))
+	await _tap(ui._touch_buttons["manual"])
+	await _tap(ui._touch_buttons["torch"])
+	await _tap(ui._touch_buttons["hot2"])
 	check(signals.manual == 1 and signals.torch == 1 and signals.hot == 1,"real touch taps reach manual, torch and both hot-slot actions")
 	ui.apply_touch_scale(100,{"actions":{"x":70,"y":50}})
 	await _frames(2)
@@ -186,14 +186,14 @@ func test_app_actions() -> void:
 	app.start_new_game("hard")
 	app.set_physics_process(false)
 	await _frames(3)
-	await _tap(app.ui._touch_tools.get_node("Manual"))
+	await _tap(app.ui._touch_buttons["manual"])
 	check(app.ui.choice_open() and not app.player.enabled,"mobile manual opens through the running app")
 	app._choice_made(0)
 	check(app.ui.bag_open() and not app.player.enabled,"manual opens the bag with no keyboard")
 	await _tap(app.ui.bag_panel.find_child("BagClose",true,false))
 	check(app.player.enabled and not app.ui.bag_open(),"touch closing the bag returns gameplay input")
 	app.items().add("torch")
-	await _tap(app.ui._touch_tools.get_node("Torch"))
+	await _tap(app.ui._touch_buttons["torch"])
 	check(app.items().torch_on,"mobile torch action reaches inventory rules")
 	app._toggle_debug()
 	check(app.debug_panel.visible and app.player.enabled and not paused and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE,

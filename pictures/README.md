@@ -69,3 +69,4 @@
 | [外廊看校园](外廊看校园) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture/capture_gallery.gd`：站在教学楼三楼敞开的外廊，红栏杆外是真实的校园与对面的楼 |
 | [雨与蛾群](雨与蛾群) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture/capture_weather.gd`：异象「下雨」的雨丝（线段）、落地水圈与积水；「蛾群」的身子加两片会扑的翅膀 |
 | [画质档](画质档) | 2026-11-08，Godot 4.6.3，Xvfb + Compatibility 软件渲染，`tools/capture/capture_tier.gd`：第 0 档（流畅）模型下的教学楼一楼教室 |
+| [界面审美与光影](界面审美与光影/) | 2026-11-09，Godot 4.6.3，Xvfb + Vulkan（Lavapipe）Forward+，1280×720，`tools/capture/capture_polish.gd`：设置「键位」页（录入中）；触屏布局编辑器（逐个控件、选中「交互」放大到 130 %、网格吸附）与默认触屏布局；光影按画质档对照（流畅／精细／真实的教室白天，流畅／真实的室外傍晚，真实的室外白天；同一时刻、同一机位，平均亮度相近）；新版界面：主菜单、暂停、游戏内界面（时间与状态卡、物品栏、点状准星）、设置画面页、背包 |

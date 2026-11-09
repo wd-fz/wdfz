@@ -5,10 +5,14 @@ extends Control
 
 signal setting_changed(key: String, value: int)
 signal layout_requested
+## Key bindings: put key on (action, slot); clear a slot; reset one action ("" = all).
+signal binding_changed(action: String, slot: int, key: int)
+signal binding_cleared(action: String, slot: int)
+signal bindings_reset(action: String)
 
-const INK := Color("e9f0f4")
-const MUTED := Color("a1b1bf")
-const ACCENT := Color("8ce0cc")
+const INK := Color("ece6da")
+const MUTED := Color("9aa4a6")
+const ACCENT := Color("8fd6c0")
 const PAGES := [
 	["画面", "选择清晰度与显示方式", [
 		["quality", "画质", "仅改变画面，不影响碰撞、剧情和游戏难度。", [["流畅",0],["均衡",1],["精细",2],["超精细",3],["真实",4]]],
@@ -28,6 +32,7 @@ const PAGES := [
 		["touch_size", "触屏按钮大小", "一起调整摇杆、动作按钮和工具栏。", [85,125,5]],
 		["mouse", "鼠标视角灵敏度", "影响桌面端鼠标环视的速度。", [25,250,5]],
 	]],
+	["键位", "把键盘按键改成顺手的位置", []],
 	["舒适", "减轻视觉刺激，调整阅读体验", [
 		["shake", "镜头晃动", "关闭后减少步行与奔跑时的镜头起伏。", []],
 		["distortion", "视野扭曲", "调整低 SAN 时的动态扭曲强度。", [["关闭",0],["减弱",1],["完整",2]]],
@@ -36,7 +41,7 @@ const PAGES := [
 	]],
 	["数据", "管理设置与上一局留下的痕迹", []],
 ]
-const QUALITY_NOTES := ["优先帧率，适合手机或性能较低的设备。", "在帧率与细节之间取得平衡。", "完整细节与阴影，适合性能充足的设备。", "更精细的模型与抗锯齿，设备负载较高。", "最高细节与抗锯齿，设备负载最高。"]
+const QUALITY_NOTES := ["优先帧率：降低分辨率并用 FSR 放大，没有阴影。适合手机或性能较低的设备。", "帧率与细节平衡：FSR 放大，灯管与屏幕有辉光。", "完整分辨率：太阳与最近一盏灯的阴影、环境光遮蔽、手电投影。", "更精细的模型与 4× 抗锯齿，最近两盏灯投影。", "最高细节与 8× 抗锯齿，四盏灯投影与体积雾，设备负载最高。"]
 
 var selected := "画面"
 var fullscreen_toggle_allowed := GameSettings.can_toggle_fullscreen()
@@ -57,6 +62,10 @@ var _clear: Button
 var _confirm_clear := false
 var _font_scale := 1.0
 var _return_focus: WeakRef
+var bindings: Dictionary = KeyBindings.defaults()
+var _key_buttons := {}      # action -> [Button, Button]
+var _capturing: Array = []  # [action, slot] while waiting for a key
+var _bind_note: Label
 
 
 func _ready() -> void:
@@ -72,7 +81,7 @@ func _ready() -> void:
 	add_child(shade)
 	shell = PanelContainer.new()
 	shell.name = "SettingsCard"
-	shell.add_theme_stylebox_override("panel", _box(Color("111c26"), Color("344653"), 18, 20))
+	shell.add_theme_stylebox_override("panel", _box(Color("0b1116"), Color("263238"), 14, 20))
 	shell.minimum_size_changed.connect(func() -> void: fit.call_deferred())
 	add_child(shell)
 	var outer := VBoxContainer.new()
@@ -80,7 +89,8 @@ func _ready() -> void:
 	shell.add_child(outer)
 	var heading := HBoxContainer.new()
 	outer.add_child(heading)
-	var title := _label("设置", 26, INK)
+	var title := _label("设置", 28, INK)
+	title.theme_type_variation = "HeadingLabel"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	heading.add_child(title)
 	_close = _button("完成", "CloseSettings")
@@ -124,7 +134,9 @@ func _ready() -> void:
 		column.add_theme_constant_override("separation", 12)
 		pages.add_child(column)
 		_page_boxes[id] = column
-		column.add_child(_label(id, 22, INK))
+		var page_title := _label(id, 22, INK)
+		page_title.theme_type_variation = "HeadingLabel"
+		column.add_child(page_title)
 		column.add_child(_label(page[1], 14, MUTED))
 		for row: Array in page[2]:
 			_add_setting(column, row)
@@ -132,7 +144,9 @@ func _ready() -> void:
 			var layout := _button("调整触屏布局 →", "EditTouchLayout")
 			layout.pressed.connect(func() -> void: layout_requested.emit())
 			column.add_child(layout)
-			column.add_child(_label("摇杆控制移动；点按奔跑按钮切换走 / 跑。\n桌面端：WASD 移动 · Shift 奔跑 · E 交互。", 14, MUTED))
+			column.add_child(_label("摇杆控制移动；点按奔跑按钮切换走 / 跑。\n键盘按键在「键位」页修改。", 14, MUTED))
+		elif id == "键位":
+			_add_bindings(column)
 		elif id == "舒适":
 			var preview_card := _card(column)
 			preview_card.add_child(_label("阅读预览", 13, ACCENT))
@@ -183,7 +197,7 @@ func _button(text: String, id: String) -> Button:
 func _card(parent: Control) -> VBoxContainer:
 	var card := PanelContainer.new()
 	card.mouse_filter = Control.MOUSE_FILTER_PASS
-	card.add_theme_stylebox_override("panel", _box(Color("182631"), Color("2a3c49"), 12, 14))
+	card.add_theme_stylebox_override("panel", _box(UISkin.CARD, UISkin.CARD_EDGE, 10, 14))
 	parent.add_child(card)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 8)
@@ -282,6 +296,103 @@ func _add_data(column: VBoxContainer) -> void:
 	traces.add_child(_clear)
 
 
+func _add_bindings(column: VBoxContainer) -> void:
+	var top := _card(column)
+	top.add_child(_label("点按一个键位，再按下新键。Esc 取消，退格清除这一格（每个动作至少留一个键）。新键已被别的动作使用时，两者互换。", 13, MUTED))
+	_bind_note = _label("", 13, ACCENT)
+	top.add_child(_bind_note)
+	var all := _button("全部恢复默认", "ResetBindings")
+	all.pressed.connect(func() -> void:
+		_stop_capture()
+		bindings_reset.emit(""))
+	top.add_child(all)
+	var group := ""
+	var card: VBoxContainer
+	for a: Array in KeyBindings.ACTIONS:
+		if a[2] != group:
+			group = String(a[2])
+			column.add_child(_label(group, 15, ACCENT))
+			card = _card(column)
+		var line := HBoxContainer.new()
+		line.name = "Bind_" + String(a[0])
+		line.add_theme_constant_override("separation", 8)
+		card.add_child(line)
+		var name_label := _label(String(a[1]), 16, INK)
+		line.add_child(name_label)
+		var pair: Array = []
+		for slot in 2:
+			var b := _button("", "Key_%s_%d" % [a[0], slot])
+			b.custom_minimum_size.x = 104
+			b.pressed.connect(_start_capture.bind(String(a[0]), slot))
+			line.add_child(b)
+			pair.append(b)
+		_key_buttons[a[0]] = pair
+		var reset := _button("默认", "KeyReset_" + String(a[0]))
+		reset.custom_minimum_size.x = 64
+		reset.add_theme_color_override("font_color", MUTED)
+		reset.pressed.connect(func() -> void:
+			_stop_capture()
+			bindings_reset.emit(String(a[0])))
+		line.add_child(reset)
+	var fixed := _card(column)
+	var esc := HBoxContainer.new()
+	fixed.add_child(esc)
+	esc.add_child(_label("暂停 / 关闭菜单", 16, INK))
+	esc.add_child(_label("Esc（固定）", 15, MUTED))
+	set_bindings(bindings)
+
+
+func set_bindings(current: Dictionary, note: String = "") -> void:
+	bindings = current.duplicate(true)
+	for id: String in _key_buttons:
+		var pair: Array = _key_buttons[id]
+		var keys: Array = bindings.get(id, [0, 0])
+		for slot in 2:
+			var k := int(keys[slot])
+			(pair[slot] as Button).text = KeyBindings.key_name(k) if k != 0 else "—"
+	if _bind_note != null:
+		_bind_note.text = note
+	if not _capturing.is_empty():
+		_mark_capture()
+
+
+func capturing() -> Array:
+	return _capturing.duplicate()
+
+
+func _start_capture(action: String, slot: int) -> void:
+	set_bindings(bindings)
+	_capturing = [action, slot]
+	_mark_capture()
+	((_key_buttons[action] as Array)[slot] as Button).grab_focus()   # scrolls the cell into view
+
+
+func _mark_capture() -> void:
+	var b: Button = (_key_buttons[_capturing[0]] as Array)[_capturing[1]]
+	b.text = "按下新键…"
+	if _bind_note != null:
+		_bind_note.text = "正在设置「%s」：按下新键，Esc 取消" % KeyBindings.label(_capturing[0])
+
+
+func _stop_capture() -> void:
+	_capturing = []
+	set_bindings(bindings, _bind_note.text if _bind_note != null else "")
+
+
+## A key while capturing: Esc cancels, Backspace/Delete clears the slot, anything else is offered to the app.
+func _capture_key(ev: InputEventKey) -> void:
+	var action := String(_capturing[0])
+	var slot := int(_capturing[1])
+	var key := int(ev.physical_keycode) if ev.physical_keycode != KEY_NONE else int(ev.keycode)
+	_capturing = []
+	if key == KEY_ESCAPE:
+		set_bindings(bindings, "已取消")
+	elif key == KEY_BACKSPACE or key == KEY_DELETE:
+		binding_cleared.emit(action, slot)
+	else:
+		binding_changed.emit(action, slot, key)
+
+
 func _cancel_clear() -> void:
 	_confirm_clear = false
 	if is_instance_valid(_clear): _clear.text = "清除痕迹"
@@ -337,6 +448,7 @@ func select_page(id: String) -> void:
 	if not _page_boxes.has(id): return
 	selected = id
 	_cancel_clear()
+	if not _capturing.is_empty(): _stop_capture()
 	for page: String in _page_boxes:
 		_page_boxes[page].visible = page == id
 		_nav_buttons[page].set_pressed_no_signal(page == id)
@@ -365,11 +477,27 @@ func dismiss() -> void:
 
 
 func _visibility_changed() -> void:
-	if not visible: _cancel_clear()
+	if not visible:
+		_cancel_clear()
+		_capturing = []
+
+
+func _key_buttons_hit(at: Vector2) -> bool:
+	for pair: Array in _key_buttons.values():
+		for b: Button in pair:
+			if b.get_global_rect().has_point(at): return true
+	return false
 
 
 func _input(event: InputEvent) -> void:
 	if not visible: return
+	if not _capturing.is_empty():
+		if event is InputEventKey and event.pressed and not event.echo:
+			_capture_key(event)
+			get_viewport().set_input_as_handled()
+		elif event is InputEventMouseButton and event.pressed and not _key_buttons_hit(event.position):
+			_stop_capture()
+		return
 	# Keep keyboard navigation inside this modal, while retaining engine slider keys.
 	if event is InputEventKey and event.pressed and event.keycode == KEY_TAB:
 		var focus := get_viewport().gui_get_focus_owner()

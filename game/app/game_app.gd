@@ -68,13 +68,24 @@ func _ready() -> void:
 	archive_flow.setup(self)
 	add_child(ApplicationExit.new())
 	settings.load_file(DisplayServer.is_touchscreen_available())
+	settings.apply_bindings()
+	ui.interact_key = settings.key_text("interact").get_slice(" / ", 0)
+	ui.set_keys_hint("%s 移动 · 鼠标环视\n%s 交互 · Esc 暂停" % ["".join([settings.key_text("move_forward").get_slice(" / ", 0), settings.key_text("move_left").get_slice(" / ", 0), settings.key_text("move_back").get_slice(" / ", 0), settings.key_text("move_right").get_slice(" / ", 0)]), ui.interact_key])
 	# Honor the engine's explicit launch flags (also used by window-size tests).
 	if OS.get_cmdline_args().has("--windowed"): settings.set_value("full_screen",0)
 	elif OS.get_cmdline_args().has("--fullscreen"): settings.set_value("full_screen",1)
 	ui.set_wuda_armed(settings.wuda_armed)
 	ui.school_tapped.connect(_school_tapped)
 	ui.ending_wake_requested.connect(knife_flow.wake)
-	ui.settings_requested.connect(func() -> void: ui.show_settings(settings.values))
+	ui.settings_requested.connect(func() -> void: ui.show_settings(settings.values, settings.bindings))
+	ui.binding_changed.connect(_binding_changed)
+	ui.binding_cleared.connect(func(action: String, slot: int) -> void:
+		var ok := KeyBindings.clear(settings.bindings, action, slot)
+		_bindings_saved("已清除" if ok else "每个动作至少保留一个键"))
+	ui.bindings_reset.connect(func(action: String) -> void:
+		KeyBindings.reset(settings.bindings, action)
+		settings.bindings = KeyBindings.normalize(settings.bindings)
+		_bindings_saved("已全部恢复默认" if action == "" else "「%s」已恢复默认" % KeyBindings.label(action)))
 	ui.setting_changed.connect(_setting_changed)
 	ui.touch_layout_changed.connect(func(layout: Dictionary) -> void:
 		settings.touch_layout = TouchLayout.normalize(layout)
@@ -2281,6 +2292,25 @@ func _setting_changed(key: String, value: int) -> void:
 	ui.settings_saved(settings.values, saved)
 
 
+func _binding_changed(action: String, slot: int, key: int) -> void:
+	var r := KeyBindings.assign(settings.bindings, action, slot, key)
+	if not bool(r["ok"]):
+		ui.bindings_saved(settings.bindings, String(r["why"]))
+		return
+	var note := "「%s」：%s" % [KeyBindings.label(action), KeyBindings.key_name(key)]
+	if String(r["swapped"]) != "":
+		note += "（与「%s」互换）" % KeyBindings.label(String(r["swapped"]))
+	_bindings_saved(note)
+
+
+func _bindings_saved(note: String) -> void:
+	settings.apply_bindings()
+	ui.interact_key = settings.key_text("interact").get_slice(" / ", 0)
+	ui.set_keys_hint("%s 移动 · 鼠标环视\n%s 交互 · Esc 暂停" % ["".join([settings.key_text("move_forward").get_slice(" / ", 0), settings.key_text("move_left").get_slice(" / ", 0), settings.key_text("move_back").get_slice(" / ", 0), settings.key_text("move_right").get_slice(" / ", 0)]), ui.interact_key])
+	var ok := settings.save_file()
+	ui.bindings_saved(settings.bindings, note if ok else note + " · 保存失败")
+
+
 ## Push every stored setting to where it takes effect (presentation and comfort only).
 func _apply_settings() -> void:
 	audio.volume = float(settings.get_int("vol")) / 100.0
@@ -2300,16 +2330,36 @@ func _apply_settings() -> void:
 	var vp := get_viewport()
 	vp.scaling_3d_scale = float(GameSettings.QUALITY_SCALE[q])
 	vp.msaa_3d = int(GameSettings.QUALITY_MSAA[q]) as Viewport.MSAA
+	RenderQuality.apply(vp, q, RenderingServer.get_current_rendering_method() == "mobile")
 	CampusLighting.shadows_on = bool(GameSettings.QUALITY_SHADOW[q])
+	CampusLighting.quality = q
+	CampusLighting.mobile_renderer = RenderingServer.get_current_rendering_method() == "mobile"
+	_apply_torch_quality(q)
 	var cw := _campus_world()
 	if cw != null and cw.visual_tier != CampusData.tier:
 		cw.reload_models(player.position)
 		_sync_world()
 	if cw != null and cw.lighting != null:
-		cw.lighting.sun_light.shadow_enabled = CampusLighting.shadows_on
+		cw.lighting.apply_quality()
 	if DisplayServer.is_touchscreen_available():
 		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE if settings.get_int("auto_land") == 1 else DisplayServer.SCREEN_LANDSCAPE)
 	_apply_window_mode()
+
+
+## The torch is held in the right hand, not at the eye: from there its beam throws visible shadows (from 精细 up).
+func _apply_torch_quality(q: int) -> void:
+	var torch := player.camera.get_node_or_null("Torch") as SpotLight3D
+	if torch == null:
+		return
+	torch.light_cull_mask = CampusLighting.WORLD_LIGHT_MASK
+	torch.position = Vector3(0.16, -0.22, -0.2)
+	torch.shadow_enabled = q >= 2
+	torch.shadow_bias = 0.04
+	torch.shadow_normal_bias = 1.0
+	torch.shadow_blur = 1.2
+	torch.spot_angle_attenuation = 0.6
+	torch.spot_attenuation = 1.1
+	torch.light_volumetric_fog_energy = 1.4
 
 
 func _apply_window_mode() -> void:
@@ -5105,21 +5155,21 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			_phone_flap()
 		get_viewport().set_input_as_handled()
 		return
-	if key != null and key.pressed and not key.echo and key.keycode == KEY_R and days() != null and session != null and not story().over():
+	if key != null and key.is_action_pressed("lesson") and days() != null and session != null and not story().over():
 		_lesson_press()
 		get_viewport().set_input_as_handled()
 		return
-	if key != null and key.pressed and not key.echo and key.keycode == KEY_N and investigation() != null and player.enabled and not story().over():
+	if key != null and key.is_action_pressed("notes") and investigation() != null and player.enabled and not story().over():
 		_show_notes("")
 		get_viewport().set_input_as_handled()
 		return
-	if key != null and key.pressed and not key.echo and key.keycode == KEY_H and facilities() != null and player.enabled and not story().over():
+	if key != null and key.is_action_pressed("think") and facilities() != null and player.enabled and not story().over():
 		facilities().set_context(_facility_context())
 		facilities().think()
 		_apply_facility_events()
 		get_viewport().set_input_as_handled()
 		return
-	if key != null and key.pressed and not key.echo and key.keycode == KEY_M and audio != null:
+	if key != null and key.is_action_pressed("mute") and audio != null:
 		audio.muted = not audio.muted
 		ui.show_notice("声音：关" if audio.muted else "声音：开")
 		get_viewport().set_input_as_handled()

@@ -16,7 +16,7 @@ func test_editor() -> void:
 	var panel := app.ui.settings_panel
 	for key: String in GameSettings.DEFAULTS:
 		check(panel.controls.has(key), "settings editor preserves %s" % key)
-	check(panel._page_boxes.size() == 5, "settings are split into five navigable categories")
+	check(panel._page_boxes.size() == 6, "settings are split into six navigable categories (key bindings included)")
 	check(root.get_visible_rect().encloses(panel.shell.get_global_rect()), "settings fit the viewport on their very first opening")
 	var events: Array[String] = []
 	app.ui.setting_changed.connect(func(key: String, _value: int) -> void: events.append(key))

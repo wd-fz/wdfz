@@ -39,6 +39,9 @@ signal notes_requested(query: String)
 signal notes_focus_requested(route: String)
 signal setting_changed(key: String, value: int)
 signal touch_layout_changed(layout: Dictionary)
+signal binding_changed(action: String, slot: int, key: int)
+signal binding_cleared(action: String, slot: int)
+signal bindings_reset(action: String)
 signal manual_requested
 signal torch_requested
 signal hot_requested(index: int)
@@ -92,6 +95,7 @@ func _ready() -> void:
 	%SchoolName.pressed.connect(func() -> void: school_tapped.emit())
 	_build_touch_tools()
 	_build_death()
+	_style_hud()
 	var hard := Button.new()
 	hard.name = "HardGame"
 	hard.text = "梦魇 · 新游戏"
@@ -353,11 +357,70 @@ func show_captions(lines: PackedStringArray) -> void:
 	var text := "\n".join(lines)
 	if _captions.text != text:
 		_captions.text = text
-	_captions.position.y = _status_line.position.y + _status_line.size.y + 6.0 if _status_line.visible else 58.0
+	_captions.position.y = _status_line.position.y + _status_line.size.y + 6.0 if _status_line.visible else 72.0
 
 
 func captions_text() -> String:
 	return _captions.text if _captions != null else ""
+
+
+## The play HUD as quiet cards over the picture: clock and status with a coloured edge by state, the hot slots,
+## a pill for the nearby action and a dot crosshair that opens to a ring when something can be used.
+var interact_key := "E"          ## the first key bound to interact (KeyBindings), shown in the prompt
+
+
+## The main menu's keyboard hint follows the key bindings.
+func set_keys_hint(text: String) -> void:
+	if is_instance_valid(menu_screen): menu_screen.set_keys_hint(text)
+var _status_style: StyleBoxFlat
+const STATE_EDGE := {"warn": Color("e6c27a"), "exam": Color("c56a5f"), "": Color("8fd6c0")}
+
+
+func _style_hud() -> void:
+	var runtime := %Runtime as Label
+	runtime.theme_type_variation = "HudCard"
+	runtime.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	runtime.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	runtime.add_theme_font_size_override("font_size", 22)
+	var spacer := Control.new()
+	spacer.name = "TopSpacer"
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	runtime.add_sibling(spacer)
+	_status_line.theme_type_variation = "HudCard"
+	_status_style = BASE_THEME.get_stylebox("normal", "HudCard").duplicate() as StyleBoxFlat
+	_status_line.add_theme_stylebox_override("normal", _status_style)
+	_status_line.position = Vector2(20, 72)
+	_status_line.add_theme_font_size_override("font_size", 14)
+	_hot_label.theme_type_variation = "HudCard"
+	var hot_style := _status_style.duplicate() as StyleBoxFlat
+	hot_style.border_color = Color(0.92, 0.9, 0.85, 0.25)
+	_hot_label.add_theme_stylebox_override("normal", hot_style)
+	_hot_label.offset_left = 20
+	_hot_label.offset_top = -58
+	_hot_label.offset_bottom = -18
+	_hot_label.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	var prompt := %Prompt as Label
+	prompt.theme_type_variation = "HudPill"
+	prompt.autowrap_mode = TextServer.AUTOWRAP_OFF
+	prompt.anchor_left = 0.5
+	prompt.anchor_right = 0.5
+	prompt.anchor_top = 0.6
+	prompt.anchor_bottom = 0.6
+	prompt.offset_left = 0
+	prompt.offset_right = 0
+	prompt.offset_top = 0
+	prompt.offset_bottom = 0
+	prompt.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	prompt.grow_vertical = Control.GROW_DIRECTION_BOTH
+	prompt.add_theme_constant_override("shadow_outline_size", 0)
+	prompt.visible = false
+	var cross := hud.get_node("Crosshair") as Label
+	cross.text = "·"
+	cross.add_theme_font_size_override("font_size", 26)
+	cross.add_theme_color_override("font_color", Color(0.93, 0.9, 0.84, 0.75))
+	cross.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
+	cross.add_theme_constant_override("outline_size", 3)
 
 
 ## Old HUD (ui/hud.js): clock, place, period line coloured by state, and the stamina bar that
@@ -374,7 +437,7 @@ func _build_status() -> void:
 	_captions = Label.new()
 	_captions.name = "SoundCaptions"
 	_captions.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	_captions.position = Vector2(16, 104)
+	_captions.position = Vector2(20, 120)
 	_captions.add_theme_font_size_override("font_size", 14)
 	_captions.add_theme_color_override("font_color", Color(0.86, 0.88, 0.92, 0.92))
 	_captions.add_theme_constant_override("outline_size", 4)
@@ -397,6 +460,8 @@ func show_status(place: String, period: String, state: String, clock: String) ->
 	_status_line.visible = true
 	_status_line.text = "%s\n%s" % [period, place]
 	_status_line.modulate = Color("#f0d6a0") if state == "warn" else (Color("#f0c4bc") if state == "exam" else Color("#ddd5c4"))
+	if _status_style != null:
+		_status_style.border_color = STATE_EDGE.get(state, STATE_EDGE[""])
 	show_runtime(0)
 
 
@@ -1162,7 +1227,7 @@ func reset_post() -> void:
 var settings_panel: GameSettingsPanel
 
 
-func show_settings(values: Dictionary) -> void:
+func show_settings(values: Dictionary, bindings: Dictionary = {}) -> void:
 	if settings_panel == null:
 		settings_panel = GameSettingsPanel.new()
 		settings_panel.fullscreen_toggle_allowed = fullscreen_toggle_allowed
@@ -1170,7 +1235,16 @@ func show_settings(values: Dictionary) -> void:
 		$Root.add_child(settings_panel)
 		settings_panel.setting_changed.connect(func(key: String, value: int) -> void: setting_changed.emit(key,value))
 		settings_panel.layout_requested.connect(show_touch_layout_editor)
+		settings_panel.binding_changed.connect(func(a: String, slot: int, key: int) -> void: binding_changed.emit(a, slot, key))
+		settings_panel.binding_cleared.connect(func(a: String, slot: int) -> void: binding_cleared.emit(a, slot))
+		settings_panel.bindings_reset.connect(func(a: String) -> void: bindings_reset.emit(a))
+	if not bindings.is_empty():
+		settings_panel.set_bindings(bindings)
 	settings_panel.open(values)
+
+
+func bindings_saved(bindings: Dictionary, note: String) -> void:
+	if is_instance_valid(settings_panel): settings_panel.set_bindings(bindings, note)
 
 
 func _fit_settings() -> void:
@@ -1189,22 +1263,18 @@ func apply_text_scale(pct: int) -> void:
 
 var _touch_percent := 100
 var _touch_layout: Dictionary = {}
-var _touch_tools: HBoxContainer
+var _touch_buttons := {}   # manual / torch / hot1 / hot2 -> TouchActionButton
 var _layout_editor: TouchLayoutEditor
 
 
 func _build_touch_tools() -> void:
-	_touch_tools = HBoxContainer.new()
-	_touch_tools.name = "TouchTools"
-	_touch_tools.add_theme_constant_override("separation",4)
-	_touch_tools.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for spec: Array in [["手册","Manual"],["手电","Torch"],["1","Hot1"],["2","Hot2"]]:
+	# Each tool button stands on its own, so the layout can place and size it separately (TouchLayout).
+	for spec: Array in [["手册","Manual","manual"],["手电","Torch","torch"],["1","Hot1","hot1"],["2","Hot2","hot2"]]:
 		var b := TouchActionButton.new()
 		b.name = spec[1]
 		b.text = spec[0]
 		b.focus_mode = Control.FOCUS_NONE
 		b.custom_minimum_size = Vector2(44,44)
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.pressed.connect(func() -> void:
 			match spec[1]:
 				"Manual": manual_requested.emit()
@@ -1212,8 +1282,8 @@ func _build_touch_tools() -> void:
 				"Hot1": hot_requested.emit(0)
 				"Hot2": hot_requested.emit(1)
 			)
-		_touch_tools.add_child(b)
-	touch_controls.add_child(_touch_tools)
+		touch_controls.add_child(b)
+		_touch_buttons[spec[2]] = b
 	%TouchInteract.focus_mode = Control.FOCUS_NONE
 	%TouchSprint.focus_mode = Control.FOCUS_NONE
 	look_pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1227,24 +1297,28 @@ func apply_touch_scale(pct: int, layout: Dictionary = {}) -> void:
 	_refit_touch()
 
 
+## The control that stands for a layout id.
+func touch_control(id: String) -> Control:
+	match id:
+		"stick": return stick
+		"sprint": return %TouchSprint
+		"interact": return %TouchInteract
+	return _touch_buttons.get(id) as Control
+
+
 func _refit_touch() -> void:
-	if _touch_tools == null:
+	if _touch_buttons.is_empty():
 		return
 	clear_touch()
 	var view := get_viewport().get_visible_rect().size
 	var rects := TouchLayout.resolve(view,_touch_layout,_touch_percent,[Rect2(0,0,view.x,68)])
-	var controls := {"stick": stick,"tools": _touch_tools}
-	for id: String in controls:
-		var c: Control = controls[id]
+	var alpha := TouchLayout.opacity(_touch_layout)
+	for id: String in TouchLayout.IDS:
+		var c := touch_control(id)
 		c.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 		c.position = rects[id].position
 		c.size = rects[id].size
-	var act: Rect2 = rects["actions"]
-	for c: Control in [%TouchInteract,%TouchSprint]:
-		c.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-		c.size = Vector2(act.size.x,(act.size.y-8)*.5)
-	%TouchSprint.position = act.position
-	%TouchInteract.position = Vector2(act.position.x,act.end.y-%TouchInteract.size.y)
+		c.modulate.a = alpha
 	_hot_label.visible = not _touch_enabled
 
 
@@ -2020,7 +2094,11 @@ func toast_text() -> String:
 
 
 func show_prompt(text: String) -> void:
-	%Prompt.text = ("交互 · " if _touch_enabled else "E · ") + text if not text.is_empty() else ""
+	%Prompt.text = ("交互 · " if _touch_enabled else interact_key + " · ") + text if not text.is_empty() else ""
+	%Prompt.visible = not text.is_empty()
+	var cross := hud.get_node("Crosshair") as Label
+	cross.text = "◦" if not text.is_empty() else "·"
+	cross.add_theme_color_override("font_color", Color(0.56, 0.84, 0.75, 0.95) if not text.is_empty() else Color(0.93, 0.9, 0.84, 0.75))
 
 
 var _location := ""
@@ -2047,3 +2125,4 @@ var speedrun_text := ""
 func show_runtime(_seconds: float) -> void:
 	var shown := _clock_text if _status_on else _location
 	%Runtime.text = shown + (" · 速通 " + speedrun_text if speedrun_text != "" else "")
+	%Runtime.visible = not %Runtime.text.is_empty()
