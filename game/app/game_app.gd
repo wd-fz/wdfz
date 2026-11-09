@@ -68,13 +68,22 @@ func _ready() -> void:
 	archive_flow.setup(self)
 	add_child(ApplicationExit.new())
 	settings.load_file(DisplayServer.is_touchscreen_available())
+	settings.apply_bindings()
 	# Honor the engine's explicit launch flags (also used by window-size tests).
 	if OS.get_cmdline_args().has("--windowed"): settings.set_value("full_screen",0)
 	elif OS.get_cmdline_args().has("--fullscreen"): settings.set_value("full_screen",1)
 	ui.set_wuda_armed(settings.wuda_armed)
 	ui.school_tapped.connect(_school_tapped)
 	ui.ending_wake_requested.connect(knife_flow.wake)
-	ui.settings_requested.connect(func() -> void: ui.show_settings(settings.values))
+	ui.settings_requested.connect(func() -> void: ui.show_settings(settings.values, settings.bindings))
+	ui.binding_changed.connect(_binding_changed)
+	ui.binding_cleared.connect(func(action: String, slot: int) -> void:
+		var ok := KeyBindings.clear(settings.bindings, action, slot)
+		_bindings_saved("已清除" if ok else "每个动作至少保留一个键"))
+	ui.bindings_reset.connect(func(action: String) -> void:
+		KeyBindings.reset(settings.bindings, action)
+		settings.bindings = KeyBindings.normalize(settings.bindings)
+		_bindings_saved("已全部恢复默认" if action == "" else "「%s」已恢复默认" % KeyBindings.label(action)))
 	ui.setting_changed.connect(_setting_changed)
 	ui.touch_layout_changed.connect(func(layout: Dictionary) -> void:
 		settings.touch_layout = TouchLayout.normalize(layout)
@@ -2279,6 +2288,23 @@ func _setting_changed(key: String, value: int) -> void:
 	var saved := settings.save_file()
 	_apply_settings()
 	ui.settings_saved(settings.values, saved)
+
+
+func _binding_changed(action: String, slot: int, key: int) -> void:
+	var r := KeyBindings.assign(settings.bindings, action, slot, key)
+	if not bool(r["ok"]):
+		ui.bindings_saved(settings.bindings, String(r["why"]))
+		return
+	var note := "「%s」：%s" % [KeyBindings.label(action), KeyBindings.key_name(key)]
+	if String(r["swapped"]) != "":
+		note += "（与「%s」互换）" % KeyBindings.label(String(r["swapped"]))
+	_bindings_saved(note)
+
+
+func _bindings_saved(note: String) -> void:
+	settings.apply_bindings()
+	var ok := settings.save_file()
+	ui.bindings_saved(settings.bindings, note if ok else note + " · 保存失败")
 
 
 ## Push every stored setting to where it takes effect (presentation and comfort only).
@@ -5105,21 +5131,21 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			_phone_flap()
 		get_viewport().set_input_as_handled()
 		return
-	if key != null and key.pressed and not key.echo and key.keycode == KEY_R and days() != null and session != null and not story().over():
+	if key != null and key.is_action_pressed("lesson") and days() != null and session != null and not story().over():
 		_lesson_press()
 		get_viewport().set_input_as_handled()
 		return
-	if key != null and key.pressed and not key.echo and key.keycode == KEY_N and investigation() != null and player.enabled and not story().over():
+	if key != null and key.is_action_pressed("notes") and investigation() != null and player.enabled and not story().over():
 		_show_notes("")
 		get_viewport().set_input_as_handled()
 		return
-	if key != null and key.pressed and not key.echo and key.keycode == KEY_H and facilities() != null and player.enabled and not story().over():
+	if key != null and key.is_action_pressed("think") and facilities() != null and player.enabled and not story().over():
 		facilities().set_context(_facility_context())
 		facilities().think()
 		_apply_facility_events()
 		get_viewport().set_input_as_handled()
 		return
-	if key != null and key.pressed and not key.echo and key.keycode == KEY_M and audio != null:
+	if key != null and key.is_action_pressed("mute") and audio != null:
 		audio.muted = not audio.muted
 		ui.show_notice("声音：关" if audio.muted else "声音：开")
 		get_viewport().set_input_as_handled()

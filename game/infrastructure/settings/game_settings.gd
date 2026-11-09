@@ -30,6 +30,8 @@ var path: String
 var platform: String
 var values: Dictionary = DEFAULTS.duplicate()
 var touch_layout: Dictionary = {}
+## action -> [key, key] (KeyBindings); applied to the InputMap by apply_bindings().
+var bindings: Dictionary = KeyBindings.defaults()
 var wuda_armed := false  # local menu unlock, not a visible setting or a chosen talent
 var rules_armed := false # bundled DLC selection applies to subsequent new runs only
 
@@ -65,6 +67,7 @@ static func normalize(raw: Dictionary) -> Dictionary:
 ## First run on a touch device: performance first (quality 流畅), as the Web version did.
 func load_file(touch_device: bool = false) -> bool:
 	touch_layout = {}
+	bindings = KeyBindings.defaults()
 	wuda_armed=false
 	rules_armed=false
 	if not FileAccess.file_exists(path):
@@ -79,6 +82,7 @@ func load_file(touch_device: bool = false) -> bool:
 	values = normalize(parsed.get("values", {}) if parsed is Dictionary else {})
 	_enforce_platform()
 	touch_layout = TouchLayout.normalize(parsed.get("touch_layout", {}) if parsed is Dictionary else {})
+	bindings = KeyBindings.normalize(parsed.get("bindings", {}) if parsed is Dictionary else {})
 	return parsed is Dictionary
 
 
@@ -87,7 +91,7 @@ func save_file() -> bool:
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
 		return false
-	file.store_string(JSON.stringify({"version": VERSION, "values": values, "touch_layout": touch_layout,"wuda_armed":wuda_armed,"rules_armed":rules_armed}))
+	file.store_string(JSON.stringify({"version": VERSION, "values": values, "touch_layout": touch_layout, "bindings": bindings,"wuda_armed":wuda_armed,"rules_armed":rules_armed}))
 	file.close()
 	return true
 
@@ -111,3 +115,27 @@ func reset_comfort() -> void:
 	touch_layout = {}
 	for k: String in ["mouse", "touch", "text", "touch_size"]:
 		values[k] = DEFAULTS[k]
+
+
+## Push the key bindings into the InputMap: keyboard events of the listed actions are replaced, everything else
+## (touch, mouse, other actions) is left alone. Missing actions are created.
+func apply_bindings() -> void:
+	for id: String in bindings:
+		if not InputMap.has_action(id):
+			InputMap.add_action(id, 0.2)
+		for ev: InputEvent in InputMap.action_get_events(id):
+			if ev is InputEventKey:
+				InputMap.action_erase_event(id, ev)
+		for k: int in bindings[id]:
+			if k == 0: continue
+			var ev := InputEventKey.new()
+			ev.physical_keycode = k as Key
+			InputMap.action_add_event(id, ev)
+
+
+## The key names of an action for hints ("E", "W / ↑"); empty when unbound.
+func key_text(action: String) -> String:
+	var out: PackedStringArray = []
+	for k: int in bindings.get(action, []):
+		if k != 0: out.append(KeyBindings.key_name(k))
+	return " / ".join(out)

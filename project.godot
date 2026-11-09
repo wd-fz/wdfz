@@ -53,3 +53,7 @@ bag={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":4194306)]}
 hot_1={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":49)]}
 hot_2={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":50)]}
 torch={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":70)]}
+lesson={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":82)]}
+notes={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":78)]}
+think={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":72)]}
+mute={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":77)]}

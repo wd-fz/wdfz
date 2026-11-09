@@ -39,6 +39,9 @@ signal notes_requested(query: String)
 signal notes_focus_requested(route: String)
 signal setting_changed(key: String, value: int)
 signal touch_layout_changed(layout: Dictionary)
+signal binding_changed(action: String, slot: int, key: int)
+signal binding_cleared(action: String, slot: int)
+signal bindings_reset(action: String)
 signal manual_requested
 signal torch_requested
 signal hot_requested(index: int)
@@ -1162,7 +1165,7 @@ func reset_post() -> void:
 var settings_panel: GameSettingsPanel
 
 
-func show_settings(values: Dictionary) -> void:
+func show_settings(values: Dictionary, bindings: Dictionary = {}) -> void:
 	if settings_panel == null:
 		settings_panel = GameSettingsPanel.new()
 		settings_panel.fullscreen_toggle_allowed = fullscreen_toggle_allowed
@@ -1170,7 +1173,16 @@ func show_settings(values: Dictionary) -> void:
 		$Root.add_child(settings_panel)
 		settings_panel.setting_changed.connect(func(key: String, value: int) -> void: setting_changed.emit(key,value))
 		settings_panel.layout_requested.connect(show_touch_layout_editor)
+		settings_panel.binding_changed.connect(func(a: String, slot: int, key: int) -> void: binding_changed.emit(a, slot, key))
+		settings_panel.binding_cleared.connect(func(a: String, slot: int) -> void: binding_cleared.emit(a, slot))
+		settings_panel.bindings_reset.connect(func(a: String) -> void: bindings_reset.emit(a))
+	if not bindings.is_empty():
+		settings_panel.set_bindings(bindings)
 	settings_panel.open(values)
+
+
+func bindings_saved(bindings: Dictionary, note: String) -> void:
+	if is_instance_valid(settings_panel): settings_panel.set_bindings(bindings, note)
 
 
 func _fit_settings() -> void:
