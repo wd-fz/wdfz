@@ -69,6 +69,8 @@ func _ready() -> void:
 	add_child(ApplicationExit.new())
 	settings.load_file(DisplayServer.is_touchscreen_available())
 	settings.apply_bindings()
+	ui.interact_key = settings.key_text("interact").get_slice(" / ", 0)
+	ui.set_keys_hint("%s 移动 · 鼠标环视\n%s 交互 · Esc 暂停" % ["".join([settings.key_text("move_forward").get_slice(" / ", 0), settings.key_text("move_left").get_slice(" / ", 0), settings.key_text("move_back").get_slice(" / ", 0), settings.key_text("move_right").get_slice(" / ", 0)]), ui.interact_key])
 	# Honor the engine's explicit launch flags (also used by window-size tests).
 	if OS.get_cmdline_args().has("--windowed"): settings.set_value("full_screen",0)
 	elif OS.get_cmdline_args().has("--fullscreen"): settings.set_value("full_screen",1)
@@ -2303,6 +2305,8 @@ func _binding_changed(action: String, slot: int, key: int) -> void:
 
 func _bindings_saved(note: String) -> void:
 	settings.apply_bindings()
+	ui.interact_key = settings.key_text("interact").get_slice(" / ", 0)
+	ui.set_keys_hint("%s 移动 · 鼠标环视\n%s 交互 · Esc 暂停" % ["".join([settings.key_text("move_forward").get_slice(" / ", 0), settings.key_text("move_left").get_slice(" / ", 0), settings.key_text("move_back").get_slice(" / ", 0), settings.key_text("move_right").get_slice(" / ", 0)]), ui.interact_key])
 	var ok := settings.save_file()
 	ui.bindings_saved(settings.bindings, note if ok else note + " · 保存失败")
 

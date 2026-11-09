@@ -2,9 +2,14 @@ class_name UISkin
 extends RefCounted
 ## Shared visual vocabulary for every menu, document and tool window.
 const THEME: Theme = preload("res://content/ui/theme.tres")
-const INK := Color("e9f0f4")
-const MUTED := Color("a1b1bf")
-const ACCENT := Color("8ce0cc")
+const INK := Color("ece6da")
+const MUTED := Color("9aa4a6")
+const ACCENT := Color("8fd6c0")
+## Lamp amber for warnings and the focus ring; a dried-rust red for danger.
+const WARM := Color("e6c27a")
+const DANGER := Color("c56a5f")
+const CARD := Color("10181d")
+const CARD_EDGE := Color("1f2b31")
 
 static func panel(margin: int = 16) -> StyleBoxFlat:
 	var style := THEME.get_stylebox("panel","PanelContainer").duplicate() as StyleBoxFlat
@@ -15,7 +20,8 @@ static func card(parent: Control) -> VBoxContainer:
 	var panel_box := PanelContainer.new()
 	panel_box.mouse_filter = Control.MOUSE_FILTER_PASS
 	var style := panel(12)
-	style.bg_color = Color("182631")
+	style.bg_color = CARD
+	style.border_color = CARD_EDGE
 	style.shadow_size = 0
 	style.set_corner_radius_all(12)
 	panel_box.add_theme_stylebox_override("panel",style)

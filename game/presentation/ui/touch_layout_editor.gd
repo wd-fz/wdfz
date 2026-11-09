@@ -5,8 +5,8 @@ extends Control
 
 signal saved(layout: Dictionary)
 signal cancelled
-const ACCENT := Color("8ce0cc")
-const INK := Color("e9f0f4")
+const ACCENT := Color("8fd6c0")
+const INK := Color("ece6da")
 var layout: Dictionary = {}
 var percent := 100
 var selected := "stick"

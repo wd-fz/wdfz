@@ -95,6 +95,7 @@ func _ready() -> void:
 	%SchoolName.pressed.connect(func() -> void: school_tapped.emit())
 	_build_touch_tools()
 	_build_death()
+	_style_hud()
 	var hard := Button.new()
 	hard.name = "HardGame"
 	hard.text = "梦魇 · 新游戏"
@@ -356,11 +357,70 @@ func show_captions(lines: PackedStringArray) -> void:
 	var text := "\n".join(lines)
 	if _captions.text != text:
 		_captions.text = text
-	_captions.position.y = _status_line.position.y + _status_line.size.y + 6.0 if _status_line.visible else 58.0
+	_captions.position.y = _status_line.position.y + _status_line.size.y + 6.0 if _status_line.visible else 72.0
 
 
 func captions_text() -> String:
 	return _captions.text if _captions != null else ""
+
+
+## The play HUD as quiet cards over the picture: clock and status with a coloured edge by state, the hot slots,
+## a pill for the nearby action and a dot crosshair that opens to a ring when something can be used.
+var interact_key := "E"          ## the first key bound to interact (KeyBindings), shown in the prompt
+
+
+## The main menu's keyboard hint follows the key bindings.
+func set_keys_hint(text: String) -> void:
+	if is_instance_valid(menu_screen): menu_screen.set_keys_hint(text)
+var _status_style: StyleBoxFlat
+const STATE_EDGE := {"warn": Color("e6c27a"), "exam": Color("c56a5f"), "": Color("8fd6c0")}
+
+
+func _style_hud() -> void:
+	var runtime := %Runtime as Label
+	runtime.theme_type_variation = "HudCard"
+	runtime.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	runtime.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	runtime.add_theme_font_size_override("font_size", 22)
+	var spacer := Control.new()
+	spacer.name = "TopSpacer"
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	runtime.add_sibling(spacer)
+	_status_line.theme_type_variation = "HudCard"
+	_status_style = BASE_THEME.get_stylebox("normal", "HudCard").duplicate() as StyleBoxFlat
+	_status_line.add_theme_stylebox_override("normal", _status_style)
+	_status_line.position = Vector2(20, 72)
+	_status_line.add_theme_font_size_override("font_size", 14)
+	_hot_label.theme_type_variation = "HudCard"
+	var hot_style := _status_style.duplicate() as StyleBoxFlat
+	hot_style.border_color = Color(0.92, 0.9, 0.85, 0.25)
+	_hot_label.add_theme_stylebox_override("normal", hot_style)
+	_hot_label.offset_left = 20
+	_hot_label.offset_top = -58
+	_hot_label.offset_bottom = -18
+	_hot_label.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	var prompt := %Prompt as Label
+	prompt.theme_type_variation = "HudPill"
+	prompt.autowrap_mode = TextServer.AUTOWRAP_OFF
+	prompt.anchor_left = 0.5
+	prompt.anchor_right = 0.5
+	prompt.anchor_top = 0.6
+	prompt.anchor_bottom = 0.6
+	prompt.offset_left = 0
+	prompt.offset_right = 0
+	prompt.offset_top = 0
+	prompt.offset_bottom = 0
+	prompt.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	prompt.grow_vertical = Control.GROW_DIRECTION_BOTH
+	prompt.add_theme_constant_override("shadow_outline_size", 0)
+	prompt.visible = false
+	var cross := hud.get_node("Crosshair") as Label
+	cross.text = "·"
+	cross.add_theme_font_size_override("font_size", 26)
+	cross.add_theme_color_override("font_color", Color(0.93, 0.9, 0.84, 0.75))
+	cross.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
+	cross.add_theme_constant_override("outline_size", 3)
 
 
 ## Old HUD (ui/hud.js): clock, place, period line coloured by state, and the stamina bar that
@@ -377,7 +437,7 @@ func _build_status() -> void:
 	_captions = Label.new()
 	_captions.name = "SoundCaptions"
 	_captions.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	_captions.position = Vector2(16, 104)
+	_captions.position = Vector2(20, 120)
 	_captions.add_theme_font_size_override("font_size", 14)
 	_captions.add_theme_color_override("font_color", Color(0.86, 0.88, 0.92, 0.92))
 	_captions.add_theme_constant_override("outline_size", 4)
@@ -400,6 +460,8 @@ func show_status(place: String, period: String, state: String, clock: String) ->
 	_status_line.visible = true
 	_status_line.text = "%s\n%s" % [period, place]
 	_status_line.modulate = Color("#f0d6a0") if state == "warn" else (Color("#f0c4bc") if state == "exam" else Color("#ddd5c4"))
+	if _status_style != null:
+		_status_style.border_color = STATE_EDGE.get(state, STATE_EDGE[""])
 	show_runtime(0)
 
 
@@ -2032,7 +2094,11 @@ func toast_text() -> String:
 
 
 func show_prompt(text: String) -> void:
-	%Prompt.text = ("交互 · " if _touch_enabled else "E · ") + text if not text.is_empty() else ""
+	%Prompt.text = ("交互 · " if _touch_enabled else interact_key + " · ") + text if not text.is_empty() else ""
+	%Prompt.visible = not text.is_empty()
+	var cross := hud.get_node("Crosshair") as Label
+	cross.text = "◦" if not text.is_empty() else "·"
+	cross.add_theme_color_override("font_color", Color(0.56, 0.84, 0.75, 0.95) if not text.is_empty() else Color(0.93, 0.9, 0.84, 0.75))
 
 
 var _location := ""
@@ -2059,3 +2125,4 @@ var speedrun_text := ""
 func show_runtime(_seconds: float) -> void:
 	var shown := _clock_text if _status_on else _location
 	%Runtime.text = shown + (" · 速通 " + speedrun_text if speedrun_text != "" else "")
+	%Runtime.visible = not %Runtime.text.is_empty()

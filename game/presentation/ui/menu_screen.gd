@@ -12,6 +12,9 @@ var _grids: Array[GridContainer] = []
 var _new_game: Button
 var _continue: Button
 var _pause := false
+## The keyboard hint, filled from the key bindings (KeyBindings); the defaults until the app sets them.
+var keys_hint := "WASD 移动 · 鼠标环视\nE 交互 · Esc 暂停"
+var _touch_on := false
 
 
 func setup(content: VBoxContainer, paused_menu: bool) -> void:
@@ -41,6 +44,15 @@ func setup(content: VBoxContainer, paused_menu: bool) -> void:
 	_title = content.get_node("Title") as Label
 	_title.reparent(_hero,false)
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_title.theme_type_variation = "HeadingLabel"
+	# A thin chalk rule under the title, like a line drawn on the blackboard.
+	var rule := ColorRect.new()
+	rule.name = "TitleRule"
+	rule.color = Color(UISkin.ACCENT, 0.55)
+	rule.custom_minimum_size = Vector2(96, 2)
+	rule.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hero.add_child(rule)
 	if not _pause:
 		var school := content.get_node("SchoolName") as Button
 		school.reparent(_hero,false)
@@ -65,7 +77,8 @@ func setup(content: VBoxContainer, paused_menu: bool) -> void:
 	_card.add_child(box)
 	var heading := Label.new()
 	heading.text = "游戏菜单" if _pause else "你的下一段旅程"
-	heading.add_theme_color_override("font_color",UISkin.MUTED)
+	heading.add_theme_color_override("font_color",UISkin.WARM)
+	heading.add_theme_font_size_override("font_size",14)
 	box.add_child(heading)
 	_continue = content.find_child("Resume" if _pause else "LoadGame",true,false) as Button
 	_continue.reparent(box,false)
@@ -125,7 +138,13 @@ func _group(source: Control, target: Control, names: Array) -> void:
 
 
 func set_touch(on: bool) -> void:
-	_hint.text = "时间已暂停 · 可安全查看笔记与地图" if _pause else ("双指移动与环视\n点击动作按钮交互" if on else "WASD 移动 · 鼠标环视\nE 交互 · Esc 暂停")
+	_touch_on = on
+	_hint.text = "时间已暂停 · 可安全查看笔记与地图" if _pause else ("双指移动与环视\n点击动作按钮交互" if on else keys_hint)
+
+
+func set_keys_hint(text: String) -> void:
+	keys_hint = text
+	set_touch(_touch_on)
 
 
 func set_save_available(value: bool) -> void:

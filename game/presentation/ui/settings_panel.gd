@@ -10,9 +10,9 @@ signal binding_changed(action: String, slot: int, key: int)
 signal binding_cleared(action: String, slot: int)
 signal bindings_reset(action: String)
 
-const INK := Color("e9f0f4")
-const MUTED := Color("a1b1bf")
-const ACCENT := Color("8ce0cc")
+const INK := Color("ece6da")
+const MUTED := Color("9aa4a6")
+const ACCENT := Color("8fd6c0")
 const PAGES := [
 	["画面", "选择清晰度与显示方式", [
 		["quality", "画质", "仅改变画面，不影响碰撞、剧情和游戏难度。", [["流畅",0],["均衡",1],["精细",2],["超精细",3],["真实",4]]],
@@ -41,7 +41,7 @@ const PAGES := [
 	]],
 	["数据", "管理设置与上一局留下的痕迹", []],
 ]
-const QUALITY_NOTES := ["优先帧率，适合手机或性能较低的设备。", "在帧率与细节之间取得平衡。", "完整细节与阴影，适合性能充足的设备。", "更精细的模型与抗锯齿，设备负载较高。", "最高细节与抗锯齿，设备负载最高。"]
+const QUALITY_NOTES := ["优先帧率：降低分辨率并用 FSR 放大，没有阴影。适合手机或性能较低的设备。", "帧率与细节平衡：FSR 放大，灯管与屏幕有辉光。", "完整分辨率：太阳与最近一盏灯的阴影、环境光遮蔽、手电投影。", "更精细的模型与 4× 抗锯齿，最近两盏灯投影。", "最高细节与 8× 抗锯齿，四盏灯投影与体积雾，设备负载最高。"]
 
 var selected := "画面"
 var fullscreen_toggle_allowed := GameSettings.can_toggle_fullscreen()
@@ -81,7 +81,7 @@ func _ready() -> void:
 	add_child(shade)
 	shell = PanelContainer.new()
 	shell.name = "SettingsCard"
-	shell.add_theme_stylebox_override("panel", _box(Color("111c26"), Color("344653"), 18, 20))
+	shell.add_theme_stylebox_override("panel", _box(Color("0b1116"), Color("263238"), 14, 20))
 	shell.minimum_size_changed.connect(func() -> void: fit.call_deferred())
 	add_child(shell)
 	var outer := VBoxContainer.new()
@@ -89,7 +89,8 @@ func _ready() -> void:
 	shell.add_child(outer)
 	var heading := HBoxContainer.new()
 	outer.add_child(heading)
-	var title := _label("设置", 26, INK)
+	var title := _label("设置", 28, INK)
+	title.theme_type_variation = "HeadingLabel"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	heading.add_child(title)
 	_close = _button("完成", "CloseSettings")
@@ -133,7 +134,9 @@ func _ready() -> void:
 		column.add_theme_constant_override("separation", 12)
 		pages.add_child(column)
 		_page_boxes[id] = column
-		column.add_child(_label(id, 22, INK))
+		var page_title := _label(id, 22, INK)
+		page_title.theme_type_variation = "HeadingLabel"
+		column.add_child(page_title)
 		column.add_child(_label(page[1], 14, MUTED))
 		for row: Array in page[2]:
 			_add_setting(column, row)
@@ -194,7 +197,7 @@ func _button(text: String, id: String) -> Button:
 func _card(parent: Control) -> VBoxContainer:
 	var card := PanelContainer.new()
 	card.mouse_filter = Control.MOUSE_FILTER_PASS
-	card.add_theme_stylebox_override("panel", _box(Color("182631"), Color("2a3c49"), 12, 14))
+	card.add_theme_stylebox_override("panel", _box(UISkin.CARD, UISkin.CARD_EDGE, 10, 14))
 	parent.add_child(card)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 8)
