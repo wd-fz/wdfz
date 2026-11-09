@@ -2326,16 +2326,36 @@ func _apply_settings() -> void:
 	var vp := get_viewport()
 	vp.scaling_3d_scale = float(GameSettings.QUALITY_SCALE[q])
 	vp.msaa_3d = int(GameSettings.QUALITY_MSAA[q]) as Viewport.MSAA
+	RenderQuality.apply(vp, q, RenderingServer.get_current_rendering_method() == "mobile")
 	CampusLighting.shadows_on = bool(GameSettings.QUALITY_SHADOW[q])
+	CampusLighting.quality = q
+	CampusLighting.mobile_renderer = RenderingServer.get_current_rendering_method() == "mobile"
+	_apply_torch_quality(q)
 	var cw := _campus_world()
 	if cw != null and cw.visual_tier != CampusData.tier:
 		cw.reload_models(player.position)
 		_sync_world()
 	if cw != null and cw.lighting != null:
-		cw.lighting.sun_light.shadow_enabled = CampusLighting.shadows_on
+		cw.lighting.apply_quality()
 	if DisplayServer.is_touchscreen_available():
 		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE if settings.get_int("auto_land") == 1 else DisplayServer.SCREEN_LANDSCAPE)
 	_apply_window_mode()
+
+
+## The torch is held in the right hand, not at the eye: from there its beam throws visible shadows (from 精细 up).
+func _apply_torch_quality(q: int) -> void:
+	var torch := player.camera.get_node_or_null("Torch") as SpotLight3D
+	if torch == null:
+		return
+	torch.light_cull_mask = CampusLighting.WORLD_LIGHT_MASK
+	torch.position = Vector3(0.16, -0.22, -0.2)
+	torch.shadow_enabled = q >= 2
+	torch.shadow_bias = 0.04
+	torch.shadow_normal_bias = 1.0
+	torch.shadow_blur = 1.2
+	torch.spot_angle_attenuation = 0.6
+	torch.spot_attenuation = 1.1
+	torch.light_volumetric_fog_energy = 1.4
 
 
 func _apply_window_mode() -> void:

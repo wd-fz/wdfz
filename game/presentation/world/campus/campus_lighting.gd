@@ -39,6 +39,25 @@ var crackles: Array = []
 ## A revisit's broken lamp (index, modulo the room's lamps), −1 for none.
 var dread_lamp := -1
 static var shadows_on := false     # the quality setting (sun shadows from 精细 up)
+## The picture quality (GameSettings 0–4) and whether the Mobile renderer runs (no SSAO / SSIL / volumetric fog).
+static var quality := 2
+static var mobile_renderer := false
+## Per quality: screen-space ambient occlusion, glow on bright tubes and screens, how many of the nearest lamps cast
+## shadows, volumetric fog. Presentation only: nothing here feeds a rule.
+const Q_SSAO := [false, false, true, true, true]
+const Q_GLOW := [false, true, true, true, true]
+const Q_LAMP_SHADOWS := [0, 0, 1, 2, 4]
+const Q_VOLUMETRIC := [false, false, false, false, true]
+## Light contrast from 精细 up: part of the flat ambient (and the eye-level camera fill, which hides every shadow) moves
+## into the lamps and the sun, so light pools, falloff and shadows read — the average brightness stays about the same.
+const Q_LAMP_GAIN := [1.0, 1.0, 3.4, 3.6, 3.8]
+const Q_INDOOR_AMB := [1.0, 1.0, 0.8, 0.78, 0.76]
+const Q_CAM_GAIN := [1.0, 1.0, 0.75, 0.72, 0.7]
+const Q_SUN_GAIN := [1.0, 1.0, 1.6, 1.7, 1.8]
+const Q_OUTDOOR_AMB := [1.0, 1.0, 0.8, 0.76, 0.72]
+## Tubes, screens and signs: emission pushed past the glow threshold.
+const Q_EMIT_GAIN := [1.0, 1.6, 2.2, 2.4, 2.6]
+var _shadow_pick := 0.0
 var brightness := 1.0              # the brightness setting (100 % = 1.0)
 var world_normal := 0.0
 var fake_normal := 0.0
@@ -111,6 +130,75 @@ func setup(id: String, room_data: Variant, model: Node, stair_rise: float) -> vo
 			lamp_pool.append(l)
 	if model != null:
 		_collect_live(model)
+	apply_quality()
+
+
+## Environment effects and shadow budget for the current quality (CampusLighting.quality).
+func apply_quality() -> void:
+	if env == null:
+		return
+	var q := clampi(quality, 0, 4)
+	var full := not mobile_renderer
+	env.ssao_enabled = full and Q_SSAO[q]
+	env.ssao_radius = 1.1
+	env.ssao_intensity = 2.2 if q < 4 else 2.6
+	env.ssao_power = 1.7
+	env.ssao_detail = 0.6
+	env.ssao_horizon = 0.06
+	env.ssao_sharpness = 0.98
+	env.ssao_light_affect = 0.2       # occlusion also darkens lamp-lit corners, not only the ambient term
+	env.ssao_ao_channel_affect = 0.0
+	env.glow_enabled = Q_GLOW[q]
+	env.glow_intensity = 0.55
+	env.glow_strength = 1.0
+	env.glow_bloom = 0.0
+	env.glow_hdr_threshold = 0.85
+	env.glow_hdr_scale = 2.0
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
+	for level in 7:
+		env.set_glow_level(level, 1.0 if level in [1, 2, 3, 4] else 0.0)
+	env.volumetric_fog_enabled = full and Q_VOLUMETRIC[q]
+	env.volumetric_fog_density = 0.012
+	env.volumetric_fog_albedo = Color(0.85, 0.88, 0.9)
+	env.volumetric_fog_anisotropy = 0.35
+	env.volumetric_fog_length = 48.0
+	env.volumetric_fog_ambient_inject = 0.0
+	sun_light.shadow_enabled = shadows_on
+	sun_light.shadow_blur = 1.5
+	sun_light.directional_shadow_max_distance = 60.0 if q >= 3 else 40.0
+	sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if q >= 3 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	for l: OmniLight3D in room_lights + lamp_pool:
+		l.shadow_bias = 0.06
+		l.shadow_normal_bias = 1.2
+		l.shadow_blur = 1.4
+		l.light_volumetric_fog_energy = 0.6
+	for mats: Array in live_mats.values():
+		for mat: BaseMaterial3D in mats:
+			if mat.emission_enabled:
+				mat.emission_energy_multiplier = float(Q_EMIT_GAIN[q])
+	_pick_shadow_lamps(null)
+
+
+## The lamps nearest the camera cast shadows (Q_LAMP_SHADOWS); the rest stay shadowless.
+func _pick_shadow_lamps(camera: Camera3D) -> void:
+	var lights: Array[OmniLight3D] = room_lights + lamp_pool
+	var n := int(Q_LAMP_SHADOWS[clampi(quality, 0, 4)])
+	if n == 0 or camera == null:
+		for l: OmniLight3D in lights:
+			l.shadow_enabled = false
+		return
+	var at := camera.global_position
+	var order := lights.duplicate()
+	order.sort_custom(func(a: OmniLight3D, b: OmniLight3D) -> bool: return a.global_position.distance_squared_to(at) < b.global_position.distance_squared_to(at))
+	for i in order.size():
+		(order[i] as OmniLight3D).shadow_enabled = i < n and (order[i] as OmniLight3D).light_energy > 0.0
+
+
+func shadow_lamps() -> int:
+	var count := 0
+	for l: OmniLight3D in room_lights + lamp_pool:
+		count += 1 if l.shadow_enabled else 0
+	return count
 
 
 func _open_air() -> bool:
@@ -230,9 +318,10 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var ambient := ac * amb + (hs + hg) * 0.5 * hemi
 	var strength := maxf(ambient.r, maxf(ambient.g, ambient.b))
 	env.ambient_light_color = ambient / maxf(strength, 1e-4)
-	env.ambient_light_energy = strength * ENERGY_AMBIENT * gaze_mul
+	var qi := clampi(quality, 0, 4)
+	env.ambient_light_energy = strength * ENERGY_AMBIENT * gaze_mul * (float(Q_INDOOR_AMB[qi]) if indoor else float(Q_OUTDOOR_AMB[qi]))
 	sun_light.light_color = dc
-	sun_light.light_energy = dirv * ENERGY_DIR * gaze_mul
+	sun_light.light_energy = dirv * ENERGY_DIR * gaze_mul * (1.0 if indoor else float(Q_SUN_GAIN[qi]))
 	var d: Vector3 = sun["dir"] if day > 0.02 and not indoor else MOON_DIR
 	sun_light.look_at_from_position(d * 16.0, Vector3.ZERO, Vector3.UP if absf(d.normalized().y) < 0.99 else Vector3.FORWARD)
 	var sky := sky_colors(h)
@@ -291,7 +380,7 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 			if dl <= 9.0:
 				_crackle_last = time
 				crackles.append({"k": 1.0 - dl / 9.0, "pan": clampf(crackle_from.global_basis.x.dot(to_l.normalized()) * 0.8, -1.0, 1.0)})
-		room_lights[i].light_energy = room_base[i] * pt_k * maxf(0.05, flick) * (1.0 + 0.3 * patrol_red) * ENERGY_POINT * gaze_mul
+		room_lights[i].light_energy = room_base[i] * pt_k * maxf(0.05, flick) * (1.0 + 0.3 * patrol_red) * ENERGY_POINT * gaze_mul * float(Q_LAMP_GAIN[qi])
 		var bc := room_col[i]
 		var lr := bc.r * 0.86
 		var lg := bc.g * 0.98
@@ -304,8 +393,12 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var lcfg: Dictionary = campus.get("light_cfg", {})
 	if camera != null:
 		cam_light.global_position = camera.global_position
-	cam_light.light_energy = (float(lcfg.get("camI", 0.9)) + float(lcfg.get("camIk", 0.45)) * day) * ENERGY_POINT * 9.0 * (0.08 if blackout and indoor else 1.0) * gaze_mul
+	cam_light.light_energy = (float(lcfg.get("camI", 0.9)) + float(lcfg.get("camIk", 0.45)) * day) * ENERGY_POINT * 9.0 * (0.08 if blackout and indoor else 1.0) * gaze_mul * float(Q_CAM_GAIN[qi])
 	_lamps(dt, 1.0 - day if not indoor else 0.0, camera, sky, day)
+	_shadow_pick -= dt
+	if _shadow_pick <= 0.0:
+		_shadow_pick = 0.5
+		_pick_shadow_lamps(camera)
 
 
 # ---- room lamps (scene.js addRoomLights) ----
@@ -452,7 +545,7 @@ func _lamps(dt: float, night: float, camera: Camera3D, sky: Array[Color], day: f
 		var fl := 1.0
 		if not reduce_flash and i == 1 and sin(time * 1.7) > 0.93:
 			fl = 0.25 + 0.5 * absf(sin(time * 31.0))
-		lamp_pool[i].light_energy = lamp_i * smooth01(0.15, 0.7, night) * fl * ENERGY_POINT * 2.0 if lamp_pool[i].get_meta("on", false) else 0.0
+		lamp_pool[i].light_energy = lamp_i * smooth01(0.15, 0.7, night) * fl * ENERGY_POINT * 2.0 * float(Q_LAMP_GAIN[clampi(quality, 0, 4)]) if lamp_pool[i].get_meta("on", false) else 0.0
 
 
 func rebind_model(model: Node) -> void:

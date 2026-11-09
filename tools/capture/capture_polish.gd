@@ -65,15 +65,31 @@ func _run() -> void:
 			app.ui._layout_editor.cancelled.emit()
 		app.ui.set_touch_enabled(false)
 	if want("light"):
-		for q in [0, 2, 4]:
+		var qs := [0, 2, 4]
+		var specs := [["teach1", 700.0, "classroom-day"], ["teach1", 1380.0, "classroom-night"], ["out", 700.0, "out-day"], ["out", 1150.0, "out-dusk"]]
+		if OS.get_environment("LIGHT_ONLY") != "":
+			specs = specs.filter(func(sp: Array) -> bool: return String(sp[2]) == OS.get_environment("LIGHT_ONLY"))
+		for q: int in qs:
 			app._setting_changed("quality", q)
-			for spec: Array in [["teach1", 700.0, "classroom-day"], ["teach1", 1380.0, "classroom-night"], ["out", 700.0, "out-day"], ["out", 1150.0, "out-dusk"]]:
+			for spec: Array in specs:
 				var pose: Dictionary = app.campus().start_pose() if spec[0] == "teach1" else {"position": [1023.0 / 9.0, 0.05, 1300.0 / 9.0], "yaw": 0.0, "pitch": 0.1}
 				app.travel(spec[0], pose, false)
 				app.school().tsec = spec[1]
 				for _i in 20:
 					await process_frame
 				await shot("q%d-%s" % [q, spec[2]])
+	if want("perf"):
+		# Relative frame cost per quality on this machine (software Vulkan here: compare tiers, not devices).
+		for q in 5:
+			app._setting_changed("quality", q)
+			app.travel("teach1", app.campus().start_pose(), false)
+			app.school().tsec = 700.0
+			for _i in 30:
+				await process_frame
+			var t0 := Time.get_ticks_usec()
+			for _i in 60:
+				await process_frame
+			print("PERF quality=%d ms_per_frame=%.1f" % [q, float(Time.get_ticks_usec() - t0) / 60000.0])
 	app.return_to_menu()
 	app.queue_free()
 	await process_frame
