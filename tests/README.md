@@ -15,6 +15,8 @@
 | progress | 成就、速通、评分、记录与结果页 |
 | presentation | 画面、UI、设置与导入适配器 |
 | integration | 正式校园行走、上下楼、输入及各路线的组合回归 |
+| controls_ui | 键位自定义（归一化、冲突互换、持久化、InputMap、设置页录入）与逐个控件的触屏布局 |
+| render_quality | 各画质档的光影开关、最近灯投影、灯光对比、Mobile 跳过项、FSR／阴影图集／LOD、手电投影 |
 
 `support/test_suite.gd` 向当前 SceneTree 转发断言、帧等待与计时器，提供测试上下文辅助，不持有独立游戏局。新增测试须在 `run_tests.gd` 显式调用，避免文件存在但从未执行。
 
