@@ -58,6 +58,8 @@ func _run() -> void:
 		app.ui.set_touch_enabled(true)
 		await shot("hud-touch")
 		app.ui.show_touch_layout_editor()
+		app.ui._layout_editor.select("interact")
+		app.ui._layout_editor._size_slider.value = 130
 		await shot("touch-editor")
 		if app.ui._layout_editor != null:
 			app.ui._layout_editor.cancelled.emit()

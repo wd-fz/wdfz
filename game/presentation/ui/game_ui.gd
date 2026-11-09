@@ -1201,22 +1201,18 @@ func apply_text_scale(pct: int) -> void:
 
 var _touch_percent := 100
 var _touch_layout: Dictionary = {}
-var _touch_tools: HBoxContainer
+var _touch_buttons := {}   # manual / torch / hot1 / hot2 -> TouchActionButton
 var _layout_editor: TouchLayoutEditor
 
 
 func _build_touch_tools() -> void:
-	_touch_tools = HBoxContainer.new()
-	_touch_tools.name = "TouchTools"
-	_touch_tools.add_theme_constant_override("separation",4)
-	_touch_tools.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for spec: Array in [["手册","Manual"],["手电","Torch"],["1","Hot1"],["2","Hot2"]]:
+	# Each tool button stands on its own, so the layout can place and size it separately (TouchLayout).
+	for spec: Array in [["手册","Manual","manual"],["手电","Torch","torch"],["1","Hot1","hot1"],["2","Hot2","hot2"]]:
 		var b := TouchActionButton.new()
 		b.name = spec[1]
 		b.text = spec[0]
 		b.focus_mode = Control.FOCUS_NONE
 		b.custom_minimum_size = Vector2(44,44)
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.pressed.connect(func() -> void:
 			match spec[1]:
 				"Manual": manual_requested.emit()
@@ -1224,8 +1220,8 @@ func _build_touch_tools() -> void:
 				"Hot1": hot_requested.emit(0)
 				"Hot2": hot_requested.emit(1)
 			)
-		_touch_tools.add_child(b)
-	touch_controls.add_child(_touch_tools)
+		touch_controls.add_child(b)
+		_touch_buttons[spec[2]] = b
 	%TouchInteract.focus_mode = Control.FOCUS_NONE
 	%TouchSprint.focus_mode = Control.FOCUS_NONE
 	look_pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1239,24 +1235,28 @@ func apply_touch_scale(pct: int, layout: Dictionary = {}) -> void:
 	_refit_touch()
 
 
+## The control that stands for a layout id.
+func touch_control(id: String) -> Control:
+	match id:
+		"stick": return stick
+		"sprint": return %TouchSprint
+		"interact": return %TouchInteract
+	return _touch_buttons.get(id) as Control
+
+
 func _refit_touch() -> void:
-	if _touch_tools == null:
+	if _touch_buttons.is_empty():
 		return
 	clear_touch()
 	var view := get_viewport().get_visible_rect().size
 	var rects := TouchLayout.resolve(view,_touch_layout,_touch_percent,[Rect2(0,0,view.x,68)])
-	var controls := {"stick": stick,"tools": _touch_tools}
-	for id: String in controls:
-		var c: Control = controls[id]
+	var alpha := TouchLayout.opacity(_touch_layout)
+	for id: String in TouchLayout.IDS:
+		var c := touch_control(id)
 		c.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 		c.position = rects[id].position
 		c.size = rects[id].size
-	var act: Rect2 = rects["actions"]
-	for c: Control in [%TouchInteract,%TouchSprint]:
-		c.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-		c.size = Vector2(act.size.x,(act.size.y-8)*.5)
-	%TouchSprint.position = act.position
-	%TouchInteract.position = Vector2(act.position.x,act.end.y-%TouchInteract.size.y)
+		c.modulate.a = alpha
 	_hot_label.visible = not _touch_enabled
 
 

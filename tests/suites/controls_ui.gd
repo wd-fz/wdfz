@@ -79,3 +79,55 @@ func test_bindings_page() -> void:
 	panel.dismiss()
 	app.queue_free()
 	await _frames(2)
+
+
+func test_touch_layout_v2() -> void:
+	var v1 := TouchLayout.normalize({"stick": {"x": 30, "y": 70}, "actions": {"x": 80, "y": 60}, "tools": {"x": 50, "y": 15}})
+	check(v1.has("sprint") and is_equal_approx(float(v1.sprint.y), 55.1) and is_equal_approx(float(v1.interact.y), 64.9) and is_equal_approx(float(v1.hot2.x), 58.2) and not v1.has("actions"),
+		"version-1 group places are split into single controls")
+	var raw := {"interact": {"x": 50, "y": 50, "s": 300}, "opacity": 10}
+	var n := TouchLayout.normalize(raw)
+	check(int(n.interact.s) == 150 and int(n.opacity) == 35, "sizes and opacity are clamped (70–150 %, 35–100 %)")
+	var view := Vector2(1280, 720)
+	var big := TouchLayout.resolve(view, {"interact": {"x": 50, "y": 50, "s": 150}}, 100)
+	var small := TouchLayout.resolve(view, {"interact": {"x": 50, "y": 50, "s": 70}}, 100)
+	check((big.interact as Rect2).size.x > (small.interact as Rect2).size.x * 1.8 and (small.interact as Rect2).size.y >= 44, "each control has its own size and keeps a 44 px target")
+	var c := TouchLayout.centres(big, view, {"interact": {"x": 50, "y": 50, "s": 150}, "opacity": 60})
+	check(int(c.interact.s) == 150 and int(c.opacity) == 60 and c.has("hot1"), "writing back the places keeps sizes and opacity")
+	check(TouchLayout.snap(Vector2(51.2, 48.8)) == Vector2(50, 50), "the grid snaps centres to 2.5 %")
+	var ui: GameUI = preload("res://game/presentation/ui/game_ui.tscn").instantiate()
+	root.add_child(ui)
+	await _frames(3)
+	ui.set_mode("play")
+	ui.set_touch_enabled(true)
+	ui.apply_touch_scale(100, {"hot1": {"x": 40, "y": 60, "s": 120}, "opacity": 50})
+	await _frames(2)
+	var hot1 := ui.touch_control("hot1")
+	check(absf(hot1.get_global_rect().get_center().x / root.get_visible_rect().size.x * 100.0 - 40.0) < 1.5 and is_equal_approx(hot1.modulate.a, 0.5) and is_equal_approx(ui.touch_control("stick").modulate.a, 0.5),
+		"a single tool button moves on its own and every control takes the opacity")
+	ui.show_touch_layout_editor()
+	await _frames(3)
+	var edit := ui._layout_editor
+	edit.select("torch")
+	edit._size_slider.value = 140
+	check(int(edit.layout.torch.s) == 140 and (edit._rects.torch as Rect2).size.x > 60 * 1.3, "the editor sizes the selected control")
+	edit._alpha_slider.value = 70
+	var saved := [{}]
+	edit.saved.connect(func(l: Dictionary) -> void: saved[0] = l)
+	edit._buttons.get_node("done").pressed.emit()
+	await _frames(2)
+	check(int(saved[0].get("opacity", 0)) == 70 and int(saved[0].torch.s) == 140, "done saves sizes and opacity")
+	ui.queue_free()
+	await _frames(2)
+
+
+func test_touch_defaults_spaced() -> void:
+	var ok := true
+	for view: Vector2 in [Vector2(960, 540), Vector2(1280, 720), Vector2(1920, 1080), Vector2(2340, 1080)]:
+		for pct in [85, 100, 125]:
+			var r := TouchLayout.resolve(view, {}, pct, [Rect2(0, 0, view.x, 68)])
+			var row := [r.manual, r.torch, r.hot1, r.hot2]
+			for i in range(1, 4):
+				ok = ok and is_equal_approx((row[i] as Rect2).position.y, (row[0] as Rect2).position.y) and (row[i] as Rect2).position.x > (row[i - 1] as Rect2).position.x
+			ok = ok and is_equal_approx((r.sprint as Rect2).position.x, (r.interact as Rect2).position.x) and (r.sprint as Rect2).position.y < (r.interact as Rect2).position.y
+	check(ok, "default tool buttons form one evenly ordered row and the action buttons one column on landscape screens")
