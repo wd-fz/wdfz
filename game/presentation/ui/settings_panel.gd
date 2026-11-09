@@ -39,6 +39,7 @@ const PAGES := [
 const QUALITY_NOTES := ["优先帧率，适合手机或性能较低的设备。", "在帧率与细节之间取得平衡。", "完整细节与阴影，适合性能充足的设备。", "更精细的模型与抗锯齿，设备负载较高。", "最高细节与抗锯齿，设备负载最高。"]
 
 var selected := "画面"
+var fullscreen_toggle_allowed := GameSettings.can_toggle_fullscreen()
 var values := {}
 var shell: PanelContainer
 var scroll: ScrollContainer
@@ -192,6 +193,7 @@ func _card(parent: Control) -> VBoxContainer:
 
 func _add_setting(parent: Control, row: Array) -> void:
 	var key := String(row[0])
+	if key == "full_screen" and not fullscreen_toggle_allowed: return
 	var spec: Array = row[3]
 	var column := _card(parent)
 	column.name = "Setting_" + key

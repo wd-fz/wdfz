@@ -2309,6 +2309,10 @@ func _apply_settings() -> void:
 		cw.lighting.sun_light.shadow_enabled = CampusLighting.shadows_on
 	if DisplayServer.is_touchscreen_available():
 		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE if settings.get_int("auto_land") == 1 else DisplayServer.SCREEN_LANDSCAPE)
+	_apply_window_mode()
+
+
+func _apply_window_mode() -> void:
 	var want := DisplayServer.WINDOW_MODE_FULLSCREEN if settings.get_int("full_screen") == 1 else DisplayServer.WINDOW_MODE_WINDOWED
 	ui.set_fullscreen(settings.get_int("full_screen") == 1)
 	if DisplayServer.window_get_mode() != want and DisplayServer.get_name() != "headless":
@@ -5082,6 +5086,8 @@ func _unhandled_input(event: InputEvent) -> void:
 func _notification(what: int) -> void:
 	if what in [NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_PAUSED] and is_node_ready():
 		pause_game()
+	if what in [NOTIFICATION_APPLICATION_FOCUS_IN, NOTIFICATION_APPLICATION_RESUMED] and is_node_ready() and not GameSettings.can_toggle_fullscreen():
+		_apply_window_mode.call_deferred()
 
 
 func _unhandled_key_input(event: InputEvent) -> void:

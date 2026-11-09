@@ -1,12 +1,12 @@
 name: Set up software Vulkan
-description: Install an X11 display runtime and explicitly select Mesa Lavapipe for rendering checks
+description: Install X11 and native Wayland displays and select Mesa Lavapipe for rendering checks
 runs:
   using: composite
   steps:
     - shell: bash
       run: |
         sudo apt-get update -qq
-        sudo apt-get install -y --no-install-recommends xvfb libvulkan1 mesa-vulkan-drivers fonts-noto-cjk
+        sudo apt-get install -y --no-install-recommends xvfb weston libvulkan1 mesa-vulkan-drivers fonts-noto-cjk
         python - <<'PY'
         import os
         from pathlib import Path

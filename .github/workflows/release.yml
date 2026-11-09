@@ -1,22 +1,80 @@
-name: Android Public Release
+name: Public Release
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Public release tag matching the Android Release preset
+        description: Formal version for Android, Windows and Linux
         required: true
-        default: v0.1.0
+        default: v0.2.0
         type: string
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: android-public-release
+  group: public-release
   cancel-in-progress: false
 
 jobs:
+  regression:
+    name: Require successful CI for this source
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify tooling and release version
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          python tools/check.py --static-only
+          python - <<'PYCODE'
+          import os, sys
+          sys.path.insert(0, 'tools')
+          from export_android import RELEASE_VERSION
+          if os.environ['RELEASE_TAG'] != 'v' + RELEASE_VERSION:
+              raise SystemExit('Tag must match the release version')
+          PYCODE
+      - name: Wait for full headless and Vulkan CI on the exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/ci/wait_for_ci.py
+
+  desktop:
+    name: Build and verify Linux and Windows release
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      LP_NUM_THREADS: '4'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-godot
+        with:
+          templates: 'true'
+      - uses: ./.github/actions/setup-vulkan
+      - name: Export and test native Wayland and X11
+        run: xvfb-run -a python tools/ci/with_wayland.py python tools/export.py --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-public-release-${{ github.sha }}
+          path: |
+            build/packages/wdfz-0.2.0-linux-x86_64.*
+            build/packages/wdfz-0.2.0-windows-x86_64.*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports-desktop-release-${{ github.sha }}
+          path: |
+            build/reports/export/
+            build/reports/wayland/
+          retention-days: 14
+
   build:
     name: Verify and sign release APK
     if: github.ref == 'refs/heads/main'
@@ -81,9 +139,9 @@ jobs:
         with:
           name: android-public-release-${{ github.sha }}
           path: |
-            build/packages/wdfz-0.1.0-android-arm64.apk
-            build/packages/wdfz-0.1.0-android-arm64.apk.sha256
-            build/packages/wdfz-0.1.0-android-arm64.build.json
+            build/packages/wdfz-0.2.0-android-arm64.apk
+            build/packages/wdfz-0.2.0-android-arm64.apk.sha256
+            build/packages/wdfz-0.2.0-android-arm64.build.json
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -101,7 +159,7 @@ jobs:
 
   publish:
     name: Publish verified public release
-    needs: build
+    needs: [regression, build, desktop]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -112,8 +170,12 @@ jobs:
         with:
           name: android-public-release-${{ github.sha }}
           path: release-assets
-      - name: Verify all assets before publishing
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-public-release-${{ github.sha }}
+          path: release-assets
+      - name: Verify all nine assets before publishing
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
-        run: python tools/publish_android_release.py --assets release-assets --tag "$RELEASE_TAG" --notes docs/releases/0.1.0.md
+        run: python tools/publish_release.py --assets release-assets --tag "$RELEASE_TAG" --notes docs/releases/0.2.0.md

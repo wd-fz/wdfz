@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish the verified release bundle only after all three assets are uploaded."""
+"""Publish Android, Windows and Linux together after verifying every release asset."""
 import argparse
 import hashlib
 import json
@@ -7,10 +7,11 @@ import os
 from pathlib import Path
 import re
 import subprocess
-from export_android import RELEASE_PACKAGE, RELEASE_VERSION
+import zipfile
+from export_android import RELEASE_PACKAGE, RELEASE_VERSION, RELEASE_VERSION_CODE
 
 
-def validate_bundle(folder, revision):
+def validate_android(folder, revision):
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
         raise ValueError("Expected a full source commit")
     name = f"wdfz-{RELEASE_VERSION}-android-arm64"
@@ -19,9 +20,11 @@ def validate_bundle(folder, revision):
     metadata = folder / f"{name}.build.json"
     info = json.loads(metadata.read_text())
     expected = {"passed": True, "debug": False, "working_tree_dirty": False, "revision": revision,
-                "package": RELEASE_PACKAGE, "version": RELEASE_VERSION, "version_code": 1,
+                "package": RELEASE_PACKAGE, "version": RELEASE_VERSION, "version_code": RELEASE_VERSION_CODE,
                 "abi": "arm64-v8a", "min_sdk": 24, "target_sdk": 36, "page_alignment": 16384,
-                "launch_orientation": "userLandscape", "file": apk.name}
+                "launch_orientation": "userLandscape", "file": apk.name,
+                "rendering_driver": "vulkan", "rendering_method": "mobile", "vulkan_required": True,
+                "fullscreen_forced": True, "build_system": "gradle"}
     if any(info.get(key) != value for key, value in expected.items()):
         raise ValueError("Release bundle does not match the verified release build and source")
     if not re.fullmatch(r"[0-9a-f]{64}", info.get("signing_certificate_sha256", "")):
@@ -31,6 +34,49 @@ def validate_bundle(folder, revision):
             or checksum.read_text().strip() != f"{digest}  {apk.name}"):
         raise ValueError("APK, metadata and checksum do not agree")
     return [apk, checksum, metadata]
+
+
+
+def validate_desktop(folder, revision, platform):
+    name = f"wdfz-{RELEASE_VERSION}-{platform}-x86_64"
+    archive = folder / (name + ".zip")
+    checksum = folder / (name + ".zip.sha256")
+    metadata = folder / (name + ".build.json")
+    info = json.loads(metadata.read_text())
+    expected = {"passed": True, "release": True, "working_tree_dirty": False, "revision": revision,
+                "version": RELEASE_VERSION, "platform": platform, "rendering_driver": "vulkan",
+                "rendering_method": "forward_plus", "window_default": "windowed", "file": archive.name,
+                "runtime_verified": platform == "linux", "rendering_verified": platform == "linux",
+                "display_drivers_verified": ["x11", "wayland"] if platform == "linux" else []}
+    if any(info.get(key) != value for key, value in expected.items()):
+        raise ValueError(f"{platform} bundle does not match verified release source and display policy")
+    digest = file_digest(archive)
+    if (digest != info.get("sha256") or archive.stat().st_size != info.get("bytes")
+            or checksum.read_text().strip() != f"{digest}  {archive.name}"):
+        raise ValueError(f"{platform} package, metadata and checksum do not agree")
+    with zipfile.ZipFile(archive) as bundle:
+        prefix = f"wdfz-{platform}/"
+        binary = "wdfz.x86_64" if platform == "linux" else "wdfz.exe"
+        required = {prefix + item for item in (binary, "wdfz.pck", "BUILD.json", "LICENSE", "README.txt")}
+        if set(bundle.namelist()) != required or bundle.testzip() is not None:
+            raise ValueError(f"{platform} archive content is incomplete or corrupt")
+        inside = json.loads(bundle.read(prefix + "BUILD.json"))
+        if not inside or any(info.get(key) != value for key, value in inside.items()):
+            raise ValueError(f"{platform} archive provenance differs from its sidecar")
+        for key in ("revision", "version", "platform", "release", "working_tree_dirty", "window_default", "display_drivers_verified"):
+            if inside.get(key) != expected[key]: raise ValueError(f"{platform} archive missing {key}")
+        if platform == "linux" and not (bundle.getinfo(prefix + binary).external_attr >> 16) & 0o111:
+            raise ValueError("Linux executable permission missing from ZIP")
+    return [archive, checksum, metadata]
+
+
+def validate_bundle(folder, revision):
+    files = validate_android(folder, revision)
+    for platform in ("windows", "linux"):
+        files.extend(validate_desktop(folder, revision, platform))
+    if set(path.name for path in folder.iterdir()) != set(path.name for path in files):
+        raise ValueError("Release folder contains unexpected assets")
+    return files
 
 
 def file_digest(path):
@@ -48,7 +94,7 @@ def main():
     parser.add_argument("--notes", type=Path, required=True)
     args = parser.parse_args()
     if args.tag != "v" + RELEASE_VERSION:
-        raise ValueError("Tag must match the release APK version")
+        raise ValueError("Tag must match the release version")
     revision = os.environ["GITHUB_SHA"]
     files = validate_bundle(args.assets, revision)
     repo = os.environ["GITHUB_REPOSITORY"]
@@ -84,11 +130,23 @@ def main():
     release = release_by_tag()
     if release is None:
         subprocess.run(["gh", "release", "create", args.tag, "--repo", repo, "--draft", "--target", revision,
-                        "--title", f"{args.tag} · 首个公开 Android 版", "--notes-file", str(args.notes)], check=True)
+                        "--title", f"{args.tag} · Android / Windows / Linux", "--notes-file", str(args.notes)], check=True)
         release = release_by_tag()
     if not release["draft"] or release["target_commitish"] != revision:
         raise ValueError("Refusing to modify a public release or a draft for different source")
-    subprocess.run(["gh", "release", "upload", args.tag, "--repo", repo, "--clobber", *map(str, files)], check=True)
+    existing = {asset["name"]: asset for asset in release["assets"]}
+    if set(existing) - {file.name for file in files}:
+        raise ValueError("Draft contains assets outside this verified release")
+    pending = []
+    for file in files:
+        remote = existing.get(file.name)
+        if remote is None:
+            pending.append(str(file))
+        elif (remote.get("state") != "uploaded" or remote.get("size") != file.stat().st_size
+              or remote.get("digest") != "sha256:" + file_digest(file)):
+            raise ValueError(f"Refusing to replace a different draft asset: {file.name}")
+    if pending:
+        subprocess.run(["gh", "release", "upload", args.tag, "--repo", repo, *pending], check=True)
     release = api(f"releases/{release['id']}")
     assets = {asset["name"]: asset for asset in release["assets"]}
     for file in files:

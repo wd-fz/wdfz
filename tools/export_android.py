@@ -17,7 +17,27 @@ from ci.common import ENGINE, ROOT, check_version, run
 BUILD_TOOLS = "36.0.0"
 PACKAGE = "org.wdfz.godot.debug"
 RELEASE_PACKAGE = "org.wdfz.godot"
-RELEASE_VERSION = "0.1.0"
+RELEASE_VERSION = "0.2.0"
+RELEASE_VERSION_CODE = 2
+
+
+def verify_fullscreen_launch(raw):
+    """The Android export must enter immersive mode before the first scene loads."""
+    try:
+        count = struct.unpack_from('<I', raw)[0]
+        offset, arguments = 4, []
+        for _ in range(count):
+            length = struct.unpack_from('<I', raw, offset)[0]
+            offset += 4
+            if offset + length > len(raw): raise ValueError('Truncated launch argument')
+            arguments.append(raw[offset:offset + length].decode('utf-8'))
+            offset += length
+        if offset != len(raw): raise ValueError('Trailing launch data')
+    except (struct.error, UnicodeError, ValueError) as error:
+        raise RuntimeError('Invalid Android launch arguments') from error
+    if '--fullscreen' not in arguments or '--windowed' in arguments:
+        raise RuntimeError('Android must launch in immersive fullscreen')
+    return True
 
 
 def verify_manifest(manifest, release=False):
@@ -27,7 +47,7 @@ def verify_manifest(manifest, release=False):
             raise RuntimeError(f"APK manifest did not confirm {expected}")
     if ("application-debuggable" in manifest) == release:
         raise RuntimeError("APK debuggable flag does not match the requested build type")
-    if release and (f"versionName='{RELEASE_VERSION}'" not in manifest or "versionCode='1'" not in manifest):
+    if release and (f"versionName='{RELEASE_VERSION}'" not in manifest or f"versionCode='{RELEASE_VERSION_CODE}'" not in manifest):
         raise RuntimeError("APK release version does not match the release preset")
 
 
@@ -198,7 +218,7 @@ def main():
             match = re.search(r"Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]{64})", signature)
             if not match:
                 raise RuntimeError("Release signature certificate digest is missing")
-            summary.update(version=RELEASE_VERSION, version_code=1, signing_certificate_sha256=match[1].lower())
+            summary.update(version=RELEASE_VERSION, version_code=RELEASE_VERSION_CODE, signing_certificate_sha256=match[1].lower())
         run("alignment", [str(build_tools / ("zipalign" + suffix)), "-c", "-P", "16", "-v", "4", str(apk)], reports)
         manifest = run("manifest", [str(build_tools / ("aapt" + suffix)), "dump", "badging", str(apk)], reports)
         verify_manifest(manifest,args.release)
@@ -206,6 +226,7 @@ def main():
         summary["launch_orientation"] = verify_launcher_orientation(manifest_tree)
         summary.update(verify_vulkan_manifest(manifest_tree))
         with zipfile.ZipFile(apk) as archive:
+            summary['fullscreen_forced'] = verify_fullscreen_launch(archive.read('assets/_cl_'))
             names = archive.namelist()
             entries = set(names)
             if archive.testzip() is not None:

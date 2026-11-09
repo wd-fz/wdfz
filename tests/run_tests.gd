@@ -260,6 +260,8 @@ func _run() -> void:
 	var menu_ui := preload("res://tests/suites/menu_ui.gd").new(self)
 	print("CASE: menu_ui.test_launch_defaults")
 	menu_ui.test_launch_defaults()
+	print("CASE: menu_ui.test_android_fullscreen_ui")
+	await menu_ui.test_android_fullscreen_ui()
 	print("CASE: menu_ui.test_menus")
 	await menu_ui.test_menus()
 	print("CASE: menu_ui.test_devices")

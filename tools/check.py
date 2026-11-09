@@ -15,6 +15,7 @@ def main():
     parser.add_argument("--windowed", action="store_true", help="alias for --mode both")
     parser.add_argument("--renderer", choices=("forward_plus", "mobile"), default="forward_plus",
                         help="Vulkan renderer for windowed tests; headless tests do not render")
+    parser.add_argument("--display-driver", choices=("x11", "wayland"), default="x11")
     options = parser.parse_args()
     mode = "static" if options.static_only else "both" if options.windowed else options.mode
     reports = ROOT / "build/reports" / (mode if mode in ("static", "headless") else f"{mode}-{options.renderer}")
@@ -29,7 +30,7 @@ def main():
             run("import", [ENGINE, "--headless", "--path", str(ROOT), "--editor", "--import"], reports, timeout=900)
             for display in (("headless", "windowed") if mode == "both" else (mode,)):
                 args = ["--headless"] if display == "headless" else ["--windowed", "--rendering-method", options.renderer,
-                                                                      "--rendering-driver", "vulkan"]
+                                                                      "--rendering-driver", "vulkan", "--display-driver", options.display_driver]
                 output = run(display, [ENGINE, *args, "--path", str(ROOT), "--audio-driver", "Dummy",
                                       "--fixed-fps", "60", "--script", "res://tests/run_tests.gd"], reports,
                              timeout=3600 if display == "windowed" else 900)

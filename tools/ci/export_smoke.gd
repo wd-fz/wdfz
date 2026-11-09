@@ -29,6 +29,14 @@ func _run() -> void:
 	app.settings = GameSettings.new(path + "settings.json")
 	root.add_child(app)
 	await process_frame
+	_check(DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_WINDOWED, "fresh desktop profile must remain windowed")
+	_check(app.ui.menu_screen.find_child("FullscreenMenu",true,false).visible, "desktop fullscreen control missing")
+	app.ui.fullscreen_requested.emit()
+	for _i in 5: await process_frame
+	_check(DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN, "desktop fullscreen toggle failed")
+	app.ui.fullscreen_requested.emit()
+	for _i in 5: await process_frame
+	_check(DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_WINDOWED, "desktop return to window failed")
 	app.start_new_game()
 	await process_frame
 	_check(app.session != null and app.session.world_id == "teach1", "cannot start the campus")

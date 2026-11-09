@@ -13,6 +13,17 @@ func _ready() -> void:
 
 func _smoke() -> void:
 	for _i in 5: await get_tree().process_frame
+	var display := DisplayServer.get_name().to_lower()
+	print("STARTUP DISPLAY: ", display)
+	for arg: String in OS.get_cmdline_user_args():
+		if arg.begins_with("--expect-display=") and display != arg.trim_prefix("--expect-display="):
+			printerr("STARTUP FAILURE: unexpected display driver")
+			get_tree().quit(1)
+			return
+	if "--expect-windowed" in OS.get_cmdline_user_args() and DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_WINDOWED:
+		printerr("STARTUP FAILURE: fresh desktop profile must be windowed")
+		get_tree().quit(1)
+		return
 	# Exercise the same path as the window's close button, including audio shutdown.
 	get_window().close_requested.emit()
 

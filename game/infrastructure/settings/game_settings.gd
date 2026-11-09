@@ -7,13 +7,14 @@ extends RefCounted
 ## vol 0–100 (default 70) · amb 1/0 ambient layers · captions 0 auto / 1 on / 2 off (default on) ·
 ## sub 0/1/2 caption size · distortion 0 off / 1 reduced / 2 full · reduce_flash 1/0 · bright 50–150 ·
 ## grain 1/0 · mouse, touch 25–250 look sensitivity % · text 85–150 % · touch_size 85–125 % ·
-## quality 0–4 (流畅、均衡、精细、超精细、真实) · auto_land rotates between landscape sides only · full_screen 1/0 (default on).
+## quality 0–4 (流畅、均衡、精细、超精细、真实) · auto_land rotates between landscape sides only.
+## Desktop defaults to windowed; Android always uses immersive fullscreen.
 ## The Web "graphics mode" (WebGL / WebGPU) is replaced by Godot's renderer. Touch layout is
 ## stored separately from numeric settings and from gameplay saves.
 
 const VERSION := 1
 const DEFAULTS := {"vol": 70, "amb": 1, "captions": 1, "sub": 1, "distortion": 2, "reduce_flash": 0, "bright": 100, "grain": 1,
-	"mouse": 100, "touch": 100, "text": 100, "touch_size": 100, "quality": 2, "auto_land": 1, "full_screen": 1, "shake": 1}
+	"mouse": 100, "touch": 100, "text": 100, "touch_size": 100, "quality": 2, "auto_land": 1, "full_screen": 0, "shake": 1}
 const LIMITS := {"vol": [0, 100], "bright": [50, 150], "mouse": [25, 250], "touch": [25, 250], "text": [85, 150], "touch_size": [85, 125]}
 const CHOICES := {"amb": 2, "captions": 3, "sub": 3, "distortion": 3, "reduce_flash": 2, "grain": 2, "quality": 5, "auto_land": 2, "full_screen": 2, "shake": 2}
 const QUALITY_LABELS := ["流畅", "均衡", "精细", "超精细", "真实"]
@@ -26,14 +27,25 @@ const QUALITY_SHADOW := [false, false, true, true, true]
 const SUB_MULT := [0.6, 1.0, 1.6]
 
 var path: String
+var platform: String
 var values: Dictionary = DEFAULTS.duplicate()
 var touch_layout: Dictionary = {}
 var wuda_armed := false  # local menu unlock, not a visible setting or a chosen talent
 var rules_armed := false # bundled DLC selection applies to subsequent new runs only
 
 
-func _init(file: String = "user://settings.json") -> void:
+func _init(file: String = "user://settings.json", platform_name: String = OS.get_name()) -> void:
 	path = file
+	platform = platform_name
+	_enforce_platform()
+
+
+static func can_toggle_fullscreen(platform_name: String = OS.get_name()) -> bool:
+	return platform_name != "Android"
+
+
+func _enforce_platform() -> void:
+	if not can_toggle_fullscreen(platform): values["full_screen"] = 1
 
 
 ## Clamp or default every entry; unknown keys are dropped.
@@ -59,11 +71,13 @@ func load_file(touch_device: bool = false) -> bool:
 		values = DEFAULTS.duplicate()
 		if touch_device:
 			values["quality"] = 0
+		_enforce_platform()
 		return false
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
 	wuda_armed = parsed is Dictionary and parsed.get("wuda_armed") is bool and parsed["wuda_armed"]
 	rules_armed = parsed is Dictionary and parsed.get("rules_armed") is bool and parsed["rules_armed"]
 	values = normalize(parsed.get("values", {}) if parsed is Dictionary else {})
+	_enforce_platform()
 	touch_layout = TouchLayout.normalize(parsed.get("touch_layout", {}) if parsed is Dictionary else {})
 	return parsed is Dictionary
 
@@ -79,6 +93,7 @@ func save_file() -> bool:
 
 
 func get_int(key: String) -> int:
+	if key == "full_screen" and not can_toggle_fullscreen(platform): return 1
 	return int(values.get(key, DEFAULTS.get(key, 0)))
 
 
@@ -88,6 +103,7 @@ func set_value(key: String, value: float) -> int:
 		return 0
 	var next := normalize({key: value})
 	values[key] = next[key]
+	_enforce_platform()
 	return int(values[key])
 
 

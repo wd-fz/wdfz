@@ -64,15 +64,49 @@ func test_menus() -> void:
 
 func test_launch_defaults() -> void:
 	check(ProjectSettings.get_setting("display/window/handheld/orientation") == DisplayServer.SCREEN_SENSOR_LANDSCAPE, "Android export starts in landscape before the scene runs")
-	check(ProjectSettings.get_setting("display/window/size/mode") == DisplayServer.WINDOW_MODE_FULLSCREEN, "the launch window defaults to fullscreen")
+	check(ProjectSettings.get_setting("display/window/size/mode") == DisplayServer.WINDOW_MODE_WINDOWED, "desktop launch defaults to windowed")
+	check(ProjectSettings.get_setting("display/window/size/mode.android") == DisplayServer.WINDOW_MODE_FULLSCREEN, "Android launch is fullscreen before scene initialization")
+	check(ProjectSettings.get_setting("display/display_server/driver.linuxbsd") == "wayland", "Linux prefers native Wayland")
 	var settings := GameSettings.new(_test_path.get_base_dir()+"/launch-settings.json")
 	settings.load_file()
-	check(settings.get_int("full_screen") == 1, "fresh profiles default to fullscreen")
-	settings.set_value("full_screen",0)
+	check(settings.get_int("full_screen") == 0, "fresh desktop profiles default to windowed")
+	settings.set_value("full_screen",1)
 	settings.save_file()
 	var restored := GameSettings.new(settings.path)
 	restored.load_file()
-	check(restored.get_int("full_screen") == 0, "an explicit saved windowed preference is retained")
+	check(restored.get_int("full_screen") == 1, "an explicit saved desktop fullscreen preference is retained")
+	settings.set_value("full_screen",0)
+	settings.save_file()
+	var android := GameSettings.new(settings.path,"Android")
+	android.load_file(true)
+	check(android.get_int("full_screen") == 1 and android.values.full_screen == 1, "Android ignores a saved windowed preference")
+	check(android.set_value("full_screen",0) == 1, "Android rejects fullscreen-off requests, including launch flags")
+	android.save_file()
+	android.load_file(true)
+	check(android.get_int("full_screen") == 1, "Android persists its fullscreen policy")
+	var fresh := GameSettings.new(settings.path+"-fresh","Android")
+	fresh.load_file(true)
+	check(fresh.get_int("full_screen") == 1, "fresh Android profiles are fullscreen")
+	check(not GameSettings.can_toggle_fullscreen("Android") and GameSettings.can_toggle_fullscreen("Windows") and GameSettings.can_toggle_fullscreen("Linux"), "only Android locks fullscreen; touch emulation does not change desktop policy")
+
+
+func test_android_fullscreen_ui() -> void:
+	var ui: GameUI = preload("res://game/presentation/ui/game_ui.tscn").instantiate()
+	ui.fullscreen_toggle_allowed = false
+	root.add_child(ui)
+	for mode: String in ["menu","pause"]:
+		ui.set_mode(mode)
+		ui.set_fullscreen(true)
+		await _frames(2)
+		var screen := ui.menu_screen if mode == "menu" else ui.pause_screen
+		var button := screen.find_child("Fullscreen*",true,false) as Button
+		check(not button.is_visible_in_tree() and button.disabled, "Android %s hides and disables fullscreen action" % mode)
+		ui.show_settings(GameSettings.new("user://unused","Android").values)
+		check(not ui.settings_panel.controls.has("full_screen") and ui.settings_panel.find_child("O_full_screen",true,false) == null, "Android settings contain no fullscreen switch")
+		check(ui.settings_panel.controls.has("quality") and ui.settings_panel.controls.has("auto_land"), "Android keeps quality and landscape controls")
+		ui.settings_panel.dismiss()
+	ui.queue_free()
+	await _frames(3)
 
 
 func test_devices() -> void:

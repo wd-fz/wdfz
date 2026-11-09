@@ -56,6 +56,7 @@ signal ending_wake_requested
 @onready var look_pad: TouchLook = %LookPad
 
 var _mode := "menu"
+var fullscreen_toggle_allowed := GameSettings.can_toggle_fullscreen()
 var choice_panel: PanelContainer
 var lift_close_button: Button
 var _choice_box: VBoxContainer
@@ -157,12 +158,16 @@ func _ready() -> void:
 	extra_row.add_child(gear)
 	var full := Button.new()
 	full.name = "FullscreenMenu"
+	full.visible = fullscreen_toggle_allowed
+	full.disabled = not fullscreen_toggle_allowed
 	full.text = "全屏"
 	full.custom_minimum_size = Vector2(0, 48)
 	full.pressed.connect(func() -> void: fullscreen_requested.emit())
 	extra_row.add_child(full)
 	var full2 := Button.new()
 	full2.name = "FullscreenPause"
+	full2.visible = fullscreen_toggle_allowed
+	full2.disabled = not fullscreen_toggle_allowed
 	full2.text = "全屏"
 	full2.custom_minimum_size = Vector2(0, 48)
 	full2.pressed.connect(func() -> void: fullscreen_requested.emit())
@@ -1160,6 +1165,7 @@ var settings_panel: GameSettingsPanel
 func show_settings(values: Dictionary) -> void:
 	if settings_panel == null:
 		settings_panel = GameSettingsPanel.new()
+		settings_panel.fullscreen_toggle_allowed = fullscreen_toggle_allowed
 		settings_panel.hide()
 		$Root.add_child(settings_panel)
 		settings_panel.setting_changed.connect(func(key: String, value: int) -> void: setting_changed.emit(key,value))

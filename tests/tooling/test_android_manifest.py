@@ -1,9 +1,10 @@
+import struct
 import sys
 from pathlib import Path
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
-from export_android import verify_launcher_orientation, verify_manifest, verify_vulkan_manifest
+from export_android import verify_launcher_orientation, verify_manifest, verify_vulkan_manifest, verify_fullscreen_launch
 
 
 def activity(orientation, launcher=True):
@@ -61,9 +62,9 @@ class AndroidManifestTests(unittest.TestCase):
                 verify_launcher_orientation(bad)
 
     def test_public_release_must_not_be_debuggable(self):
-        manifest = "package: name='org.wdfz.godot' versionCode='1' versionName='0.1.0'\nsdkVersion:'24'\ntargetSdkVersion:'36'\nnative-code: 'arm64-v8a'\n"
+        manifest = "package: name='org.wdfz.godot' versionCode='2' versionName='0.2.0'\nsdkVersion:'24'\ntargetSdkVersion:'36'\nnative-code: 'arm64-v8a'\n"
         verify_manifest(manifest,True)
-        for bad in [manifest+"application-debuggable", manifest.replace("0.1.0","0.1-debug"), manifest.replace("org.wdfz.godot'","org.wdfz.godot.debug'"), manifest.replace("arm64-v8a","x86")]:
+        for bad in [manifest+"application-debuggable", manifest.replace("0.2.0","0.1-debug"), manifest.replace("org.wdfz.godot'","org.wdfz.godot.debug'"), manifest.replace("arm64-v8a","x86")]:
             with self.subTest(bad=bad), self.assertRaises(RuntimeError):
                 verify_manifest(bad,True)
 
@@ -87,3 +88,18 @@ class AndroidManifestTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FullscreenLaunchTests(unittest.TestCase):
+    @staticmethod
+    def arguments(*values):
+        return struct.pack('<I', len(values)) + b''.join(struct.pack('<I', len(v.encode())) + v.encode() for v in values)
+
+    def test_fullscreen_export(self):
+        self.assertTrue(verify_fullscreen_launch(self.arguments('--fullscreen', '--xr-mode', 'off')))
+
+    def test_windowed_missing_or_malformed_launch_arguments(self):
+        for raw in [self.arguments('--fullscreen', '--windowed'), self.arguments('--xr-mode', 'off'),
+                    b'', self.arguments('--fullscreen')[:-1], self.arguments('--fullscreen') + b'trailing']:
+            with self.subTest(raw=raw):
+                with self.assertRaises(RuntimeError): verify_fullscreen_launch(raw)

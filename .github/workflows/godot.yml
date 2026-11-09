@@ -82,8 +82,8 @@ jobs:
         with:
           templates: 'true'
       - uses: ./.github/actions/setup-vulkan
-      - name: Export Linux and Windows; smoke-test Linux package with Vulkan
-        run: xvfb-run -a python tools/export.py
+      - name: Export desktop; verify Vulkan on native Wayland and X11
+        run: xvfb-run -a python tools/ci/with_wayland.py python tools/export.py
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-builds-${{ github.sha }}
@@ -95,5 +95,7 @@ jobs:
         if: always()
         with:
           name: reports-export
-          path: build/reports/export/
+          path: |
+            build/reports/export/
+            build/reports/wayland/
           retention-days: 14
