@@ -4,10 +4,15 @@ config_version=5
 [application]
 config/name="武大附中 · 里世界 — Godot 移植版"
 config/description="探索校园、遵守规则，寻找里世界的出口。"
-config/version="0.2.0"
+config/version="0.2.1"
 config/icon="res://assets/branding/icon.svg"
 run/main_scene="res://game/app/app.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
+
+[threading]
+; Keep shader compilation from being starved by Mobile pipeline jobs on small CPU pools.
+; Temporary mitigation for Godot #123060; validated with cold-cache archive regression.
+worker_pool/max_threads=8
 config/use_custom_user_dir=true
 config/custom_user_dir_name="wdfz-godot"
 

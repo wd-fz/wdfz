@@ -148,7 +148,9 @@ func apply_quality() -> void:
 	env.ssao_sharpness = 0.98
 	env.ssao_light_affect = 0.2       # occlusion also darkens lamp-lit corners, not only the ambient term
 	env.ssao_ao_channel_affect = 0.0
-	env.glow_enabled = Q_GLOW[q]
+	# Godot 4.6.3 Mobile can deadlock while compiling replay pipelines with glow
+	# (e.g. the moth death on Vulkan Lavapipe). Keep this post effect on Forward+.
+	env.glow_enabled = full and Q_GLOW[q]
 	env.glow_intensity = 0.55
 	env.glow_strength = 1.0
 	env.glow_bloom = 0.0

@@ -17,12 +17,12 @@ class PublicReleaseTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.folder = Path(self.temp.name)
-        self.apk = self.folder / "wdfz-0.2.0-android-arm64.apk"
+        self.apk = self.folder / "wdfz-0.2.1-android-arm64.apk"
         self.apk.write_bytes(b"synthetic checksum fixture")
         self.sha = "1" * 40
         digest = hashlib.sha256(self.apk.read_bytes()).hexdigest()
         self.info = {"passed": True, "debug": False, "working_tree_dirty": False, "revision": self.sha,
-                     "package": "org.wdfz.godot", "version": "0.2.0", "version_code": 2,
+                     "package": "org.wdfz.godot", "version": "0.2.1", "version_code": 3,
                      "abi": "arm64-v8a", "min_sdk": 24, "target_sdk": 36, "page_alignment": 16384,
                      "launch_orientation": "userLandscape", "file": self.apk.name,
                      "rendering_driver": "vulkan", "rendering_method": "mobile", "vulkan_required": True,

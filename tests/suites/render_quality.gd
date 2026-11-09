@@ -35,7 +35,7 @@ func test_lighting_tiers() -> void:
 	CampusLighting.mobile_renderer = true
 	CampusLighting.quality = 4
 	light.apply_quality()
-	check(not light.env.ssao_enabled and not light.env.volumetric_fog_enabled and light.env.glow_enabled, "the Mobile renderer skips SSAO and volumetric fog but keeps glow")
+	check(not light.env.ssao_enabled and not light.env.volumetric_fog_enabled and not light.env.glow_enabled, "Mobile disables unsupported effects and the glow replay deadlock trigger")
 	CampusLighting.quality = keep_q
 	CampusLighting.mobile_renderer = keep_m
 	cam.queue_free()
@@ -45,11 +45,18 @@ func test_lighting_tiers() -> void:
 	root.add_child(vp)
 	var r0 := RenderQuality.apply(vp, 0, false)
 	check(vp.scaling_3d_mode == Viewport.SCALING_3D_MODE_FSR and vp.positional_shadow_atlas_size == 0 and bool(r0["fsr"]), "流畅 upscales with FSR and has no lamp shadow atlas")
+	var mobile_low := RenderQuality.apply(vp, 0, true)
+	check(vp.scaling_3d_mode == Viewport.SCALING_3D_MODE_BILINEAR and not bool(mobile_low["fsr"]), "Mobile resets unsupported FSR to its supported bilinear scaler")
 	RenderQuality.apply(vp, 4, false)
 	check(vp.scaling_3d_mode == Viewport.SCALING_3D_MODE_BILINEAR and vp.positional_shadow_atlas_size == 4096 and vp.mesh_lod_threshold < 1.0, "真实 renders at full size with a large shadow atlas and fine LODs")
 	vp.msaa_3d = Viewport.MSAA_DISABLED
 	RenderQuality.apply(vp, 2, false)
 	check(vp.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA, "精细 smooths edges with FXAA where MSAA is off")
+	RenderQuality.apply(vp, 2, true)
+	check(vp.screen_space_aa == Viewport.SCREEN_SPACE_AA_DISABLED, "Mobile clears FXAA so archive replay can render without stalling")
+	vp.msaa_3d = Viewport.MSAA_4X
+	RenderQuality.apply(vp, 3, true)
+	check(vp.msaa_3d == Viewport.MSAA_4X and vp.screen_space_aa == Viewport.SCREEN_SPACE_AA_DISABLED, "Mobile keeps the higher tier's MSAA without enabling FXAA")
 	vp.queue_free()
 	CampusData.clear_caches()
 
@@ -61,6 +68,8 @@ func test_torch() -> void:
 	root.add_child(app)
 	await _frames(2)
 	app._setting_changed("quality", 2)
+	var expected_aa := Viewport.SCREEN_SPACE_AA_DISABLED if RenderingServer.get_current_rendering_method() == "mobile" else Viewport.SCREEN_SPACE_AA_FXAA
+	check(root.screen_space_aa == expected_aa, "app settings apply the antialiasing policy for the active renderer")
 	var torch := app.player.camera.get_node("Torch") as SpotLight3D
 	check(torch.shadow_enabled and torch.light_cull_mask == CampusLighting.WORLD_LIGHT_MASK and torch.position.x > 0.05, "the torch is held in the hand, casts shadows and leaves the hands to their own light")
 	app._setting_changed("quality", 0)

@@ -2,7 +2,7 @@
 
 后续开发在本仓库进行。[旧 Web 版仓库](https://github.com/wd-fz/wd-fz.github.io)已停止维护，仅作为移植参考。
 
-**正式版：** [v0.2.0 下载与说明](https://github.com/wd-fz/wdfz/releases/tag/v0.2.0)，提供 Android ARM64、Windows x86_64 与 Linux x86_64。三个平台统一使用 Vulkan；Android 正式签名，可覆盖升级 v0.1.0，独立于 Debug 包安装。
+**正式版：** [v0.2.1 下载与说明](https://github.com/wd-fz/wdfz/releases/tag/v0.2.1)，提供 Android ARM64、Windows x86_64 与 Linux x86_64。三个平台统一使用 Vulkan；Android 正式签名，可覆盖升级 v0.1.0／v0.2.0，独立于 Debug 包安装。
 
 **Android 启动即横屏并强制全屏；Windows / Linux 默认窗口化；竖屏不受维护。** 桌面与移动端都以横屏游玩为目标，优先适配常见横屏比例下的视野、界面和触屏操作。竖屏不作为后续迁移、回归或发布验收目标；早期竖屏截图与验证记录仅保留为历史证据。
 
@@ -30,7 +30,7 @@ godot --path .
 
 键鼠：WASD／方向键移动、鼠标环视、Shift 奔跑、E 交互、Esc 暂停；除暂停固定为 Esc 外，键盘按键都可在「设置 → 键位」改成两个自选键位。失去鼠标捕获后点击场景重新捕获。触屏：左侧摇杆移动、右侧上方滑动环视、右下角交互与奔跑；「设置 → 操作 → 调整触屏布局」可逐个拖动、缩放每个控件并调整透明度。主菜单可以手动启用控件。切出应用会暂停，切回来后主动继续。
 
-v0.2.0 起统一使用 **Vulkan**：Linux／Windows 使用 **Forward+**，Android 使用 **Mobile**；关闭 OpenGL 与 D3D12 自动回退。需要支持相应 Godot Vulkan 渲染路径的设备和驱动，Android 7.0+ 本身不保证显卡支持。五档画质控制分辨率（低两档用 FSR 放大）、模型、太阳与近处灯光的阴影、环境光遮蔽、辉光、体积雾与抗锯齿。配置、验证命令与设备要求见[渲染与 Vulkan 验证](docs/渲染与Vulkan验证.md)。已发布的 v0.1.0 是迁移前的版本，其附件不随 main 更新。
+v0.2.0 起统一使用 **Vulkan**：Linux／Windows 使用 **Forward+**，Android 使用 **Mobile**；关闭 OpenGL 与 D3D12 自动回退。需要支持相应 Godot Vulkan 渲染路径的设备和驱动，Android 7.0+ 本身不保证显卡支持。五档画质控制分辨率（桌面低两档用 FSR 放大，Mobile 使用双线性放大）、模型、太阳与近处灯光的阴影、环境光遮蔽、辉光、体积雾与抗锯齿。配置、验证命令与设备要求见[渲染与 Vulkan 验证](docs/渲染与Vulkan验证.md)。已发布的 v0.1.0 是迁移前的版本，其附件不随 main 更新。
 
 界面使用系统字体回退；Linux 无中文字体时安装 Noto Sans CJK，Android 使用系统中文字体。本框架没有联网、账号或在线资源依赖。
 
