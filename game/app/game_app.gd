@@ -1812,7 +1812,7 @@ func _finish_death() -> void:
 		return
 	_death_phase = "card"
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	ui.show_death_card(fate.death_msg, fate.epitaph(), fate.cause(), StoryModule.hints(_read_death_log()), achievements().run_new_labels() if achievements() != null else PackedStringArray(), _death_score_line())
+	ui.show_death_card(fate.death_msg, fate.epitaph(), fate.cause(), StoryModule.hints(_read_death_log()), achievements().run_new_labels() if achievements() != null else PackedStringArray(), _death_score_line(), fate.death_source)
 
 
 ## Player state the patroller reads (old S / HIDE / Inspection state).
@@ -4754,7 +4754,7 @@ func _reach_ending(id: String) -> void:
 		if session != ending_session:
 			return
 		ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta, achievements().run_new_labels() if achievements() != null else PackedStringArray(),
-			"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""))
+			"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""), id)
 		ui.set_ending_wake(fake)
 	var world := _campus_world()
 	if (id == "dismissal" or id == "cyber") and session != null and session.world_id != "out" and DisplayServer.get_name() != "headless":

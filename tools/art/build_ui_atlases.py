@@ -25,8 +25,10 @@ SHEETS = [
 
 
 def main():
-    manifest = {"items": {}, "talents": {}, "phone": {}}
-    for sheet, group, columns, rows, ids in SHEETS:
+    manifest = {}
+    expansion = json.loads((ART / "expansion_sheets.json").read_text(encoding="utf-8"))
+    for sheet, group, columns, rows, ids in SHEETS + expansion:
+        entries = manifest.setdefault(group, {})
         png = ART / "atlases" / f"{sheet}.png"
         header = png.read_bytes()[:24]
         if header[:8] != b"\x89PNG\r\n\x1a\n" or len(ids) != columns * rows:
@@ -37,7 +39,10 @@ def main():
         for index, name in enumerate(ids):
             x = (index % columns) * width / columns
             y = (index // columns) * height / rows
-            resource = folder / f"{name}.tres"
+            filename = name.replace(":", "_").replace(".", "_")
+            resource = folder / f"{filename}.tres"
+            if name in entries or "res://" + resource.relative_to(ROOT).as_posix() in entries.values():
+                raise ValueError(f"Duplicate art ID or filename: {group}/{name}")
             texture_path = "res://" + png.relative_to(ROOT).as_posix()
             resource.write_text(
                 '[gd_resource type="AtlasTexture" load_steps=2 format=3]\n\n'
@@ -46,12 +51,12 @@ def main():
                 f'region = Rect2({x:g}, {y:g}, {width / columns:g}, {height / rows:g})\n'
                 'filter_clip = true\n', encoding="utf-8",
             )
-            manifest[group][name] = "res://" + resource.relative_to(ROOT).as_posix()
+            entries[name] = "res://" + resource.relative_to(ROOT).as_posix()
     known_items = set(json.loads((ROOT / "assets/campus/layout/campus.json").read_text())["items"])
     if known_items != set(manifest["items"]):
         raise ValueError("Art IDs must cover the complete item catalog")
     (ART / "catalog.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"Art resources: {len(manifest['items'])} items, {len(manifest['talents']) - 1} talents + random, 7 phone apps + battery")
+    print("Art resources: " + ", ".join(f"{group}: {len(entries)}" for group, entries in manifest.items()))
 
 
 if __name__ == "__main__":

@@ -87,6 +87,7 @@ func _ready() -> void:
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", 16)
 	shell.add_child(outer)
+	UIArt.decorate(shell)
 	var heading := HBoxContainer.new()
 	outer.add_child(heading)
 	var title := _label("设置", 28, INK)
@@ -123,6 +124,7 @@ func _ready() -> void:
 	for page: Array in PAGES:
 		var id := String(page[0])
 		var nav := _button(id, "Page_" + id)
+		UIArt.button(nav, UIArt.nav(String({"画面": "picture", "声音": "sound", "操作": "controls", "键位": "keyboard", "舒适": "comfort", "数据": "data"}[id])))
 		nav.toggle_mode = true
 		nav.button_group = nav_group
 		nav.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -234,6 +236,8 @@ func _add_setting(parent: Control, row: Array) -> void:
 			var value := int(opt[1])
 			var button := _button(opt[0], "O_%s_%d" % [key,value])
 			button.custom_minimum_size.x = 76
+			if key == "quality":
+				UIArt.button(button, UIArt.surface(["quality_low", "quality_balanced", "quality_detail", "quality_ultra", "quality_real"][value]), 32)
 			button.toggle_mode = true
 			button.button_group = group
 			button.pressed.connect(func() -> void: _changed(key,value))

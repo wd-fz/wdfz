@@ -270,9 +270,15 @@ func _filter(key: String) -> void:
 	var query:=String(entry.search.text).strip_edges().to_lower()
 	for pair: Array in entry.choices:
 		if query!="" and not (String(pair[0])+" "+String(pair[1])).to_lower().contains(query): continue
-		option.add_item(String(pair[1])+" · "+String(pair[0]))
+		var art: Texture2D
+		if key == "DevItem": art = UIArt.item(String(pair[0]))
+		elif key == "DevRoom": art = UIArt.landmark(String(pair[0]))
+		elif key == "DevAnomaly": art = UIArt.memory("an:" + String(pair[0]))
+		option.add_icon_item(art, String(pair[1])+" · "+String(pair[0]))
+		option.get_popup().set_item_icon_max_width(option.item_count - 1, 28)
 		option.set_item_metadata(option.item_count-1,String(pair[0]))
 		if String(pair[0])==old: option.select(option.item_count-1)
+	UIArt.button(option, option.icon, 24)
 	option.disabled=option.item_count==0
 	if option.item_count==0: option.text="没有匹配项"
 
@@ -297,6 +303,7 @@ func _make_pages(parent: VBoxContainer) -> VBoxContainer:
 		parent.add_child(page)
 		_pages[title]=page
 		var tab:=_button(tabs,title,"DevTab"+title,select_page.bind(title))
+		UIArt.button(tab, UIArt.nav(String({"状态":"inspect", "场景":"map", "物品":"archive", "事件":"warning", "工具":"debug"}[title])), 18)
 		tab.toggle_mode=true
 		_tabs[title]=tab
 	var status: VBoxContainer=_pages["状态"]

@@ -390,11 +390,13 @@ func _style_hud() -> void:
 	runtime.add_sibling(spacer)
 	_status_line.theme_type_variation = "HudCard"
 	_status_style = BASE_THEME.get_stylebox("normal", "HudCard").duplicate() as StyleBoxFlat
+	_status_style.content_margin_left = 48
 	_status_line.add_theme_stylebox_override("normal", _status_style)
 	_status_line.position = Vector2(20, 72)
 	_status_line.add_theme_font_size_override("font_size", 14)
 	_hot_label.theme_type_variation = "HudCard"
 	var hot_style := _status_style.duplicate() as StyleBoxFlat
+	hot_style.content_margin_left = BASE_THEME.get_stylebox("normal", "HudCard").content_margin_left
 	hot_style.border_color = Color(0.92, 0.9, 0.85, 0.25)
 	_hot_label.add_theme_stylebox_override("normal", hot_style)
 	_hot_label.self_modulate.a = 0.0 if _hot_label.text.is_empty() else 1.0
@@ -435,6 +437,11 @@ func _build_status() -> void:
 	_status_line.add_theme_font_size_override("font_size", 15)
 	_status_line.visible = false
 	hud.add_child(_status_line)
+	_status_art = UIArt.view(UIArt.nav("notes"), Vector2.ZERO)
+	_status_art.name = "StatusIllustration"
+	_status_art.position = Vector2(10, 10)
+	_status_art.size = Vector2(28, 28)
+	_status_line.add_child(_status_art)
 	# Sound captions sit right under the status card (sound-captions.js place()).
 	_captions = Label.new()
 	_captions.name = "SoundCaptions"
@@ -461,6 +468,7 @@ func show_status(place: String, period: String, state: String, clock: String) ->
 	_clock_text = clock
 	_status_line.visible = true
 	_status_line.text = "%s\n%s" % [period, place]
+	_status_art.texture = UIArt.nav("inspect" if period.contains("检查") else ("exam" if state == "exam" else ("warning" if state == "warn" else "notes")))
 	_status_line.modulate = Color("#f0d6a0") if state == "warn" else (Color("#f0c4bc") if state == "exam" else Color("#ddd5c4"))
 	if _status_style != null:
 		_status_style.border_color = STATE_EDGE.get(state, STATE_EDGE[""])
@@ -566,6 +574,7 @@ func show_bag(entries: Array) -> void:
 		empty.text = "背包是空的。\n探索时找到的物品会收在这里。"
 		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		empty.add_theme_color_override("font_color",UISkin.MUTED)
+		_bag_list.add_child(UIArt.view(UIArt.surface("empty_bag"), Vector2(0, 112)))
 		_bag_list.add_child(empty)
 	for e: Dictionary in entries:
 		var row := UISkin.card(_bag_list)
@@ -647,6 +656,7 @@ func show_hot(text: String, ids: Array = []) -> void:
 var _death_fade: ColorRect
 var death_panel: PanelContainer
 var _death_text: Label
+var _death_art: TextureRect
 
 
 func _build_death() -> void:
@@ -672,7 +682,13 @@ func _build_death() -> void:
 	_death_text = Label.new()
 	_death_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_death_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_death_scroll.add_child(_death_text)
+	var death_content := VBoxContainer.new()
+	death_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_death_art = UIArt.view(null, Vector2(0, 148))
+	_death_art.name = "DeathIllustration"
+	death_content.add_child(_death_art)
+	death_content.add_child(_death_text)
+	_death_scroll.add_child(death_content)
 	box.add_child(_death_scroll)
 	var back := Button.new()
 	back.name = "DeathMenu"
@@ -681,6 +697,7 @@ func _build_death() -> void:
 	back.pressed.connect(func() -> void: death_menu_requested.emit())
 	box.add_child(back)
 	death_panel.add_child(box)
+	UIArt.decorate(death_panel)
 	$Root.add_child(death_panel)
 
 
@@ -750,7 +767,9 @@ func death_scene_style() -> int:
 	return int((_death_fade.material as ShaderMaterial).get_shader_parameter("style"))
 
 
-func show_death_card(message: String, epitaph: String, cause: String, hints: PackedStringArray, achieved: PackedStringArray = PackedStringArray(), score_line: String = "") -> void:
+func show_death_card(message: String, epitaph: String, cause: String, hints: PackedStringArray, achieved: PackedStringArray = PackedStringArray(), score_line: String = "", source: String = "") -> void:
+	_death_art.texture = UIArt.memory(source)
+	_death_art.visible = _death_art.texture != null
 	var lines := [message]
 	if not epitaph.is_empty():
 		lines.append("「%s」" % epitaph)
@@ -822,7 +841,7 @@ func show_achievements(entries: Array, points: int, tab: String = "") -> void:
 		if e["unlocked"]:
 			got += 1
 		if _ach_tab == "全部" or e["tier"] == _ach_tab:
-			rows.append({"text": text, "on": e["unlocked"], "memo": e["memo"]})
+			rows.append({"id": e.get("id", ""), "text": text, "on": e["unlocked"], "memo": e["memo"]})
 	show_list("成就  %d / %d　·　积分 %d" % [got, entries.size(), points], rows)
 	if _ach_tabs == null:
 		_ach_tabs = HFlowContainer.new()
@@ -884,6 +903,7 @@ func show_list(head: String, rows: Array) -> void:
 		close.pressed.connect(func() -> void: ach_panel.visible = false)
 		box.add_child(close)
 		ach_panel.add_child(box)
+		UIArt.decorate(ach_panel)
 		$Root.add_child(ach_panel)
 	if is_instance_valid(_ach_tabs): _ach_tabs.hide()
 	if is_instance_valid(_list_extra):
@@ -895,14 +915,21 @@ func show_list(head: String, rows: Array) -> void:
 		child.queue_free()
 	for r: Dictionary in rows:
 		var row := UISkin.card(_ach_list)
+		var details := HBoxContainer.new()
+		details.add_theme_constant_override("separation", 12)
+		var art := UIArt.view(UIArt.entry(String(r.get("id", "")), bool(r["on"])), Vector2(76, 76))
+		art.name = "EntryArt_" + String(r.get("id", "legacy")).replace(":", "_").replace(".", "_")
+		details.add_child(art)
 		var line := Label.new()
+		line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		var text := String(r["text"])
 		if r["on"] and not String(r["memo"]).is_empty():
 			text += "\n    " + String(r["memo"])
 		line.text = ("✓ " if r["on"] else "· ") + text
 		line.modulate = Color(1, 1, 1, 1) if r["on"] else Color(1, 1, 1, 0.55)
-		row.add_child(line)
+		details.add_child(line)
+		row.add_child(details)
 		var action: Callable = r.get("action",Callable())
 		if action.is_valid():
 			var replay := Button.new()
@@ -1367,6 +1394,10 @@ func _refit_touch() -> void:
 		c.position = rects[id].position
 		c.size = rects[id].size
 		c.modulate.a = alpha
+	UIArt.compact_button(_touch_buttons["manual"], UIArt.nav("notes"))
+	UIArt.compact_button(_touch_buttons["torch"], UIArt.item("torch"))
+	UIArt.compact_button(%TouchInteract, UIArt.nav(_prompt_art))
+	UIArt.compact_button(%TouchSprint, UIArt.nav("sprint"))
 	_hot_label.visible = not _touch_enabled
 	_hot_icons.visible = not _touch_enabled
 
@@ -1408,7 +1439,8 @@ var notes_panel: PanelContainer
 var _notes_box: VBoxContainer
 var _notes_search: LineEdit
 var _notes_scroll: ScrollContainer
-const NOTE_COLORS := {"事实": Color(0.78, 0.86, 0.95), "推测": Color(0.95, 0.85, 0.6), "验证": Color(0.65, 0.9, 0.7), "线索": Color(0.88, 0.75, 0.95)}
+const NOTE_COLORS := {"事实": Color(0.78, 0.86, 0.95), "推测": Color(0.95, 0.85, 0.6), "验证": Color(0.65, 0.9, 0.7), "线索": Color(0.88, 0.75, 0.95), "规则": Color(0.87, 0.81, 0.66)}
+const NOTE_ART := {"事实": "fact", "推测": "guess", "验证": "verify", "线索": "clue", "规则": "rules"}
 
 
 ## data: {goal, focus, routes [[id, name]], recent [rows], groups {kind: rows}, progress [[name, text, done]], found, query}
@@ -1448,6 +1480,7 @@ func show_notes(data: Dictionary) -> void:
 		close.pressed.connect(func() -> void: notes_panel.visible = false)
 		outer.add_child(close)
 		notes_panel.add_child(outer)
+		UIArt.decorate(notes_panel)
 		$Root.add_child(notes_panel)
 	for child in _notes_box.get_children():
 		_notes_box.remove_child(child)
@@ -1455,7 +1488,7 @@ func show_notes(data: Dictionary) -> void:
 	var query := String(data.get("query", ""))
 	if _notes_search.text != query:
 		_notes_search.text = query
-	_note_label("当前调查" + ("  ·  %s路线" % _route_name(data) if not String(data.get("focus", "")).is_empty() else ""), UISkin.ACCENT)
+	UIArt.heading(_notes_box, "当前调查" + ("  ·  %s路线" % _route_name(data) if not String(data.get("focus", "")).is_empty() else ""), UIArt.route_hint(String(data.get("focus", ""))), UISkin.ACCENT)
 	_note_label(String(data["goal"]), Color.WHITE)
 	var routes: Array = data["routes"]
 	if routes.size() > 1:
@@ -1466,6 +1499,7 @@ func show_notes(data: Dictionary) -> void:
 		for r: Array in routes:
 			var b := Button.new()
 			b.name = "Focus_" + String(r[0])
+			UIArt.button(b, UIArt.route_hint(String(r[0])))
 			b.text = String(r[1])
 			b.custom_minimum_size.y = 44
 			b.toggle_mode = true
@@ -1481,6 +1515,7 @@ func show_notes(data: Dictionary) -> void:
 		if not duty.is_empty():
 			_note_label("仍须到教室参加："+duty+"。许可到期不免除责任；系统取消的检查会顺延。",Color.WHITE)
 	if not query.is_empty():
+		if int(data["found"]) == 0: _notes_box.add_child(UIArt.view(UIArt.surface("search_none"), Vector2(0, 108)))
 		_note_label(("找到 %d 条" % int(data["found"])) if int(data["found"]) > 0 else "没有找到仍能回忆的对应记录。", Color(1, 1, 1, 0.7))
 	var recent: Array = data["recent"]
 	if not recent.is_empty():
@@ -1491,7 +1526,7 @@ func show_notes(data: Dictionary) -> void:
 		var rows: Array = (data["groups"] as Dictionary).get(kind, [])
 		if rows.is_empty():
 			continue
-		_note_label("%s  %d" % [kind, rows.size()], NOTE_COLORS[kind])
+		UIArt.heading(_notes_box, "%s  %d" % [kind, rows.size()], UIArt.surface(String(NOTE_ART[kind])), NOTE_COLORS[kind])
 		for e: Dictionary in rows:
 			var entry := UISkin.card(_notes_box)
 			_note_label("第 %d 天 · %s" % [int(e.get("day", 1)), e["source"]], UISkin.MUTED,entry)
@@ -1553,6 +1588,7 @@ func open_map(options: Array, selected: String, head: String, note: String) -> M
 		_map_select = OptionButton.new()
 		_map_select.name = "MapSelect"
 		_map_select.custom_minimum_size.y = 44
+		UIArt.button(_map_select, UIArt.nav("map"), 28)
 		_map_select.fit_to_longest_item = false
 		_map_select.clip_text = true
 		_map_select.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1578,10 +1614,12 @@ func open_map(options: Array, selected: String, head: String, note: String) -> M
 		_map_close_button.pressed.connect(func() -> void: map_panel.visible = false)
 		outer.add_child(_map_close_button)
 		map_panel.add_child(outer)
+		UIArt.decorate(map_panel)
 		$Root.add_child(map_panel)
 	_map_select.clear()
 	for o: Array in options:
-		_map_select.add_item(String(o[1]))
+		_map_select.add_icon_item(UIArt.landmark(String(o[0])), String(o[1]))
+		_map_select.get_popup().set_item_icon_max_width(_map_select.item_count - 1, 28)
 		_map_select.set_item_metadata(_map_select.item_count - 1, String(o[0]))
 		if o[0] == selected:
 			_map_select.select(_map_select.item_count - 1)
@@ -1654,7 +1692,8 @@ func show_terminal(history: String, status: String) -> void:
 		var head := Label.new()
 		head.text = "机房 · 模拟 Linux 终端　（世界仍在运行。留意脚步与灯光；Esc 退出）"
 		head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		box.add_child(head)
+		UIArt.heading(box, head.text, UIArt.surface("terminal"), UISkin.ACCENT)
+		head.free()
 		_term_status = Label.new()
 		_term_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_term_status.modulate = Color(0.6, 0.95, 0.7)
@@ -1694,6 +1733,7 @@ func show_terminal(history: String, status: String) -> void:
 			row.add_child(b)
 		box.add_child(row)
 		terminal_panel.add_child(box)
+		UIArt.decorate(terminal_panel)
 		$Root.add_child(terminal_panel)
 	_term_out.text = history
 	_term_status.text = status
@@ -1714,7 +1754,7 @@ func _fit_documents() -> void:
 	PanelLayout.fit(_import_panel,_import_scroll,620,380)
 	PanelLayout.fit(terminal_panel,_term_out,720,320)
 	if is_instance_valid(_death_text):
-		PanelLayout.fit(death_panel,_death_scroll,520,minf(380,_death_text.get_combined_minimum_size().y))
+		PanelLayout.fit(death_panel,_death_scroll,520,minf(440,_death_scroll.get_child(0).get_combined_minimum_size().y))
 
 
 func terminal_open() -> bool:
@@ -1725,6 +1765,7 @@ func terminal_open() -> bool:
 var ending_panel: PanelContainer
 var _ending_text: Label
 var _ending_scroll: ScrollContainer
+var _ending_art: TextureRect
 
 
 func set_wuda_armed(armed: bool, tell: bool = false) -> void:
@@ -1737,7 +1778,7 @@ func set_ending_wake(shown: bool) -> void:
 	if is_instance_valid(_ending_wake): _ending_wake.visible=shown
 
 
-func show_ending(title: String, tag: String, lines: Array, meta: String, achieved: PackedStringArray = PackedStringArray(), result_note: String = "") -> void:
+func show_ending(title: String, tag: String, lines: Array, meta: String, achieved: PackedStringArray = PackedStringArray(), result_note: String = "", ending_id: String = "") -> void:
 	if ending_panel == null:
 		ending_panel = PanelContainer.new()
 		ending_panel.name = "EndingPanel"
@@ -1751,6 +1792,9 @@ func show_ending(title: String, tag: String, lines: Array, meta: String, achieve
 		var box := VBoxContainer.new()
 		box.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		box.add_theme_constant_override("separation", 14)
+		_ending_art = UIArt.view(null, Vector2(0, 172))
+		_ending_art.name = "EndingIllustration"
+		box.add_child(_ending_art)
 		_ending_text = Label.new()
 		_ending_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_ending_text.custom_minimum_size = Vector2.ZERO
@@ -1777,6 +1821,8 @@ func show_ending(title: String, tag: String, lines: Array, meta: String, achieve
 		box.add_child(back)
 		_ending_scroll.add_child(box)
 		$Root.add_child(ending_panel)
+	_ending_art.texture = UIArt.memory("end:" + ending_id)
+	_ending_art.visible = _ending_art.texture != null
 	var head := "%s\n%s" % [tag, title] if not tag.is_empty() else title
 	_ending_text.text = "%s\n\n%s\n\n%s" % [head, "\n".join(PackedStringArray(lines)), meta]
 	if not achieved.is_empty():
@@ -2108,6 +2154,7 @@ func show_sprint_available(value: bool) -> void:
 
 func _update_sprint_label() -> void:
 	%TouchSprint.text = "奔跑：关" if not %TouchSprint.button_pressed else ("奔跑：开" if _sprint_available else "暂不能跑")
+	UIArt.compact_button(%TouchSprint, UIArt.nav("sprint"))
 
 
 func set_mode(mode: String) -> void:
@@ -2155,7 +2202,12 @@ func toast_text() -> String:
 	return %Toast.text
 
 
+var _prompt_art := "interact"
+
+
 func show_prompt(text: String) -> void:
+	_prompt_art = "stand" if text.contains("站起") or text.contains("起身") else ("sit" if text.contains("坐下") or text.contains("落座") else ("hiding" if text.contains("躲") else "interact"))
+	UIArt.compact_button(%TouchInteract, UIArt.nav(_prompt_art))
 	%Prompt.text = ("交互 · " if _touch_enabled else interact_key + " · ") + text if not text.is_empty() else ""
 	%Prompt.visible = not text.is_empty()
 	var cross := hud.get_node("Crosshair") as Label
@@ -2166,6 +2218,7 @@ func show_prompt(text: String) -> void:
 var _location := ""
 var _clock_text := ""
 var _status_line: Label
+var _status_art: TextureRect
 var _stamina: ProgressBar
 var _status_on := false
 var bag_panel: PanelContainer
