@@ -76,3 +76,158 @@ func test_torch() -> void:
 	check(not torch.shadow_enabled and CampusLighting.quality == 0, "流畅 turns the torch shadow off")
 	app.queue_free()
 	await _frames(2)
+
+
+func test_daylight_and_glow() -> void:
+	# Windows found from the room model, daylight through them by day, the lamp gain capped in the normal-coloured world.
+	var keep_q := CampusLighting.quality
+	var keep_m := CampusLighting.mobile_renderer
+	CampusLighting.mobile_renderer = false
+	CampusLighting.quality = 2
+	var model := (load(CampusData.scene_path("teach1")) as PackedScene).instantiate() as Node3D
+	root.add_child(model)
+	# As CampusWorld does: instanced pieces (the panes among them) become MultiMeshes.
+	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
+			CampusWorld._to_multimesh(mesh)
+	var light := CampusLighting.new()
+	root.add_child(light)
+	light.setup("teach1", CampusData.layout("teach1"), model, 0)
+	if DisplayServer.get_name() == "headless":
+		# The dummy renderer keeps no mesh data, so the panes cannot be read: there are simply no window lights.
+		check(light.windows.is_empty() and light.window_lights.is_empty(), "without mesh data (headless) no window lights are made")
+		light.update(0.0, 700.0, null)
+		CampusLighting.quality = keep_q
+		CampusLighting.mobile_renderer = keep_m
+		light.queue_free()
+		model.queue_free()
+		await _frames(1)
+		CampusData.clear_caches()
+		return
+	var north := 0
+	for w: Dictionary in light.windows:
+		north += 1 if (w["out"] as Vector3).is_equal_approx(Vector3(0, 0, -1)) else 0
+	check(light.windows.size() == 12 and north == 12 and light.window_lights.size() == 12, "teach1 has twelve outer windows, all on the north wall (found %d)" % light.windows.size())
+	var w0: Dictionary = light.windows[0]
+	var spot0 := light.window_lights[0]
+	check(absf(float(w0["h"]) - 1.45) < 0.05 and spot0.position.z > (w0["at"] as Vector3).z and (-spot0.global_basis.z).z > 0.5 and (-spot0.global_basis.z).y < -0.3 and spot0.light_projector != null,
+		"a window light sits just inside its pane, points into the room and down, and carries the window shape")
+	var cam := Camera3D.new()
+	root.add_child(cam)
+	cam.global_position = (w0["at"] as Vector3) + Vector3(0, 0, 2)
+	light.update(0.0, 700.0, cam)
+	light._pick_shadow_windows(cam)
+	var lit := 0
+	var shadowed := 0
+	for spot: SpotLight3D in light.window_lights:
+		lit += 1 if spot.visible and spot.light_energy > 1.0 else 0
+		shadowed += 1 if spot.shadow_enabled else 0
+	check(lit == 12 and shadowed == int(CampusLighting.Q_LAMP_SHADOWS[2]), "by day every window gives light and the nearest one casts shadows")
+	var day_amb := light.env.ambient_light_energy
+	light.update(0.0, 1380.0, cam)
+	check(not light.window_lights[0].visible, "no daylight at night")
+	light.update(0.0, 700.0, cam)
+	light.blackout = true
+	light.update(0.0, 700.0, cam)
+	check(not light.window_lights[0].visible, "nor in a blackout")
+	light.blackout = false
+	CampusLighting.quality = 0
+	light.apply_quality()
+	light.update(0.0, 700.0, cam)
+	check(not light.window_lights[0].visible and light.env.ambient_light_energy > day_amb and is_equal_approx(light.room_lights[0].position.y, float(light.room_lights[0].get_meta("rest_y"))),
+		"流畅 keeps the old flat light: no window light, full ambient, lamps where the old build put them")
+	CampusLighting.quality = 3
+	light.apply_quality()
+	light.world_normal = 0.0
+	light.update(0.0, 700.0, cam)
+	var dark_world := light.room_lights[0].light_energy
+	var terms_pt := float(light.terms["pt"])
+	light.world_normal = 1.0
+	light.update(0.0, 700.0, cam)
+	var gain_normal := light.room_lights[0].light_energy / (float(light.terms["pt"]) / terms_pt) / dark_world * float(CampusLighting.Q_LAMP_GAIN[3])
+	check(absf(gain_normal - CampusLighting.NORMAL_LAMP_GAIN) < 0.05 and is_equal_approx(light.room_lights[0].position.y, float(light.room_lights[0].get_meta("rest_y")) - CampusLighting.LAMP_DROP) and light.env.glow_hdr_threshold >= 1.0,
+		"in the normal-coloured world the lamp gain is capped (%.2f) and the light hangs clear of the ceiling" % gain_normal)
+	var previous_windows := light.window_lights.duplicate()
+	light.rebind_model(null)
+	check(light.windows.is_empty() and light.window_lights.is_empty() and previous_windows.all(func(spot: Variant) -> bool: return not is_instance_valid(spot)), "replacing a model removes its old window lights")
+	light.rebind_model(model)
+	light.update(0.0, 700.0, cam)
+	light._pick_shadow_windows(cam)
+	check(light.windows.size() == 12 and light.window_lights.size() == 12 and light.window_lights[0].visible, "rebinding a model rebuilds daylight from its actual panes")
+	light.world_normal = 0.0
+	CampusLighting.quality = keep_q
+	CampusLighting.mobile_renderer = keep_m
+	cam.queue_free()
+	light.queue_free()
+	model.queue_free()
+	await _frames(1)
+	CampusData.clear_caches()
+
+
+func test_scene_materials() -> void:
+	var wall := StandardMaterial3D.new()
+	wall.resource_name = "MeshPhongMaterial"
+	var metal := StandardMaterial3D.new()
+	metal.resource_name = "MeshPhongMaterial"
+	var glass := StandardMaterial3D.new()
+	glass.resource_name = "MeshPhongMaterial"
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var pbr := StandardMaterial3D.new()
+	pbr.resource_name = "MeshStandardMaterial"
+	pbr.metallic = 0.7
+	check(SceneMaterials.shininess_of(wall, 0.7) == 0 and SceneMaterials.shininess_of(metal, 0.6) == 40 and SceneMaterials.shininess_of(wall, 0.96) == 4 and SceneMaterials.shininess_of(pbr, 0.33) == -1,
+		"the old shininess is read back from the exported roughness (0.70 was shininess 0)")
+	check(is_equal_approx(SceneMaterials.physical_roughness(40), 1.0 - sqrt(40.0 / 90.0)) and SceneMaterials.physical_roughness(0) == 0.96 and SceneMaterials.physical_roughness(90) == 0.22, "the old build's physical roughness formula, clamped")
+	for q in 5:
+		check(is_equal_approx(float(SceneMaterials.response(wall, 0.7, q)["roughness"]), 0.96), "walls and ceilings are matte at quality %d" % q)
+	check(is_equal_approx(float(SceneMaterials.response(metal, 0.6, 0)["roughness"]), 0.6) and float(SceneMaterials.response(metal, 0.6, 1)["metallic"]) == 0.0, "流畅 and 均衡 keep the exported response of everything else")
+	var mr := SceneMaterials.response(metal, 0.6, 2)
+	check(absf(float(mr["roughness"]) - 0.333) < 0.01 and is_equal_approx(float(mr["metallic"]), SceneMaterials.MID_TIER_METALLIC), "from 精细 metal is smoother and slightly metallic")
+	check(is_equal_approx(float(SceneMaterials.response(glass, 0.4, 3)["roughness"]), 0.05) and absf(float(SceneMaterials.response(wall, 0.94, 2)["roughness"]) - 0.742) < 0.01, "glass is polished, floor tiles get their sheen")
+	var pr := SceneMaterials.response(pbr, 0.33, 4)
+	check(is_equal_approx(float(pr["roughness"]), 0.33) and is_equal_approx(float(pr["metallic"]), 0.7), "真实's own physical materials are left alone")
+	# On a real model: idempotent, and a later quality starts again from the file's values.
+	var model := (load("res://assets/campus/scenes/teach1.glb") as PackedScene).instantiate() as Node3D
+	var first := SceneMaterials.apply(model, 2)
+	var again := SceneMaterials.apply(model, 2)
+	var back := SceneMaterials.apply(model, 0)
+	var glossy_walls := 0
+	for mi: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		for i in mi.mesh.get_surface_count():
+			var m := mi.mesh.surface_get_material(i) as BaseMaterial3D
+			if m != null and String(m.resource_name).begins_with("MeshPhongMaterial") and is_equal_approx(m.roughness, 0.7):
+				glossy_walls += 1
+	check(first > 0 and again == 0 and back > 0 and glossy_walls == 0, "applying is idempotent, reversible by quality, and leaves no half-glossy wall (%d changed)" % first)
+	SceneMaterials.apply(model, CampusLighting.quality)
+	model.free()
+	# Preview models have independent material resources. A quality edit must reach
+	# neighbours through every connection, including a live stair shaft and gallery.
+	var world := CampusWorld.new()
+	var materials: Array[StandardMaterial3D] = []
+	for kind: String in ["Model", "link", "stair", "door", "shaft", "gallery"]:
+		var preview := Node3D.new()
+		preview.name = kind
+		var part := MeshInstance3D.new()
+		part.mesh = BoxMesh.new()
+		var material := StandardMaterial3D.new()
+		material.resource_name = "MeshPhongMaterial"
+		material.roughness = 0.6
+		part.mesh.surface_set_material(0, material)
+		materials.append(material)
+		preview.add_child(part)
+		world.add_child(preview)
+		match kind:
+			"link": world.link_previews.append(preview)
+			"stair": world.stair_previews.append(preview)
+			"door": world.door_previews.append(preview)
+			"shaft": world._shaft_levels[0] = preview
+			"gallery": world.gallery_campus = preview
+	var keep_quality := CampusLighting.quality
+	CampusLighting.quality = 2
+	world.apply_material_quality()
+	check(materials.all(func(material: StandardMaterial3D) -> bool: return is_equal_approx(material.roughness, SceneMaterials.physical_roughness(40))), "quality changes update room, links, stairs, doors, shafts and gallery materials")
+	CampusLighting.quality = 0
+	world.apply_material_quality()
+	check(materials.all(func(material: StandardMaterial3D) -> bool: return is_equal_approx(material.roughness, 0.6)), "all preview materials return to their original low-quality response")
+	CampusLighting.quality = keep_quality
+	world.free()

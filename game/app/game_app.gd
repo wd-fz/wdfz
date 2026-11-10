@@ -2342,6 +2342,8 @@ func _apply_settings() -> void:
 	if cw != null and cw.visual_tier != CampusData.tier:
 		cw.reload_models(player.position)
 		_sync_world()
+	if cw != null:
+		cw.apply_material_quality()
 	if cw != null and cw.lighting != null:
 		cw.lighting.apply_quality()
 	if DisplayServer.is_touchscreen_available():

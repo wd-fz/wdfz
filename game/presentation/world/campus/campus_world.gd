@@ -211,6 +211,7 @@ func _load_visual(id: String) -> Node3D:
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
 			_to_multimesh(mesh)
+	SceneMaterials.apply(model, CampusLighting.quality)
 	_register_preview_doors(model, id)
 	return model
 
@@ -345,13 +346,8 @@ func _build_link_preview() -> void:
 
 # ---- model ----
 
-## A quality change replaces only rendering nodes. Keep physics, interaction actors and all
-## rule modules alive: changing a setting must not end an anomaly or reset a room visit.
-func reload_models(player_position: Vector3) -> void:
-	if visual_tier == CampusData.tier:
-		return
-	var doors := _open_doors.duplicate()
-	var lift_amount := _lift_amount
+## All visible scene models, including the neighbours seen through stairs and doors.
+func _visual_models() -> Array[Node3D]:
 	var models: Array[Node3D] = []
 	models.append_array(link_previews)
 	models.append_array(stair_previews)
@@ -360,9 +356,23 @@ func reload_models(player_position: Vector3) -> void:
 		models.append(node)
 	models.append(gallery_campus)
 	models.append(get_node_or_null("Model"))
-	for model: Node3D in models:
-		if is_instance_valid(model):
-			model.free()
+	return models.filter(func(model: Node3D) -> bool: return is_instance_valid(model))
+
+
+## Update surfaces even when the selected quality keeps the current model tier.
+func apply_material_quality() -> void:
+	for model: Node3D in _visual_models():
+		SceneMaterials.apply(model, CampusLighting.quality)
+
+
+## Replace rendering nodes while physics, interactions and rule modules remain alive.
+func reload_models(player_position: Vector3) -> void:
+	if visual_tier == CampusData.tier:
+		return
+	var doors := _open_doors.duplicate()
+	var lift_amount := _lift_amount
+	for model: Node3D in _visual_models():
+		model.free()
 	link_previews.clear()
 	stair_previews.clear()
 	door_previews.clear()
@@ -412,6 +422,7 @@ func _build_model() -> void:
 			_door_leaves[key][String(extras["state"])] = holder
 	for key: String in _door_leaves:
 		set_door_open(key, false)
+	SceneMaterials.apply(model, CampusLighting.quality)
 	visual_ground.set_model(model)
 
 

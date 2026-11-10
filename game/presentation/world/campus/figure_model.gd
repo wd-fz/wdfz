@@ -15,14 +15,17 @@ static func available(kind: String) -> bool:
 
 ## A figure of the kind, tinted; scale multiplies the old size (1 = as built). unlit = the dark, unlit
 ## silhouette used by the anomalies. Returns an empty Node3D when the model is missing.
-static func make(kind: String, color: Color, unlit: bool = false, scale: float = 1.0, emission: Color = Color.BLACK, fog_enabled: bool = true) -> Node3D:
+static func make(kind: String, color: Color, unlit: bool = false, scale: float = 1.0, emission: Color = Color.BLACK, fog_enabled: bool = true, flat_shadow: bool = false) -> Node3D:
 	var root := Node3D.new()
 	root.name = "Figure_" + kind
 	if not available(kind):
 		return root
-	if not _cache.has(kind):
-		_cache[kind] = load("res://assets/campus/figures/%s.glb" % kind)
-	var inst := (_cache[kind] as PackedScene).instantiate() as Node3D
+	# A projected window silhouette is a fixed shape, not a standing 3D character.
+	# Keep its original outline while ordinary and uncanny people use the new mesh.
+	var key := "window_shadow" if flat_shadow and kind == "person" else kind
+	if not _cache.has(key):
+		_cache[key] = load("res://assets/campus/figures/%s.glb" % key)
+	var inst := (_cache[key] as PackedScene).instantiate() as Node3D
 	inst.rotation.y = PI
 	root.add_child(inst)
 	var mat := StandardMaterial3D.new()

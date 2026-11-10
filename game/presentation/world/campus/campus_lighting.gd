@@ -55,9 +55,24 @@ const Q_INDOOR_AMB := [1.0, 1.0, 0.8, 0.78, 0.76]
 const Q_CAM_GAIN := [1.0, 1.0, 0.75, 0.72, 0.7]
 const Q_SUN_GAIN := [1.0, 1.0, 1.6, 1.7, 1.8]
 const Q_OUTDOOR_AMB := [1.0, 1.0, 0.8, 0.76, 0.72]
+## Daylight through the windows (indoors, by day): a soft directional sky light from the side the room's outer windows
+## face, casting the window frames onto floor and desks. Energy at full day; the flat ambient gives a little back.
+const Q_WINDOW := [0.0, 0.0, 3.0, 3.2, 3.4]
+const WINDOW_AMBIENT_CUT := 0.12
+const WINDOW_PITCH := 28.0
+## In the normal-coloured world (opening, false-normal) the lamps already run at full power: cap the lamp gain there
+## so the ceiling above a tube does not burn out.
+const NORMAL_LAMP_GAIN := 1.5
+## The old lamps sit a hand's width under the ceiling; with the stronger lamps that burns a white patch into it.
+## From 精细 up the light itself hangs this much lower (the tube model does not move).
+const LAMP_DROP := 0.45
 ## Tubes, screens and signs: emission pushed past the glow threshold.
 const Q_EMIT_GAIN := [1.0, 1.6, 2.2, 2.4, 2.6]
 var _shadow_pick := 0.0
+## Daylight through each outer window: a spot just inside the pane, shaped by window_gobo().
+var windows: Array = []
+var window_lights: Array[SpotLight3D] = []
+static var _gobo: ImageTexture
 var brightness := 1.0              # the brightness setting (100 % = 1.0)
 var world_normal := 0.0
 var fake_normal := 0.0
@@ -130,7 +145,163 @@ func setup(id: String, room_data: Variant, model: Node, stair_rise: float) -> vo
 			lamp_pool.append(l)
 	if model != null:
 		_collect_live(model)
+	_rebuild_windows(model)
 	apply_quality()
+
+
+## Model tiers may use different panes. Drop stale lights when rebinding a model.
+func _rebuild_windows(model: Node) -> void:
+	for spot: SpotLight3D in window_lights:
+		spot.free()
+	window_lights.clear()
+	windows.clear()
+	if model != null and room != null and not _open_air():
+		windows = find_windows(model, room as Dictionary)
+	for w: Dictionary in windows:
+		var spot := SpotLight3D.new()
+		spot.name = "WindowLight%d" % window_lights.size()
+		spot.light_cull_mask = WORLD_LIGHT_MASK
+		spot.light_energy = 0.0
+		spot.light_specular = 0.5
+		spot.spot_range = 9.0
+		spot.spot_angle = 46.0
+		spot.spot_attenuation = 0.7
+		spot.spot_angle_attenuation = 0.5
+		spot.light_projector = window_gobo()
+		# Only the windows around the player are lit; the engine fades the rest out with distance.
+		spot.distance_fade_enabled = true
+		spot.distance_fade_begin = 16.0
+		spot.distance_fade_length = 6.0
+		spot.distance_fade_shadow = 12.0
+		var inward: Vector3 = -(w["out"] as Vector3)
+		var ray := (inward * cos(deg_to_rad(WINDOW_PITCH)) + Vector3.DOWN * sin(deg_to_rad(WINDOW_PITCH))).normalized()
+		add_child(spot)
+		spot.position = (w["at"] as Vector3) + inward * 0.12
+		spot.look_at(spot.position + ray, Vector3.UP)
+		spot.visible = false
+		window_lights.append(spot)
+
+## The room's outer windows, from the model: the panes are the surfaces with the live material "winSky" (the old
+## build's sky seen through the glass). A pane triangle is an outer window when the floor plan has a walkable tile on
+## exactly one side of it; neighbouring panes on the same wall are joined into one window. Returns
+## [{"at": centre, "out": unit vector pointing outside, "w": width, "h": height}].
+static func find_windows(model: Node, plan: Dictionary) -> Array:
+	var grid: Array = plan.get("grid", [])
+	if grid.is_empty():
+		return []
+	var tile := float(plan.get("tw", CampusGeometry.TTILE)) * CampusGeometry.U2M
+	var half := Vector2(float(plan["cols"]), float(plan["rows"])) * tile * 0.5
+	var open_at := func(x: float, z: float) -> bool:
+		var c := floori((x + half.x) / tile)
+		var r := floori((z + half.y) / tile)
+		if r < 0 or r >= grid.size() or c < 0 or c >= String(grid[r]).length():
+			return false
+		return String(grid[r]).substr(c, 1) != "#"
+	var panes := {}     # outward side -> Array of [along, wall coordinate, y low, y high, area]
+	var nodes: Array[Node] = model.find_children("*", "MeshInstance3D", true, false)
+	nodes.append_array(model.find_children("*", "MultiMeshInstance3D", true, false))
+	for n: Node in nodes:
+		var gi := n as GeometryInstance3D
+		var mesh: Mesh = null
+		var places: Array[Transform3D] = [_to_model(gi, model)]
+		if n is MeshInstance3D:
+			mesh = (n as MeshInstance3D).mesh
+		elif (n as MultiMeshInstance3D).multimesh != null:
+			var mm := (n as MultiMeshInstance3D).multimesh
+			mesh = mm.mesh
+			places.clear()
+			for i in mm.instance_count:
+				places.append(_to_model(gi, model) * mm.get_instance_transform(i))
+		if mesh == null:
+			continue
+		for s in mesh.get_surface_count():
+			var mat := mesh.surface_get_material(s) as BaseMaterial3D
+			if mat == null or mat.resource_name != "wdfz_live:winSky":
+				continue
+			var arrays := mesh.surface_get_arrays(s)
+			var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var idx := PackedInt32Array()
+			if arrays[Mesh.ARRAY_INDEX] != null:
+				idx = arrays[Mesh.ARRAY_INDEX]
+			var count := idx.size() if not idx.is_empty() else verts.size()
+			for xf: Transform3D in places:
+				for t in range(0, count - 2, 3):
+					var a := xf * verts[idx[t] if not idx.is_empty() else t]
+					var b := xf * verts[idx[t + 1] if not idx.is_empty() else t + 1]
+					var c := xf * verts[idx[t + 2] if not idx.is_empty() else t + 2]
+					var nrm := (b - a).cross(c - a)
+					var area := nrm.length() * 0.5
+					if area < 0.0001 or absf(nrm.y) > 0.3 * nrm.length():
+						continue
+					var mid := (a + b + c) / 3.0
+					var axis := Vector3(1, 0, 0) if absf(nrm.x) > absf(nrm.z) else Vector3(0, 0, 1)
+					var plus: bool = open_at.call(mid.x + axis.x * 0.9, mid.z + axis.z * 0.9)
+					var minus: bool = open_at.call(mid.x - axis.x * 0.9, mid.z - axis.z * 0.9)
+					if plus == minus:
+						continue
+					var out := -axis if plus else axis      # the side without floor is the outside
+					if not panes.has(out):
+						panes[out] = []
+					var along := mid.z if axis.x != 0.0 else mid.x
+					var wall := mid.x if axis.x != 0.0 else mid.z
+					(panes[out] as Array).append([along, wall, minf(a.y, minf(b.y, c.y)), maxf(a.y, maxf(b.y, c.y)), area])
+	var windows: Array = []
+	for out: Vector3 in panes:
+		var list: Array = panes[out]
+		list.sort_custom(func(p: Array, q: Array) -> bool: return float(p[0]) < float(q[0]))
+		var group: Array = []
+		for i in list.size() + 1:
+			if i < list.size() and (group.is_empty() or (float(list[i][0]) - float(group[-1][0]) < 0.7 and absf(float(list[i][1]) - float(group[-1][1])) < 0.5)):
+				group.append(list[i])
+				continue
+			if not group.is_empty():
+				var lo := float(group[0][0])
+				var hi := float(group[-1][0])
+				var y0 := INF
+				var y1 := -INF
+				var wall := 0.0
+				var area := 0.0
+				for g: Array in group:
+					y0 = minf(y0, float(g[2]))
+					y1 = maxf(y1, float(g[3]))
+					wall += float(g[1]) * float(g[4])
+					area += float(g[4])
+				wall /= area
+				if area > 0.4:
+					var mid_along := (lo + hi) * 0.5
+					var at := Vector3(wall, (y0 + y1) * 0.5, mid_along) if out.x != 0.0 else Vector3(mid_along, (y0 + y1) * 0.5, wall)
+					windows.append({"at": at, "out": out, "w": maxf(0.6, hi - lo + 0.5), "h": y1 - y0})
+			group = [list[i]] if i < list.size() else []
+	return windows
+
+
+## A window's shape for the light it throws: bright panes, dark frame and a mullion cross (2 × 2 panes).
+static func window_gobo() -> ImageTexture:
+	if _gobo != null:
+		return _gobo
+	var n := 96
+	var img := Image.create(n, n, false, Image.FORMAT_RGB8)
+	for y in n:
+		for x in n:
+			var u := float(x) / float(n - 1)
+			var v := float(y) / float(n - 1)
+			var edge := minf(minf(u, 1.0 - u), minf(v, 1.0 - v))
+			var cross := minf(absf(u - 0.5), absf(v - 0.5))
+			# The spot cone is round: keep the lit rectangle inside it, soft at the frame.
+			var k := smoothstep(0.16, 0.22, edge) * smoothstep(0.012, 0.03, cross)
+			img.set_pixel(x, y, Color(k, k, k))
+	_gobo = ImageTexture.create_from_image(img)
+	return _gobo
+
+
+static func _to_model(node: Node3D, model: Node) -> Transform3D:
+	var xf := Transform3D.IDENTITY
+	var at: Node = node
+	while at != null and at != model:
+		if at is Node3D:
+			xf = (at as Node3D).transform * xf
+		at = at.get_parent()
+	return xf
 
 
 ## Environment effects and shadow budget for the current quality (CampusLighting.quality).
@@ -151,10 +322,10 @@ func apply_quality() -> void:
 	# Godot 4.6.3 Mobile can deadlock while compiling replay pipelines with glow
 	# (e.g. the moth death on Vulkan Lavapipe). Keep this post effect on Forward+.
 	env.glow_enabled = full and Q_GLOW[q]
-	env.glow_intensity = 0.55
-	env.glow_strength = 1.0
+	env.glow_intensity = 0.42
+	env.glow_strength = 0.9
 	env.glow_bloom = 0.0
-	env.glow_hdr_threshold = 0.85
+	env.glow_hdr_threshold = 1.0
 	env.glow_hdr_scale = 2.0
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
 	for level in 7:
@@ -169,7 +340,16 @@ func apply_quality() -> void:
 	sun_light.shadow_blur = 1.5
 	sun_light.directional_shadow_max_distance = 60.0 if q >= 3 else 40.0
 	sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if q >= 3 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	for spot: SpotLight3D in window_lights:
+		spot.shadow_bias = 0.05
+		spot.shadow_normal_bias = 1.0
+		spot.shadow_blur = 1.6
+		spot.light_volumetric_fog_energy = 1.2
+	if _stair_rise <= 0.0:
+		for l: OmniLight3D in room_lights:
+			l.position.y = float(l.get_meta("rest_y", l.position.y)) - (LAMP_DROP if q >= 2 else 0.0)
 	for l: OmniLight3D in room_lights + lamp_pool:
+		l.light_specular = 0.5
 		l.shadow_bias = 0.06
 		l.shadow_normal_bias = 1.2
 		l.shadow_blur = 1.4
@@ -179,6 +359,7 @@ func apply_quality() -> void:
 			if mat.emission_enabled:
 				mat.emission_energy_multiplier = float(Q_EMIT_GAIN[q])
 	_pick_shadow_lamps(null)
+	_pick_shadow_windows(null)
 
 
 ## The lamps nearest the camera cast shadows (Q_LAMP_SHADOWS); the rest stay shadowless.
@@ -194,6 +375,20 @@ func _pick_shadow_lamps(camera: Camera3D) -> void:
 	order.sort_custom(func(a: OmniLight3D, b: OmniLight3D) -> bool: return a.global_position.distance_squared_to(at) < b.global_position.distance_squared_to(at))
 	for i in order.size():
 		(order[i] as OmniLight3D).shadow_enabled = i < n and (order[i] as OmniLight3D).light_energy > 0.0
+
+
+## The nearest lit windows cast shadows too (as many as lamps do at this quality).
+func _pick_shadow_windows(camera: Camera3D) -> void:
+	var n := int(Q_LAMP_SHADOWS[clampi(quality, 0, 4)])
+	if n == 0 or camera == null:
+		for spot: SpotLight3D in window_lights:
+			spot.shadow_enabled = false
+		return
+	var at := camera.global_position
+	var order := window_lights.duplicate()
+	order.sort_custom(func(a: SpotLight3D, b: SpotLight3D) -> bool: return a.global_position.distance_squared_to(at) < b.global_position.distance_squared_to(at))
+	for i in order.size():
+		(order[i] as SpotLight3D).shadow_enabled = i < n and (order[i] as SpotLight3D).visible
 
 
 func shadow_lamps() -> int:
@@ -321,7 +516,18 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var strength := maxf(ambient.r, maxf(ambient.g, ambient.b))
 	env.ambient_light_color = ambient / maxf(strength, 1e-4)
 	var qi := clampi(quality, 0, 4)
-	env.ambient_light_energy = strength * ENERGY_AMBIENT * gaze_mul * (float(Q_INDOOR_AMB[qi]) if indoor else float(Q_OUTDOOR_AMB[qi]))
+	# Daylight through the windows: full by day, weaker under the rains, gone at night and in a blackout.
+	var window_k := 0.0
+	if indoor and not window_lights.is_empty() and float(Q_WINDOW[qi]) > 0.0 and not blackout:
+		window_k = float(sun["day"]) * (1.0 - 0.6 * overcast) * (1.0 - dusk)
+	var window_col := Color(0.78, 0.85, 0.93).lerp(Color(0.95, 0.74, 0.56), float(sun["gold"]))
+	for spot: SpotLight3D in window_lights:
+		spot.visible = window_k > 0.01
+		spot.light_color = window_col
+		spot.light_energy = float(Q_WINDOW[qi]) * window_k * gaze_mul
+	var window_cut := 1.0 - WINDOW_AMBIENT_CUT * window_k
+	var lamp_gain := lerpf(float(Q_LAMP_GAIN[qi]), minf(float(Q_LAMP_GAIN[qi]), NORMAL_LAMP_GAIN), maxf(world_normal, fake_normal))
+	env.ambient_light_energy = strength * ENERGY_AMBIENT * gaze_mul * (float(Q_INDOOR_AMB[qi]) * window_cut if indoor else float(Q_OUTDOOR_AMB[qi]))
 	sun_light.light_color = dc
 	sun_light.light_energy = dirv * ENERGY_DIR * gaze_mul * (1.0 if indoor else float(Q_SUN_GAIN[qi]))
 	var d: Vector3 = sun["dir"] if day > 0.02 and not indoor else MOON_DIR
@@ -382,7 +588,7 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 			if dl <= 9.0:
 				_crackle_last = time
 				crackles.append({"k": 1.0 - dl / 9.0, "pan": clampf(crackle_from.global_basis.x.dot(to_l.normalized()) * 0.8, -1.0, 1.0)})
-		room_lights[i].light_energy = room_base[i] * pt_k * maxf(0.05, flick) * (1.0 + 0.3 * patrol_red) * ENERGY_POINT * gaze_mul * float(Q_LAMP_GAIN[qi])
+		room_lights[i].light_energy = room_base[i] * pt_k * maxf(0.05, flick) * (1.0 + 0.3 * patrol_red) * ENERGY_POINT * gaze_mul * lamp_gain
 		var bc := room_col[i]
 		var lr := bc.r * 0.86
 		var lg := bc.g * 0.98
@@ -401,6 +607,7 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	if _shadow_pick <= 0.0:
 		_shadow_pick = 0.5
 		_pick_shadow_lamps(camera)
+		_pick_shadow_windows(camera)
 
 
 # ---- room lamps (scene.js addRoomLights) ----
@@ -455,6 +662,7 @@ func _add_light(pos: Vector3, col: int, intensity: float, dist: float) -> void:
 	l.omni_attenuation = 2.0
 	var c := Color.hex((col << 8) | 0xff)
 	l.light_color = c
+	l.set_meta("rest_y", pos.y)
 	add_child(l)
 	room_lights.append(l)
 	room_base.append(intensity)
@@ -554,6 +762,8 @@ func rebind_model(model: Node) -> void:
 	live_mats.clear()
 	if model != null:
 		_collect_live(model)
+	_rebuild_windows(model)
+	apply_quality()
 
 
 func _collect_live(model: Node) -> void:

@@ -27,9 +27,9 @@ Android Debug 与 Release 都改用官方 Gradle 模板，自动安装到不入�
 | --- | --- | --- | --- | --- | --- | --- |
 | 流畅 | 0.55，Forward+ FSR 1／Mobile 双线性 | 无 | 无 | 无 | 无 | 无 |
 | 均衡 | 0.70，Forward+ FSR 1／Mobile 双线性 | 无 | 无 | 有（仅 Forward+） | 无 | 无 |
-| 精细 | 1.0 | 太阳；最近 1 盏灯；手电 | 有（半分辨率） | 有（仅 Forward+） | 无 | Forward+：FXAA；Mobile：无 |
-| 超精细 | 1.0 | 太阳；最近 2 盏灯；手电 | 有 | 有（仅 Forward+） | 无 | 4× MSAA |
-| 真实 | 1.0 | 太阳；最近 4 盏灯；手电 | 有（高） | 有（仅 Forward+） | 有 | 8× MSAA |
+| 精细 | 1.0 | 太阳；最近 1 盏灯与 1 扇窗；手电 | 有（半分辨率） | 有（仅 Forward+） | 无 | Forward+：FXAA；Mobile：无 |
+| 超精细 | 1.0 | 太阳；最近 2 盏灯与 2 扇窗；手电 | 有 | 有（仅 Forward+） | 无 | 4× MSAA |
+| 真实 | 1.0 | 太阳；最近 4 盏灯与 4 扇窗；手电 | 有（高） | 有（仅 Forward+） | 有 | 8× MSAA |
 
 精细起，室内一部分平铺的环境光和眼睛位置的补光挪给房间灯，室外挪给太阳，同机位平均亮度与流畅接近，但能看见光池、明暗交界和投影。手电握在右手位置（不再从眼睛发光），所以它的投影看得见。Mobile 渲染器（Android）不支持环境光遮蔽与体积雾，这两项在 Mobile 上不开。实现在 `CampusLighting.apply_quality()` 与 `game/presentation/world/render_quality.gd`，测试在 `tests/suites/render_quality.gd`。
 
@@ -68,3 +68,9 @@ v0.2.0 起 Android 在项目启动配置、APK 启动参数与运行时设置三
 Linux 的 `display/display_server/driver.linuxbsd="wayland"` 使用引擎原生 Wayland 后端；连接失败由引擎回退 X11，`--display-driver x11` 可显式选择。两种窗口后端均使用 Vulkan，不改变渲染器。Linux 打包验证在独立 Weston 与 Xvfb 中分别测试正式可执行文件的默认窗口启动、显示驱动身份、正常退出，并加载导出的 PCK 验证全屏切换、校园帧及动态资源。Weston 运行在 Xvfb 父窗口中以提供虚拟鼠标设备，游戏本身直接连接 Wayland，不启动 XWayland；仅成功创建 Vulkan 设备而没有核对 Wayland 身份不能算通过。
 
 `tools/check.py --mode windowed --display-driver wayland` 可在已有 Wayland 会话运行完整回归；默认窗口回归仍使用 X11。CI 的软件 Vulkan 结果是功能验证，不代表设备性能。
+
+## 建模与室内日光
+
+[建模与光影优化](plan/建模与光影优化.md)接入圆润无脸人形、保留原平面窗户剪影，并为精细起的室内场景按实际外窗投射日光与窗格阴影。夜间、停电和低档关闭窗光；阴雨减弱天光；正常与假正常状态限制房间灯增益，避免天花板过曝。Mobile 继续保留既有的后处理规避。
+
+模型画质替换时重建窗光；房间与各类相邻场景预览同步更新材质，不修改游戏状态、物理碰撞或存档。开发验证包括六种人物包围盒、24 组原剪影几何、窗光重绑及全部预览材质的切换恢复。
