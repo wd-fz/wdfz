@@ -12,6 +12,34 @@ var preview_camera: Camera3D
 var history: Array[String] = []
 var _refresh := 0.0
 var _death_view: Dictionary = {}
+var telemetry:=DebugTelemetry.new()
+var trace:=DebugTrace.new()
+var probe: DebugWorldProbe
+var collision_view := false
+var preview_paused := false
+var preview_rate := 1.0
+var bookmarks: Array[Dictionary] = []
+var _bookmark_sequence := 0
+var _bookmark_generation := 0
+var _inspection: Dictionary = {}
+var _stepping := false
+var _last_frame_us := 0
+var _session_sequence := 0
+
+func _ready() -> void:
+	process_mode=Node.PROCESS_MODE_ALWAYS
+	probe=DebugWorldProbe.new()
+	add_child(probe)
+
+func blocks_simulation() -> bool:
+	return (frozen and not _stepping) or is_instance_valid(preview)
+
+func observe(fact: Dictionary) -> void:
+	if DebugPanel.enabled(): trace.add("fact",String(fact.get("kind","事实")),fact,_context())
+
+func _context() -> Dictionary:
+	if app.session==null: return {}
+	return {"session":_session_sequence,"day":app.school().day,"time":SchoolClock.fmt_clock(app.school().tsec),"room":app.session.world_id,"active":snappedf(app.session.clock.active_seconds,.01)}
 
 func alive() -> bool:
 	return app.session!=null and not app.story().over() and not app.opening_busy()
@@ -35,19 +63,28 @@ func clear_modifiers() -> void:
 
 func session_started() -> void:
 	_death_view={}
+	bookmarks.clear()
+	_bookmark_sequence=0
+	_bookmark_generation+=1
+	telemetry.reset()
+	_session_sequence+=1
+	trace.add("fact","游戏会话开始／载入",{},_context())
 	if app.speedrun.active(): clear_modifiers()
 	if fast or god or instant_search or (is_instance_valid(app.debug_panel) and app.debug_panel.visible): dirty()
 	refresh()
 
 func set_frozen(value: bool) -> void:
 	frozen=value
-	app.player.debug_frozen=value
+	app.player.debug_frozen=value or is_instance_valid(preview)
 	app.player.clear_input()
 	app.ui.clear_touch()
 
 func cancel() -> void:
 	clear_preview()
 	set_frozen(false)
+	collision_view=false
+	_inspection={}
+	if is_instance_valid(probe): probe.clear()
 
 func before_death() -> void:
 	cancel()
@@ -65,12 +102,16 @@ func clear_preview() -> void:
 		app.player.camera.make_current()
 		app.ui.cut_flash(0)
 	preview_camera=null
+	preview_paused=false
+	app.player.debug_frozen=frozen
 
 func preview_death(cause: String) -> String:
 	if not alive(): return report("请先开始游戏或复活。")
 	if app.anomaly().is_active(): return report("请先结束当前异象，再预览。")
 	if not DeathCG.has(cause): return report("没有该死亡演出。")
 	clear_preview()
+	if is_instance_valid(probe): probe.clear()
+	_inspection={}
 	# CameraMotion and input keep their own camera and pose; the preview is disposable.
 	var source:=app.player.camera
 	preview_camera=Camera3D.new()
@@ -90,8 +131,11 @@ func preview_death(cause: String) -> String:
 	app.audio.preview_play("death.base")
 	app.audio.preview_play("death."+cause if app.audio.has("death."+cause) else "death.generic")
 	add_child(preview)
-	preview.begin(cause,app.player,app._campus_world(),app.ui,maxf(3.5,DeathCG.duration(cause,StoryModule.duration(cause))+.2),app.settings.get_int("reduce_flash")==1,preview_camera)
-	return report("预览 %s；结束后自动清理，不触发死亡结算。" % cause)
+	preview.begin(cause,app.player,app._campus_world(),app.ui,DeathCG.duration(cause,StoryModule.duration(cause)),app.settings.get_int("reduce_flash")==1,preview_camera)
+	app.player.debug_frozen=true
+	app.player.clear_input()
+	app.ui.clear_touch()
+	return report("预览 %s；暂停游戏逻辑，可拖动进度检查画面。" % DeathCG.title(cause))
 
 func _process(dt: float) -> void:
 	if is_instance_valid(preview):
@@ -99,17 +143,28 @@ func _process(dt: float) -> void:
 		else:
 			preview._base_pitch=app.player.camera.rotation.x
 			preview._base_y=app.player.camera.position.y
-			preview.tick(dt)
+			if not preview_paused: preview.tick(dt*preview_rate)
 			if not preview.on: clear_preview()
+	if is_instance_valid(app.debug_panel) and app.debug_panel.visible:
+		var now:=Time.get_ticks_usec()
+		if _last_frame_us>0: telemetry.sample((now-_last_frame_us)/1000000.0)
+		_last_frame_us=now
+	else:
+		_last_frame_us=0
 	_refresh+=dt
 	if _refresh>=.2:
 		_refresh=0
+		_update_probe()
 		refresh()
 
 func snapshot() -> Dictionary:
 	var state:={"playing":alive(),"dead":app.session!=null and app.story().dead,"freeze":frozen,"fast":fast,"god":god,"search":instant_search,
 		"renderer":RenderingServer.get_current_rendering_method(),"rendering_driver":RenderingServer.get_current_rendering_driver_name(),
-		"quality":CampusData.tier,"fps":Engine.get_frames_per_second(),"history":history.duplicate()}
+		"quality":CampusData.tier,"fps":Engine.get_frames_per_second(),"history":history.duplicate(),
+		"metrics":telemetry.capture(DisplayServer.get_name()!="headless"),"trace":trace.capture(),
+		"collision_view":collision_view,"collision_count":probe.shown if is_instance_valid(probe) else 0,
+		"collision_nearby":probe.nearby if is_instance_valid(probe) else 0,"inspect":_inspection.duplicate(true),
+		"bookmarks":bookmarks.duplicate(true),"preview":preview_state()}
 	if app.session!=null:
 		var school:=app.school()
 		state.merge({"room":app.session.world_id,"day":school.day,"time":SchoolClock.fmt_clock(school.tsec),"minutes":school.tsec,"san":school.san,"stam":school.stam,"cap":school.stamina_max(),"viol":school.viol,"tt":school.tt,
@@ -189,10 +244,56 @@ func _stage_allowed() -> bool:
 	return not app.ui.choice_open() and not app.phone_open() and not app.ui.terminal_open() and app.elevator().ride.is_empty() and not app.driving() and not app.anomaly().is_active() and not app.school().inspection_pending() and not app.patrol().local_chase()
 
 func command(id: String, args: Dictionary = {}) -> String:
+	var result:=_command(id,args)
+	if DebugPanel.enabled() and id not in ["preview_seek","copy","trace_copy","trace_clear","trace_toggle","copy_position"]:
+		trace.add("command",id,{"args":args,"result":result},_context())
+	refresh()
+	return result
+
+func _command(id: String, args: Dictionary = {}) -> String:
 	if not DebugPanel.enabled(): return "开发工具未启用。"
 	if id=="copy":
 		DisplayServer.clipboard_set(JSON.stringify(snapshot(),"  "))
 		return report("诊断信息已复制。")
+	if id=="trace_toggle":
+		trace.recording=not trace.recording
+		return report("事件记录已继续。" if trace.recording else "事件记录已暂停。")
+	if id=="trace_clear":
+		trace.clear()
+		return report("事件列表已清空。")
+	if id=="trace_copy":
+		DisplayServer.clipboard_set(JSON.stringify(trace.capture(),"  "))
+		return report("事件记录已复制。")
+	if id=="metrics_reset":
+		telemetry.reset()
+		return report("性能采样已重置。")
+	if id=="export_report": return export_report()
+	if id=="copy_position":
+		if app.session==null: return report("没有可复制的位置。")
+		DisplayServer.clipboard_set(JSON.stringify({"room":app.session.world_id,"pose":app.player.capture_pose()},"  "))
+		return report("场景、位置与朝向已复制。")
+	if id=="bookmark_clear":
+		bookmarks.clear()
+		return report("本局临时位置书签已清空。")
+	if id.begins_with("preview_"):
+		if not is_instance_valid(preview): return report("请先开始死亡演出预览。")
+		match id:
+			"preview_pause":
+				preview_paused=not preview_paused
+				if not preview_paused and preview.k>=preview.dur: _seek_preview(0)
+				return report("预览已暂停。" if preview_paused else "预览已继续。")
+			"preview_seek":
+				var value:=float(args.get("fraction",-1))
+				if not is_finite(value) or value<0 or value>1: return report("预览进度需要在 0–100% 内。")
+				preview_paused=true
+				_seek_preview(value)
+				return "预览停在 %.2f 秒" % preview.k
+			"preview_rate":
+				var value:=float(args.get("rate",0))
+				if value not in [.25,.5,1.0,2.0]: return report("请选择 0.25、0.5、1 或 2 倍速。")
+				preview_rate=value
+				return report("预览速度 ×%.2f" % value)
+			"preview_restart": return preview_death(preview.fx)
 	if id=="clear_preview":
 		clear_preview()
 		return report("预览已清理。")
@@ -208,6 +309,13 @@ func command(id: String, args: Dictionary = {}) -> String:
 	if id=="revive": return revive()
 	if not alive(): return report("请先开始游戏或复活；过场中不能修改。")
 	match id:
+		"collisions":
+			collision_view=not collision_view
+			_update_probe()
+			return report("碰撞透视线框已开启；最多显示附近 %d 个实际碰撞体。" % DebugWorldProbe.MAX_SHAPES if collision_view else "碰撞线框已关闭。")
+		"bookmark_add": return add_bookmark(String(args.get("name","")))
+		"bookmark_go": return goto_bookmark(String(args.get("id","")))
+		"step": return step_simulation(float(args.get("seconds",0)))
 		"preview": return preview_death(String(args.get("id","")))
 		"freeze":
 			if not _stage_allowed(): return report("请先退出当前互动、异象或检查。")
@@ -349,3 +457,118 @@ func revive() -> String:
 	app.school().stam=minf(app.school().stam,app.school().stamina_max())
 	app.player.enabled=not app.get_tree().paused
 	return report("已复活；本局仍为调试局，不恢复已删除的存档。")
+
+func preview_state() -> Dictionary:
+	if not is_instance_valid(preview): return {"active":false,"paused":false,"rate":preview_rate,"time":0.0,"duration":0.0}
+	return {"active":true,"id":preview.fx,"title":DeathCG.title(preview.fx),"paused":preview_paused,"rate":preview_rate,"time":preview.k,"duration":preview.dur}
+
+func _seek_preview(fraction: float) -> void:
+	app.audio.stop_preview()
+	preview.k=preview.dur*fraction
+	preview._cued.clear()
+	preview._flashed.clear()
+	app.ui.cut_flash(0)
+	var output:=preview.sound_output
+	preview.sound_output=Callable()
+	preview.update(preview.k)
+	preview.sound_output=output
+
+func _update_probe() -> void:
+	if not is_instance_valid(probe): return
+	var visible_panel:=is_instance_valid(app.debug_panel) and app.debug_panel.visible
+	if not alive() or is_instance_valid(preview) or not visible_panel:
+		probe.clear()
+		_inspection={}
+		return
+	if not collision_view and app.debug_panel._active_page!="诊断":
+		probe.clear()
+		_inspection={}
+		return
+	probe.bind_world(app._campus_world())
+	probe.draw_near(app.player.camera.global_position,collision_view)
+	_inspection=probe.inspect(app.player.camera,app.player)
+	var room: Variant=app.campus().room(app.session.world_id)
+	var w:=CampusGeometry.to_world(room,app.player.position.x,app.player.position.z)
+	_inspection["world_units"]=[snappedf(w.x,.01),snappedf(w.y,.01)]
+	_inspection["interaction"]=(app.ui.get_node("%Prompt") as Label).text
+	_inspection["physical_interaction"]=app.player._prompt
+	_inspection["posture"]="坐着" if app.player.seated else ("躲藏" if app.player.hiding else "站立")
+	if room is Dictionary and room.has("grid"):
+		_inspection["tile"]=[floori((w.x-float(room.ox))/float(room.tw)),floori((w.y-float(room.oy))/float(room.th))]
+		_inspection["cell"]=CampusGeometry.tile_at(room,w)
+
+func step_simulation(seconds: float) -> String:
+	if not frozen: return report("请先冻结模拟，再进行逻辑步进。")
+	if not is_finite(seconds) or seconds<=0 or seconds>1: return report("逻辑步进范围为 0–1 秒。")
+	if is_instance_valid(preview) or app.get_tree().paused or app.ui.choice_open() or app.driving() or not app.elevator().ride.is_empty(): return report("请先退出演出、菜单、选择、驾驶或电梯。")
+	dirty()
+	var session:=app.session
+	var remaining:=seconds
+	var elapsed:=0.0
+	_stepping=true
+	while remaining>.000001 and app.session==session and alive() and frozen:
+		var delta:=minf(remaining,1.0/60.0)
+		app._physics_process(delta)
+		elapsed+=delta
+		remaining-=delta
+		if app.ui.choice_open(): break
+	_stepping=false
+	return report("逻辑已步进 %.3f 秒；角色物理移动保持冻结。" % elapsed)
+
+func add_bookmark(title: String) -> String:
+	if not _stage_allowed() or app.player.seated or app.player.hiding: return report("请先站起并退出当前互动，再记录位置。")
+	if bookmarks.size()>=8: return report("本局最多保留 8 个位置书签，请先清空。")
+	_bookmark_sequence+=1
+	var label:=title.strip_edges().substr(0,32)
+	if label=="": label="%s · %s" % [app.session.world_id,SchoolClock.fmt_clock(app.school().tsec)]
+	bookmarks.append({"id":str(_bookmark_sequence),"name":label,"room":app.session.world_id,"pose":app.player.capture_pose().duplicate(true)})
+	return report("已记录位置："+label)
+
+func goto_bookmark(id: String) -> String:
+	var target: Dictionary={}
+	for bookmark: Dictionary in bookmarks:
+		if bookmark.id==id: target=bookmark.duplicate(true); break
+	if target.is_empty(): return report("请选择本局有效的位置书签。")
+	if not _stage_allowed(): return report("请先退出当前互动、追逐或检查。")
+	dirty()
+	prepare_teleport()
+	var error:=app.travel(target.room,target.pose,false)
+	if error!="": return report(error)
+	_bookmark_generation+=1
+	get_tree().physics_frame.connect(_check_bookmark_landing.bind(_bookmark_generation,app.session,weakref(app._campus_world()),target),CONNECT_ONE_SHOT)
+	return report("已前往书签，正在核对落点："+String(target.name))
+
+func _check_bookmark_landing(generation: int, session: GameSession, world_ref: WeakRef, target: Dictionary) -> void:
+	var world:=world_ref.get_ref() as Node3D
+	if generation!=_bookmark_generation or app.session!=session or not alive() or not is_instance_valid(world) or app._campus_world()!=world or app.session.world_id!=target.room: return
+	var shape:=CapsuleShape3D.new()
+	shape.radius=CampusGeometry.PRAD*CampusGeometry.U2M-.02
+	shape.height=1.74
+	var query:=PhysicsShapeQueryParameters3D.new()
+	query.shape=shape
+	query.transform=Transform3D(Basis(),app.player.global_position+Vector3.UP*.9)
+	query.collision_mask=3
+	query.exclude=[app.player.get_rid()]
+	if world.get_world_3d().direct_space_state.intersect_shape(query,1).is_empty():
+		report("已恢复书签位置与朝向："+String(target.name))
+	else:
+		app.travel(target.room,app.campus().default_spawn(target.room),false)
+		report("书签落点已被障碍占用，已回到该场景的默认落点。")
+
+func export_report() -> String:
+	var path:=app.saves.side_path("debug-report.json")
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var diagnostics:=snapshot()
+	diagnostics.erase("trace")
+	var report_data:={"version":1,"engine":Engine.get_version_info().string,"captured_at":Time.get_datetime_string_from_system(true),"diagnostics":diagnostics,"events":trace.capture(),"playtest":app.playtest.export()}
+	var file:=FileAccess.open(path,FileAccess.WRITE)
+	if file==null: return report("报告写入失败："+error_string(FileAccess.get_open_error()))
+	file.store_string(JSON.stringify(report_data,"  "))
+	file.close()
+	return report("诊断报告已保存到："+ProjectSettings.globalize_path(path))
+
+func location_changing() -> void:
+	_bookmark_generation+=1
+	clear_preview()
+	_inspection={}
+	if is_instance_valid(probe): probe.clear()

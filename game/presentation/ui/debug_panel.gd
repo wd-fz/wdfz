@@ -35,6 +35,21 @@ var _cats: Array = []
 var _ids: Array = []
 var playing_all := false
 var _audition_generation := 0
+var _perf: Label
+var _inspect: Label
+var _preview_status: Label
+var _preview_slider: HSlider
+var _preview_pause: Button
+var _preview_rate: OptionButton
+var _bookmark_list: OptionButton
+var _bookmark_ids: Array[String] = ["<initial>"]
+var _trace_view: RichTextLabel
+var _trace_search: LineEdit
+var _trace_kind: OptionButton
+var _trace_toggle: Button
+var _trace_info: Label
+var _trace_data: Dictionary = {}
+var _trace_signature := ""
 
 
 static func enabled() -> bool:
@@ -134,7 +149,10 @@ func _init(index: Dictionary = {}) -> void:
 	box.add_child(tools)
 	_msg = Label.new()
 	_msg.modulate = Color(0.85, 0.8, 0.55)
-	root_box.add_child(_msg)
+	_msg.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	_msg.max_lines_visible=2
+	_msg.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	_frame.add_child(_msg)
 	var close := Button.new()
 	close.name = "DebugClose"
 	close.text = "关闭"
@@ -221,6 +239,7 @@ func set_playtest(on: bool, events: int, has_data: bool) -> void:
 
 func say(text: String) -> void:
 	_msg.text = text
+	_msg.tooltip_text = text
 
 
 func _label(parent: Node, text: String) -> Label:
@@ -297,13 +316,13 @@ func _make_pages(parent: VBoxContainer) -> VBoxContainer:
 	var tabs:=_row(parent)
 	tabs.reparent(_frame,false)
 	_frame.move_child(tabs,1)
-	for title: String in ["状态","场景","物品","事件","工具"]:
+	for title: String in ["状态","场景","物品","事件","诊断","日志","工具"]:
 		var page:=VBoxContainer.new()
 		page.name="DevPage"+title
 		parent.add_child(page)
 		_pages[title]=page
 		var tab:=_button(tabs,title,"DevTab"+title,select_page.bind(title))
-		UIArt.button(tab, UIArt.nav(String({"状态":"inspect", "场景":"map", "物品":"archive", "事件":"warning", "工具":"debug"}[title])), 18)
+		UIArt.button(tab, UIArt.nav(String({"状态":"inspect", "场景":"map", "物品":"archive", "事件":"warning", "诊断":"inspect", "日志":"archive", "工具":"debug"}[title])), 18)
 		tab.toggle_mode=true
 		_tabs[title]=tab
 	var status: VBoxContainer=_pages["状态"]
@@ -314,6 +333,10 @@ func _make_pages(parent: VBoxContainer) -> VBoxContainer:
 		var b:=_button(switches,pair[1],"Dev"+key,_send.bind(key,{}))
 		b.toggle_mode=true
 		_switches[key]=b
+	var steps:=_row(status)
+	for pair: Array in [["单帧逻辑",1.0/60.0],["步进 0.1 秒",.1],["步进 1 秒",1.0]]:
+		_button(steps,pair[0],"DevStep"+str(pair[1]),_send.bind("step",{"seconds":pair[1]}))
+	_label(status,"冻结后可逐步推进游戏逻辑／AI；角色物理移动仍保持冻结。")
 	var stats:=OptionButton.new()
 	stats.name="DevStat"
 	for key: String in ["san","stam","viol","tt"]: stats.add_item(key)
@@ -343,6 +366,24 @@ func _make_pages(parent: VBoxContainer) -> VBoxContainer:
 	for i in DebugFlow.POI.size(): outside.append([str(i),DebugFlow.POI[i][0]])
 	_select(scene,"DevOutdoor",outside)
 	_button(scene,"传送到室外","DevTeleportOut",func() -> void: _send("outdoor",{"id":selected("DevOutdoor")}))
+	scene.add_child(HSeparator.new())
+	_label(scene,"临时位置书签 · 本局最多 8 个；只恢复位置和朝向，不回滚道具、门或剧情。")
+	var bookmark_name:=LineEdit.new()
+	bookmark_name.name="DevBookmarkName"
+	bookmark_name.placeholder_text="书签名称（可留空）"
+	bookmark_name.max_length=32
+	scene.add_child(bookmark_name)
+	_button(scene,"记录当前位置","DevBookmarkAdd",func() -> void: _send("bookmark_add",{"name":bookmark_name.text}))
+	_bookmark_list=OptionButton.new()
+	_bookmark_list.name="DevBookmarks"
+	_bookmark_list.fit_to_longest_item=false
+	_bookmark_list.clip_text=true
+	scene.add_child(_bookmark_list)
+	var bookmarks:=_row(scene)
+	_button(bookmarks,"返回书签","DevBookmarkGo",func() -> void:
+		if _bookmark_list.selected>=0: _send("bookmark_go",{"id":_bookmark_list.get_item_metadata(_bookmark_list.selected)}))
+	_button(bookmarks,"复制位置","DevCopyPosition",_send.bind("copy_position",{}))
+	_button(bookmarks,"清空书签","DevBookmarkClear",_send.bind("bookmark_clear",{}))
 	var items: VBoxContainer=_pages["物品"]
 	_bag_info=_label(items,"")
 	var catalog: Array=[]
@@ -368,11 +409,64 @@ func _make_pages(parent: VBoxContainer) -> VBoxContainer:
 	var dr:=_row(events)
 	_button(dr,"预览演出","DevPreview",func() -> void: _send("preview",{"id":selected("DevDeath")}))
 	_button(dr,"停止预览","DevStopPreview",_send.bind("clear_preview",{}))
+	_preview_status=_label(events,"未开始演出预览。")
+	_preview_slider=HSlider.new()
+	_preview_slider.name="DevPreviewTimeline"
+	_preview_slider.min_value=0
+	_preview_slider.max_value=100
+	_preview_slider.step=.1
+	_preview_slider.editable=false
+	_preview_slider.value_changed.connect(func(value: float) -> void: _send("preview_seek",{"fraction":value/100}))
+	events.add_child(_preview_slider)
+	var playback:=_row(events)
+	_preview_pause=_button(playback,"暂停","DevPreviewPause",_send.bind("preview_pause",{}))
+	_button(playback,"从头重播","DevPreviewRestart",_send.bind("preview_restart",{}))
+	_preview_rate=OptionButton.new()
+	_preview_rate.name="DevPreviewRate"
+	for rate: float in [.25,.5,1.0,2.0]:
+		_preview_rate.add_item("×%.2f" % rate)
+		_preview_rate.set_item_metadata(_preview_rate.item_count-1,rate)
+	_preview_rate.select(2)
+	_preview_rate.item_selected.connect(func(index: int) -> void: _send("preview_rate",{"rate":_preview_rate.get_item_metadata(index)}))
+	playback.add_child(_preview_rate)
 	_button(dr,"实际死亡…","DevDeath",_confirm_death)
 	_button(dr,"复活","DevRevive",_send.bind("revive",{}))
+	var diagnostics: VBoxContainer=_pages["诊断"]
+	_perf=_label(diagnostics,"性能采样等待中。")
+	_button(diagnostics,"重置帧时间采样","DevMetricsReset",_send.bind("metrics_reset",{}))
+	var collision:=_button(diagnostics,"碰撞透视线框","DevCollisions",_send.bind("collisions",{}))
+	collision.toggle_mode=true
+	_switches["collision_view"]=collision
+	_label(diagnostics,"青色为实际碰撞体，橙色为门；最多显示附近 12 米内的 96 个形状。不会修改碰撞。")
+	_inspect=_label(diagnostics,"进入游戏后可检查视线命中。")
+	_button(diagnostics,"复制位置与朝向","DevInspectCopyPosition",_send.bind("copy_position",{}))
+	var logs: VBoxContainer=_pages["日志"]
+	_trace_info=_label(logs,"只记录本机内存中的最近 %d 条事件。" % DebugTrace.LIMIT)
+	_trace_search=LineEdit.new()
+	_trace_search.name="DevTraceSearch"
+	_trace_search.placeholder_text="筛选事件、房间或内容"
+	_trace_search.max_length=100
+	_trace_search.text_changed.connect(func(_value: String) -> void: _show_trace())
+	logs.add_child(_trace_search)
+	_trace_kind=OptionButton.new()
+	_trace_kind.name="DevTraceKind"
+	for title: String in ["全部","游戏事实","调试操作"]: _trace_kind.add_item(title)
+	_trace_kind.item_selected.connect(func(_index: int) -> void: _show_trace())
+	logs.add_child(_trace_kind)
+	_trace_view=RichTextLabel.new()
+	_trace_view.name="DevTraceEntries"
+	_trace_view.custom_minimum_size=Vector2(0,170)
+	_trace_view.selection_enabled=true
+	_trace_view.bbcode_enabled=false
+	logs.add_child(_trace_view)
+	var log_buttons:=_row(logs)
+	_trace_toggle=_button(log_buttons,"暂停记录","DevTraceToggle",_send.bind("trace_toggle",{}))
+	_button(log_buttons,"清空列表","DevTraceClear",_send.bind("trace_clear",{}))
+	_button(log_buttons,"复制事件 JSON","DevTraceCopy",_send.bind("trace_copy",{}))
 	var tools: VBoxContainer=_pages["工具"]
 	_diagnostics=_label(tools,"")
 	_button(tools,"复制诊断信息","DevCopy",_send.bind("copy",{}))
+	_button(tools,"导出本机诊断报告","DevExportReport",_send.bind("export_report",{}))
 	select_page("状态")
 	return tools
 
@@ -388,7 +482,7 @@ func _confirm_death() -> void:
 	dialog.popup_centered(Vector2i(300,140))
 
 func set_runtime(state: Dictionary) -> void:
-	for key: String in _switches: (_switches[key] as Button).set_pressed_no_signal(bool(state[key]))
+	for key: String in _switches: (_switches[key] as Button).set_pressed_no_signal(bool(state.get(key,false)))
 	if state.has("room"):
 		_live.text="第 %d 天 %s · %s\nSAN %.1f · 违规 %.1f · 同化 %.1f · 体力 %.1f / %.1f\n异象 %s · 检查 %s / 排队 %d · 巡察 %s\n%s" % [state.day,state.time,state.room,state.san,state.viol,state.tt,state.stam,state.cap,state.anomaly,"进行中" if state.inspection else "无",state.queued,state.patrol,"真实局" if state.trusted else "调试局（不计真实成绩）"]
 		_live.text+="\n位置 %.2f, %.2f, %.2f m" % state.pose.position
@@ -399,3 +493,87 @@ func set_runtime(state: Dictionary) -> void:
 		_live.text="没有进行中的一局。"
 		_bag_info.text="背包未载入。"
 	_diagnostics.text="%s / %s · 画质 %d · FPS %d\n%s" % [state.rendering_driver,state.renderer,state.quality,state.fps,"\n".join(state.history)]
+
+	_show_diagnostics(state)
+	_show_preview(state.get("preview",{}))
+	_show_bookmarks(state.get("bookmarks",[]))
+	_trace_data=state.get("trace",{})
+	_show_trace()
+
+func _show_diagnostics(state: Dictionary) -> void:
+	var metrics: Dictionary=state.get("metrics",{})
+	if metrics.is_empty(): return
+	var render:="Draw Calls %d · 图元 %d · 可见对象 %d" % [metrics.draw_calls,metrics.primitives,metrics.render_objects] if metrics.rendered else "无窗口模式：没有真实 GPU 渲染数据"
+	_perf.text="%s / %s · 画质 %d
+FPS %d · 最近 %d 帧 · 均值 %.2f ms · P95 %.2f ms
+%s
+节点 %d · 资源 %d · 引擎静态内存 %.1f MiB
+线框 %d / 附近 %d 个" % [state.rendering_driver,state.renderer,state.quality,metrics.fps,metrics.samples,metrics.average_ms,metrics.p95_ms,render,metrics.nodes,metrics.resources,metrics.static_mib,state.get("collision_count",0),state.get("collision_nearby",0)]
+	var hit: Dictionary=state.get("inspect",{})
+	if hit.is_empty():
+		_inspect.text="进入游戏并选择此页后检查视线；过场期间停用。"
+		return
+	_inspect.text="姿态：%s · 原地图坐标：%s
+格子：%s · 类型：%s
+当前交互提示：%s" % [hit.get("posture",""),str(hit.get("world_units",[])),str(hit.get("tile",[])),hit.get("cell","室外"),hit.get("interaction","")]
+	_inspect.text+="\n物理交互提示："+String(hit.get("physical_interaction",""))
+	if hit.get("hit",false):
+		_inspect.text+="
+视线命中 %.2f m · %s
+碰撞节点：%s
+形状：%s · 层 %d
+命中点 %s · 法线 %s" % [hit.distance,hit["class"],hit.collider,String(hit.shape)+" / "+String(hit.get("kind","")),hit.layer,str(hit.point),str(hit.normal)]
+	else: _inspect.text+="
+视线前方 30 米内无物理命中。"
+
+func _show_preview(state: Dictionary) -> void:
+	var active:=bool(state.get("active",false))
+	_preview_slider.editable=active
+	_preview_pause.disabled=not active
+	_preview_rate.disabled=not active
+	_preview_pause.text="继续" if state.get("paused",false) else "暂停"
+	_preview_status.text="%s · %.2f / %.2f 秒 · %s" % [state.get("title",""),state.get("time",0),state.get("duration",0),"暂停" if state.get("paused",false) else "播放中"] if active else "未开始演出预览。"
+	_preview_slider.set_value_no_signal(100*float(state.get("time",0))/maxf(.1,float(state.get("duration",0))))
+	for i in _preview_rate.item_count:
+		if is_equal_approx(float(_preview_rate.get_item_metadata(i)),float(state.get("rate",1))): _preview_rate.select(i)
+
+func _show_bookmarks(bookmarks: Array) -> void:
+	var ids: Array[String]=[]
+	for bookmark: Dictionary in bookmarks: ids.append("%s/%s/%s" % [bookmark.id,bookmark.name,bookmark.room])
+	if ids==_bookmark_ids: return
+	_bookmark_ids=ids
+	_bookmark_list.clear()
+	for bookmark: Dictionary in bookmarks:
+		_bookmark_list.add_item(String(bookmark.name)+" · "+String(bookmark.room))
+		_bookmark_list.set_item_metadata(_bookmark_list.item_count-1,String(bookmark.id))
+	_bookmark_list.disabled=bookmarks.is_empty()
+	if bookmarks.is_empty(): _bookmark_list.text="还没有位置书签"
+
+func _show_trace() -> void:
+	if not is_instance_valid(_trace_view): return
+	var query:=_trace_search.text.strip_edges().to_lower()
+	var kind: String=["","fact","command"][_trace_kind.selected]
+	var signature:="%s/%s/%s/%s" % [_trace_data.get("revision",0),_trace_data.get("recording",true),query,kind]
+	if signature==_trace_signature: return
+	_trace_signature=signature
+	var lines:=PackedStringArray()
+	for entry: Dictionary in _trace_data.get("entries",[]):
+		if kind!="" and entry.kind!=kind: continue
+		var context: Dictionary=entry.context
+		var line:="[%d] #%d %s %s · %s · %s\n%s" % [entry.seq,context.get("session",0),context.get("time",""),context.get("room","菜单"),"事实" if entry.kind=="fact" else "操作",entry.title,JSON.stringify(entry.detail)]
+		if query!="" and not line.to_lower().contains(query): continue
+		lines.append(line)
+	_trace_view.text="\n\n".join(lines) if not lines.is_empty() else "没有匹配的事件。"
+	_trace_toggle.text="暂停记录" if _trace_data.get("recording",true) else "继续记录"
+	_trace_info.text="%s · 显示 %d / %d 条 · 已淘汰 %d 条" % ["记录中" if _trace_data.get("recording",true) else "已暂停",lines.size(),_trace_data.get("entries",[]).size(),_trace_data.get("discarded",0)]
+
+func refit() -> void:
+	super.refit()
+	if not is_inside_tree(): return
+	# Keep touch hit targets at least 44 viewport pixels after compact scaling.
+	var pixel_scale:=absf(get_viewport().get_final_transform().get_scale().y)*scale.y
+	var height:=ceilf(44/maxf(.1,pixel_scale))
+	for node: Node in find_children("*","Control",true,false):
+		if node is BaseButton or node is LineEdit or node is HSlider:
+			if not is_equal_approx(node.custom_minimum_size.y,height): node.custom_minimum_size.y=height
+			if node is Button and node.name in ["Collapse","CloseWindow"]: node.custom_minimum_size.x=height

@@ -8,6 +8,8 @@ func _app() -> GameApp:
 	await _frames(2)
 	app.wuda_roll=func() -> float: return 1
 	app.start_new_game("hard","none")
+	if app._opening_cut!=null and app._opening_cut.on: app._opening_cut.end(true)
+	else: app.ui._end_opening(true)
 	app.set_physics_process(false)
 	app.player.set_physics_process(false)
 	app.debug_flow.set_process(false)
@@ -27,7 +29,7 @@ func test_commands() -> void:
 	var dev:=app.debug_flow
 	app._toggle_debug()
 	check(app.debug_panel.visible and app.player.enabled and not paused,"opening the expanded tools retains live input and simulation")
-	check(app.debug_panel._pages.size()==5 and app.debug_panel._selectors.DevAnomaly.option.item_count==26,"all five developer pages and 26 anomaly entries exist")
+	check(app.debug_panel._pages.size()==7 and app.debug_panel._selectors.DevAnomaly.option.item_count==26,"all seven developer pages and 26 anomaly entries exist")
 	var before:=app.school().capture()
 	for value: String in ["","NaN","inf","-1","101","1e309","abc"]:
 		dev.command("stat",{"key":"san","value":value})

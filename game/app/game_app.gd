@@ -274,6 +274,7 @@ func _save_profile(from: AchievementsModule) -> void:
 
 ## Report one fact; unlocked entries are announced and the profile is stored.
 func fact(f: Dictionary) -> void:
+	if is_instance_valid(debug_flow): debug_flow.observe(f)
 	var ach := achievements()
 	if ach == null:
 		return
@@ -887,7 +888,7 @@ func return_to_menu() -> void:
 
 func _physics_process(delta: float) -> void:
 	if is_instance_valid(archive_flow) and archive_flow.active(): return
-	if is_instance_valid(debug_flow) and debug_flow.frozen: return
+	if is_instance_valid(debug_flow) and debug_flow.blocks_simulation(): return
 	if _choice_left > 0.0 and ui.choice_open():
 		_choice_left -= delta
 		ui.show_choice_timer(maxf(0.0, _choice_left))
@@ -1501,7 +1502,7 @@ func _bag_entries() -> Array:
 
 
 func _touch_torch() -> void:
-	if is_instance_valid(debug_flow) and debug_flow.frozen: return
+	if is_instance_valid(debug_flow) and debug_flow.blocks_simulation(): return
 	if session == null or not player.enabled or story().over():
 		return
 	if not items().has("torch"):
@@ -1511,7 +1512,7 @@ func _touch_torch() -> void:
 
 
 func _touch_hot(index: int) -> void:
-	if is_instance_valid(debug_flow) and debug_flow.frozen: return
+	if is_instance_valid(debug_flow) and debug_flow.blocks_simulation(): return
 	if session==null or get_tree().paused or story().over() or (not player.enabled and not knife_flow.captured()):
 		return
 	if index in [0,1] and items().hot[index]!=null and knife_flow.use(String(items().hot[index]),"hot"):
@@ -1522,7 +1523,7 @@ func _touch_hot(index: int) -> void:
 
 
 func _open_manual() -> void:
-	if is_instance_valid(debug_flow) and debug_flow.frozen: return
+	if is_instance_valid(debug_flow) and debug_flow.blocks_simulation(): return
 	if knife_flow.captured() and not story().over():
 		_open_bag()
 		return
@@ -1546,7 +1547,7 @@ func _open_manual() -> void:
 
 
 func _open_bag() -> void:
-	if is_instance_valid(debug_flow) and debug_flow.frozen: return
+	if is_instance_valid(debug_flow) and debug_flow.blocks_simulation(): return
 	player.enabled = false
 	player.clear_input()
 	ui.clear_touch()
@@ -3778,7 +3779,7 @@ func _day_step(_delta: float) -> void:
 
 
 func _lesson_press() -> void:
-	if is_instance_valid(debug_flow) and debug_flow.frozen: return
+	if is_instance_valid(debug_flow) and debug_flow.blocks_simulation(): return
 	var dm := days()
 	if dm == null or ui.choice_open():
 		return
@@ -4991,7 +4992,7 @@ func _lift_close() -> void:
 
 ## Switch scene inside the running session (old doEnterRoom / doExitRoom). Seamless moves keep input.
 func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
-	if is_instance_valid(debug_flow): debug_flow.clear_preview()
+	if is_instance_valid(debug_flow): debug_flow.location_changing()
 	var error := router.switch_to(world_id)
 	if not error.is_empty():
 		ui.show_notice(error)
@@ -5052,7 +5053,7 @@ func _process(delta: float) -> void:
 			_hands = HandsView.new()
 			_hands.name = "Hands"
 			player.camera.add_child(_hands)
-		var shown := not get_tree().paused and not story().dead and not driving() and not opening_busy()
+		var shown := not get_tree().paused and not story().dead and not driving() and not opening_busy() and not is_instance_valid(debug_flow.preview)
 		var inv := items()
 		var torch_lit := inv != null and inv.torch_on and inv.has("torch")
 		_hands.update(delta, torch_lit, inv != null and inv.brolly_up, phone_open() and not snake_open(), shown, player.moving, player.sprinting)
@@ -5149,7 +5150,7 @@ func _notification(what: int) -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	if is_instance_valid(debug_flow) and debug_flow.frozen: return
+	if is_instance_valid(debug_flow) and debug_flow.blocks_simulation(): return
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo and snake_open():
 		if key.keycode == KEY_ESCAPE:

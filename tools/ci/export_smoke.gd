@@ -87,6 +87,16 @@ func _run() -> void:
 		death.finish()
 		death.queue_free()
 		await process_frame
+	app._toggle_debug()
+	_check(app.debug_panel!=null and app.debug_panel._pages.has("诊断") and app.debug_panel._pages.has("日志"),"exported developer pages missing")
+	app.debug_panel.select_page("诊断")
+	app.debug_flow.command("collisions")
+	await RenderingServer.frame_post_draw
+	_check(app.debug_flow.probe.shown>0,"exported physics outlines cannot draw")
+	app.debug_flow.command("export_report")
+	_check(FileAccess.file_exists(app.saves.side_path("debug-report.json")),"exported diagnostic report cannot write")
+	app.debug_panel.dismiss()
+	_check(app.debug_flow.probe.shown==0 and not app.player.debug_frozen,"exported tool cleanup leaves hidden overlays or frozen input")
 	app.return_to_menu()
 	for id: String in ["out", "lab3", "teach1"]:
 		_check(app.router.switch_to(id).is_empty(), "cannot load " + id)
