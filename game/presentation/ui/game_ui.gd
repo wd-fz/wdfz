@@ -532,6 +532,29 @@ func _build_bag() -> void:
 	_hot_label.position = Vector2(16, -40)
 	_hot_label.add_theme_font_size_override("font_size", 14)
 	hud.add_child(_hot_label)
+	_hot_icons = HBoxContainer.new()
+	_hot_icons.name = "HotItemArt"
+	_hot_icons.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	_hot_icons.position = Vector2(20, -132)
+	_hot_icons.add_theme_constant_override("separation", 8)
+	_hot_icons.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(_hot_icons)
+	for i in 2:
+		var slot := PanelContainer.new()
+		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_theme_stylebox_override("panel", UISkin.panel(8))
+		_hot_icons.add_child(slot)
+		var body := HBoxContainer.new()
+		body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(body)
+		var key := Label.new()
+		key.text = str(i + 1)
+		key.add_theme_color_override("font_color", UISkin.MUTED)
+		body.add_child(key)
+		var art := UIArt.view(null, Vector2(48, 48))
+		art.name = "HotIllustration%d" % (i + 1)
+		body.add_child(art)
+		_hot_art.append(art)
 
 
 func show_bag(entries: Array) -> void:
@@ -546,17 +569,28 @@ func show_bag(entries: Array) -> void:
 		_bag_list.add_child(empty)
 	for e: Dictionary in entries:
 		var row := UISkin.card(_bag_list)
+		var details := HBoxContainer.new()
+		details.add_theme_constant_override("separation", 16)
+		row.add_child(details)
+		var art := UIArt.view(UIArt.item(String(e["id"])), Vector2(88, 96))
+		art.name = "ItemArt_" + String(e["id"])
+		art.tooltip_text = String(e["name"])
+		details.add_child(art)
+		var copy := VBoxContainer.new()
+		copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		copy.add_theme_constant_override("separation", 8)
+		details.add_child(copy)
 		var name := Label.new()
 		name.text = String(e["name"])
 		name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		name.add_theme_color_override("font_color",UISkin.ACCENT)
-		row.add_child(name)
+		copy.add_child(name)
 		var desc := Label.new()
 		desc.text = String(e["text"])
 		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		desc.custom_minimum_size.x = 0
 		desc.add_theme_color_override("font_color",UISkin.MUTED)
-		row.add_child(desc)
+		copy.add_child(desc)
 		var buttons := HFlowContainer.new()
 		var id := String(e["id"])
 		for spec: Array in [["使用", -1], ["放到快捷栏 1", 0], ["放到快捷栏 2", 1], ["丢弃", -2]]:
@@ -595,9 +629,17 @@ func show_search(progress: float) -> void:
 	_search_ring.value = progress
 
 
-func show_hot(text: String) -> void:
+func show_hot(text: String, ids: Array = []) -> void:
 	_hot_label.text = text
 	_hot_label.self_modulate.a = 0.0 if text.is_empty() else 1.0     # an empty card would show as a stray bracket
+	for i in 2:
+		var id := String(ids[i]) if i < ids.size() and ids[i] != null else ""
+		var texture := UIArt.item(id)
+		if _hot_art[i].texture != texture:
+			_hot_art[i].texture = texture
+		var button := _touch_buttons.get("hot%d" % (i + 1)) as Button
+		if button != null and button.icon != texture:
+			button.icon = texture
 
 
 ## Death: a dark red fade while the (not yet ported) death scene would play, then the record
@@ -1279,6 +1321,8 @@ func _build_touch_tools() -> void:
 		b.text = spec[0]
 		b.focus_mode = Control.FOCUS_NONE
 		b.custom_minimum_size = Vector2(44,44)
+		b.expand_icon = true
+		b.add_theme_constant_override("icon_max_width", 28)
 		b.pressed.connect(func() -> void:
 			match spec[1]:
 				"Manual": manual_requested.emit()
@@ -1324,6 +1368,7 @@ func _refit_touch() -> void:
 		c.size = rects[id].size
 		c.modulate.a = alpha
 	_hot_label.visible = not _touch_enabled
+	_hot_icons.visible = not _touch_enabled
 
 
 func show_touch_layout_editor() -> void:
@@ -1866,17 +1911,28 @@ func flash_hurt(strength: float) -> void:
 var _choice_cancellable := true
 
 
-func show_choice(text: String, labels: Array, cancellable: bool = true) -> void:
+func show_choice(text: String, labels: Array, cancellable: bool = true, illustrations: Array = []) -> void:
 	_paper_read = false
 	if is_instance_valid(_paper_progress): _paper_progress.hide()
 	_choice_cancellable = cancellable
+	_choice_has_art = not illustrations.is_empty()
 	for child in _choice_box.get_children():
+		_choice_box.remove_child(child)
 		child.queue_free()
 	_choice_text.text = text
 	for i in labels.size():
 		var b := Button.new()
 		b.text = "%d. %s" % [i + 1, labels[i]]
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		if i < illustrations.size() and illustrations[i] is Texture2D:
+			b.icon = illustrations[i]
+			b.expand_icon = true
+			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			b.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+			b.add_theme_constant_override("icon_max_width", 108 if get_viewport().get_visible_rect().size.x >= 640 else 72)
+			b.add_theme_constant_override("h_separation", 18)
+			b.custom_minimum_size.y = 144
+			b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		b.pressed.connect(choice_selected.emit.bind(i))
 		_choice_box.add_child(b)
 	if cancellable:
@@ -1884,6 +1940,7 @@ func show_choice(text: String, labels: Array, cancellable: bool = true) -> void:
 		cancel.text = "算了"
 		cancel.pressed.connect(choice_selected.emit.bind(-1))
 		_choice_box.add_child(cancel)
+	_choice_scroll.scroll_vertical = 0
 	choice_panel.visible = true
 	_choice_refit = false
 	_fit_choice()
@@ -1892,7 +1949,7 @@ func show_choice(text: String, labels: Array, cancellable: bool = true) -> void:
 ## Long lists (the talent pick) scroll inside the panel instead of running off a phone screen.
 func _fit_choice() -> void:
 	var view := get_viewport().get_visible_rect().size
-	choice_panel.custom_minimum_size.x = minf(560.0, view.x - 32.0)
+	choice_panel.custom_minimum_size.x = minf(840.0 if _choice_has_art else 560.0, view.x - 32.0)
 	_choice_text.custom_minimum_size.x = choice_panel.custom_minimum_size.x - 24.0
 	var want := 0.0
 	for child in _choice_box.get_children():
@@ -1911,6 +1968,7 @@ func _fit_choice() -> void:
 
 
 var _choice_refit := false
+var _choice_has_art := false
 
 
 ## Wrapped labels know their height only after a layout pass: fit once more then.
@@ -2115,6 +2173,8 @@ var _bag_list: VBoxContainer
 var _bag_scroll: ScrollContainer
 var _search_ring: ProgressBar
 var _hot_label: Label
+var _hot_icons: HBoxContainer
+var _hot_art: Array[TextureRect] = []
 
 
 func show_location(text: String) -> void:
