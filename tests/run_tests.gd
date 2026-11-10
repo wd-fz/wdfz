@@ -289,6 +289,8 @@ func _run() -> void:
 	await render_quality.test_torch()
 	print("CASE: render_quality.test_daylight_and_glow")
 	await render_quality.test_daylight_and_glow()
+	print("CASE: render_quality.test_scene_materials")
+	render_quality.test_scene_materials()
 	var remodel := preload("res://tests/suites/remodel.gd").new(self)
 	print("CASE: remodel.test_figures")
 	remodel.test_figures()

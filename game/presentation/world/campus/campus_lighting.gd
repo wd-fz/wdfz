@@ -152,7 +152,7 @@ func setup(id: String, room_data: Variant, model: Node, stair_rise: float) -> vo
 		spot.name = "WindowLight%d" % window_lights.size()
 		spot.light_cull_mask = WORLD_LIGHT_MASK
 		spot.light_energy = 0.0
-		spot.light_specular = 0.15
+		spot.light_specular = 0.5
 		spot.spot_range = 9.0
 		spot.spot_angle = 46.0
 		spot.spot_attenuation = 0.7
@@ -341,7 +341,7 @@ func apply_quality() -> void:
 		for l: OmniLight3D in room_lights:
 			l.position.y = float(l.get_meta("rest_y", l.position.y)) - (LAMP_DROP if q >= 2 else 0.0)
 	for l: OmniLight3D in room_lights + lamp_pool:
-		l.light_specular = 0.35 if q >= 2 else 0.5     # stronger lamps would otherwise glint off boards and ceilings
+		l.light_specular = 0.5
 		l.shadow_bias = 0.06
 		l.shadow_normal_bias = 1.2
 		l.shadow_blur = 1.4

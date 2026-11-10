@@ -155,3 +155,41 @@ func test_daylight_and_glow() -> void:
 	model.queue_free()
 	await _frames(1)
 	CampusData.clear_caches()
+
+
+func test_scene_materials() -> void:
+	var wall := StandardMaterial3D.new()
+	wall.resource_name = "MeshPhongMaterial"
+	var metal := StandardMaterial3D.new()
+	metal.resource_name = "MeshPhongMaterial"
+	var glass := StandardMaterial3D.new()
+	glass.resource_name = "MeshPhongMaterial"
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var pbr := StandardMaterial3D.new()
+	pbr.resource_name = "MeshStandardMaterial"
+	pbr.metallic = 0.7
+	check(SceneMaterials.shininess_of(wall, 0.7) == 0 and SceneMaterials.shininess_of(metal, 0.6) == 40 and SceneMaterials.shininess_of(wall, 0.96) == 4 and SceneMaterials.shininess_of(pbr, 0.33) == -1,
+		"the old shininess is read back from the exported roughness (0.70 was shininess 0)")
+	check(is_equal_approx(SceneMaterials.physical_roughness(40), 1.0 - sqrt(40.0 / 90.0)) and SceneMaterials.physical_roughness(0) == 0.96 and SceneMaterials.physical_roughness(90) == 0.22, "the old build's physical roughness formula, clamped")
+	for q in 5:
+		check(is_equal_approx(float(SceneMaterials.response(wall, 0.7, q)["roughness"]), 0.96), "walls and ceilings are matte at quality %d" % q)
+	check(is_equal_approx(float(SceneMaterials.response(metal, 0.6, 0)["roughness"]), 0.6) and float(SceneMaterials.response(metal, 0.6, 1)["metallic"]) == 0.0, "流畅 and 均衡 keep the exported response of everything else")
+	var mr := SceneMaterials.response(metal, 0.6, 2)
+	check(absf(float(mr["roughness"]) - 0.333) < 0.01 and is_equal_approx(float(mr["metallic"]), SceneMaterials.MID_TIER_METALLIC), "from 精细 metal is smoother and slightly metallic")
+	check(is_equal_approx(float(SceneMaterials.response(glass, 0.4, 3)["roughness"]), 0.05) and absf(float(SceneMaterials.response(wall, 0.94, 2)["roughness"]) - 0.742) < 0.01, "glass is polished, floor tiles get their sheen")
+	var pr := SceneMaterials.response(pbr, 0.33, 4)
+	check(is_equal_approx(float(pr["roughness"]), 0.33) and is_equal_approx(float(pr["metallic"]), 0.7), "真实's own physical materials are left alone")
+	# On a real model: idempotent, and a later quality starts again from the file's values.
+	var model := (load("res://assets/campus/scenes/teach1.glb") as PackedScene).instantiate() as Node3D
+	var first := SceneMaterials.apply(model, 2)
+	var again := SceneMaterials.apply(model, 2)
+	var back := SceneMaterials.apply(model, 0)
+	var glossy_walls := 0
+	for mi: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		for i in mi.mesh.get_surface_count():
+			var m := mi.mesh.surface_get_material(i) as BaseMaterial3D
+			if m != null and String(m.resource_name).begins_with("MeshPhongMaterial") and is_equal_approx(m.roughness, 0.7):
+				glossy_walls += 1
+	check(first > 0 and again == 0 and back > 0 and glossy_walls == 0, "applying is idempotent, reversible by quality, and leaves no half-glossy wall (%d changed)" % first)
+	SceneMaterials.apply(model, CampusLighting.quality)
+	model.free()

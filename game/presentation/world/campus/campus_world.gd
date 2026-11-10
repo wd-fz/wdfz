@@ -211,6 +211,7 @@ func _load_visual(id: String) -> Node3D:
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
 			_to_multimesh(mesh)
+	SceneMaterials.apply(model, CampusLighting.quality)
 	_register_preview_doors(model, id)
 	return model
 
@@ -347,6 +348,13 @@ func _build_link_preview() -> void:
 
 ## A quality change replaces only rendering nodes. Keep physics, interaction actors and all
 ## rule modules alive: changing a setting must not end an anomaly or reset a room visit.
+## The picture quality changed without changing the model tier: the materials answer the light differently.
+func apply_material_quality() -> void:
+	SceneMaterials.apply(get_node_or_null("Model"), CampusLighting.quality)
+	for preview: Node in link_previews:
+		SceneMaterials.apply(preview, CampusLighting.quality)
+
+
 func reload_models(player_position: Vector3) -> void:
 	if visual_tier == CampusData.tier:
 		return
@@ -412,6 +420,7 @@ func _build_model() -> void:
 			_door_leaves[key][String(extras["state"])] = holder
 	for key: String in _door_leaves:
 		set_door_open(key, false)
+	SceneMaterials.apply(model, CampusLighting.quality)
 	visual_ground.set_model(model)
 
 
