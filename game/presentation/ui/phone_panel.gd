@@ -35,6 +35,11 @@ func _init() -> void:
 	grow_vertical = Control.GROW_DIRECTION_BOTH
 	var back := UISkin.panel(16)
 	add_theme_stylebox_override("panel", back)
+	var wallpaper := UIArt.view(UIArt.wallpaper(), Vector2.ZERO)
+	wallpaper.name = "PhoneWallpaper"
+	wallpaper.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	wallpaper.modulate = Color(1, 1, 1, 0.32)
+	add_child(wallpaper)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 12)
 	var header := HBoxContainer.new()
@@ -44,10 +49,15 @@ func _init() -> void:
 	top.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_theme_color_override("font_color",UISkin.ACCENT)
 	header.add_child(top)
+	var status_row := HBoxContainer.new()
+	status_row.add_theme_constant_override("separation", 10)
+	status_row.add_child(UIArt.view(UIArt.phone("battery"), Vector2(30, 24)))
+	box.add_child(status_row)
 	status = Label.new()
+	status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	status.add_theme_color_override("font_color",UISkin.MUTED)
-	box.add_child(status)
+	status_row.add_child(status)
 	_layout = HBoxContainer.new()
 	_layout.add_theme_constant_override("separation",16)
 	box.add_child(_layout)
@@ -56,6 +66,7 @@ func _init() -> void:
 	_nav_scroll.follow_focus = true
 	_layout.add_child(_nav_scroll)
 	var nav := VBoxContainer.new()
+	nav.add_theme_constant_override("separation", 4)
 	nav.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_nav_scroll.add_child(nav)
 	_body_scroll = ScrollContainer.new()
@@ -71,8 +82,14 @@ func _init() -> void:
 		var b := Button.new()
 		b.name = "App_" + String(a[0])
 		b.text = String(a[1])
+		b.icon = UIArt.phone(String(a[0]))
+		b.expand_icon = true
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.add_theme_constant_override("icon_max_width", 32)
+		b.add_theme_constant_override("h_separation", 10)
 		b.toggle_mode = true
-		b.custom_minimum_size.y = 44
+		b.custom_minimum_size.y = 52
 		b.pressed.connect(func() -> void: app_selected.emit(String(a[0])))
 		nav.add_child(b)
 		app_buttons[a[0]] = b
@@ -133,8 +150,8 @@ func _ready() -> void:
 
 func _fit() -> void:
 	if not is_inside_tree() or not visible: return
-	_nav_scroll.custom_minimum_size.x = 145*get_theme_default_font_size()/16.0
-	PanelLayout.fit(self,_layout,820,360)
+	_nav_scroll.custom_minimum_size.x = 184*get_theme_default_font_size()/16.0
+	PanelLayout.fit(self,_layout,820,432)
 
 
 ## Select the app visually. action: "" hides the button; label its text.

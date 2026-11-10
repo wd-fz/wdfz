@@ -45,6 +45,14 @@ func _run() -> void:
 	_check(CampusData.room_ids().size() == 42, "dynamic layout JSON or models missing")
 	_check(CampusData.tiers_available().size() == 5, "quality tiers missing")
 	_check(FileAccess.file_exists("res://assets/audio/index.json"), "audio index missing")
+	for id: String in CampusData.campus()["items"]:
+		_check(UIArt.item(id) != null, "exported item illustration missing: " + id)
+	for id: String in TalentModule.KEYS:
+		_check(UIArt.talent(id) != null, "exported talent illustration missing: " + id)
+	for spec: Array in PhonePanel.APPS:
+		_check(UIArt.phone(spec[0]) != null, "exported phone illustration missing: " + String(spec[0]))
+	_check(UIArt.talent("random") != null and UIArt.phone("battery") != null, "exported supporting illustrations missing")
+	_check(UIArt.wallpaper() != null, "exported phone wallpaper missing")
 	_check(FileAccess.file_exists(MazeDeath.GEOMETRY) and DeathGeometry.mesh("hall",MazeDeath.GEOMETRY).get_surface_count()==1, "dynamic maze death geometry missing")
 	for resource: String in ["res://assets/campus/crowd/full.png","res://assets/campus/exchange/exchange-sign.png","res://game/presentation/world/campus/dust_points.gdshader"]:
 		_check(ResourceLoader.exists(resource), "presentation resource missing: " + resource)

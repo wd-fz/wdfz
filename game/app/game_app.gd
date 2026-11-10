@@ -456,10 +456,13 @@ func _speedrun_menu() -> void:
 
 func _pick_talent(difficulty: String, speed: bool = false) -> void:
 	var labels: Array = []
+	var illustrations: Array[Texture2D] = []
 	for k: String in TalentModule.KEYS:
 		var d: Dictionary = TalentModule.DEF[k]
-		labels.append("%s — %s" % [d["n"], d["does"]])
+		labels.append("%s\n%s\n限制：%s" % [d["n"], d["does"], d["limit"]])
+		illustrations.append(UIArt.talent(k))
 	labels.append("随机一个天赋")
+	illustrations.append(UIArt.talent("random"))
 	_choice_count += 1
 	var mine := _choice_count
 	_choice_handler = func(index: int) -> void:
@@ -472,7 +475,7 @@ func _pick_talent(difficulty: String, speed: bool = false) -> void:
 			speedrun.disarm()
 		start_new_game(difficulty, pick)
 		_play_opening()
-	ui.show_choice("%s · 选择天赋（每局一个；限制写在卡片上）" % ("梦魇" if difficulty == "hard" else "预知梦"), labels)
+	ui.show_choice("%s · 选择天赋（每局一个；限制写在卡片上）" % ("梦魇" if difficulty == "hard" else "预知梦"), labels, true, illustrations)
 
 
 ## Carry what can be carried of an old Web save into a new run (game/features/compatibility/legacy_save.gd). Returns "" or why not.
@@ -1318,7 +1321,7 @@ func _school_step(delta: float, rules: CampusModule, advance_calendar: bool = tr
 			talent().tick_watch(day_rules.day if day_rules != null else 1, school().tsec, SchoolClock.rate_at(school().tsec))
 			for te: Dictionary in talent().take_events():
 				ui.show_notice(String(te["text"]))
-		ui.show_hot("1 · %s    2 · %s" % [bag.item_name(String(bag.hot[0])) if bag.hot[0] != null else "空", bag.item_name(String(bag.hot[1])) if bag.hot[1] != null else "空"])
+		ui.show_hot("1 · %s    2 · %s" % [bag.item_name(String(bag.hot[0])) if bag.hot[0] != null else "空", bag.item_name(String(bag.hot[1])) if bag.hot[1] != null else "空"], bag.hot)
 	var pose := player.capture_pose()
 	var room: Variant = rules.room(session.world_id)
 	var p: Array = pose["position"]

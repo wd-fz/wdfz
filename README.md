@@ -34,6 +34,8 @@ v0.2.0 起统一使用 **Vulkan**：Linux／Windows 使用 **Forward+**，Androi
 
 界面使用系统字体回退；Linux 无中文字体时安装 Noto Sans CJK，Android 使用系统中文字体。本框架没有联网、账号或在线资源依赖。
 
+main 已为全部 41 件物品、7 个天赋及手机应用接入[独立插画素材](assets/ui/illustrations/README.md)：背包、桌面与触屏快捷栏、天赋选择卡及手机界面均实际加载图片。游戏内实拍见[物品、天赋与手机插画](pictures/物品天赋与手机插画/)。
+
 ## 给接手者的入口
 
 | 要做什么 | 从哪里开始 |
