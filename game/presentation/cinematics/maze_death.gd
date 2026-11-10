@@ -10,13 +10,13 @@ const PARTS := [[1.26,2.26,.06,1.13,.03],[1.12,2.16,.02,1.08,.07],[.96,2.06,.04,
 const PASSES := [[.88,1.32,1.1,9.0,1.9,.25,false],[1.33,1.77,1.55,9.0,1.9,.25,false],[2.05,2.42,2.45,9.0,0,.95,true]]
 
 
-static func original_mesh(c: DeathCG, key: String, parent: Node3D = null) -> MeshInstance3D:
+static func original_mesh(c: DeathStage, key: String, parent: Node3D = null) -> MeshInstance3D:
 	var material := c._mat(Color.WHITE)
 	material.vertex_color_use_as_albedo = true
 	return c.mesh(DeathGeometry.mesh(key,GEOMETRY),material,0,0,0,parent)
 
 
-static func build_lost(c: DeathCG) -> void:
+static func build_lost(c: DeathStage) -> void:
 	c.hide_world(Color.BLACK)
 	c.d["hall"] = original_mesh(c,"hall")
 	c.d["doors"] = []
@@ -29,7 +29,7 @@ static func build_lost(c: DeathCG) -> void:
 	c.veil(Color.BLACK)
 
 
-static func update_lost(c: DeathCG, t: float) -> void:
+static func update_lost(c: DeathStage, t: float) -> void:
 	var walk := -.6*c.ss(t,0,.55)
 	var narrow := 1-.16*c.ss(t,2,3.2)
 	c.d["hall"].position.z = walk
@@ -59,14 +59,14 @@ static func fall_distance(t: float) -> float:
 
 
 static func fall_pitch(t: float) -> float:
-	return 1.15-1.25*DeathCG.ss(t,.7,1.15)-1.22*DeathCG.ss(t,1.95,2.4)
+	return 1.15-1.25*DeathStage.ss(t,.7,1.15)-1.22*DeathStage.ss(t,1.95,2.4)
 
 
 static func fall_yaw(t: float) -> float:
-	return .6*DeathCG.ss(t,.7,1.4)-.35*DeathCG.ss(t,1.95,2.5)
+	return .6*DeathStage.ss(t,.7,1.4)-.35*DeathStage.ss(t,1.95,2.5)
 
 
-static func build_fall(c: DeathCG) -> void:
+static func build_fall(c: DeathStage) -> void:
 	c.hide_world(Color.BLACK)
 	c.d["ledge"] = original_mesh(c,"ledge")
 	var bm := BoxMesh.new()
@@ -92,7 +92,7 @@ static func build_fall(c: DeathCG) -> void:
 	c.veil(Color.BLACK)
 
 
-static func update_fall(c: DeathCG, t: float) -> void:
+static func update_fall(c: DeathStage, t: float) -> void:
 	var distance := fall_distance(minf(t,3.05))
 	c.view(t,fall_yaw(t),fall_pitch(t)+.04*sin(t*23)*c.seg(t,.7,1.9)*c.shk,0)
 	var eye := c.cam_y()

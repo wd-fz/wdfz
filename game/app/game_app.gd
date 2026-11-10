@@ -1705,8 +1705,9 @@ func kill(msg: String, fx: String, source: String) -> void:
 	_death_hold = float(result["hold"])
 	_death_wait = 0.0
 	_death_phase = "fade"
-	_start_death_cg(source if DeathCG.has(source) else fx)
-	_death_hold = DeathCG.duration(source if DeathCG.has(source) else fx, _death_hold) if _death_cg != null and is_instance_valid(_death_cg) and _death_cg.on else _death_hold
+	var scene := DeathCG.resolve(source,fx)
+	_death_hold = DeathCG.duration(scene,_death_hold)
+	_start_death_cg(scene)
 	ui.show_notice(msg)
 	var updated := fate.log_death(_read_death_log(), school().day if school() != null else 1, session.world_id)
 	_write_death_log(updated)
@@ -1755,6 +1756,8 @@ func _start_death_cg(fx: String) -> void:
 	add_child(_death_cg)
 	_death_cg.audio = audio
 	_death_cg.begin(fx, player, world, ui, DeathCG.duration(fx, StoryModule.duration(fx)), settings.get_int("reduce_flash") == 1)
+	if _death_phase == "fade":
+		_death_cg.offer_skip(_finish_death)
 
 
 func _stop_death_cg() -> void:

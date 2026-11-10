@@ -92,6 +92,8 @@ func test_app() -> void:
 		if is_instance_valid(stage.cut): stage.cut.set_process(false)
 		check(app.session == null and app.router.world_instance() == null and stage.player != app.player,"isolated archive world and player: "+String(entry["id"]))
 		if stage.death != null:
+			var expected:=DeathCG.resolve(String(entry["id"]),String(entry["fx"]))
+			check(stage.death.fx==expected and is_equal_approx(stage.duration,DeathCG.duration(expected,0)),"archive uses the same source and duration as live death: "+String(entry["id"]))
 			for t: float in [.2,.55,.85]: stage.death.update(stage.duration*t)
 		elif stage.cut is MazeCut:
 			for k: float in [.2,.5,.85]: stage.cut.apply_frame(k)

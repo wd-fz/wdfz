@@ -109,8 +109,10 @@ func begin(entry: Dictionary, worlds: Array[WorldDefinition], view: GameUI, opti
 		add_child(death)
 		death.audio = audio
 		var fx := String(entry["fx"])
-		duration = maxf(3.5,DeathCG.duration(fx,StoryModule.duration(fx))+.6)
-		death.begin(fx,player,router.world_instance(),ui,duration,settings.get_int("reduce_flash") != 0)
+		var scene := DeathCG.resolve(String(entry.get("id","")),fx)
+		var shot_duration := DeathCG.duration(scene,StoryModule.duration(fx))
+		duration = shot_duration
+		death.begin(scene,player,router.world_instance(),ui,shot_duration,settings.get_int("reduce_flash") != 0)
 		audio.death(fx)
 	if is_instance_valid(cut):
 		cut.set_process_input(false)

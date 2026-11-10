@@ -363,7 +363,7 @@ func _make_pages(parent: VBoxContainer) -> VBoxContainer:
 	for pair: Array in [["fake_normal","切换假正常"],["patrol_start","重置巡察"],["patrol_end","解除追逐"],["inspection","开始检查"],["inspection_end","取消检查"]]:
 		_button(er,pair[1],"Dev"+pair[0],_send.bind(pair[0],{}))
 	var causes: Array=[]
-	for id: String in DeathCG.CAUSES: causes.append([id,StoryModule.EPITAPH.get(id,id)])
+	for id: String in DeathCG.CAUSES: causes.append([id,DeathCG.title(id)])
 	_select(events,"DevDeath",causes)
 	var dr:=_row(events)
 	_button(dr,"预览演出","DevPreview",func() -> void: _send("preview",{"id":selected("DevDeath")}))

@@ -72,7 +72,7 @@ func test_frames() -> void:
 	var saved := app.player.capture_pose().duplicate(true)
 	var camera := app.player.camera.transform
 	for sample: Dictionary in original_data()["cases"]:
-		var cg := DeathCG.new()
+		var cg := preload("res://tests/support/death_reference.gd").new()
 		app.add_child(cg)
 		cg.begin(sample["kind"],app.player,app._campus_world(),app.ui,4.5,sample["shake"]==0)
 		for frame: Dictionary in sample["frames"]:
@@ -95,7 +95,7 @@ func test_frames() -> void:
 	for sample: Dictionary in original_data()["floors"]:
 		var room := CampusData.layout("teach%d" % int(sample["floor"]))
 		app.travel(room["id"],_campus_pose(room,CampusGeometry.tile_center(room,45,9),0),false)
-		var cg := DeathCG.new()
+		var cg := preload("res://tests/support/death_reference.gd").new()
 		app.add_child(cg)
 		cg.begin("liftdoor",app.player,app._campus_world(),app.ui,4.5)
 		var segments := []
@@ -109,7 +109,7 @@ func test_frames() -> void:
 		await _frames()
 	# Both normal and reduced-flash exits must restore their presentation ownership.
 	app._campus_world().hide()
-	var stopped := DeathCG.new()
+	var stopped := preload("res://tests/support/death_reference.gd").new()
 	app.add_child(stopped)
 	stopped.begin("shatter",app.player,app._campus_world(),app.ui,3.5)
 	stopped.update(1.0)

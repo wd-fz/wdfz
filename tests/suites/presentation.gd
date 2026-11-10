@@ -331,7 +331,7 @@ func _test_day_banner() -> void:
 func _test_death_cg() -> void:
 	for c: String in DeathCG.CAUSES:
 		check((StoryModule.DURATIONS.has(c) or DeathCG.LENGTH.has(c)) and DeathCG.has(c), "death scene %s has a duration and a scene" % c)
-	check(DeathCG.duration("misread", 2.0) == 4.1 and DeathCG.duration("trash", 3.6) == 3.6 and DeathCG.has("window_gaze") and DeathCG.has("paper_sender") and DeathCG.has("campus_fall"), "scenes of the cause's own length (window gaze 7 s, paper sender 8 s, misread 4.1 s, fall 6 s)")
+	check(DeathCG.duration("misread", 2.0) == 4.6 and DeathCG.duration("trash", 3.6) == 4.4 and DeathCG.has("window_gaze") and DeathCG.has("paper_sender") and DeathCG.has("campus_fall"), "redesigned cause-specific scenes have explicit presentation lengths")
 	check(not DeathCG.has("unknown") and DeathCG.seg(0.5, 0.0, 1.0) == 0.5 and DeathCG.seg(-1.0, 0.0, 1.0) == 0.0 and DeathCG.ss(0.5, 0.0, 1.0) == 0.5 and DeathCG.ss(2.0, 0.0, 1.0) == 1.0, "the easing helpers clamp")
 
 
@@ -347,10 +347,6 @@ func _test_scene_beats() -> void:
 	var ids: Array = bank.keys()
 	for sound_id: String in ["foley.door", "threat.sting", "foley.vanish", "threat.smileBack", "threat.smileJump", "event.bigBell", "world.crackle", "scene.engine", "scene.hum", "scene.cyberEnd", "ui.click", "ui.blink", "foley.wake"]:
 		check(ids.has(sound_id), "beat sound %s is in the bank" % sound_id)
-	var src := FileAccess.get_file_as_string("res://game/presentation/cinematics/death_cg.gd")
-	for pair: String in ["trash:k1", "grip:grab", "twin:in", "gaze:giggle", "bell:hit", "loop:man", "laugh:big", "lamps:last"]:
-		var parts := pair.split(":")
-		check(src.contains('cue("%s"' % parts[1]) and src.contains("func _update_%s(" % parts[0]), "death scene %s has its beat %s" % [parts[0], parts[1]])
 	cg.free()
 
 

@@ -68,6 +68,25 @@ func _run() -> void:
 	_check(FileAccess.file_exists(MazeDeath.GEOMETRY) and DeathGeometry.mesh("hall",MazeDeath.GEOMETRY).get_surface_count()==1, "dynamic maze death geometry missing")
 	for resource: String in ["res://assets/campus/crowd/full.png","res://assets/campus/exchange/exchange-sign.png","res://game/presentation/world/campus/dust_points.gdshader"]:
 		_check(ResourceLoader.exists(resource), "presentation resource missing: " + resource)
+	if app._opening_cut!=null and app._opening_cut.on: app._opening_cut.end(true)
+	else: app.ui._end_opening(true)
+	app.set_process(false)
+	app.set_physics_process(false)
+	app.player.set_physics_process(false)
+	for source: String in ["patrol","garage","car_entry","an:moth","an:exercise","an:cup","rules_knock","bell","window_gaze"]:
+		var scene:=DeathCG.resolve(source,"vignette")
+		_check(DeathCG.has(scene),"exported source catalog missing: "+source)
+		var death:=DeathCG.new()
+		app.add_child(death)
+		death.begin(scene,app.player,app._campus_world(),app.ui,DeathCG.duration(scene,0),true)
+		death.update(death.dur*.58)
+		await RenderingServer.frame_post_draw
+		_check(death.shots!=null and death.shots.focus!=null,"exported cinematic cannot build: "+source)
+		if scene=="bell":
+			_check(not death.shots.p["bell_model"].find_children("*","MeshInstance3D",true,false).is_empty(),"exported bell geometry missing")
+		death.finish()
+		death.queue_free()
+		await process_frame
 	app.return_to_menu()
 	for id: String in ["out", "lab3", "teach1"]:
 		_check(app.router.switch_to(id).is_empty(), "cannot load " + id)

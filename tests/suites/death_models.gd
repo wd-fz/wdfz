@@ -60,7 +60,7 @@ func test_deaths() -> void:
 	var before := app.player.capture_pose().duplicate(true)
 	var camera := app.player.camera.transform
 	for sample: Dictionary in _original_data()["cases"]:
-		var cg := DeathCG.new()
+		var cg := preload("res://tests/support/death_reference.gd").new()
 		app.add_child(cg)
 		cg.begin(sample["kind"],app.player,app._campus_world(),app.ui,3.5)
 		if sample["kind"]=="swarm":

@@ -951,7 +951,7 @@ func _test_death_flow(app: GameApp) -> void:
 	check(not paused, "a dead player cannot open the pause menu")
 	app.save_game()
 	check(not app.saves.exists(), "a dead run cannot be saved")
-	await _frames(150)
+	await _frames(ceili(app._death_hold*60)+6)
 	check(not app.story().dead and app.story().wakes == 1 and app.router.current.world_id == &"teach1", "day one on 预知梦 wakes at the own seat")
 	check(absf(app.school().tsec - 700.0) < 1.5 and absf(app.school().san - 78.0) < 1.0 and app.school().seated and app.player.enabled,
 		"the dream wake is 11:40, SAN 78, seated, with control back (t %.2f san %.2f)" % [app.school().tsec, app.school().san])
@@ -963,7 +963,7 @@ func _test_death_flow(app: GameApp) -> void:
 	check(app.story().dead and not app.story().wake_pending, "a day-two death is final")
 	app.save_game()
 	check(not app.saves.exists(), "the final death keeps the run from being saved")
-	await _frames(150)
+	await _frames(ceili(app._death_hold*60)+6)
 	check(app._death_phase == "card" and app.ui.death_panel.visible, "the record card shows after the scene")
 	Input.action_press("interact")
 	await _frames(3)

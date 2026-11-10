@@ -191,7 +191,7 @@ func test_app() -> void:
 	check(app.import_legacy_save(JSON.stringify(disabled))!="" and app.session==current,"unknown active DLC version rejects atomically")
 	app._stand_up()
 	app.player.set_pitch(0)
-	var cg:=DeathCG.new()
+	var cg:=preload("res://tests/support/death_reference.gd").new()
 	app.add_child(cg)
 	cg.begin("rules_knock",app.player,app._campus_world(),app.ui,7,false)
 	for frame: Dictionary in fixture()["frames"]:

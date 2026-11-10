@@ -1,12 +1,12 @@
 class_name CrowdDeath
 extends RefCounted
-## Original lift-crowd/crowd-death.js: 4.2 seconds, in DeathCG's view frame.
+## Original lift-crowd/crowd-death.js: 4.2 seconds, in DeathStage's view frame.
 const D := 1.05
 const DIGITS := {6:"afedcg",7:"abc",8:"abcdefg",9:"abcdfg"}
 const SPOTS := [[.27,-.26,.06],[-.27,-.24,.04],[.32,-.12,.14],[-.33,-.1,.16],[.2,-.34,.2],[-.18,-.36,.22]]
 
 
-static func build(c: DeathCG) -> void:
+static func build(c: DeathStage) -> void:
 	c.hide_world()
 	var floor_shape := QuadMesh.new()
 	floor_shape.size = Vector2(1.6,1.6)
@@ -27,8 +27,8 @@ static func build(c: DeathCG) -> void:
 	c.put(text,0,2.2,D-.013)
 	c.d["full"]=text
 	c.d["segs"]={}
-	for key: String in DeathCG.LIFT_SEG:
-		var q: Array=DeathCG.LIFT_SEG[key]
+	for key: String in DeathStage.LIFT_SEG:
+		var q: Array=DeathStage.LIFT_SEG[key]
 		c.d["segs"][key]=c.box(q[2],q[3],.004,Color("#ff4a2a"),-1,-q[0],2.2+q[1],D-.013,false)
 	c.d["leaf_l"]=c.box(.45,2.1,.03,Color("#737b7a"),-1,.225,1.05,D)
 	c.d["leaf_r"]=c.box(.45,2.1,.03,Color("#737b7a"),-1,-.225,1.05,D)
@@ -57,20 +57,20 @@ static func build(c: DeathCG) -> void:
 ## Pure timeline for fixtures and scrubbing; no camera or gameplay mutation.
 static func frame(t: float, shake: float = 1.0) -> Dictionary:
 	var end := t>=3.25
-	var press := DeathCG.ss(t,.9,2.2)
-	var look := DeathCG.ss(t,2.2,2.7)
+	var press := DeathStage.ss(t,.9,2.2)
+	var look := DeathStage.ss(t,2.2,2.7)
 	var yaw := 0.0 if end else .22*press
 	var pitch := -1.02 if end else .16*(1-press)+.62*look+.025*sin(t*31)*shake*press
 	var lift := .6 if end else -.28*press
-	var shade := .9-.6*DeathCG.ss(t,3.3,3.6)+.5*DeathCG.ss(t,3.95,4.2) if end else .12+.5*DeathCG.ss(t,1.6,2.2)-.35*look+.7*DeathCG.ss(t,3.05,3.25)
-	var gap := .9*DeathCG.ss(t,3.35,3.75) if end else 0.0
-	var lit := .15 if end else 1-.8*DeathCG.ss(t,.8,2)
+	var shade := .9-.6*DeathStage.ss(t,3.3,3.6)+.5*DeathStage.ss(t,3.95,4.2) if end else .12+.5*DeathStage.ss(t,1.6,2.2)-.35*look+.7*DeathStage.ss(t,3.05,3.25)
+	var gap := .9*DeathStage.ss(t,3.35,3.75) if end else 0.0
+	var lit := .15 if end else 1-.8*DeathStage.ss(t,.8,2)
 	var n := 6+mini(3,floori((t-2.2)/.24))
 	var segments: String=DIGITS[n] if t>=2.2 and t<3.1 else ("abcdefg" if t>=3.1 and t<3.15 else "")
 	return {"yaw":yaw,"pitch":pitch,"lift":lift,"shade":minf(.94,shade),"gap":gap,"lit":lit,"segments":segments,"full":t<2.2,"end":end}
 
 
-static func update(c: DeathCG, t: float) -> void:
+static func update(c: DeathStage, t: float) -> void:
 	var f := frame(t,c.shk)
 	c.view(t,f["yaw"],f["pitch"],f["lift"])
 	c.shade(f["shade"])
