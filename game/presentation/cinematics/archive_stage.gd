@@ -24,11 +24,14 @@ func begin(entry: Dictionary, worlds: Array[WorldDefinition], view: GameUI, opti
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	router = WorldRouter.new()
 	router.worlds = worlds
+	router.world_preparing.connect(func(world: Node3D) -> void:
+		if world is CampusWorld: world.render_options=settings.graphics())
 	add_child(router)
 	player = PLAYER.instantiate()
 	add_child(player)
 	player.enabled = false
 	player.set_physics_process(false)
+	RenderQuality.apply_torch(player.camera.get_node("Torch"),settings.get_int("lighting_detail"),settings.graphics())
 	player.camera.make_current()
 	audio = AudioFx.new()
 	add_child(audio)

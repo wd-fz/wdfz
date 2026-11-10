@@ -492,7 +492,7 @@ func set_runtime(state: Dictionary) -> void:
 	else:
 		_live.text="没有进行中的一局。"
 		_bag_info.text="背包未载入。"
-	_diagnostics.text="%s / %s · 画质 %d · FPS %d\n%s" % [state.rendering_driver,state.renderer,state.quality,state.fps,"\n".join(state.history)]
+	_diagnostics.text="%s / %s · %s · FPS %d\n%s" % [state.rendering_driver,state.renderer,state.get("quality_label",str(state.quality)),state.fps,"\n".join(state.history)]
 
 	_show_diagnostics(state)
 	_show_preview(state.get("preview",{}))
@@ -504,11 +504,12 @@ func _show_diagnostics(state: Dictionary) -> void:
 	var metrics: Dictionary=state.get("metrics",{})
 	if metrics.is_empty(): return
 	var render:="Draw Calls %d · 图元 %d · 可见对象 %d" % [metrics.draw_calls,metrics.primitives,metrics.render_objects] if metrics.rendered else "无窗口模式：没有真实 GPU 渲染数据"
-	_perf.text="%s / %s · 画质 %d
+	_perf.text="%s / %s · %s
 FPS %d · 最近 %d 帧 · 均值 %.2f ms · P95 %.2f ms
 %s
 节点 %d · 资源 %d · 引擎静态内存 %.1f MiB
-线框 %d / 附近 %d 个" % [state.rendering_driver,state.renderer,state.quality,metrics.fps,metrics.samples,metrics.average_ms,metrics.p95_ms,render,metrics.nodes,metrics.resources,metrics.static_mib,state.get("collision_count",0),state.get("collision_nearby",0)]
+线框 %d / 附近 %d 个" % [state.rendering_driver,state.renderer,state.get("quality_label",str(state.quality)),metrics.fps,metrics.samples,metrics.average_ms,metrics.p95_ms,render,metrics.nodes,metrics.resources,metrics.static_mib,state.get("collision_count",0),state.get("collision_nearby",0)]
+	_perf.text+="\n模型 %d · 光照 %d · 帧率上限 %s · 垂直同步 %s" % [state.get("model_detail",state.quality),state.get("lighting_detail",state.quality),"不限" if int(state.get("fps_limit",0))==0 else str(state.fps_limit),"开" if state.get("vsync",1)==1 else "关"]
 	var hit: Dictionary=state.get("inspect",{})
 	if hit.is_empty():
 		_inspect.text="进入游戏并选择此页后检查视线；过场期间停用。"

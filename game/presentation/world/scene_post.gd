@@ -8,6 +8,7 @@ var fake_normal := 0.0
 var sensory_active := false
 var grain := true
 var quality := 1
+var render_options: Dictionary = {}
 var clock := 0.0
 var gaze_level := 0.0
 const GRADE_SHADER := preload("res://game/presentation/world/scene_post.gdshader")
@@ -71,6 +72,6 @@ func sensory(v: Dictionary, blink: float, t: float) -> void:
 func tick(dt: float) -> void:
 	clock+=dt
 	parameter("t",clock)
-	parameter("grain",(1.0 if grain else 0.0)*(.6 if quality==4 else 1.0))
-	parameter("lite",quality==0)
-	parameter("bloom",.32 if quality==4 else 0.0)
+	parameter("grain",(1.0 if grain else 0.0)*float(render_options.get("grain_strength",60 if quality==4 else 100))/100.0)
+	parameter("lite",int(render_options.get("post_detail",0 if quality==0 else 1))==0)
+	parameter("bloom",float(render_options.get("bloom",32 if quality==4 else 0))/100.0)

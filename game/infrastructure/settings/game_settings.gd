@@ -7,17 +7,28 @@ extends RefCounted
 ## vol 0–100 (default 70) · amb 1/0 ambient layers · captions 0 auto / 1 on / 2 off (default on) ·
 ## sub 0/1/2 caption size · distortion 0 off / 1 reduced / 2 full · reduce_flash 1/0 · bright 50–150 ·
 ## grain 1/0 · mouse, touch 25–250 look sensitivity % · text 85–150 % · touch_size 85–125 % ·
-## quality 0–4 (流畅、均衡、精细、超精细、真实) · auto_land rotates between landscape sides only.
+## quality 0–4 presets / 5 custom; GraphicsProfile expands independent parameters.
+## fps_limit 0 unlimited / 20–360; VSync is independent. auto_land rotates between landscape sides only.
 ## Desktop defaults to windowed; Android always uses immersive fullscreen.
 ## The Web "graphics mode" (WebGL / WebGPU) is replaced by Godot's renderer. Touch layout is
 ## stored separately from numeric settings and from gameplay saves.
 
-const VERSION := 1
+const VERSION := 2
 const DEFAULTS := {"vol": 70, "amb": 1, "captions": 1, "sub": 1, "distortion": 2, "reduce_flash": 0, "bright": 100, "grain": 1,
-	"mouse": 100, "touch": 100, "text": 100, "touch_size": 100, "quality": 2, "auto_land": 1, "full_screen": 0, "shake": 1}
-const LIMITS := {"vol": [0, 100], "bright": [50, 150], "mouse": [25, 250], "touch": [25, 250], "text": [85, 150], "touch_size": [85, 125]}
-const CHOICES := {"amb": 2, "captions": 3, "sub": 3, "distortion": 3, "reduce_flash": 2, "grain": 2, "quality": 5, "auto_land": 2, "full_screen": 2, "shake": 2}
-const QUALITY_LABELS := ["流畅", "均衡", "精细", "超精细", "真实"]
+	"mouse": 100, "touch": 100, "text": 100, "touch_size": 100, "quality": 2, "auto_land": 1, "full_screen": 0, "shake": 1,
+	"fps_limit":0, "vsync":1, "render_scale":100, "model_detail":2, "lighting_detail":2,
+	"particle_detail":2, "upscaler":0, "msaa":0, "fxaa":1, "lod_detail":2,
+	"sun_shadows":1, "sun_shadow_detail":1, "shadow_resolution":2, "shadow_filter":2,
+	"lamp_shadows":1, "window_shadows":1, "torch_shadows":1, "window_light":1,
+	"ssao":1, "ssao_half":1, "glow":1, "volumetric_fog":0, "post_detail":1, "bloom":0, "grain_strength":100}
+const LIMITS := {"vol": [0,100], "bright": [50,150], "mouse": [25,250], "touch": [25,250], "text": [85,150], "touch_size": [85,125],
+	"fps_limit":[0,360], "render_scale":[50,150], "lamp_shadows":[0,4], "window_shadows":[0,4], "bloom":[0,100], "grain_strength":[0,100]}
+const CHOICES := {"amb":2, "captions":3, "sub":3, "distortion":3, "reduce_flash":2, "grain":2, "quality":6, "auto_land":2, "full_screen":2, "shake":2,
+	"vsync":2, "model_detail":5, "lighting_detail":5, "particle_detail":5, "upscaler":2,
+	"msaa":4, "fxaa":2, "lod_detail":4, "sun_shadows":2, "sun_shadow_detail":3,
+	"shadow_resolution":4, "shadow_filter":6, "torch_shadows":2, "window_light":2,
+	"ssao":5, "ssao_half":2, "glow":2, "volumetric_fog":2, "post_detail":2}
+const QUALITY_LABELS := ["流畅", "均衡", "精细", "超精细", "真实", "自定义"]
 ## Rendering scale, MSAA (Viewport enum: 0 off, 2 = 4x, 3 = 8x) and sun shadows per quality (quality.js: scale, samples,
 ## shadow). As in the reference, 精细 and above cast sun shadows.
 const QUALITY_SCALE := [0.55, 0.7, 1.0, 1.0, 1.0]
@@ -53,14 +64,25 @@ func _enforce_platform() -> void:
 ## Clamp or default every entry; unknown keys are dropped.
 static func normalize(raw: Dictionary) -> Dictionary:
 	var out := DEFAULTS.duplicate()
+	var tier: Variant=raw.get("quality",2)
+	if not (tier is int or tier is float) or not is_finite(float(tier)): tier=2
+	tier=int(round(float(tier)))
+	if tier<0 or tier>GraphicsProfile.CUSTOM: tier=2
+	out.merge(GraphicsProfile.preset(tier if tier<GraphicsProfile.CUSTOM else 2),true)
 	for k: String in DEFAULTS:
 		if not raw.has(k) or not (raw[k] is int or raw[k] is float):
 			continue
+		if not is_finite(float(raw[k])): continue
 		var v := int(round(float(raw[k])))
 		if LIMITS.has(k):
 			out[k] = clampi(v, int(LIMITS[k][0]), int(LIMITS[k][1]))
 		elif CHOICES.has(k):
-			out[k] = v if v >= 0 and v < int(CHOICES[k]) else DEFAULTS[k]
+			out[k] = v if v >= 0 and v < int(CHOICES[k]) else out[k]
+	if out.fps_limit>0: out.fps_limit=maxi(20,out.fps_limit)
+	if int(out.quality)<GraphicsProfile.CUSTOM:
+		var preset:=GraphicsProfile.preset(out.quality)
+		for key: String in preset:
+			if out[key]!=preset[key]: out.quality=GraphicsProfile.CUSTOM; break
 	return out
 
 
@@ -73,7 +95,7 @@ func load_file(touch_device: bool = false) -> bool:
 	if not FileAccess.file_exists(path):
 		values = DEFAULTS.duplicate()
 		if touch_device:
-			values["quality"] = 0
+			set_value("quality",0)
 		_enforce_platform()
 		return false
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
@@ -106,9 +128,17 @@ func set_value(key: String, value: float) -> int:
 	if not DEFAULTS.has(key):
 		return 0
 	var next := normalize({key: value})
+	var changed: bool=values[key]!=next[key]
 	values[key] = next[key]
+	if key=="quality" and values.quality<GraphicsProfile.CUSTOM:
+		values.merge(GraphicsProfile.preset(values.quality),true)
+	elif changed and GraphicsProfile.PRESETS.has(key): values.quality=GraphicsProfile.CUSTOM
 	_enforce_platform()
 	return int(values[key])
+
+
+func graphics() -> Dictionary:
+	return GraphicsProfile.from_values(values)
 
 
 func reset_comfort() -> void:

@@ -6,6 +6,8 @@ var ground_height: Callable
 var _props: Node3D
 var _key := ""
 var _quality := -1
+var particle_quality := -1
+var _particle_quality := -1
 var _last_t := 0.0
 var _extra: Dictionary = {}
 var visual_seed: int = -1
@@ -21,10 +23,11 @@ func update(dt: float, an: Dictionary, room: Variant, scene: String, feet: Vecto
 	var data: Dictionary=an.get("data",{})
 	if id!="" and data.has("scene") and String(data["scene"])!=scene: id=""
 	var t:=float(an.get("t",0))
-	if id!=_key or _quality!=CampusData.tier or t<_last_t:
+	if id!=_key or _quality!=CampusData.tier or _particle_quality!=particle_quality or t<_last_t:
 		_clear()
 		_key=id
 		_quality=CampusData.tier
+		_particle_quality=particle_quality
 		if id!="":
 			_props=Node3D.new()
 			_props.name="Anomaly_"+id
@@ -69,21 +72,21 @@ func _build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vec
 		var props:=AnomalyProps.new()
 		props.seed_value=visual_seed if visual_seed>=0 else _visual_random.randi()
 		_props.add_child(props)
-		props.build(id,d,room,feet,facing,CampusData.tier)
+		props.build(id,d,room,feet,facing,CampusData.tier if particle_quality<0 else particle_quality)
 		_extra["original"]=props
 		return
 	match id:
 		"rain":
 			var rain:=WeatherFx.new()
 			_props.add_child(rain)
-			rain.setup_rain(feet)
+			rain.setup_rain(feet,particle_quality)
 			_extra["rain"]=rain
 		"moth":
 			var src: Dictionary=d.get("src",{"x":0.0,"y":0.0})
 			var p:=_at(room,src["x"],src["y"])
 			var swarm:=WeatherFx.new()
 			_props.add_child(swarm)
-			swarm.setup_moths(Vector3(p.x,feet.y,p.y))
+			swarm.setup_moths(Vector3(p.x,feet.y,p.y),particle_quality)
 			_extra["swarm"]=swarm
 		"cup","cola":
 			var falling:=FallingProps.new()

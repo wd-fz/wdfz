@@ -5,7 +5,7 @@ extends RefCounted
 
 const LAYOUT_DIR := "res://assets/campus/layout/"
 const SCENE_DIR := "res://assets/campus/scenes/"
-## The model tier the player chose (GameSettings quality 0–4; the default tier is 2, the one in SCENE_DIR). A tier's exports live in
+## The model tier the player chose (GameSettings model_detail 0–4; the default tier is 2, the one in SCENE_DIR). A tier's exports live in
 ## res://assets/campus_q<N>/scenes/ (tools/export_scenes/export_scenes.py --quality N --out assets/campus_qN); a scene missing there falls
 ## back to the default tier, so tiers can be added one by one. Only the models change: the layout and the collision are the same.
 const DEFAULT_TIER := 2

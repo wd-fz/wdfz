@@ -42,9 +42,11 @@ var rules_dlc_flow: RulesDlcFlow
 var archive_flow: ArchiveFlow
 var wuda_roll: Callable = func() -> float: return randf()
 var _school_taps: Array = []
+var _graphics_applied: Dictionary = {}
 
 
 func _ready() -> void:
+	router.world_preparing.connect(_configure_world_rendering)
 	audio = AudioFx.new()
 	audio.name = "AudioFx"
 	add_child(audio)
@@ -2211,7 +2213,7 @@ func _sensory_step(delta: float) -> void:
 		gaze_target=.35+.45*clampf(float(a.get("acc",0.0))/1.8,0,1)+(.2 if a.get("data",{}).get("hit",false) else 0.0)
 	post.gaze_level += (gaze_target-post.gaze_level)*minf(1.0,delta*2.4)
 	post.parameter("gaze",post.gaze_level)
-	post.quality = settings.get_int("quality")
+	post.quality = settings.get_int("lighting_detail")
 
 
 # ---- atmosphere (game/features/story/dread_module.gd) ----
@@ -2295,7 +2297,9 @@ func _setting_changed(key: String, value: int) -> void:
 		if key == "quality":
 			ui.show_notice("画质：" + String(GameSettings.QUALITY_LABELS[settings.get_int("quality")]))
 	var saved := settings.save_file()
-	_apply_settings()
+	if key in GraphicsProfile.FRAME_KEYS:
+		RenderQuality.apply_frame_limit(settings.get_int("fps_limit"),settings.get_int("vsync")==1)
+	else: _apply_settings()
 	ui.settings_saved(settings.values, saved)
 
 
@@ -2327,48 +2331,49 @@ func _apply_settings() -> void:
 	ui.apply_text_scale(settings.get_int("text"))
 	ui.apply_touch_scale(settings.get_int("touch_size"), settings.touch_layout)
 	ui.set_grain(settings.get_int("grain") == 1)
-	ui.scene_post().quality=settings.get_int("quality")
+	ui.scene_post().quality=settings.get_int("lighting_detail")
+	ui.scene_post().render_options=settings.graphics()
+	ui.scene_post().tick(0)
 	ui.scene_post().parameter("brightness",float(settings.get_int("bright"))/100.0)
 	player.mouse_sensitivity = 0.0025 * float(settings.get_int("mouse")) / 100.0
 	player.touch_sensitivity = 0.004 * float(settings.get_int("touch")) / 100.0
 	player.view_motion.shake_enabled = settings.get_int("shake") == 1
-	var q := settings.get_int("quality")
-	CampusData.tier = q if CampusData.tiers_available().has(q) else CampusData.DEFAULT_TIER   # models of the chosen tier, if exported
-	var vp := get_viewport()
-	vp.scaling_3d_scale = float(GameSettings.QUALITY_SCALE[q])
-	vp.msaa_3d = int(GameSettings.QUALITY_MSAA[q]) as Viewport.MSAA
-	RenderQuality.apply(vp, q, RenderingServer.get_current_rendering_method() == "mobile")
-	CampusLighting.shadows_on = bool(GameSettings.QUALITY_SHADOW[q])
-	CampusLighting.quality = q
-	CampusLighting.mobile_renderer = RenderingServer.get_current_rendering_method() == "mobile"
-	_apply_torch_quality(q)
-	var cw := _campus_world()
-	if cw != null and cw.visual_tier != CampusData.tier:
-		cw.reload_models(player.position)
-		_sync_world()
-	if cw != null:
-		cw.apply_material_quality()
-	if cw != null and cw.lighting != null:
-		cw.lighting.apply_quality()
+	_apply_graphics()
+	RenderQuality.apply_frame_limit(settings.get_int("fps_limit"),settings.get_int("vsync")==1)
 	if DisplayServer.is_touchscreen_available():
 		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE if settings.get_int("auto_land") == 1 else DisplayServer.SCREEN_LANDSCAPE)
 	_apply_window_mode()
 
 
+func _configure_world_rendering(world: Node3D) -> void:
+	if world is CampusWorld: world.render_options=settings.graphics()
+
+
+func _apply_graphics() -> void:
+	var options:=settings.graphics()
+	if options==_graphics_applied: return
+	var model:=int(options.model_detail)
+	var q:=int(options.lighting_detail)
+	CampusData.tier=model if CampusData.tiers_available().has(model) else CampusData.DEFAULT_TIER
+	CampusLighting.quality=q
+	CampusLighting.shadows_on=options.sun_shadows==1
+	CampusLighting.mobile_renderer=RenderingServer.get_current_rendering_method()=="mobile"
+	RenderQuality.apply(get_viewport(),q,CampusLighting.mobile_renderer,options)
+	_apply_torch_quality(q,options)
+	var cw:=_campus_world()
+	if cw!=null:
+		cw.configure_rendering(options,player.camera)
+		if cw.visual_tier!=CampusData.tier:
+			cw.reload_models(player.position)
+			_sync_world()
+			cw.lighting.apply_quality(player.camera)
+	_graphics_applied=options.duplicate()
+
+
 ## The torch is held in the right hand, not at the eye: from there its beam throws visible shadows (from 精细 up).
-func _apply_torch_quality(q: int) -> void:
+func _apply_torch_quality(q: int, options: Dictionary = {}) -> void:
 	var torch := player.camera.get_node_or_null("Torch") as SpotLight3D
-	if torch == null:
-		return
-	torch.light_cull_mask = CampusLighting.WORLD_LIGHT_MASK
-	torch.position = Vector3(0.16, -0.22, -0.2)
-	torch.shadow_enabled = q >= 2
-	torch.shadow_bias = 0.04
-	torch.shadow_normal_bias = 1.0
-	torch.shadow_blur = 1.2
-	torch.spot_angle_attenuation = 0.6
-	torch.spot_attenuation = 1.1
-	torch.light_volumetric_fog_energy = 1.4
+	RenderQuality.apply_torch(torch,q,options)
 
 
 func _apply_window_mode() -> void:

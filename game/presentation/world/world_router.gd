@@ -1,6 +1,9 @@
 class_name WorldRouter
 extends Node3D
 
+## Composition roots can configure presentation adapters before their _ready builds them.
+signal world_preparing(world: Node3D)
+
 @export var worlds: Array[WorldDefinition] = []
 var current: WorldDefinition
 var _instance: Node3D
@@ -32,6 +35,7 @@ func switch_to(id: String) -> String:
 		return "世界场景根节点必须是 Node3D"
 	for key: Variant in matches[0].properties:
 		candidate.set(String(key), matches[0].properties[key])
+	world_preparing.emit(candidate)
 	clear()
 	current = matches[0]
 	_instance = candidate

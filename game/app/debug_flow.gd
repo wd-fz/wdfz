@@ -160,7 +160,10 @@ func _process(dt: float) -> void:
 func snapshot() -> Dictionary:
 	var state:={"playing":alive(),"dead":app.session!=null and app.story().dead,"freeze":frozen,"fast":fast,"god":god,"search":instant_search,
 		"renderer":RenderingServer.get_current_rendering_method(),"rendering_driver":RenderingServer.get_current_rendering_driver_name(),
-		"quality":CampusData.tier,"fps":Engine.get_frames_per_second(),"history":history.duplicate(),
+		"quality":app.settings.get_int("quality"),"quality_label":GameSettings.QUALITY_LABELS[app.settings.get_int("quality")],
+		"model_detail":CampusData.tier,"lighting_detail":app.settings.get_int("lighting_detail"),
+		"fps_limit":app.settings.get_int("fps_limit"),"vsync":app.settings.get_int("vsync"),
+		"fps":Engine.get_frames_per_second(),"history":history.duplicate(),
 		"metrics":telemetry.capture(DisplayServer.get_name()!="headless"),"trace":trace.capture(),
 		"collision_view":collision_view,"collision_count":probe.shown if is_instance_valid(probe) else 0,
 		"collision_nearby":probe.nearby if is_instance_valid(probe) else 0,"inspect":_inspection.duplicate(true),

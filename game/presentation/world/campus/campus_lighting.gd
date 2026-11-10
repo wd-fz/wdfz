@@ -22,6 +22,7 @@ var scene_id := "out"
 var room: Variant = null
 var campus: Dictionary = {}
 var env: Environment
+var options: Dictionary = {}
 var sun_light: DirectionalLight3D
 var cam_light: OmniLight3D
 var room_lights: Array[OmniLight3D] = []
@@ -31,6 +32,7 @@ var lamps: Array = []
 var lamp_pool: Array[OmniLight3D] = []
 var live_mats: Dictionary = {}     # name -> Array[BaseMaterial3D]
 var time := 0.0
+var clock_minutes := 700.0
 var reduce_flash := false
 ## VisualState.patrolFlick / patrolRed: the patroller's approach beat and its threat tint.
 var patrol_flick := 0.0
@@ -114,7 +116,7 @@ func setup(id: String, room_data: Variant, model: Node, stair_rise: float) -> vo
 	add_child(we)
 	sun_light = DirectionalLight3D.new()
 	sun_light.light_cull_mask = WORLD_LIGHT_MASK
-	sun_light.shadow_enabled = shadows_on
+	sun_light.shadow_enabled = bool(options.get("sun_shadows",shadows_on))
 	sun_light.name = "SunMoon"
 	add_child(sun_light)
 	cam_light = OmniLight3D.new()
@@ -305,12 +307,12 @@ static func _to_model(node: Node3D, model: Node) -> Transform3D:
 
 
 ## Environment effects and shadow budget for the current quality (CampusLighting.quality).
-func apply_quality() -> void:
+func apply_quality(camera: Camera3D = null) -> void:
 	if env == null:
 		return
-	var q := clampi(quality, 0, 4)
+	var q := _detail()
 	var full := not mobile_renderer
-	env.ssao_enabled = full and Q_SSAO[q]
+	env.ssao_enabled = full and bool(options.get("ssao",Q_SSAO[q]))
 	env.ssao_radius = 1.1
 	env.ssao_intensity = 2.2 if q < 4 else 2.6
 	env.ssao_power = 1.7
@@ -321,7 +323,7 @@ func apply_quality() -> void:
 	env.ssao_ao_channel_affect = 0.0
 	# Godot 4.6.3 Mobile can deadlock while compiling replay pipelines with glow
 	# (e.g. the moth death on Vulkan Lavapipe). Keep this post effect on Forward+.
-	env.glow_enabled = full and Q_GLOW[q]
+	env.glow_enabled = full and bool(options.get("glow",Q_GLOW[q]))
 	env.glow_intensity = 0.42
 	env.glow_strength = 0.9
 	env.glow_bloom = 0.0
@@ -330,16 +332,17 @@ func apply_quality() -> void:
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
 	for level in 7:
 		env.set_glow_level(level, 1.0 if level in [1, 2, 3, 4] else 0.0)
-	env.volumetric_fog_enabled = full and Q_VOLUMETRIC[q]
+	env.volumetric_fog_enabled = full and bool(options.get("volumetric_fog",Q_VOLUMETRIC[q]))
 	env.volumetric_fog_density = 0.012
 	env.volumetric_fog_albedo = Color(0.85, 0.88, 0.9)
 	env.volumetric_fog_anisotropy = 0.35
 	env.volumetric_fog_length = 48.0
 	env.volumetric_fog_ambient_inject = 0.0
-	sun_light.shadow_enabled = shadows_on
+	sun_light.shadow_enabled = bool(options.get("sun_shadows",shadows_on))
 	sun_light.shadow_blur = 1.5
-	sun_light.directional_shadow_max_distance = 60.0 if q >= 3 else 40.0
-	sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if q >= 3 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	var large_sun:=int(options.get("sun_shadow_detail",2 if q>=3 else 1))>=2
+	sun_light.directional_shadow_max_distance = 60.0 if large_sun else 40.0
+	sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if large_sun else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	for spot: SpotLight3D in window_lights:
 		spot.shadow_bias = 0.05
 		spot.shadow_normal_bias = 1.0
@@ -358,14 +361,14 @@ func apply_quality() -> void:
 		for mat: BaseMaterial3D in mats:
 			if mat.emission_enabled:
 				mat.emission_energy_multiplier = float(Q_EMIT_GAIN[q])
-	_pick_shadow_lamps(null)
-	_pick_shadow_windows(null)
+	_pick_shadow_lamps(camera)
+	_pick_shadow_windows(camera)
 
 
 ## The lamps nearest the camera cast shadows (Q_LAMP_SHADOWS); the rest stay shadowless.
 func _pick_shadow_lamps(camera: Camera3D) -> void:
 	var lights: Array[OmniLight3D] = room_lights + lamp_pool
-	var n := int(Q_LAMP_SHADOWS[clampi(quality, 0, 4)])
+	var n := _shadow_count("lamp_shadows")
 	if n == 0 or camera == null:
 		for l: OmniLight3D in lights:
 			l.shadow_enabled = false
@@ -379,7 +382,7 @@ func _pick_shadow_lamps(camera: Camera3D) -> void:
 
 ## The nearest lit windows cast shadows too (as many as lamps do at this quality).
 func _pick_shadow_windows(camera: Camera3D) -> void:
-	var n := int(Q_LAMP_SHADOWS[clampi(quality, 0, 4)])
+	var n := _shadow_count("window_shadows")
 	if n == 0 or camera == null:
 		for spot: SpotLight3D in window_lights:
 			spot.shadow_enabled = false
@@ -441,6 +444,7 @@ func sky_colors(h: float) -> Array[Color]:
 
 ## Per frame: hour of day from the game clock (tsec), stair height for stairwell lamps.
 func update(dt: float, tsec: float, camera: Camera3D) -> void:
+	clock_minutes=tsec
 	time += dt
 	overcast += (overcast_target - overcast) * minf(1.0, dt * 0.6)
 	if _stair_rise > 0.0 and camera != null:
@@ -515,16 +519,17 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var ambient := ac * amb + (hs + hg) * 0.5 * hemi
 	var strength := maxf(ambient.r, maxf(ambient.g, ambient.b))
 	env.ambient_light_color = ambient / maxf(strength, 1e-4)
-	var qi := clampi(quality, 0, 4)
+	var qi := _detail()
 	# Daylight through the windows: full by day, weaker under the rains, gone at night and in a blackout.
 	var window_k := 0.0
-	if indoor and not window_lights.is_empty() and float(Q_WINDOW[qi]) > 0.0 and not blackout:
+	var window_gain:=float(Q_WINDOW[maxi(2,qi)]) if bool(options.get("window_light",Q_WINDOW[qi]>0)) else 0.0
+	if indoor and not window_lights.is_empty() and window_gain > 0.0 and not blackout:
 		window_k = float(sun["day"]) * (1.0 - 0.6 * overcast) * (1.0 - dusk)
 	var window_col := Color(0.78, 0.85, 0.93).lerp(Color(0.95, 0.74, 0.56), float(sun["gold"]))
 	for spot: SpotLight3D in window_lights:
 		spot.visible = window_k > 0.01
 		spot.light_color = window_col
-		spot.light_energy = float(Q_WINDOW[qi]) * window_k * gaze_mul
+		spot.light_energy = window_gain * window_k * gaze_mul
 	var window_cut := 1.0 - WINDOW_AMBIENT_CUT * window_k
 	var lamp_gain := lerpf(float(Q_LAMP_GAIN[qi]), minf(float(Q_LAMP_GAIN[qi]), NORMAL_LAMP_GAIN), maxf(world_normal, fake_normal))
 	env.ambient_light_energy = strength * ENERGY_AMBIENT * gaze_mul * (float(Q_INDOOR_AMB[qi]) * window_cut if indoor else float(Q_OUTDOOR_AMB[qi]))
@@ -755,7 +760,7 @@ func _lamps(dt: float, night: float, camera: Camera3D, sky: Array[Color], day: f
 		var fl := 1.0
 		if not reduce_flash and i == 1 and sin(time * 1.7) > 0.93:
 			fl = 0.25 + 0.5 * absf(sin(time * 31.0))
-		lamp_pool[i].light_energy = lamp_i * smooth01(0.15, 0.7, night) * fl * ENERGY_POINT * 2.0 * float(Q_LAMP_GAIN[clampi(quality, 0, 4)]) if lamp_pool[i].get_meta("on", false) else 0.0
+		lamp_pool[i].light_energy = lamp_i * smooth01(0.15, 0.7, night) * fl * ENERGY_POINT * 2.0 * float(Q_LAMP_GAIN[_detail()]) if lamp_pool[i].get_meta("on", false) else 0.0
 
 
 func rebind_model(model: Node) -> void:
@@ -799,3 +804,12 @@ func live_count() -> int:
 	for k: String in live_mats:
 		n += (live_mats[k] as Array).size()
 	return n
+
+
+func _detail() -> int:
+	return clampi(int(options.get("lighting_detail",quality)),0,4)
+
+
+func _shadow_count(key: String) -> int:
+	if not options.is_empty() and int(options.get("shadow_resolution",2))==0: return 0
+	return clampi(int(options.get(key,Q_LAMP_SHADOWS[_detail()])),0,4)

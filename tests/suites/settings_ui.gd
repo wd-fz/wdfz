@@ -62,6 +62,7 @@ func test_editor() -> void:
 	await _tap(panel.controls["amb"])
 	check(not app.audio.ambience and app.settings.get_int("amb") == 0, "the ambience switch uses the existing audio setting")
 	await _tap(panel._nav_buttons["画面"])
+	await _tap(panel._graphics_buttons["细节"])
 	await _tap(panel.controls["quality"][1])
 	check(app.settings.get_int("quality") == 1 and panel._quality_note.text.contains("平衡"), "quality selection shows the active tier and its tradeoff")
 	for size: Vector2i in [Vector2i(960,540),Vector2i(1280,800),Vector2i(2340,1080)]:

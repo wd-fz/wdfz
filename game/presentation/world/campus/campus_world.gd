@@ -36,6 +36,7 @@ var anomaly_fx: AnomalyFx
 var atmos_fx: AtmosFx
 var duty: DutyRoster
 var visual_tier := -1
+var render_options: Dictionary = {}
 var visual_ground:=VisualGround.new()
 
 
@@ -45,6 +46,7 @@ func _ready() -> void:
 	_build_collision()
 	_build_lighting()
 	anomaly_fx = AnomalyFx.new()
+	anomaly_fx.particle_quality=int(render_options.get("particle_detail",-1))
 	anomaly_fx.ground_height=visual_ground.height
 	anomaly_fx.name = "AnomalyFx"
 	add_child(anomaly_fx)
@@ -212,7 +214,7 @@ func _load_visual(id: String) -> Node3D:
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
 			_to_multimesh(mesh)
-	SceneMaterials.apply(model, CampusLighting.quality)
+	SceneMaterials.apply(model, material_quality())
 	if id != "garage1":
 		CampusBatches.optimize(model)
 		CampusMeshCells.apply(model)
@@ -395,7 +397,24 @@ func _visual_models() -> Array[Node3D]:
 ## Update surfaces even when the selected quality keeps the current model tier.
 func apply_material_quality() -> void:
 	for model: Node3D in _visual_models():
-		SceneMaterials.apply(model, CampusLighting.quality)
+		SceneMaterials.apply(model, material_quality())
+
+
+func material_quality() -> int:
+	return int(render_options.get("lighting_detail",CampusLighting.quality))
+
+
+func configure_rendering(options: Dictionary, camera: Camera3D = null) -> void:
+	var previous:=material_quality()
+	render_options=options.duplicate()
+	if anomaly_fx!=null: anomaly_fx.particle_quality=int(options.get("particle_detail",-1))
+	if previous!=material_quality(): apply_material_quality()
+	if lighting!=null:
+		lighting.options=render_options
+		lighting.apply_quality(camera)
+		lighting.update(0,lighting.clock_minutes,camera)
+		lighting._pick_shadow_lamps(camera)
+		lighting._pick_shadow_windows(camera)
 
 
 ## Replace rendering nodes while physics, interactions and rule modules remain alive.
@@ -455,7 +474,7 @@ func _build_model() -> void:
 			_door_leaves[key][String(extras["state"])] = holder
 	for key: String in _door_leaves:
 		set_door_open(key, false)
-	SceneMaterials.apply(model, CampusLighting.quality)
+	SceneMaterials.apply(model, material_quality())
 	# The open garage has almost no hidden geometry from its normal view. Profiling
 	# showed partitioning/CPU occlusion added overhead there; preserve its batches.
 	if scene_id != "garage1":
@@ -1165,6 +1184,7 @@ func _edge(body: StaticBody3D, edge: String, a: Vector2, b: Vector2, gaps: Array
 
 func _build_lighting() -> void:
 	lighting = CampusLighting.new()
+	lighting.options=render_options
 	lighting.name = "Lighting"
 	add_child(lighting)
 	var rise := 0.0

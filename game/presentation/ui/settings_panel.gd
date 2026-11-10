@@ -15,11 +15,6 @@ const MUTED := Color("9aa4a6")
 const ACCENT := Color("8fd6c0")
 const PAGES := [
 	["画面", "选择清晰度与显示方式", [
-		["quality", "画质", "仅改变画面，不影响碰撞、剧情和游戏难度。", [["流畅",0],["均衡",1],["精细",2],["超精细",3],["真实",4]]],
-		["bright", "亮度", "调整游戏画面的整体明暗。", [50,150,5]],
-		["grain", "胶片颗粒", "为画面添加细微的颗粒质感。", []],
-		["full_screen", "全屏显示", "在窗口与全屏之间切换。", []],
-		["auto_land", "横屏自动旋转", "开启时可左右翻转；关闭后固定横屏。", []],
 	]],
 	["声音", "让环境线索更容易听清", [
 		["vol", "主音量", "控制游戏音乐、环境声与音效的音量。", [0,100,5]],
@@ -41,7 +36,47 @@ const PAGES := [
 	]],
 	["数据", "管理设置与上一局留下的痕迹", []],
 ]
-const QUALITY_NOTES := ["优先帧率：降低分辨率并用 FSR 放大，没有阴影。适合手机或性能较低的设备。", "帧率与细节平衡：FSR 放大，灯管与屏幕有辉光。", "完整分辨率：太阳与最近一盏灯的阴影、环境光遮蔽、手电投影。", "更精细的模型与 4× 抗锯齿，最近两盏灯投影。", "最高细节与 8× 抗锯齿，四盏灯投影与体积雾，设备负载最高。"]
+const QUALITY_NOTES := ["优先帧率：降低分辨率并用 FSR 放大，没有阴影。适合手机或性能较低的设备。", "帧率与细节平衡：FSR 放大，灯管与屏幕有辉光。", "完整分辨率：太阳与最近一盏灯的阴影、环境光遮蔽、手电投影。", "更精细的模型与 4× 抗锯齿，最近两盏灯投影。", "最高细节与 8× 抗锯齿，四盏灯投影与体积雾，设备负载最高。", "自定义：每个选项独立保存；选择预设可重新填入整组画面参数。"]
+const PRESET_ROW := ["quality","画质预设","可从预设开始，再逐项调整。保留帧率上限、垂直同步与舒适设置。",[["流畅",0],["均衡",1],["精细",2],["超精细",3],["真实",4],["自定义",5]]]
+const GRAPHICS_SECTIONS := [
+	["显示",[
+		["fps_limit","帧率上限","0 表示不限帧率；也可输入 20–360。实际帧率取决于设备负载。",[0,360,1]],
+		["vsync","垂直同步","减少画面撕裂；开启后实际帧率也受屏幕刷新率限制。",[]],
+		["bright","亮度","调整游戏画面的整体明暗。",[50,150,5]],
+		["full_screen","全屏显示","在窗口与全屏之间切换。",[]],
+		["auto_land","横屏自动旋转","开启时可左右翻转；关闭后固定横屏。",[]],
+	]],
+	["细节",[
+		["render_scale","渲染分辨率","100% 为原生清晰度；降低可减轻负载，提高可改善细小边缘。",[50,150,5]],
+		["upscaler","低分辨率放大","仅在渲染分辨率低于 100% 时使用。",[["双线性",0],["FSR 1",1]]],
+		["model_detail","模型细节","独立选择建筑与陈设细节，切换时需要重新准备场景。",[["流畅",0],["均衡",1],["精细",2],["超精细",3],["真实",4]]],
+		["lod_detail","远处模型细节","保留远处细节会增加模型绘制负载。",[["节省性能",0],["标准",1],["精细",2],["超精细",3]]],
+		["particle_detail","异象与粒子细节","调整雨滴、蛾群和异象装饰的表现数量；危险判定不变。",[["低",0],["较低",1],["中",2],["高",3],["最高",4]]],
+		["msaa","多重采样抗锯齿","平滑几何边缘；较高倍数增加显存与渲染负载。",[["关闭",0],["2×",1],["4×",2],["8×",3]]],
+		["fxaa","快速抗锯齿","以较低开销平滑边缘；多重采样开启时暂停使用。",[]],
+	]],
+	["光影",[
+		["lighting_detail","光照与材质","独立调整材质反光与光照层次，不改变模型复杂度。",[["低",0],["较低",1],["中",2],["高",3],["最高",4]]],
+		["sun_shadows","太阳与月光阴影","绘制室外与建筑的方向光投影。",[]],
+		["sun_shadow_detail","太阳阴影精度","提高阴影精度与覆盖距离。",[["低",0],["中",1],["高",2]]],
+		["shadow_resolution","局部阴影分辨率","灯光、窗光和手电共用；关闭时停止这三类投影。",[["关闭",0],["1024",1],["2048",2],["4096",3]]],
+		["shadow_filter","阴影柔和度","高档减少阴影边缘颗粒，同时增加采样开销。",[["硬边",0],["很低",1],["低",2],["中",3],["高",4],["最高",5]]],
+		["lamp_shadows","投影灯数量","最近的这些房间灯或路灯可以投影。",[0,4,1]],
+		["window_light","窗户日光","白天从外窗投射光照，随天气和停电状态变化。",[]],
+		["window_shadows","投影窗光数量","最近的这些窗光可以投影；先开启窗户日光。",[0,4,1]],
+		["torch_shadows","手电阴影","让手电照射的物体产生投影。",[]],
+	]],
+	["后期",[
+		["ssao","环境光遮蔽","增加墙角与物体接触处的层次。",[["关闭",0],["低",1],["中",2],["高",3],["最高",4]]],
+		["ssao_half","半分辨率遮蔽","以较低开销计算环境光遮蔽。",[]],
+		["glow","高光泛光","让灯管、屏幕等明亮物体产生柔和泛光。",[]],
+		["volumetric_fog","体积雾","让光线照亮雾气，渲染负载较高。",[]],
+		["post_detail","感官效果精度","调整低 SAN 模糊的采样精度，保留全部感官反馈。",[["精简",0],["完整",1]]],
+		["bloom","高光光晕强度","0 关闭；大于 0 时添加高光光晕。",[0,100,5]],
+		["grain","胶片颗粒","为画面添加细微的颗粒质感。",[]],
+		["grain_strength","颗粒强度","胶片颗粒开启时使用的质感强度。",[0,100,5]],
+	]],
+]
 
 var selected := "画面"
 var fullscreen_toggle_allowed := GameSettings.can_toggle_fullscreen()
@@ -66,6 +101,11 @@ var bindings: Dictionary = KeyBindings.defaults()
 var _key_buttons := {}      # action -> [Button, Button]
 var _capturing: Array = []  # [action, slot] while waiting for a key
 var _bind_note: Label
+var graphics_section := "显示"
+var mobile_renderer := RenderingServer.get_current_rendering_method()=="mobile"
+var _graphics_boxes := {}
+var _graphics_buttons := {}
+var _graphics_summary: Label
 
 
 func _ready() -> void:
@@ -139,10 +179,14 @@ func _ready() -> void:
 		var page_title := _label(id, 22, INK)
 		page_title.theme_type_variation = "HeadingLabel"
 		column.add_child(page_title)
-		column.add_child(_label(page[1], 14, MUTED))
+		if id=="画面":
+			_graphics_summary=_label("",14,ACCENT)
+			column.add_child(_graphics_summary)
+		else: column.add_child(_label(page[1], 14, MUTED))
 		for row: Array in page[2]:
 			_add_setting(column, row)
-		if id == "操作":
+		if id == "画面": _add_graphics(column)
+		elif id == "操作":
 			var layout := _button("调整触屏布局 →", "EditTouchLayout")
 			layout.pressed.connect(func() -> void: layout_requested.emit())
 			column.add_child(layout)
@@ -207,6 +251,84 @@ func _card(parent: Control) -> VBoxContainer:
 	return column
 
 
+func _add_graphics(column: VBoxContainer) -> void:
+	var tabs:=HFlowContainer.new()
+	tabs.add_theme_constant_override("h_separation",8)
+	column.add_child(tabs)
+	var group:=ButtonGroup.new()
+	for section: Array in GRAPHICS_SECTIONS:
+		var id:=String(section[0])
+		var button:=_button(id,"Graphics_"+id)
+		button.custom_minimum_size.x=86
+		button.toggle_mode=true
+		button.button_group=group
+		button.pressed.connect(select_graphics_section.bind(id))
+		tabs.add_child(button)
+		_graphics_buttons[id]=button
+		var box:=VBoxContainer.new()
+		box.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		box.add_theme_constant_override("separation",12)
+		column.add_child(box)
+		_graphics_boxes[id]=box
+		if id=="细节": _add_setting(box,PRESET_ROW)
+		for row: Array in section[1]: _add_setting(box,row)
+	select_graphics_section(graphics_section)
+
+
+func select_graphics_section(id: String) -> void:
+	if not _graphics_boxes.has(id): return
+	graphics_section=id
+	for key: String in _graphics_boxes:
+		_graphics_boxes[key].visible=key==id
+		_graphics_buttons[key].set_pressed_no_signal(key==id)
+	scroll.scroll_vertical=0
+
+
+func _add_frame_limit(column: VBoxContainer) -> void:
+	var line:=HBoxContainer.new()
+	line.add_theme_constant_override("separation",10)
+	column.add_child(line)
+	var spin:=SpinBox.new()
+	spin.name="FpsLimit"
+	spin.min_value=0
+	spin.max_value=360
+	spin.step=1
+	spin.suffix=" FPS"
+	spin.custom_minimum_size=Vector2(150,46)
+	spin.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	spin.get_line_edit().virtual_keyboard_type=LineEdit.KEYBOARD_TYPE_NUMBER
+	spin.value_changed.connect(func(value: float) -> void: _changed("fps_limit",int(value)))
+	var less:=_button("−","Less_fps_limit")
+	var more:=_button("+","More_fps_limit")
+	for button: Button in [less,more]: button.custom_minimum_size.x=46
+	less.pressed.connect(func() -> void: spin.value=maxf(0,spin.value-5))
+	more.pressed.connect(func() -> void: spin.value=maxf(20,spin.value+5))
+	line.add_child(less)
+	line.add_child(spin)
+	line.add_child(more)
+	controls["fps_limit"]=spin
+	var shortcuts:=HFlowContainer.new()
+	shortcuts.add_theme_constant_override("h_separation",8)
+	shortcuts.add_theme_constant_override("v_separation",8)
+	column.add_child(shortcuts)
+	for fps: int in [30,60,90,120,144,240,0]:
+		var button:=_button("不限" if fps==0 else str(fps),"Fps_%d" % fps)
+		button.custom_minimum_size.x=64
+		button.pressed.connect(func() -> void: _changed("fps_limit",fps))
+		shortcuts.add_child(button)
+
+
+func _unavailable(key: String) -> bool:
+	if mobile_renderer and key in ["fxaa","ssao","ssao_half","glow","volumetric_fog"]: return true
+	if key=="fxaa" and int(values.get("msaa",0))>0: return true
+	if key in ["lamp_shadows","window_shadows","torch_shadows"] and int(values.get("shadow_resolution",2))==0: return true
+	if key=="window_shadows" and int(values.get("window_light",1))==0: return true
+	if key=="sun_shadow_detail" and int(values.get("sun_shadows",1))==0: return true
+	if key=="ssao_half" and int(values.get("ssao",1))==0: return true
+	if key=="grain_strength" and int(values.get("grain",1))==0: return true
+	return false
+
+
 func _add_setting(parent: Control, row: Array) -> void:
 	var key := String(row[0])
 	if key == "full_screen" and not fullscreen_toggle_allowed: return
@@ -224,6 +346,11 @@ func _add_setting(parent: Control, row: Array) -> void:
 		head.add_child(toggle)
 		controls[key] = toggle
 	column.add_child(_label(row[2], 13, MUTED))
+	if mobile_renderer and key in ["ssao","ssao_half","glow","volumetric_fog","fxaa","upscaler"]:
+		column.add_child(_label("当前移动渲染模式不提供此效果；已有选择会保留。" if key!="upscaler" else "当前移动渲染模式使用双线性放大。",13,MUTED))
+	if key=="fps_limit":
+		_add_frame_limit(column)
+		return
 	if spec.is_empty(): return
 	if spec[0] is Array:
 		var choices := HFlowContainer.new()
@@ -236,7 +363,7 @@ func _add_setting(parent: Control, row: Array) -> void:
 			var value := int(opt[1])
 			var button := _button(opt[0], "O_%s_%d" % [key,value])
 			button.custom_minimum_size.x = 76
-			if key == "quality":
+			if key == "quality" and value<5:
 				UIArt.button(button, UIArt.surface(["quality_low", "quality_balanced", "quality_detail", "quality_ultra", "quality_real"][value]), 32)
 			button.toggle_mode = true
 			button.button_group = group
@@ -416,15 +543,26 @@ func set_values(current: Dictionary) -> void:
 	for key: String in controls:
 		var value := int(values.get(key, GameSettings.DEFAULTS[key]))
 		var control: Variant = controls[key]
-		if control is HSlider:
+		var unavailable:=_unavailable(key)
+		if control is SpinBox:
 			control.set_value_no_signal(value)
-			_value_labels[key].text = str(value) + "%"
+			control.suffix=" · 不限" if value==0 else " FPS"
+		elif control is HSlider:
+			control.set_value_no_signal(value)
+			control.editable=not unavailable
+			_value_labels[key].text = str(value)+(" 盏" if key=="lamp_shadows" else " 扇" if key=="window_shadows" else "%")
+			for id: String in ["Less_","More_"]: find_child(id+key,true,false).disabled=unavailable
 		elif control is Button:
 			control.set_pressed_no_signal(value == 1)
-			control.text = "● 开启" if value == 1 else "○ 关闭"
+			control.disabled=unavailable
+			control.text = "暂不可用" if unavailable else "● 开启" if value == 1 else "○ 关闭"
 		else:
-			for option: int in control: control[option].set_pressed_no_signal(option == value)
-	_quality_note.text = QUALITY_NOTES[clampi(int(values.get("quality",2)),0,4)]
+			for option: int in control:
+				control[option].set_pressed_no_signal(option == value)
+				control[option].disabled=unavailable or (key=="upscaler" and option==1 and mobile_renderer)
+	_quality_note.text = QUALITY_NOTES[clampi(int(values.get("quality",2)),0,5)]
+	_graphics_summary.text="当前方案：%s · 各项独立保存" % GameSettings.QUALITY_LABELS[clampi(int(values.get("quality",2)),0,5)]
+	if mobile_renderer: _quality_note.text=_quality_note.text.replace("FSR 放大","双线性放大")
 	var scale := float(values.get("text",100)) / 100.0
 	if not is_equal_approx(scale,_font_scale):
 		_font_scale = scale

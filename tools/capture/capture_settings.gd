@@ -32,6 +32,23 @@ func _run() -> void:
 	for _i in 10: await process_frame
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("res://build/previews/settings/大字体.png")
+	app._setting_changed("text",100)
+	app._setting_changed("render_scale",85)
+	app._setting_changed("fps_limit",90)
+	app._setting_changed("vsync",0)
+	app.ui.settings_panel.select_page("画面")
+	for section: String in ["显示","细节","光影","后期"]:
+		app.ui.settings_panel.select_graphics_section(section)
+		for _i in 6: await process_frame
+		await RenderingServer.frame_post_draw
+		root.get_texture().get_image().save_png("res://build/previews/settings/画面-"+section+".png")
+	root.size=Vector2i(960,540)
+	app._setting_changed("text",150)
+	app.ui.settings_panel.select_graphics_section("显示")
+	for _i in 6: await process_frame
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png("res://build/previews/settings/自定义-横屏大字体.png")
+	app._setting_changed("fps_limit",0)
 	app.queue_free()
 	await process_frame
 	CampusData.clear_caches()

@@ -125,6 +125,9 @@ func _run() -> void:
 	lighting.update(0,700,app.player.camera)
 	lighting._pick_shadow_lamps(app.player.camera)
 	lighting._pick_shadow_windows(app.player.camera)
+	# Settings apply the user's frame pacing. A rendering benchmark must explicitly
+	# remove that cap after all setup/settings calls, independently of the UI defaults.
+	RenderQuality.apply_frame_limit(0,false)
 	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(),true)
 	result={"engine":Engine.get_version_info().string,"renderer":RenderingServer.get_current_rendering_method(),"driver":RenderingServer.get_current_rendering_driver_name(),"device":RenderingServer.get_video_adapter_name(),"reference":reference,"scene":scene_id,"quality":quality,"resolution":[960,540],"samples":samples,"inventory":_inventory(),"batches":world.get_node("Model").get_meta("render_batches",{}),"cells":world.get_node("Model").get_meta("render_cells",0),"camera":{"position":str(app.player.camera.global_position),"rotation":str(app.player.camera.global_rotation)},"cases":{}}
 	await _measure("baseline")
