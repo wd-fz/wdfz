@@ -346,20 +346,8 @@ func _build_link_preview() -> void:
 
 # ---- model ----
 
-## A quality change replaces only rendering nodes. Keep physics, interaction actors and all
-## rule modules alive: changing a setting must not end an anomaly or reset a room visit.
-## The picture quality changed without changing the model tier: the materials answer the light differently.
-func apply_material_quality() -> void:
-	SceneMaterials.apply(get_node_or_null("Model"), CampusLighting.quality)
-	for preview: Node in link_previews:
-		SceneMaterials.apply(preview, CampusLighting.quality)
-
-
-func reload_models(player_position: Vector3) -> void:
-	if visual_tier == CampusData.tier:
-		return
-	var doors := _open_doors.duplicate()
-	var lift_amount := _lift_amount
+## All visible scene models, including the neighbours seen through stairs and doors.
+func _visual_models() -> Array[Node3D]:
 	var models: Array[Node3D] = []
 	models.append_array(link_previews)
 	models.append_array(stair_previews)
@@ -368,9 +356,23 @@ func reload_models(player_position: Vector3) -> void:
 		models.append(node)
 	models.append(gallery_campus)
 	models.append(get_node_or_null("Model"))
-	for model: Node3D in models:
-		if is_instance_valid(model):
-			model.free()
+	return models.filter(func(model: Node3D) -> bool: return is_instance_valid(model))
+
+
+## Update surfaces even when the selected quality keeps the current model tier.
+func apply_material_quality() -> void:
+	for model: Node3D in _visual_models():
+		SceneMaterials.apply(model, CampusLighting.quality)
+
+
+## Replace rendering nodes while physics, interactions and rule modules remain alive.
+func reload_models(player_position: Vector3) -> void:
+	if visual_tier == CampusData.tier:
+		return
+	var doors := _open_doors.duplicate()
+	var lift_amount := _lift_amount
+	for model: Node3D in _visual_models():
+		model.free()
 	link_previews.clear()
 	stair_previews.clear()
 	door_previews.clear()

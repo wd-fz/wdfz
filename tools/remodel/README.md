@@ -19,3 +19,5 @@ godot --headless --path . --import
 - 输出时会打印新旧包围盒（身高、肩宽、前后厚度）对照。Godot 导入器为网格生成 LOD，各画质档用已有的 LOD 阈值。
 
 运行时不依赖这些 Python 包；只有重新生成模型的人需要。
+
+平面窗户剪影单独保留 `assets/campus/figures/window_shadow.glb`：它是 `59ea7bb` 的原 `person.glb`，用于保持投影轮廓与原参考样本一致。重建脚本不会覆盖该文件；普通与怪异立体人物仍使用六种新网格。第一人称手经用户确认保留现有模型，不属于本工具输出。

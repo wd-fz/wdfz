@@ -147,6 +147,13 @@ func test_daylight_and_glow() -> void:
 	var gain_normal := light.room_lights[0].light_energy / (float(light.terms["pt"]) / terms_pt) / dark_world * float(CampusLighting.Q_LAMP_GAIN[3])
 	check(absf(gain_normal - CampusLighting.NORMAL_LAMP_GAIN) < 0.05 and is_equal_approx(light.room_lights[0].position.y, float(light.room_lights[0].get_meta("rest_y")) - CampusLighting.LAMP_DROP) and light.env.glow_hdr_threshold >= 1.0,
 		"in the normal-coloured world the lamp gain is capped (%.2f) and the light hangs clear of the ceiling" % gain_normal)
+	var previous_windows := light.window_lights.duplicate()
+	light.rebind_model(null)
+	check(light.windows.is_empty() and light.window_lights.is_empty() and previous_windows.all(func(spot: Variant) -> bool: return not is_instance_valid(spot)), "replacing a model removes its old window lights")
+	light.rebind_model(model)
+	light.update(0.0, 700.0, cam)
+	light._pick_shadow_windows(cam)
+	check(light.windows.size() == 12 and light.window_lights.size() == 12 and light.window_lights[0].visible, "rebinding a model rebuilds daylight from its actual panes")
 	light.world_normal = 0.0
 	CampusLighting.quality = keep_q
 	CampusLighting.mobile_renderer = keep_m
@@ -193,3 +200,34 @@ func test_scene_materials() -> void:
 	check(first > 0 and again == 0 and back > 0 and glossy_walls == 0, "applying is idempotent, reversible by quality, and leaves no half-glossy wall (%d changed)" % first)
 	SceneMaterials.apply(model, CampusLighting.quality)
 	model.free()
+	# Preview models have independent material resources. A quality edit must reach
+	# neighbours through every connection, including a live stair shaft and gallery.
+	var world := CampusWorld.new()
+	var materials: Array[StandardMaterial3D] = []
+	for kind: String in ["Model", "link", "stair", "door", "shaft", "gallery"]:
+		var preview := Node3D.new()
+		preview.name = kind
+		var part := MeshInstance3D.new()
+		part.mesh = BoxMesh.new()
+		var material := StandardMaterial3D.new()
+		material.resource_name = "MeshPhongMaterial"
+		material.roughness = 0.6
+		part.mesh.surface_set_material(0, material)
+		materials.append(material)
+		preview.add_child(part)
+		world.add_child(preview)
+		match kind:
+			"link": world.link_previews.append(preview)
+			"stair": world.stair_previews.append(preview)
+			"door": world.door_previews.append(preview)
+			"shaft": world._shaft_levels[0] = preview
+			"gallery": world.gallery_campus = preview
+	var keep_quality := CampusLighting.quality
+	CampusLighting.quality = 2
+	world.apply_material_quality()
+	check(materials.all(func(material: StandardMaterial3D) -> bool: return is_equal_approx(material.roughness, SceneMaterials.physical_roughness(40))), "quality changes update room, links, stairs, doors, shafts and gallery materials")
+	CampusLighting.quality = 0
+	world.apply_material_quality()
+	check(materials.all(func(material: StandardMaterial3D) -> bool: return is_equal_approx(material.roughness, 0.6)), "all preview materials return to their original low-quality response")
+	CampusLighting.quality = keep_quality
+	world.free()

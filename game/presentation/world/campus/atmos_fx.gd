@@ -225,7 +225,7 @@ func show_window(w: Dictionary, cam: Camera3D) -> bool:
 		return false
 	if _fig == null:
 		_fig = Node3D.new()
-		var person := FigureModel.make("person",Color("101315"),true,1,Color.BLACK,false)
+		var person := FigureModel.make("person",Color("101315"),true,1,Color.BLACK,false,true)
 		person.rotation.y = PI # imported model faces -z; original silhouette faces +z
 		person.scale.z = .05
 		_fig.add_child(person)

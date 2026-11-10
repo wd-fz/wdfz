@@ -62,6 +62,9 @@ func _run() -> void:
 				var texture := load(path_to_art) as AtlasTexture
 				_check(texture != null and texture.atlas != null, "exported illustration cannot load: " + group + "/" + id)
 	_check(ResourceLoader.exists(UIArt.ROOT + "atlases/stationery.png"), "exported document backdrop missing")
+	var window_shadow := FigureModel.make("person", Color.BLACK, true, 1.0, Color.BLACK, false, true)
+	_check(not window_shadow.find_children("*", "MeshInstance3D", true, false).is_empty(), "exported original window silhouette missing")
+	window_shadow.free()
 	_check(FileAccess.file_exists(MazeDeath.GEOMETRY) and DeathGeometry.mesh("hall",MazeDeath.GEOMETRY).get_surface_count()==1, "dynamic maze death geometry missing")
 	for resource: String in ["res://assets/campus/crowd/full.png","res://assets/campus/exchange/exchange-sign.png","res://game/presentation/world/campus/dust_points.gdshader"]:
 		_check(ResourceLoader.exists(resource), "presentation resource missing: " + resource)

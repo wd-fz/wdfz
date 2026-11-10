@@ -145,8 +145,18 @@ func setup(id: String, room_data: Variant, model: Node, stair_rise: float) -> vo
 			lamp_pool.append(l)
 	if model != null:
 		_collect_live(model)
-		if room != null and not _open_air():
-			windows = find_windows(model, room as Dictionary)
+	_rebuild_windows(model)
+	apply_quality()
+
+
+## Model tiers may use different panes. Drop stale lights when rebinding a model.
+func _rebuild_windows(model: Node) -> void:
+	for spot: SpotLight3D in window_lights:
+		spot.free()
+	window_lights.clear()
+	windows.clear()
+	if model != null and room != null and not _open_air():
+		windows = find_windows(model, room as Dictionary)
 	for w: Dictionary in windows:
 		var spot := SpotLight3D.new()
 		spot.name = "WindowLight%d" % window_lights.size()
@@ -170,8 +180,6 @@ func setup(id: String, room_data: Variant, model: Node, stair_rise: float) -> vo
 		spot.look_at(spot.position + ray, Vector3.UP)
 		spot.visible = false
 		window_lights.append(spot)
-	apply_quality()
-
 
 ## The room's outer windows, from the model: the panes are the surfaces with the live material "winSky" (the old
 ## build's sky seen through the glass). A pane triangle is an outer window when the floor plan has a walkable tile on
@@ -754,6 +762,8 @@ func rebind_model(model: Node) -> void:
 	live_mats.clear()
 	if model != null:
 		_collect_live(model)
+	_rebuild_windows(model)
+	apply_quality()
 
 
 func _collect_live(model: Node) -> void:
