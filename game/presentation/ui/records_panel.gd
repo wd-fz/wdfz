@@ -74,6 +74,7 @@ func _init(store: RunRecords = null, rooms: Dictionary = {}) -> void:
 	_close_button.pressed.connect(_close)
 	box.add_child(_close_button)
 	add_child(box)
+	UIArt.decorate(self)
 	minimum_size_changed.connect(func() -> void: _fit.call_deferred())
 	visibility_changed.connect(func() -> void: _fit.call_deferred())
 
@@ -221,13 +222,15 @@ func _build_list() -> void:
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.text = "还没有记录。通关一次（有评级的局）才会留下。"
 		l.modulate = Color(1, 1, 1, 0.6)
+		_body.add_child(UIArt.view(UIArt.surface("empty_records"), Vector2(0, 120)))
 		_body.add_child(l)
 	for x: Dictionary in rows:
 		var b := Button.new()
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		var tag := "（调试）" if not RunRecords.is_real(x) else ""
-		b.custom_minimum_size.y = 76
+		b.custom_minimum_size.y = 88
+		UIArt.button(b, UIArt.grade(String(x["grade"])), 64)
 		b.text = "%s　%s · %s%s\n积分 %d　用时 %s\n%s%s" % [x["grade"], x["routeName"], "梦魇" if x["diff"] == "hard" else "预知梦", tag, int(x["score"]["total"]),
 			ResultsPanel.fmt(float(x["time"]["used"])), _fmt_date(float(x["at"])), "　▶" if int(x.get("replay", 0)) != 0 else ""]
 		b.pressed.connect(func() -> void: detail_requested.emit(String(x["id"])))
@@ -250,6 +253,8 @@ func _build_grades() -> void:
 		var b := Button.new()
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		UIArt.button(b, UIArt.grade(String(g["g"])) if got.has(g["g"]) else UIArt.surface("locked"), 56)
+		b.custom_minimum_size.y = 72
 		if got.has(g["g"]):
 			var v: Dictionary = got[g["g"]]
 			b.text = "%s　%s　×%d　首次 %s" % [g["g"], g["name"], int(v["count"]), _fmt_date(float(v["first"]))]

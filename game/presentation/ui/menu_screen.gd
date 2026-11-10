@@ -111,6 +111,11 @@ func setup(content: VBoxContainer, paused_menu: bool) -> void:
 			var option := content.find_child(id,true,false) as Control
 			option.reparent(options,false)
 			option.custom_minimum_size.y = 44
+	var art_ids := {"NewGame": "new_game", "HardGame": "warning", "LoadGame": "continue", "Resume": "continue", "Save": "save", "Reload": "load", "Achievements": "achievements", "Archive": "archive", "RecordsMenu": "records", "SettingsMenu": "settings", "SettingsPause": "settings", "NotesPause": "notes", "MapPause": "map", "Speedrun": "speedrun", "ImportMenu": "import", "FullscreenMenu": "fullscreen", "FullscreenPause": "fullscreen", "DebugTools": "debug", "DlcMenu": "dlc", "BackToMenu": "close"}
+	for id: String in art_ids:
+		var command := find_child(id, true, false) as Button
+		if command != null: UIArt.button(command, UIArt.nav(art_ids[id]))
+	UIArt.decorate(_card)
 	set_touch(false)
 	get_viewport().size_changed.connect(refit)
 	theme_changed.connect(func() -> void: refit.call_deferred())

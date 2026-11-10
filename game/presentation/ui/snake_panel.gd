@@ -28,10 +28,7 @@ func _init() -> void:
 	controls.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	controls.add_theme_constant_override("separation",12)
 	box.add_child(controls)
-	var title := Label.new()
-	title.text = "机房 · 贪吃蛇"
-	title.add_theme_color_override("font_color",UISkin.ACCENT)
-	controls.add_child(title)
+	UIArt.heading(controls, "机房 · 贪吃蛇", UIArt.surface("snake"), UISkin.ACCENT)
 	var pad := GridContainer.new()
 	pad.columns = 3
 	pad.name = "Pad"
@@ -57,6 +54,7 @@ func _init() -> void:
 	out.pressed.connect(func() -> void: closed.emit())
 	controls.add_child(out)
 	add_child(box)
+	UIArt.decorate(self)
 	minimum_size_changed.connect(func() -> void: _fit.call_deferred())
 	visibility_changed.connect(func() -> void: _fit.call_deferred())
 

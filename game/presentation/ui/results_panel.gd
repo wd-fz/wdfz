@@ -14,6 +14,8 @@ signal back_pressed
 const REPORT_SECRET := ["满员", "可乐", "？？？", "先辈", "迷宫"]
 const SURVIVAL_CATS := ["SAN", "应对 · 异象", "应对 · 选择", "校规与巡察", "保命与惊醒"]
 
+var _grade_art: TextureRect
+var _route_art: TextureRect
 var hero: GradeScreen
 var line: Label
 var body: VBoxContainer
@@ -45,7 +47,16 @@ func _init() -> void:
 	hero = GradeScreen.new()
 	hero.custom_minimum_size.x = 0
 	hero.sound.connect(func(b: String) -> void: sound.emit(b))
-	content.add_child(hero)
+	var grade_row := HBoxContainer.new()
+	_grade_art = UIArt.view(null, Vector2(108, 108))
+	_grade_art.name = "GradeIllustration"
+	grade_row.add_child(_grade_art)
+	hero.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grade_row.add_child(hero)
+	content.add_child(grade_row)
+	_route_art = UIArt.view(null, Vector2(0, 150))
+	_route_art.name = "RouteIllustration"
+	content.add_child(_route_art)
 	line = Label.new()
 	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	content.add_child(line)
@@ -72,6 +83,9 @@ func _init() -> void:
 	_feet.add_child(back_button)
 	box.add_child(_feet)
 	add_child(box)
+	UIArt.decorate(self)
+	UIArt.button(foot_button, UIArt.nav("footprint"))
+	UIArt.button(replay_button, UIArt.nav("replay"))
 	visibility_changed.connect(func() -> void:
 		if not visible: hero.cancel()
 		else: _fit.call_deferred())
@@ -182,6 +196,10 @@ func _section(title: String) -> void:
 ## Open for a record (or a result). opts: replay (the replay pack, for the report card), back_label, silent, reduce.
 func open(m: Dictionary, opts: Dictionary = {}) -> void:
 	current = m
+	_grade_art.texture = UIArt.grade(String(m["grade"]))
+	# A granted grade sample is not a discovered ending.
+	_route_art.texture = UIArt.memory("end:" + String(m.get("route", ""))) if m.get("source") != "archive" else null
+	_route_art.visible = _route_art.texture != null
 	var g := ScoreRules.by_letter(String(m["grade"]))
 	hero.show_grade(String(m["grade"]), true, bool(opts.get("silent", false)), bool(opts.get("reduce", false)))
 	var diff := "梦魇" if m["diff"] == "hard" else "预知梦"
@@ -243,7 +261,7 @@ func open(m: Dictionary, opts: Dictionary = {}) -> void:
 	for id: Variant in run_ach:
 		if AchievementsModule.LIST.has(id):
 			var fresh := (m.get("ach", {}).get("newly", []) as Array).has(id)
-			body.add_child(_label("%s · %s%s" % [AchievementsModule.TIERS[AchievementsModule.LIST[id][0]]["name"], AchievementsModule.LIST[id][1], " · 新" if fresh else ""], Color(0.65, 0.9, 0.7) if fresh else Color.WHITE, 13))
+			UIArt.heading(body, "%s · %s%s" % [AchievementsModule.TIERS[AchievementsModule.LIST[id][0]]["name"], AchievementsModule.LIST[id][1], " · 新" if fresh else ""], UIArt.achievement(String(id)), Color(0.65, 0.9, 0.7) if fresh else Color.WHITE)
 	var notes: Array = []
 	if bool(m.get("capped", false)):
 		notes.append("评级分够 SSS，但 SSS 需要梦魇难度、没被救过、没惊醒过，这一局给 SS。")

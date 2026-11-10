@@ -34,6 +34,7 @@ func _init() -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)
 	var head := HBoxContainer.new()
+	head.add_child(UIArt.view(UIArt.nav("sound"), Vector2(32, 32)))
 	var title := Label.new()
 	title.text = "广播站 · 话筒"
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -87,6 +88,7 @@ func _init() -> void:
 	small.add_theme_font_size_override("font_size", 12)
 	body.add_child(small)
 	add_child(box)
+	UIArt.decorate(self)
 
 
 func _ready() -> void:
@@ -125,7 +127,9 @@ func paint(names: Array, selected: String, text: String, state_text: String, pro
 		_key = key
 		chooser.clear()
 		for n: Array in names:
-			chooser.add_item(String(n[1]))
+			chooser.add_icon_item(UIArt.item(String(n[0])), String(n[1]))
+			chooser.get_popup().set_item_icon_max_width(chooser.item_count - 1, 28)
+			UIArt.button(chooser, chooser.icon, 28)
 			chooser.set_item_metadata(chooser.item_count - 1, String(n[0]))
 	for i in chooser.item_count:
 		if chooser.get_item_metadata(i) == selected:

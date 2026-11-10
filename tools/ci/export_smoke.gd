@@ -53,6 +53,15 @@ func _run() -> void:
 		_check(UIArt.phone(spec[0]) != null, "exported phone illustration missing: " + String(spec[0]))
 	_check(UIArt.talent("random") != null and UIArt.phone("battery") != null, "exported supporting illustrations missing")
 	_check(UIArt.wallpaper() != null, "exported phone wallpaper missing")
+	var art_catalog: Variant = JSON.parse_string(FileAccess.get_file_as_string(UIArt.ROOT + "catalog.json"))
+	_check(art_catalog is Dictionary and art_catalog.size() == 9, "exported illustration catalog missing")
+	if art_catalog is Dictionary:
+		for group: String in art_catalog:
+			for id: String in art_catalog[group]:
+				var path_to_art := String(art_catalog[group][id])
+				var texture := load(path_to_art) as AtlasTexture
+				_check(texture != null and texture.atlas != null, "exported illustration cannot load: " + group + "/" + id)
+	_check(ResourceLoader.exists(UIArt.ROOT + "atlases/stationery.png"), "exported document backdrop missing")
 	_check(FileAccess.file_exists(MazeDeath.GEOMETRY) and DeathGeometry.mesh("hall",MazeDeath.GEOMETRY).get_surface_count()==1, "dynamic maze death geometry missing")
 	for resource: String in ["res://assets/campus/crowd/full.png","res://assets/campus/exchange/exchange-sign.png","res://game/presentation/world/campus/dust_points.gdshader"]:
 		_check(ResourceLoader.exists(resource), "presentation resource missing: " + resource)

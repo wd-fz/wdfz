@@ -26,6 +26,25 @@ func test_catalog() -> void:
 	check(UIArt.wallpaper() != null and UIArt.wallpaper().get_width() > 1000, "the phone wallpaper loads as a real texture")
 	check(UIArt.item("not_an_item") == null and UIArt.talent("") == null, "unknown or empty IDs remain usable without a broken resource")
 	check(UIArt.item("torch") == UIArt.item("torch"), "repeated HUD updates reuse the same texture resource")
+	for id: String in AchievementsModule.LIST:
+		_illustration(UIArt.achievement(id), "achievement " + id, seen)
+	for entry: Dictionary in CampusData.rules_dlc()["achievements"]:
+		_illustration(UIArt.achievement(String(entry["id"])), "DLC achievement " + String(entry["id"]), seen)
+	for group: String in ["deaths", "cuts"]:
+		for entry: Dictionary in CampusData.archive()[group]:
+			_illustration(UIArt.memory(String(entry["id"])), "archive " + String(entry["id"]), seen)
+	_illustration(UIArt.memory("x.rules.knock"), "DLC death", seen)
+	for grade: Dictionary in ScoreRules.GRADES:
+		_illustration(UIArt.grade(String(grade["g"])), "grade " + String(grade["g"]), seen)
+	var catalog: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(UIArt.ROOT + "catalog.json"))
+	for group: String in ["nav", "surface", "landmarks"]:
+		for id: String in catalog[group]:
+			var texture: Texture2D = UIArt.nav(id) if group == "nav" else (UIArt.surface(id) if group == "surface" else UIArt.landmark(id))
+			_illustration(texture, group + " " + id, seen)
+	check(UIArt.entry("end:inception", false) == UIArt.surface("locked") and UIArt.entry("crowd", false) == UIArt.surface("locked"), "undiscovered secret memories never expose their image")
+	check(UIArt.entry("x.grade.SSS", true) == UIArt.grade("SSS") and UIArt.entry("x.rules.n.ticket", true) == UIArt.achievement("rules.n.ticket"), "archive extensions resolve the correct grade and DLC illustration")
+	check(UIArt.memory("rules_knock") == UIArt.memory("x.rules.knock"), "the live DLC death source and its archive entry share the same image")
+	check(UIArt.memory("../../outside") == null and UIArt.achievement("n.unknown") == null, "invalid art IDs cannot escape the resource namespace")
 	CampusData.clear_caches()
 
 
@@ -89,6 +108,76 @@ func test_interface() -> void:
 		check(button.button_pressed, "illustrated phone app selection still reaches the app: " + String(spec[0]))
 	app.return_to_menu()
 	check(not panel.visible and app.session == null, "returning to menu closes the illustrated phone")
+	app.queue_free()
+	await _frames(3)
+	root.size = previous_size
+	CampusData.clear_caches()
+
+
+func test_expanded_interface() -> void:
+	var previous_size := root.size
+	var app := APP.instantiate() as GameApp
+	app.saves = SaveStore.new(_test_path.get_base_dir() + "/expanded-art/slot.json")
+	app.settings = GameSettings.new(app.saves.side_path("settings.json"))
+	root.add_child(app)
+	await _frames(3)
+	app._setting_changed("quality", 0)
+	app.ui.set_touch_enabled(true)
+	app.archive_flow.rules.grant(["patrol", "cut:opening"])
+	for extent: Vector2i in [Vector2i(1280, 720), Vector2i(844, 390), Vector2i(640, 360)]:
+		root.size = extent
+		app.ui.apply_text_scale(125)
+		await _frames(5)
+		var bounds := root.get_visible_rect()
+		var menu := app.ui.menu_screen
+		check(menu.find_child("NewGame", true, false).icon == UIArt.nav("new_game") and bounds.encloses(menu._card.get_global_rect()), "illustrated menu preserves landscape bounds: " + str(extent))
+		app.archive_flow.open("死亡")
+		await _frames(5)
+		check(bounds.encloses(app.ui.ach_panel.get_global_rect()), "archive art stays scrollable in landscape: " + str(extent))
+		var unlocked := app.ui.ach_panel.find_child("EntryArt_patrol", true, false) as TextureRect
+		var locked := app.ui.ach_panel.find_child("EntryArt_an_rain", true, false) as TextureRect
+		check(unlocked != null and unlocked.texture == UIArt.memory("patrol") and unlocked.mouse_filter == Control.MOUSE_FILTER_IGNORE, "unlocked archive entry uses its own input-transparent memory")
+		check(locked != null and locked.texture == UIArt.surface("locked") and app.ui.ach_panel.find_child("EntryArt_void_lost", true, false) == null, "locked public and undiscovered secret archive entries preserve secrecy")
+		app.ui.ach_panel.hide()
+		app.ui.show_settings(app.settings.values)
+		await _frames(5)
+		var settings := app.ui.settings_panel
+		check(bounds.encloses(settings.shell.get_global_rect()) and settings._nav_buttons["画面"].icon == UIArt.nav("picture"), "illustrated settings stay reachable: " + str(extent))
+		check(settings.controls["quality"][4].icon == UIArt.surface("quality_real"), "each quality option displays the matching level")
+		settings.dismiss()
+		var meta := ScoreRules.sample_meta("S", "car")
+		app.ui.show_results(meta, {"silent": true, "reduce": true})
+		await _frames(5)
+		var results := app.ui.results_panel
+		check(bounds.encloses(results.get_global_rect()) and results._grade_art.texture == UIArt.grade("S") and results._route_art.texture == UIArt.memory("end:car"), "result artwork retains the animated grade and reachable controls: " + str(extent))
+		meta["source"] = "archive"
+		results.open(meta, {"silent": true, "reduce": true})
+		check(not results._route_art.visible and results._route_art.texture == null, "a directly granted grade does not reveal an unseen ending")
+		app.ui.hide_results()
+		app.ui.show_death_card("测试死亡记录", "", "", PackedStringArray(), PackedStringArray(), "", "patrol")
+		await _frames(4)
+		check(bounds.encloses(app.ui.death_panel.get_global_rect()) and app.ui._death_art.texture == UIArt.memory("patrol"), "death image and menu control fit: " + str(extent))
+		app.ui.death_panel.hide()
+		app.ui.show_ending("闸门", "真结局", ["车开出了学校。"], "第 1 天", PackedStringArray(), "", "car")
+		await _frames(4)
+		check(bounds.encloses(app.ui.ending_panel.get_global_rect()) and app.ui._ending_art.texture == UIArt.memory("end:car"), "ending image stays inside the scrolling card: " + str(extent))
+		app.ui.ending_panel.hide()
+	app.start_new_game("easy", "watch")
+	if app._opening_cut != null and app._opening_cut.on: app._opening_cut.end(true)
+	else: app.ui._end_opening(true)
+	await _frames(5)
+	app._show_map("teach1")
+	await _frames(5)
+	var selector := app.ui._map_select
+	check(selector.get_item_icon(selector.selected) == UIArt.landmark("teach") and selector.get_popup().get_item_icon_max_width(selector.selected) == 28, "map selector uses a bounded landmark icon in both button and popup")
+	check(not app.ui.map_view.room.is_empty() and app.ui.map_view.seen == app.exploration().seen("teach1"), "illustrated map keeps the actual floor and exploration mask")
+	app.ui.map_panel.hide()
+	app.ui.show_prompt("站起身")
+	check(app.ui._prompt_art == "stand", "touch action art follows the real stand-up prompt")
+	for id: String in ["sprint", "interact", "manual", "torch"]:
+		var target := app.ui.touch_control(id) as Button
+		check(target.get_combined_minimum_size().x <= target.size.x + 1, "compact touch icon cannot enlarge its movement target: " + id)
+	app.return_to_menu()
 	app.queue_free()
 	await _frames(3)
 	root.size = previous_size

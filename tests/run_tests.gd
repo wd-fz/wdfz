@@ -271,6 +271,8 @@ func _run() -> void:
 	ui_illustrations.test_catalog()
 	print("CASE: ui_illustrations.test_interface")
 	await ui_illustrations.test_interface()
+	print("CASE: ui_illustrations.test_expanded_interface")
+	await ui_illustrations.test_expanded_interface()
 	print("CASE: settings_ui.test_editor")
 	await settings_ui.test_editor()
 	var controls_ui := preload("res://tests/suites/controls_ui.gd").new(self)

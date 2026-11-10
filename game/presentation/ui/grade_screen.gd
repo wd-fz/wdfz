@@ -124,6 +124,9 @@ func _rect_stamp(x: float, y: float, w: float, h: float, kk: float, col: Color, 
 
 
 func _draw() -> void:
+	# Nested responsive containers briefly allocate zero width during reflow.
+	# Wait for layout before scaling text, stamps or the ruled-paper loop.
+	if size.x < 16 or size.y < 16: return
 	var W := size.x
 	var H := size.y
 	var u := minf(W / 640.0, H / 220.0)

@@ -143,6 +143,11 @@ func _draw() -> void:
 			if t == "brass" or t == "seal":
 				draw_rect(Rect2(c * cell + 1, r * cell + 1, cell - 2, cell - 2), Color(0.84, 0.69, 0.37, 0.22) if t == "brass" else Color(0.71, 0.2, 0.18, 0.28))
 			var tw := font.get_string_size(mark, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+			if mark in ["梯", "电"]:
+				var texture := UIArt.landmark("stairs" if mark == "梯" else "elevator")
+				if texture != null:
+					draw_texture_rect(texture, Rect2(c * cell, r * cell, cell, cell), false)
+					continue
 			draw_string(font, Vector2((c + 0.5) * cell - tw / 2.0, (r + 0.5) * cell + fs * 0.36), mark, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, TONES[t])
 	for tr: Dictionary in trails:
 		var pts := PackedVector2Array()
@@ -247,6 +252,14 @@ func _draw_plan() -> void:
 		var rect := Rect2((float(o["x"]) - x0) * sc, (float(o["y"]) - y0) * sc, float(o["w"]) * sc, float(o["h"]) * sc)
 		draw_rect(rect, col)
 		draw_rect(rect, Color(0.47, 0.71, 0.59, 0.3), false, 1.0)
+		# Data still supplies every outline and position. Only roomy, already-public
+		# campus landmarks receive a picture; the labels and player marker stay clear.
+		if rect.size.x >= 16 and rect.size.y >= 22:
+			var art := UIArt.landmark(String(o.get("id", o["k"])))
+			if art != null:
+				var extent := minf(24, minf(rect.size.x - 4, rect.size.y - 14))
+				var at := rect.get_center() + Vector2(0, 7) - Vector2.ONE * extent * 0.5
+				draw_texture_rect(art, Rect2(at, Vector2.ONE * extent), false, Color(1, 1, 1, 0.84))
 	var measure := func(text: String,font_size: int) -> float: return font.get_string_size(text,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x
 	for label: Dictionary in plan_labels(plan,sc,custom_minimum_size,measure):
 		draw_string(font,label["pos"],label["text"],HORIZONTAL_ALIGNMENT_LEFT,-1,label["size"],Color("c8a24a") if label["gate"] else Color(160.0/255,200.0/255,180.0/255,.62))
