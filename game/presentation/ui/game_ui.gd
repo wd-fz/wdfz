@@ -379,6 +379,7 @@ const STATE_EDGE := {"warn": Color("e6c27a"), "exam": Color("c56a5f"), "": Color
 func _style_hud() -> void:
 	var runtime := %Runtime as Label
 	runtime.theme_type_variation = "HudCard"
+	runtime.visible = not runtime.text.is_empty()
 	runtime.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	runtime.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	runtime.add_theme_font_size_override("font_size", 22)
@@ -396,6 +397,7 @@ func _style_hud() -> void:
 	var hot_style := _status_style.duplicate() as StyleBoxFlat
 	hot_style.border_color = Color(0.92, 0.9, 0.85, 0.25)
 	_hot_label.add_theme_stylebox_override("normal", hot_style)
+	_hot_label.self_modulate.a = 0.0 if _hot_label.text.is_empty() else 1.0
 	_hot_label.offset_left = 20
 	_hot_label.offset_top = -58
 	_hot_label.offset_bottom = -18
@@ -470,6 +472,7 @@ func reset_status() -> void:
 	_location = ""
 	_clock_text = ""
 	%Runtime.text = ""
+	%Runtime.visible = false
 	if _status_line != null:
 		_status_line.visible = false
 		_stamina.visible = false
@@ -594,6 +597,7 @@ func show_search(progress: float) -> void:
 
 func show_hot(text: String) -> void:
 	_hot_label.text = text
+	_hot_label.self_modulate.a = 0.0 if text.is_empty() else 1.0     # an empty card would show as a stray bracket
 
 
 ## Death: a dark red fade while the (not yet ported) death scene would play, then the record
