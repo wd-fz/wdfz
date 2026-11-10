@@ -76,3 +76,82 @@ func test_torch() -> void:
 	check(not torch.shadow_enabled and CampusLighting.quality == 0, "流畅 turns the torch shadow off")
 	app.queue_free()
 	await _frames(2)
+
+
+func test_daylight_and_glow() -> void:
+	# Windows found from the room model, daylight through them by day, the lamp gain capped in the normal-coloured world.
+	var keep_q := CampusLighting.quality
+	var keep_m := CampusLighting.mobile_renderer
+	CampusLighting.mobile_renderer = false
+	CampusLighting.quality = 2
+	var model := (load(CampusData.scene_path("teach1")) as PackedScene).instantiate() as Node3D
+	root.add_child(model)
+	# As CampusWorld does: instanced pieces (the panes among them) become MultiMeshes.
+	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
+			CampusWorld._to_multimesh(mesh)
+	var light := CampusLighting.new()
+	root.add_child(light)
+	light.setup("teach1", CampusData.layout("teach1"), model, 0)
+	if DisplayServer.get_name() == "headless":
+		# The dummy renderer keeps no mesh data, so the panes cannot be read: there are simply no window lights.
+		check(light.windows.is_empty() and light.window_lights.is_empty(), "without mesh data (headless) no window lights are made")
+		light.update(0.0, 700.0, null)
+		CampusLighting.quality = keep_q
+		CampusLighting.mobile_renderer = keep_m
+		light.queue_free()
+		model.queue_free()
+		await _frames(1)
+		CampusData.clear_caches()
+		return
+	var north := 0
+	for w: Dictionary in light.windows:
+		north += 1 if (w["out"] as Vector3).is_equal_approx(Vector3(0, 0, -1)) else 0
+	check(light.windows.size() == 12 and north == 12 and light.window_lights.size() == 12, "teach1 has twelve outer windows, all on the north wall (found %d)" % light.windows.size())
+	var w0: Dictionary = light.windows[0]
+	var spot0 := light.window_lights[0]
+	check(absf(float(w0["h"]) - 1.45) < 0.05 and spot0.position.z > (w0["at"] as Vector3).z and (-spot0.global_basis.z).z > 0.5 and (-spot0.global_basis.z).y < -0.3 and spot0.light_projector != null,
+		"a window light sits just inside its pane, points into the room and down, and carries the window shape")
+	var cam := Camera3D.new()
+	root.add_child(cam)
+	cam.global_position = (w0["at"] as Vector3) + Vector3(0, 0, 2)
+	light.update(0.0, 700.0, cam)
+	light._pick_shadow_windows(cam)
+	var lit := 0
+	var shadowed := 0
+	for spot: SpotLight3D in light.window_lights:
+		lit += 1 if spot.visible and spot.light_energy > 1.0 else 0
+		shadowed += 1 if spot.shadow_enabled else 0
+	check(lit == 12 and shadowed == int(CampusLighting.Q_LAMP_SHADOWS[2]), "by day every window gives light and the nearest one casts shadows")
+	var day_amb := light.env.ambient_light_energy
+	light.update(0.0, 1380.0, cam)
+	check(not light.window_lights[0].visible, "no daylight at night")
+	light.update(0.0, 700.0, cam)
+	light.blackout = true
+	light.update(0.0, 700.0, cam)
+	check(not light.window_lights[0].visible, "nor in a blackout")
+	light.blackout = false
+	CampusLighting.quality = 0
+	light.apply_quality()
+	light.update(0.0, 700.0, cam)
+	check(not light.window_lights[0].visible and light.env.ambient_light_energy > day_amb and is_equal_approx(light.room_lights[0].position.y, float(light.room_lights[0].get_meta("rest_y"))),
+		"流畅 keeps the old flat light: no window light, full ambient, lamps where the old build put them")
+	CampusLighting.quality = 3
+	light.apply_quality()
+	light.world_normal = 0.0
+	light.update(0.0, 700.0, cam)
+	var dark_world := light.room_lights[0].light_energy
+	var terms_pt := float(light.terms["pt"])
+	light.world_normal = 1.0
+	light.update(0.0, 700.0, cam)
+	var gain_normal := light.room_lights[0].light_energy / (float(light.terms["pt"]) / terms_pt) / dark_world * float(CampusLighting.Q_LAMP_GAIN[3])
+	check(absf(gain_normal - CampusLighting.NORMAL_LAMP_GAIN) < 0.05 and is_equal_approx(light.room_lights[0].position.y, float(light.room_lights[0].get_meta("rest_y")) - CampusLighting.LAMP_DROP) and light.env.glow_hdr_threshold >= 1.0,
+		"in the normal-coloured world the lamp gain is capped (%.2f) and the light hangs clear of the ceiling" % gain_normal)
+	light.world_normal = 0.0
+	CampusLighting.quality = keep_q
+	CampusLighting.mobile_renderer = keep_m
+	cam.queue_free()
+	light.queue_free()
+	model.queue_free()
+	await _frames(1)
+	CampusData.clear_caches()

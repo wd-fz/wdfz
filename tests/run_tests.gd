@@ -282,6 +282,8 @@ func _run() -> void:
 	await render_quality.test_lighting_tiers()
 	print("CASE: render_quality.test_torch")
 	await render_quality.test_torch()
+	print("CASE: render_quality.test_daylight_and_glow")
+	await render_quality.test_daylight_and_glow()
 	print("CASE: touch_ui.test_layout")
 	touch_ui.test_layout()
 	print("CASE: touch_ui.test_controls")
