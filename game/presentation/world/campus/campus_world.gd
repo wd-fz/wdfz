@@ -2,7 +2,8 @@ class_name CampusWorld
 extends Node3D
 ## Presentation + physics adapter for one Web-version scene (a room or the campus outside).
 ## Geometry is the glb exported from the old game's own builders; collision boxes are the old
-## game's own static collision rectangles (tools/export_scenes). No geometry is redrawn here.
+## game's own static collision rectangles (tools/export_scenes). Rendering-only spatial
+## batches, mesh cells and occluders keep the original full-detail surfaces and collision.
 
 const WALL_TOP := 10.0     # the bell tower top platform is at 6.4 m
 const WALL_BOTTOM := -0.5
@@ -212,6 +213,9 @@ func _load_visual(id: String) -> Node3D:
 		if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
 			_to_multimesh(mesh)
 	SceneMaterials.apply(model, CampusLighting.quality)
+	if id != "garage1":
+		CampusBatches.optimize(model)
+		CampusMeshCells.apply(model)
 	_register_preview_doors(model, id)
 	return model
 
@@ -234,6 +238,31 @@ static func _preview_plane(point: Vector2, outward: Vector2) -> Plane:
 	return Plane(Vector3(outward.x, 0.0, outward.y), outward.dot(point))
 
 
+## A closed, distant portal must not instantiate a second campus (or every ground
+## floor). Keep the portal transform/clip metadata, load on approach, retain at most
+## two interiors. Door/lift bindings are restored by _load_visual when materialized.
+func _door_visual(id: String) -> Node3D:
+	if not CampusBatches.enabled: return _load_visual(id)
+	var placeholder := Node3D.new()
+	placeholder.set_meta("preview_scene",id)
+	return placeholder
+
+
+func _ensure_door_preview(model: Node3D) -> void:
+	if not model.has_meta("preview_scene") or model.get_child_count() > 0: return
+	var contents := _load_visual(String(model.get_meta("preview_scene")))
+	if contents == null: return
+	model.add_child(contents)
+	CampusPreview.clip(model,model.get_meta("preview_plane"))
+	var cached: Array[Node3D] = []
+	for other: Node3D in door_previews:
+		if other != model and other.has_meta("preview_scene") and other.get_child_count() > 0: cached.append(other)
+	while cached.size() > 1:
+		var old := cached.pop_front() as Node3D
+		for child in old.get_children(): child.free()
+		old.hide()
+
+
 ## The campus doors seen through (modules/campus-link/doors.js views): from outside the ground-floor room behind each door of
 ## the building, from a room the outdoors through its door; placed by the same shift as the seamless crossing. Visual only.
 func _build_door_preview() -> void:
@@ -245,7 +274,7 @@ func _build_door_preview() -> void:
 			if not rooms.has(rid):
 				continue
 			var r: Dictionary = rooms[rid]
-			var model := _load_visual(rid)
+			var model := _door_visual(rid)
 			if model == null:
 				continue
 			var c := Vector2(float(r["cx"]), float(r["cy"])) + CampusGeometry.shift_of(r)
@@ -254,7 +283,9 @@ func _build_door_preview() -> void:
 			add_child(model)
 			var port := CampusGeometry.door_port(r, d)
 			var threshold := ((port["p"] as Vector2) + CampusGeometry.shift_of(r)) * CampusGeometry.U2M
-			CampusPreview.clip(model, _preview_plane(threshold, -(port["n"] as Vector2)))
+			var plane := _preview_plane(threshold, -(port["n"] as Vector2))
+			model.set_meta("preview_plane",plane)
+			CampusPreview.clip(model,plane)
 			model.set_meta("door_threshold", threshold)
 			model.hide()
 			door_previews.append(model)
@@ -262,7 +293,7 @@ func _build_door_preview() -> void:
 	for d: Dictionary in doors:
 		if String(d["room"]) != scene_id:
 			continue
-		var model := _load_visual("out")
+		var model := _door_visual("out")
 		if model == null:
 			return
 		var c := Vector2(float(layout["cx"]), float(layout["cy"])) + CampusGeometry.shift_of(layout)
@@ -271,7 +302,9 @@ func _build_door_preview() -> void:
 		add_child(model)
 		var port := CampusGeometry.door_port(layout, d)
 		var threshold := CampusGeometry.to_scene(layout, port["p"])
-		CampusPreview.clip(model, _preview_plane(threshold, port["n"]))
+		var plane := _preview_plane(threshold, port["n"])
+		model.set_meta("preview_plane",plane)
+		CampusPreview.clip(model,plane)
 		model.set_meta("door_threshold", threshold)
 		model.hide()
 		door_previews.append(model)
@@ -423,6 +456,12 @@ func _build_model() -> void:
 	for key: String in _door_leaves:
 		set_door_open(key, false)
 	SceneMaterials.apply(model, CampusLighting.quality)
+	# The open garage has almost no hidden geometry from its normal view. Profiling
+	# showed partitioning/CPU occlusion added overhead there; preserve its batches.
+	if scene_id != "garage1":
+		CampusBatches.optimize(model)
+		CampusMeshCells.apply(model)
+		CampusBatches.add_occluder(model)
 	visual_ground.set_model(model)
 
 
@@ -613,6 +652,7 @@ func set_player_scene(p: Vector3) -> void:
 			distance = d
 			nearest = model
 	var show_nearest := nearest != null and distance <= (15.0 if nearest.visible else 12.0)
+	if nearest != null and distance <= 13.0: _ensure_door_preview(nearest)
 	for model: Node3D in door_previews:
 		model.visible = model == nearest and show_nearest
 

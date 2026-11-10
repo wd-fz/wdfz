@@ -60,7 +60,7 @@ def check(root: Path):
             if name[1] in classes:
                 errors.append(f"Duplicate class {name[1]}: {path}")
             classes[name[1]] = path.relative_to(root).as_posix()
-    for base in ("game", "tests", "tools/capture"):
+    for base in ("game", "tests", "tools/capture", "tools/benchmarks"):
         for path in sorted((root / base).rglob("*.gd")):
             uid_file = path.with_suffix(".gd.uid")
             if not uid_file.exists():

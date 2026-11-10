@@ -10,17 +10,31 @@ var grain := true
 var quality := 1
 var clock := 0.0
 var gaze_level := 0.0
+const GRADE_SHADER := preload("res://game/presentation/world/scene_post.gdshader")
+const BLUR_SHADER := preload("res://game/presentation/world/scene_post_blur.gdshader")
+var _parameters: Dictionary = {}
+var _mipmaps := false
 
 func _init() -> void:
 	name = "ScenePost"
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var mat := ShaderMaterial.new()
-	mat.shader = preload("res://game/presentation/world/scene_post.gdshader")
+	mat.shader = GRADE_SHADER
 	material = mat
 
 func parameter(key: String, value: Variant) -> void:
+	if _parameters.has(key) and _parameters[key] == value: return
+	_parameters[key] = value
 	(material as ShaderMaterial).set_shader_parameter(key,value)
+	if key in ["blur", "focus", "normal"]:
+		var radius := (13.0 * float(_parameters.get("blur",0.0)) + 4.5 * float(_parameters.get("focus",0.0))) * (1.0-float(_parameters.get("normal",0.0)))
+		var needs_mips := radius >= .3
+		if needs_mips != _mipmaps:
+			_mipmaps = needs_mips
+			var mat := material as ShaderMaterial
+			mat.shader = BLUR_SHADER if _mipmaps else GRADE_SHADER
+			for name: String in _parameters: mat.set_shader_parameter(name,_parameters[name])
 
 func reset() -> void:
 	world_normal = 0.0

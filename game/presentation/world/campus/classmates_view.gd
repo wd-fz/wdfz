@@ -6,6 +6,9 @@ var figures: Array[Dictionary] = []
 var room: Dictionary
 var normal := false
 var teacher: Node3D
+## A classroom has one tint/lighting state. Sharing its material lets Vulkan's automatic
+## instancing batch identical figures; mutations stay local to this ClassmatesView.
+var _material: StandardMaterial3D
 
 func build(layout: Dictionary, seats: Array) -> void:
 	name = "Classmates"
@@ -39,6 +42,10 @@ func _pose(data: Dictionary, kind: String) -> void:
 		figure.remove_child(child)
 		child.queue_free()
 	var model := FigureModel.make(kind,Color("5d6873") if normal else Color("080b0d"),not normal)
+	if CampusBatches.enabled:
+		for mesh: MeshInstance3D in model.find_children("*","MeshInstance3D",true,false):
+			if _material==null: _material=mesh.material_override
+			else: mesh.material_override=_material
 	# FigureModel already turns students' meshes around; the teacher faces the class.
 	if data["teacher"]: model.rotation.y = PI
 	figure.add_child(model)

@@ -28,6 +28,9 @@ static func apply(vp: Viewport, q: int, mobile: bool) -> Dictionary:
 	vp.positional_shadow_atlas_size = int(POSITIONAL_ATLAS[q])
 	vp.positional_shadow_atlas_16_bits = true
 	vp.mesh_lod_threshold = float(LOD_THRESHOLD[q])
+	# CPU occlusion works with both Vulkan renderers. CampusBatches supplies only real
+	# opaque wall triangles; doors, windows and collision approximations are excluded.
+	vp.use_occlusion_culling = true
 	# Godot 4.6.3 Mobile + FXAA stalls when rendering the misread archive replay
 	# (reproduced on Vulkan Lavapipe). Keep FXAA on Forward+ only until that path
 	# is verified again. Both renderers retain the higher tiers' 4× / 8× MSAA.

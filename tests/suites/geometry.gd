@@ -68,6 +68,7 @@ func test_campus_joins() -> void:
 	var from := Vector3(24.2, 1.65, 8.5)
 	var to := Vector3(26.8, 1.65, 8.5)
 	var preview := world.get_node("DoorPreview_out") as Node3D
+	world._ensure_door_preview(preview)
 	preview.show() # Verify geometry itself, independently of the near-door visibility gate.
 	check(not _mesh_hit(preview, from, to) and not _mesh_hit(preview, to, from), "teaching corridor has no one-sided exterior brick wall across its walkable passage")
 	var ray := PhysicsRayQueryParameters3D.create(from, to, 1)
@@ -95,11 +96,11 @@ func test_campus_joins() -> void:
 	root.add_child(world)
 	await _frames()
 	var key := "teach1:10:15"
-	var entries: Array = world._preview_doors.get(key, [])
-	check(entries.size() == 2, "outside preview registers both classroom door variants")
 	var first := world.door_previews[0]
 	var threshold: Vector2 = first.get_meta("door_threshold")
 	world.set_player_scene(Vector3(threshold.x, 0, threshold.y + 11.0))
+	var entries: Array = world._preview_doors.get(key, [])
+	check(entries.size() == 2, "approaching a portal registers both classroom door variants")
 	check(first.visible and world.door_previews.filter(func(model: Node3D) -> bool: return model.visible).size() == 1, "only the closest doorway draws an interior within 12 metres")
 	world.set_player_scene(Vector3(threshold.x, 0, threshold.y + 14.0))
 	check(first.visible, "a visible doorway stays visible until 15 metres, without flicker at 12 metres")
