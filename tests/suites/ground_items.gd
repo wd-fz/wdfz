@@ -199,6 +199,6 @@ func test_bag_ui() -> void:
 	ui.show_notice("我：拿到了「手电筒」。")
 	await _frames(2)
 	var toast := ui.get_node("%Toast") as Label
-	check(toast.visible and toast.size.x < root.get_visible_rect().size.x * 0.85 and toast.theme_type_variation == "HudPill", "notices sit on a pill sized to their text")
+	check(toast.visible and toast.size.x < root.get_visible_rect().size.x * 0.63 and toast.theme_type_variation == "HudPill", "notices sit on a pill sized to their text")
 	app.queue_free()
 	await _frames(1)

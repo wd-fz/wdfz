@@ -2463,16 +2463,17 @@ func show_notice(text: String) -> void:
 	_fit_toast()
 
 
-## The notice line sits on a translucent pill as wide as its text (at most 84 % of the screen), so
-## it stays readable over a bright board or a busy wall without hiding the scene behind a band.
+## The notice line sits on a translucent pill as wide as its text (at most 62 % of the screen, below the
+## status card and clear of the captions), so it stays readable over a bright board or a busy wall
+## without hiding the scene behind a band.
 func _fit_toast() -> void:
 	var toast := %Toast as Label
 	if toast.theme_type_variation != "HudPill":
 		toast.theme_type_variation = "HudPill"
 		toast.anchor_left = 0.5
 		toast.anchor_right = 0.5
-		toast.anchor_top = 0.15
-		toast.anchor_bottom = 0.15
+		toast.anchor_top = 0.26
+		toast.anchor_bottom = 0.26
 		toast.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		toast.grow_vertical = Control.GROW_DIRECTION_END
 		toast.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -2492,7 +2493,7 @@ func _fit_toast() -> void:
 	var width := 0.0
 	for line: String in toast.text.split("\n"):
 		width = maxf(width, font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
-	width = minf(ceilf(width + margins + 2.0), screen.x * 0.84)
+	width = minf(ceilf(width + margins + 2.0), screen.x * 0.62)     # clear of the status card and captions on the left
 	# An autowrapped label has almost no minimum width of its own: pin the width, the height follows the text.
 	toast.custom_minimum_size = Vector2(width, 0.0)
 	toast.offset_left = -width * 0.5
