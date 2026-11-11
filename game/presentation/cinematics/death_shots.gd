@@ -334,15 +334,25 @@ func _a_cut(t: float, a: float) -> float:
 	return c.ss(t,a,a+.06)
 
 func _build_rollcall() -> void:
-	c.stage_dark(DARK,.06,Color(.21,.21,.2),.2)
+	c.stage_dark(DARK,.04,Color(.27,.26,.24),.6)
 	_room(5,9)
 	p["tube"]=c.stage_lights.back()
+	p["tube"].light_color=Color("ddd8c6")
+	p["tube"].omni_range=6.0
+	c.motive_light(Vector3(0,1.3,7.0),Color("ddd8c6"),3.0,5.0,root)
+	c.motive_light(Vector3(0,1.3,1.0),Color("ddd8c6"),2.5,4.0,root)
 	_box(Vector3(3.5,1.5,.08),Vector3(0,.45,7.7),JADE)
 	_text("到你了。",Vector3(0,.7,7.62),.3)
-	# The patroller: tall and dark, a pale face that is slightly wrong, standing in the one pool of light.
-	p["man"]=_fig(Vector3(.3,-1.6,4.4),"teacher",.98,Color("0a0e10"),{"tone":Color(.46,.46,.42),"skew":.4,"size":1.3},.5)
-	# A faint glow in front of his chest, so the face holds once he has stepped out of the tube's pool.
-	p["face_light"]=c.motive_light(Vector3.ZERO,Color("cfd6d0"),0.0,1.2,root)
+	# Classroom doors with their plates on both sides, and a notice board.
+	for z in [2.4,5.6]:
+		_box(Vector3(.06,2.1,.95),Vector3(-2.43,-.55,z),Color("5a4a36"))
+		_text("高二(3)",Vector3(-2.4,.7,z),.14).rotation.y=PI/2
+		_box(Vector3(.06,2.1,.95),Vector3(2.43,-.55,z+1.0),Color("5a4a36"))
+		_text("高二(4)",Vector3(2.4,.7,z+1.0),.14).rotation.y=-PI/2
+	_box(Vector3(.05,.9,1.2),Vector3(2.44,.1,3.4),Color("5a4632"))
+	# The patroller: tall, in a dark grey uniform with a red armband; a grey face that is slightly wrong.
+	p["man"]=_fig(Vector3(.3,-1.6,4.4),"teacher",.98,Color("2b2c30"),{"tone":SKIN,"skew":.4,"size":1.2,"hair":true,"socket":.8},.2)
+	_box(Vector3(.08,.09,.08),Vector3(.19,1.8,0),Color("8a2f2a"),p["man"])
 	var book := _anchor(Vector3(.1,-.55,4.2))
 	_box(Vector3(.42,.56,.025),Vector3.ZERO,COAL,book)
 	_box(Vector3(.36,.5,.012),Vector3(0,0,-.02),Color("8c8676"),book)
@@ -353,7 +363,7 @@ func _build_rollcall() -> void:
 	p["name"]=_text("未到",Vector3(.06,-.19,-.033),.06,RUST,book)
 	# The register is held out by a long hand that comes with it out of the dark.
 	# Its fingers come over the top edge from behind: too long, one joint too many.
-	p["hand"]=_fig_hand({"long":1.45,"thin":.75,"extra":true,"arm":.5,"tone":Color(.44,.44,.41)},book)
+	p["hand"]=_fig_hand({"long":1.2,"thin":.6,"extra":true,"arm":.5,"tone":SKIN},book)
 	p["hand"].position=Vector3(-.1,.2,.045)
 	p["hand"].scale=Vector3.ONE*1.15
 	focus=book
@@ -366,14 +376,17 @@ func _show_rollcall(t: float) -> void:
 	var gone:=t>=.3
 	var reach:=c.ss(t,.32,.6)
 	var lean:=c.ss(t,.76,.9)
-	# Seen first standing still under the far tube; after the light falters he is somewhere in the dark.
-	man.position=Vector3(.3,-1.6,4.4) if not gone else Vector3(lerpf(.62,.42,lean),-1.6,lerpf(2.5,1.55,lean))
-	man.rotation=Vector3(.45*lean,PI+.15*lean,0)
-	head.rotation=Vector3(-.18+.5*lean,PI+.35*lean*(1 if c.fx!="names" else -1),.22*lean)
-	HorrorKit.pose_head(head,.1+.45*c.ss(t,.8,.95))
-	tube.light_energy=0.0 if _fig_blink(t,.27,.31) else (2.6 if not gone else lerpf(1.4,.5,c.ss(t,.6,.9)))
+	var close:=c.ss(t,.8,.88)
+	# Seen first standing still under the tube; after the light falters he is nearer, a pace from the dark.
+	var z:=lerpf(lerpf(3.2,2.0,c.ss(t,.45,.8)),1.9,close)
+	man.position=Vector3(.3,-1.6,4.4) if not gone else Vector3(lerpf(lerpf(.62,.3,c.ss(t,.3,.8)),.08,close),-1.6,z)
+	var lean_angle:=lerpf(.05+.1*lean,.75,close) if gone else 0.0
+	man.rotation=Vector3(lean_angle,PI+.1*lean*(1-close),0)
+	head.rotation=Vector3(-.18+.2*lean+.6*close,PI+.3*lean*(1 if c.fx!="names" else -1)*(1-close),.18*lean*(1-close))
+	HorrorKit.pose_head(head,.1+.3*c.ss(t,.8,.95))
+	tube.light_energy=0.0 if _fig_blink(t,.27,.31) else 3.0
 	if gone:
-		book.position=Vector3(lerpf(.5,.42,reach),lerpf(-.62,-.45,reach)-.1*lean,lerpf(3.0,1.0,reach)+.3*lean)
+		book.position=Vector3(lerpf(.5,.4,reach),lerpf(-.62,-.5,reach)-.5*close,z-lerpf(.9,1.0,reach))
 		book.rotation=Vector3(-.2*c.ss(t,.5,.8)-.25*lean,-.2,-.06)
 	else:
 		book.position=Vector3(.1,-.55,4.2)
@@ -383,12 +396,10 @@ func _show_rollcall(t: float) -> void:
 	var hook:=[.05,.15,1.5,1.2]
 	HorrorKit.pose_hand(p["hand"],.6,.18,[.2,[.05,.15+.5*mark,1.5-.6*mark,1.2],hook,hook,hook],Vector2(.05,0))
 	p["hand"].rotation=Vector3(PI/2-.45,.1,0)
-	_fig_key().light_energy=lerpf(3.2,1.6,lean)
-	(p["face_light"] as Light3D).position=man.position+Vector3(0,1.55,-.45)
-	(p["face_light"] as Light3D).light_energy=1.4*c.ss(t,.35,.6)*(1.0-lean) if gone else 0.0
+	_fig_key().light_energy=lerpf(3.0,3.4,c.ss(t,.3,.85))
 	p["name"].visible=t>.61
 	p["name"].text="已到" if t>.78 else ("下一位" if c.fx=="names" else "未到")
-	_pose(t,-.07*reach+.12*lean,0,-.06*reach,0,-4*reach)
+	_pose(t,0,0,0,0,-3*reach)
 
 func _build_garage() -> void:
 	c.stage_dark(DARK,.03,Color(.24,.2,.16),.22)
@@ -459,70 +470,77 @@ func _show_garage(t: float) -> void:
 	_pose(t,.12*rush,.025*sin(t*12)*rush*c.shk,0,0,-6*rush)
 
 func _build_backseat() -> void:
-	# The driver's seat at night: dashboard, wheel, pillars and roof in the dark; the road outside.
-	c.stage_dark(DARK,.03,Color(.18,.17,.16),.16)
-	_box(Vector3(2.8,.4,.9),Vector3(0,-.78,1.3),Color("1c262b"))
-	_box(Vector3(2.8,.08,.5),Vector3(0,.66,.75),Color("1a2227"))
-	for x in [-1,1]: _rod(Vector3(x*1.05,-.58,1.55),Vector3(x*.95,.64,.95),.13,Color("222d33"))
-	_ring(Vector3(.36,-.5,.62),.19,.03,Color("3a464b")).rotation.x=.45
+	# The driver's seat at night: dashboard, wheel, pillars and roof lit by the instruments and the street lamps.
+	c.stage_dark(DARK,.03,Color(.27,.26,.24),.6)
+	_box(Vector3(2.8,.4,.9),Vector3(0,-.78,1.3),Color("4a4843"))
+	_box(Vector3(2.8,.08,.5),Vector3(0,.66,.75),Color("55534c"))
+	for x in [-1,1]:
+		_rod(Vector3(x*1.05,-.58,1.55),Vector3(x*.95,.64,.95),.13,Color("4a4843"))
+		_box(Vector3(.3,.45,1.4),Vector3(x*1.3,-.6,.3),Color("45443f"))
+	_ring(Vector3(.36,-.5,.62),.19,.03,Color("66645d")).rotation.x=.45
 	# Two dials, each with a small needle.
 	for x in [.26,.48]:
-		_ring(Vector3(x,-.5,1.0),.055,.006,Color("6fa89b")).material_override=c._mat(Color("4f7d73"))
+		_ring(Vector3(x,-.5,1.0),.055,.006,Color("d9a066")).material_override=c._mat(Color("a8794a"))
 		var tip:=Vector3(.028,.028,0) if x<.4 else Vector3(-.03,.026,0)
 		_rod(Vector3(x,-.5,.99),Vector3(x,-.5,.99)+tip,.006,Color("c96a4a"))
-	_box(Vector3(30,.05,60),Vector3(0,-1.45,30),Color("3a464a"))
-	for i in 9: _box(Vector3(.12,.01,1.6),Vector3(-.4,-1.42,4+i*4.5),Color("8a8a78"))
+	_box(Vector3(30,.05,60),Vector3(0,-1.45,30),Color("5a5c58"))
+	# The night beyond the windscreen: a dull orange-grey glow of the town over the road.
+	c.mesh(BoxMesh.new(),c._mat(Color("4a4744"),-1,false,false,false),0,6,32,root).scale=Vector3(110,40,.1)
+	for i in 9: _box(Vector3(.12,.01,1.6),Vector3(-.4,-1.42,4+i*4.5),Color("9a9a88"))
 	_sphere(Vector3(-2.6,2.6,9),.16,LIGHT)
-	_rod(Vector3(-2.6,2.6,9),Vector3(-2.6,-1.45,9),.08,Color("1b2226"))
-	c.motive_light(Vector3(-2.4,2.2,8.6),Color("d9b98a"),4.0,8,root)
-	# A second street lamp sweeps down the car as it drives past.
-	p["pass"]=c.motive_light(Vector3(-2.2,2.0,10),Color("d9a066"),3.5,7,root)
-	# Moonlight on the road ahead and a faint cabin light on the pillars, dash and roof, so the car reads.
-	c.motive_light(Vector3(0,4,8),Color("8fa6c8"),9.0,14,root)
-	c.motive_light(Vector3(0,.3,.2),Color("8fa6c8"),5.0,3.0,root)
-	# The instrument glow from below: the only light on what leans in from the back seat.
-	p["dash"]=c.motive_light(Vector3(.3,-.5,.85),Color("7fb3a8"),.9,1.6,root)
+	_rod(Vector3(-2.6,2.6,9),Vector3(-2.6,-1.45,9),.08,Color("3a3a36"))
+	c.motive_light(Vector3(-2.4,2.2,8.6),Color("d9b98a"),3.0,8,root)
+	# A street lamp sweeps down the roof of the car from front to back every .12 of the time.
+	p["pass"]=c.motive_light(Vector3(-1.6,1.6,10),Color("d9a066"),2.5,7,root)
+	# Light on the road ahead, a faint cabin light behind the shoulder, and the instrument glow.
+	c.motive_light(Vector3(0,2.5,4),Color("b8b6ae"),4.0,9,root)
+	c.motive_light(Vector3(.4,.5,-.6),Color("d8d2c0"),.8,3.0,root)
+	c.motive_light(Vector3(.1,1.3,1.0),Color("d8d2c0"),3.4,3.8,root)
+	p["dash"]=c.motive_light(Vector3(.3,-.5,.85),Color("d9a066"),.8,1.2,root)
 	var mirror := _anchor(Vector3(0,.4,.95))
-	_box(Vector3(.44,.15,.035),Vector3.ZERO,Color("101517"),mirror)
-	# The glass holds the faint glow of the rear window, so the frame reads in the dark.
-	_box(Vector3(.4,.115,.008),Vector3(0,0,-.02),Color("1f292c"),mirror).material_override=c._mat(Color("3a4744"))
-	_rod(Vector3(0,.07,0),Vector3(0,.26,.08),.02,Color("101517"),mirror)
-	# A small lamp behind the glass, lighting only the face in it.
-	c.motive_light(Vector3(0,.35,.6),Color("9fb3ad"),.35,.6,root)
+	_box(Vector3(.4,.14,.035),Vector3.ZERO,Color("22211f"),mirror)
+	# The glass takes the light of the road behind the car, so the frame reads in the dark.
+	_box(Vector3(.36,.105,.008),Vector3(0,0,-.02),Color("3e403f"),mirror)
+	_rod(Vector3(0,.07,0),Vector3(0,.26,.08),.02,Color("22211f"),mirror)
 	p["mirror"]=mirror
 	# The reflection: a passenger who was not there, sitting back, then leaning between the seats.
-	p["reflection"]=_fig_head({"tone":Color(.4,.41,.38),"mouth":"closed","skew":.25},Vector3(0,0,-.03),.3,mirror)
+	p["reflection"]=_fig_head({"tone":SKIN,"mouth":"closed","skew":.25,"hair":true,"socket":.8},Vector3(0,0,-.03),.3,mirror)
 	focus=p["mirror"]
 	# The weight on the shoulder: a long, cold hand from the back seat, over the right shoulder (set -x is screen right).
-	p["hand"]=_fig_hand({"long":1.25,"thin":.4,"arm":.22,"tone":Color(.33,.34,.32),"quality":maxi(CampusData.tier,3)})
-	# At the very end the passenger itself, at your right ear.
-	p["face"]=_fig_head({"tone":Color(.36,.37,.34),"mouth":"closed","skew":.25},Vector3(-.36,.02,.34),1.0)
+	p["hand"]=_fig_hand({"long":1.25,"thin":.4,"arm":.22,"tone":SKIN,"quality":maxi(CampusData.tier,3)})
+	# At the very end the passenger itself, at your right ear: head and shoulders between the front seats.
+	p["pax"]=_fig(Vector3(-.36,-1.28,.51),"sit",1.0,Color("262d3a"),{"mouth":"closed","skew":.25,"size":1.05,"hair":true,"socket":.8},.2)
+	p["face"]=p["pax"].get_meta("head")
+	p["pax"].rotation.y=PI
 
 func _show_backseat(t: float) -> void:
 	var lean := c.ss(t,.3,.62)
-	var near := c.ss(t,.78,.9)
+	var near := c.ss(t,.78,.88)
 	var ghost: Node3D=p["reflection"]
 	ghost.visible=t>.25 and t<.8
 	ghost.position=Vector3(lerpf(-.1,0,lean),lerpf(-.01,-.005,lean),-.03)
 	ghost.scale=Vector3.ONE*lerpf(.45,.62,lean)
+	ghost.rotation=Vector3(-.1,PI-PI*0.0,.12*(1-lean))
 	ghost.rotation=Vector3(-.1,0,.12*(1-lean))
 	HorrorKit.pose_head(ghost,.0)
-	(p["dash"] as Light3D).light_energy=0.0 if _fig_blink(t,.23,.27) else .9
+	(p["dash"] as Light3D).light_energy=0.0 if _fig_blink(t,.23,.27) else .8
 	# The hand climbs up from the edge of the seat's shoulder: first only the fingertips show.
-	var reach:=c.ss(t,.5,.66)
+	var reach:=c.ss(t,.62,.8)
 	var hand: Node3D=p["hand"]
-	hand.visible=t>.5
+	hand.visible=t>.62
 	hand.position=Vector3(-.36,-.24,.12).lerp(Vector3(-.3,-.11,.27),reach)
-	(p["pass"] as Light3D).position.z=12.0-fposmod(t*c.dur*9.0,24.0)
+	(p["pass"] as Light3D).position.z=12.0-fposmod(t/.12,1.0)*24.0
 	hand.rotation=Vector3(-.05-.2*reach,PI+.75,.35)
-	HorrorKit.pose_hand(hand,lerpf(.05,.45,c.ss(t,.58,.75)),.35,[.1],Vector2(.35*reach,0))
+	HorrorKit.pose_hand(hand,lerpf(.05,.45,c.ss(t,.7,.8)),.35,[.1],Vector2(.35*reach,0))
+	var pax: Node3D=p["pax"]
+	pax.visible=t>=.8
+	pax.position=Vector3(lerpf(-.52,-.36,near),lerpf(-1.3,-1.28,near),lerpf(.3,.51,near))
+	pax.rotation=Vector3(0,PI-.25*near,0)
 	var face: Node3D=p["face"]
-	face.visible=t>=.8
-	face.position=Vector3(lerpf(-.5,-.3,near),lerpf(-.02,.02,near),lerpf(.25,.36,near))
-	face.rotation=Vector3(-.1,-.95+.25*near,.2)
-	HorrorKit.pose_head(face,.5*c.ss(t,.84,.95))
-	_fig_key().light_energy=2.4
-	_pose(t,0,.34*c.ss(t,.76,.88),0,-.03*near,-3*near)
+	face.rotation=Vector3(-.05,PI-.3-.1*near,.12)
+	HorrorKit.pose_head(face,0.0)
+	_fig_key().light_energy=1.6
+	_pose(t,0,.34*c.ss(t,.76,.88),0,0,-3*near)
 
 const ENV_WINDSHIELD := """
 shader_type spatial;
@@ -854,121 +872,140 @@ func _show_assembly(t: float) -> void:
 	_pose(t,-.04*c.ss(t,.2,.45),0,-.1*squeeze,0,-4*c.ss(t,.45,.9))
 
 
+## A Catmull-Rom curve through points (count samples, even in the point index).
+static func _a_spline(points: Array, count: int) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	var n := points.size()
+	for i in count:
+		var u := float(i)/(count-1)*(n-1)
+		var k := mini(int(u),n-2)
+		var f := u-k
+		var q0: Vector3 = points[maxi(k-1,0)]
+		var q1: Vector3 = points[k]
+		var q2: Vector3 = points[k+1]
+		var q3: Vector3 = points[mini(k+2,n-1)]
+		out.append(.5*(2.0*q1+(q2-q0)*f+(2.0*q0-5.0*q1+4.0*q2-q3)*f*f+(3.0*q1-q0-3.0*q2+q3)*f*f*f))
+	return out
+
+const _FENCE_RAIL := Vector3(0,.8,2.5)    # the top rail of the railing: where the neck lies over
+
 func _build_fence() -> void:
-	c.stage_dark(DARK,.05,Color(.2,.19,.17),.18)
-	_box(Vector3(14,.1,12),Vector3(0,-1.6,5),Color("4c6a4c"))
+	c.stage_dark(DARK,.05,Color(.27,.26,.24),.6)
+	_box(Vector3(14,.1,12),Vector3(0,-1.6,5),Color("62674f"))
 	_box(Vector3(14,.02,.5),Vector3(0,-1.54,1.6),Color("8a4a38"))
 	# A faint night sky behind the trees, so their black shapes read against it.
-	c.mesh(BoxMesh.new(),c._mat(Color("303f4e"),-1,false,false,false),0,3,12.5,root).scale=Vector3(40,14,.1)
+	c.mesh(BoxMesh.new(),c._mat(Color("5e5c58"),-1,false,false,false),0,3,12.5,root).scale=Vector3(40,14,.1)
 	# The playground railing: metal uprights with small spear tips, two rails and a notice.
-	var metal:=_env_lit(Color("3c4a46"),.45,.6)
+	var metal:=_env_lit(Color("4a4f4a"),.45,.6)
 	for i in 15:
 		_env_box(Vector3(.04,2.8,.04),Vector3((i-7)*.27,-.2,2.5),metal)
 		_env_box(Vector3(.06,.08,.06),Vector3((i-7)*.27,1.24,2.5),metal)
-	for y in [-.6,.75]: _env_box(Vector3(4.1,.055,.055),Vector3(0,y,2.48),metal)
-	_box(Vector3(.5,.25,.02),Vector3(-.8,.2,2.46),Color("b9b19a"))
-	_text("禁止翻越",Vector3(-.8,.2,2.44),.07,INK)
+	for y in [-.6,.8]: _env_box(Vector3(4.1,.055,.055),Vector3(0,y,2.48),metal)
+	_box(Vector3(.5,.25,.02),Vector3(1.5,.2,2.46),Color("b9b19a"))
+	_text("禁止翻越",Vector3(1.5,.2,2.44),.07,INK)
 	# A sodium street lamp on the far side and two black trees behind it.
 	_rod(Vector3(-3.2,-1.6,8),Vector3(-3.2,2.4,8),.08,COAL)
 	_box(Vector3(.5,.1,.2),Vector3(-3.0,2.4,8),LIGHT)
 	_env_glow(Vector3(-3.0,2.35,7.9),3.0,Color("d9a066"),root,2.0)
-	c.motive_light(Vector3(-3,2.2,7.8),Color("d9a066"),6.0,13,root)
-	# Thin moonlight on the railing and the grass, so the playground can be read before anything shows.
-	c.motive_light(Vector3(1,3.2,3.2),Color("8fa6c8"),14.0,10,root)
-	p["glow"]=c.motive_light(Vector3(2.4,.9,2.0),Color("c9d4cf"),.9,1.8,root)
+	c.motive_light(Vector3(-3,2.2,7.8),Color("d9a066"),3.0,6.0,root)
+	# A second sodium lamp over the railing's near side lights the neck where it hangs.
+	c.motive_light(Vector3(1.6,3.0,3.8),Color("d9a066"),2.4,6.0,root)
+	c.motive_light(Vector3(1,3.2,3.2),Color("c8c6bc"),9.0,10,root)
+	c.motive_light(Vector3(-2.5,1.4,4.4),Color("d9a066"),1.8,2.6,root)
 	for tx in [3.8,-5.5]:
 		_box(Vector3(.3,2.6,.3),Vector3(tx,-.3,9),Color("0a0e0c"))
 		_sphere(Vector3(tx,1.3,9),1.2,Color("0a0e0c")).scale=Vector3(1.7,.85,1)
-	p["head"]=_fig_head({"tone":Color(.46,.46,.42),"mouth":"closed","skew":.5,"eyes":"dull","rim":.35},Vector3(2.4,.82,2.95),1.2)
+	# A student behind the railing in the dark, facing you; his neck is the thing that comes over the rail.
+	p["body"]=_fig(Vector3(-1.6,-1.6,5.4),"person",1.0,Color("262d3a"),{},.2)
+	p["body"].rotation.y=PI
+	(p["body"].get_meta("head") as Node3D).visible=false
+	p["head"]=_fig_head({"tone":SKIN,"mouth":"closed","skew":.3,"eyes":"dull","hair":true,"socket":.75},Vector3(-1.5,.88,3.2),1.4)
 	p["neck"]=MeshInstance3D.new()
-	p["neck"].material_override=_fig_skin(Color(.44,.44,.4),.3,true)
+	p["neck"].material_override=_fig_skin(Color(.34,.32,.29),.2,true)
 	p["neck"].cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(p["neck"])
-	# The body stands outside the light, side on; only its shoulder shows, and the neck starts there.
-	p["body"]=_fig(Vector3(3.6,-1.6,4.2),"roam",.9,Color("0a0d0f"),{"mouth":"none","eyes":"hollow","tone":Color(.1,.1,.1)},.15)
-	p["body"].rotation.y=-PI/2
-	(p["body"].get_meta("head") as Node3D).visible=false
 	focus=p["head"]
+
+## Where the head is at t: raised behind the railing, then over the rail to hang on this side, a pause, then
+## drawn towards you along the rail and finally up in front of your face.
+func _a_fence_head(t: float) -> Vector3:
+	var s1:=c.ss(t,.25,.45)
+	var over:=.88+.08*sin(PI*clampf(s1*1.5,0,1))-1.08*c.ss(s1,.45,1.0)
+	var pos:=Vector3(lerpf(-1.5,-.6,s1),over,lerpf(3.2,1.9,s1))
+	var s2:=c.ss(t,.6,.8)
+	pos=pos.lerp(Vector3(-.2,-.1,.95),s2)
+	var s3:=c.ss(t,.8,.88)
+	return pos.lerp(Vector3(0,0,.46),s3)
 
 func _show_fence(t: float) -> void:
 	var head: Node3D=p["head"]
-	# Slides along behind the rail in two moves with a stop between; then up over the rail and down at you.
-	var x:=2.4-1.2*c.ss(t,.15,.27)-.795*c.ss(t,.33,.45)
-	var lift:=c.ss(t,.6,.7)
-	var over:=c.ss(t,.66,.72)
-	var down:=c.ss(t,.7,.8)
-	var pos:=Vector3(x,lerpf(.82,1.35,lift),lerpf(2.95,2.3,over))
-	pos=pos.lerp(Vector3(.05,.02,1.25),down)
-	var close:=c.ss(t,.86,1)
-	pos.y=lerpf(pos.y,-.02,close)
-	pos.z=lerpf(pos.z,.75,close)
+	var pos:=_a_fence_head(t)
 	head.position=pos
-	var arch:=c.ss(t,.6,.72)
-	head.rotation=Vector3(-.35*down,0,lerpf(.35*c.ss(t,.15,.45),.15,down))
-	HorrorKit.pose_head(head,.08*c.ss(t,.45,.5)+.27*c.ss(t,.86,.97))
-	var a:=Vector3(3.45,.25,4.0)
-	var b:=Vector3(3.0,.9,3.4).lerp(Vector3(2.4,1.9,3.2),arch)
-	var c2:=(pos+Vector3(.5,.02,.15)).lerp(Vector3(pos.x+.4,1.9,2.5),arch)
-	var d:=pos+Vector3(.06,-.07,.04)
-	(p["neck"] as MeshInstance3D).mesh=_fig_tube(_fig_curve(a,b,c2,d,18),.042,.05)
-	_fig_key().light_energy=lerpf(lerpf(1.2,2.2,c.ss(t,.45,.6)),4.0,c.ss(t,.7,.88))
-	# A pale spill on the face from in front of it, so the head reads in the dark behind the rail.
-	(p["glow"] as Light3D).position=pos+Vector3(0,.12,-.9)
-	(p["glow"] as Light3D).light_energy=lerpf(1.6,2.4,c.ss(t,.45,.6))
-	_pose(t,.06*c.ss(t,.6,.86),0,0,-.035*c.ss(t,.6,.86)*c.shk)
+	# Hanging upside down at first, then it rights itself by a third, and at the end looks up into your face.
+	var roll:=PI-.52*c.ss(t,.45,.6)-(PI-.52)*c.ss(t,.8,.88)
+	head.rotation=Vector3(0,.5*(1.0-c.ss(t,.6,.85)),roll)
+	HorrorKit.pose_head(head,.15*c.ss(t,.84,.88))
+	var ends:=pos+head.basis*Vector3(0,-.1,.04)*1.4
+	var body:=Vector3(-1.6,.04,5.4)
+	var cx:=lerpf(body.x,ends.x,.8)
+	var over:=[body,Vector3(lerpf(body.x,cx,.5),.55,lerpf(body.z,2.6,.55)),Vector3(cx,.86,2.8),Vector3(cx,.86,2.36),
+		Vector3(lerpf(cx,ends.x,.5),lerpf(.8,ends.y+.2,.5),lerpf(2.36,ends.z,.45)),ends]
+	var raised:=[body,Vector3(lerpf(body.x,ends.x,.5),.3,lerpf(body.z,ends.z,.5)),ends]
+	var a:=_a_spline(over,36)
+	var b:=_a_spline(raised,36)
+	var w:=c.ss(t,.28,.4)
+	var line:=PackedVector3Array()
+	for i in a.size(): line.append(b[i].lerp(a[i],w))
+	(p["neck"] as MeshInstance3D).mesh=_fig_tube(line,.065,.045,12)
+	(p["body"].get_node("Body") as Node3D).scale=Vector3(1,1+.006*sin(t*c.dur*1.6),1)
+	_fig_key().light_energy=lerpf(lerpf(1.6,2.6,c.ss(t,.25,.5)),3.4,c.ss(t,.6,.85))
+	_pose(t,.04*c.ss(t,.6,.86))
 
 func _build_double() -> void:
-	c.stage_dark(DARK,.05,Color(.21,.21,.2),.2)
-	_room(5,13,Color("435854"))
+	c.stage_dark(DARK,.04,Color(.27,.26,.24),.6)
+	_room(5,13)
 	p["tube"]=c.stage_lights.back()
-	p["tube"].position=Vector3(0,1.3,6.2)
-	p["tube"].omni_range=7.0
-	for z in [3,7,11]: _window(Vector3(2.45,.2,z)).rotation.y=PI/2
-	# The right-hand wall: two classroom doors with their plates and a notice board.
+	p["tube"].position=Vector3(0,1.3,7.2)
+	p["tube"].omni_range=5.0
+	p["tube"].light_color=Color("ddd8c6")
+	p["near"]=c.motive_light(Vector3(0,1.3,3.0),Color("ddd8c6"),3.0,5.0,root)
+	for z in [3,7,11]:
+		var w:=_window(Vector3(2.45,.2,z))
+		w.rotation.y=PI/2
+		(w.get_node("GlassPane") as MeshInstance3D).material_override=_surface(Color("3b4046"),.55)
+	# Sodium light from the street outside the windows.
+	c.motive_light(Vector3(2.2,1.2,6.5),Color("d9a066"),2.6,4.5,root)
+	# The left-hand wall: two classroom doors with their plates and a notice board.
 	for z in [4.5,9.2]:
 		_box(Vector3(.06,2.1,.95),Vector3(-2.43,-.55,z),Color("5a4a36"))
 		_text("高二(3)",Vector3(-2.4,.7,z),.14).rotation.y=PI/2
 	_box(Vector3(.05,.9,1.4),Vector3(-2.44,.1,6.8),Color("5a4632"))
 	for i in 3: _box(Vector3(.02,.35,.26),Vector3(-2.41,.1+(i-1)*.08,6.25+i*.55),Color("b9b19a"))
-	# Two in the same uniform, walking half a beat apart; later only one of them is left, head on one side.
-	var tone:=Color(.45,.45,.41)
-	p["one"]=_fig(Vector3(-.7,-1.6,8),"person",1.0,Color("1a2026"),{"tone":tone,"mouth":"closed"},.3)
-	p["two"]=_fig(Vector3(.7,-1.6,8),"person",1.0,Color("1a2026"),{"tone":tone,"mouth":"closed","skew":.45},.3)
-	for key in ["one","two"]: p[key].rotation.y=PI
-	# The same head without a mouth, hidden until the lamp has gone out.
-	p["blank"]=_fig_head({"tone":tone,"mouth":"none","skew":.45},(_FIG_NECK["person"][1] as Vector3),1.12,p["two"])
-	p["blank"].rotation.y=PI
-	p["blank"].hide()
+	# Another student in your uniform, with your badge on the same side. He does what you do, half a beat late.
+	p["two"]=_fig(Vector3(0,-1.6,8),"person",1.0,Color("262d3a"),{"tone":SKIN,"mouth":"closed","skew":.1,"hair":true,"socket":.75},.2)
+	p["two"].rotation.y=PI
+	_box(Vector3(.03,.03,.01),Vector3(.12,1.3,.135),Color("8a2f2a"),p["two"])
 	focus=p["two"].get_meta("head")
 
+## What you do with your head: a slow look around, so the one who copies it is late by .06 of the time.
+func _a_look(t: float) -> float:
+	return .17*sin(TAU*t*1.4)*(1.0-c.ss(t,.6,.8))
+
 func _show_double(t: float) -> void:
-	var one: Node3D=p["one"]
 	var two: Node3D=p["two"]
-	var join:=c.ss(t,.3,.55)
-	var gait:=1.0-c.ss(t,.55,.6)
-	# They walk half a beat apart, drift together and stop overlapping: from the lamp's blink there is one.
-	one.rotation=Vector3(0,PI,.035*sin(t*c.dur*4)*c.shk*gait)
-	two.rotation=Vector3(0,PI,.035*sin(t*c.dur*4-PI)*c.shk*gait)
-	one.position=Vector3(lerpf(-.7,-.03,join),-1.6,lerpf(8,5.53,join))
-	var zt:=lerpf(5.5,2.4,_a_cut(t,.77))
-	zt=lerpf(zt,1.0,c.ss(t,.84,1))
-	two.position=Vector3(lerpf(.7,0,join),-1.6,lerpf(8,zt,join))
-	one.visible=t<.62
-	var one_head: Node3D=one.get_meta("head")
-	one_head.rotation=Vector3(0,PI+.6*c.ss(t,.3,.4),0)
-	var blank_on:=t>=.62
+	var d:=_a_walk(t,.835,3.2,.5)
+	var x:=lerpf(lerpf(lerpf(.2,-.15,_a_cut(t,.42)),.08,_a_cut(t,.62)),0.0,_a_cut(t,.835))
+	two.position=Vector3(x,-1.6,d)
+	two.rotation=Vector3(0,PI,0)
+	(two.get_node("Body") as Node3D).scale=Vector3(1,1+.006*sin(t*c.dur*1.6),1)
 	var head: Node3D=two.get_meta("head")
-	head.visible=not blank_on
-	var blank: Node3D=p["blank"]
-	blank.visible=blank_on
-	var roll:=.4*c.ss(t,.62,.66)
-	head.rotation=Vector3(0,PI,roll)
-	blank.rotation=Vector3(0,PI,roll)
-	HorrorKit.pose_head(head,.1*c.ss(t,.3,.5))
-	HorrorKit.pose_head(blank,0)
-	(p["tube"] as Light3D).light_energy=0.0 if _fig_blink(t,.6,.63) or _fig_blink(t,.77,.8) else 6.0
-	_fig_key().light_energy=lerpf(3.0,5.0,c.ss(t,.8,1))
-	_pose(t,0,0,0,0,-6*c.ss(t,.3,.95))
+	head.rotation=Vector3(0,PI-_a_look(t-.06)*3.0,.12*c.ss(t,.62,.8))
+	HorrorKit.pose_head(head,0.0)
+	var out:=_fig_blink(t,.40,.43) or _fig_blink(t,.60,.63) or _fig_blink(t,.815,.845)
+	(p["tube"] as Light3D).light_energy=0.0 if out else 3.0
+	(p["near"] as Light3D).light_energy=0.0 if out else 3.0
+	_fig_key().light_energy=0.0 if out else lerpf(2.8,3.4,c.ss(t,.6,.85))
+	_pose(t,0,_a_look(t),0,0,-3*c.ss(t,.6,.84))
 
 const ENV_WATER := """
 shader_type spatial;
@@ -1352,42 +1389,52 @@ func _show_broadcast(t: float) -> void:
 	_pose(t,.26*lean,0,0,0,0)
 
 func _build_bell() -> void:
-	c.stage_dark(DARK,.05,Color(.22,.2,.17),.2)
-	_room(6,12,Color("394d50"))
-	# The bell hangs on an iron bracket from a grimy wall; a warm lamp below shows the brass.
-	_env_box(Vector3(6,4,.1),Vector3(0,.2,4.5),_env_textured(Color("7d8378"),"grime",.35))
-	_env_rod(Vector3(0,1.55,4.45),Vector3(0,1.0,4.05),.05,_env_lit(Color("2e3230"),.5,.5))
-	c.motive_light(Vector3(0,-.6,3.6),Color("d9b070"),1.4,2.5,root)
+	c.stage_dark(DARK,.025,Color(.29,.27,.24),3.0)
+	# A belfry landing: a wide brick wall (far wider than the frame), a stone floor, and the old bell on its
+	# iron bracket. The wall, bracket, bell and lamp travel together on one rig, so the shot can close in
+	# on the bell without leaning on camera zoom.
+	_env_box(Vector3(16,.1,16),Vector3(0,-1.64,6),_env_textured(Color("4a4741"),"tile",.5,.8))
+	p["rig"]=_anchor(Vector3.ZERO)
+	var rig: Node3D = p["rig"]
+	_env_box(Vector3(16,8.6,.2),Vector3(0,2.7,4.6),_b_brick_material(Color("7a6656")),rig)
+	# The iron bracket: a wall plate, a beam out to the bell and a diagonal brace.
+	var iron := _env_lit(Color("2e3230"),.5,.5)
+	_env_box(Vector3(.5,.5,.06),Vector3(0,1.45,4.47),iron,rig)
+	_env_box(Vector3(.09,.09,.75),Vector3(0,1.45,4.1),iron,rig)
+	_env_rod(Vector3(0,.95,4.45),Vector3(0,1.4,4.0),.05,iron,rig)
+	_env_rod(Vector3(0,1.45,4.0),Vector3(0,.95,4.0),.04,iron,rig)
+	p["lamp"]=c.motive_light(Vector3(0,-.5,3.4),Color("e0b98a"),2.2,3.5,rig)
 	p["bell"]=_anchor(Vector3(0,.45,4))
+	(p["bell"] as Node3D).reparent(rig,false)
+	(p["bell"] as Node3D).position=Vector3(0,.45,4)
 	var body:=c.fxm("bell",.8,0,0,0)
 	body.reparent(p["bell"],false)
 	# The imported mesh is authored at y=1.21..2.78, not around its pivot.
 	body.position.y=-1.6
 	p["bell_model"]=body
-	_rod(Vector3(0,.9,4),Vector3(0,1.9,4),.04,COAL)
-	p["clapper"]=_sphere(Vector3(0,-.15,3.8),.12,RUST)
-	p["waves"]=[]
-	# Three faint sound rings, hairline thin, and dust shaken from the wall's top at every stroke.
-	for i in 3: p["waves"].append(c.torus(.8+i*.35,.006,_env_flat(PAPER,.18),0,.3,3,root,4,_env_segments(40)))
+	p["clapper"]=_sphere(Vector3(0,-.15,3.8),.12,RUST,rig)
+	# Dust shaken from the top of the wall at every stroke (the sound of the bell is only ever heard).
 	p["dust"]=[]
-	var dust_mat := _env_lit(Color("8a8676"))
-	for i in 24: p["dust"].append(_env_box(Vector3(.014,.014,.014),Vector3(0,0,4.3),dust_mat))
+	var dust_mat := _env_lit(Color("9a9484"))
+	for i in 40: p["dust"].append(_env_box(Vector3(.02,.02,.02),Vector3(0,0,4.3),dust_mat,rig))
 	focus=p["bell"]
 
 func _show_bell(t: float) -> void:
 	var swing:=sin(t*20)*c.ss(t,.05,.25)*(1-c.ss(t,.65,.83))
+	# The camera closes in on the bell (the whole rig comes at it), held from .8.
+	var near:=c.ss(t,.3,.8)
+	(p["rig"] as Node3D).position.z=-1.2-1.0*near
 	p["bell"].rotation.z=.25*swing
-	p["clapper"].position.x=.22*swing
-	for i in 3:
-		var wave:Node3D=p["waves"][i]
-		wave.visible=t>.32+i*.06
-		wave.scale=Vector3.ONE*(1+c.ss(t,.32+i*.06,.9)*1.8)
-		wave.position.z=lerpf(3,.5,c.ss(t,.32+i*.06,.95))
-	for i in 24:
+	# The clapper swings with the bell and, after the last stroke, rests against the wall of the bell.
+	var rest:=c.ss(t,.8,.86)
+	p["clapper"].position=Vector3(lerpf(.22*swing,.13,rest),lerpf(-.15,-.06,rest),3.8)
+	_env_key(lerpf(9.0,2.0,near))
+	for i in 40:
 		var mote:Node3D=p["dust"][i]
 		mote.visible=t>=.1
-		mote.position=Vector3((_env_h(i)-.5)*3,1.8-2.5*fposmod(t*1.7+_env_h(i+50.0),1.0),4.3)
-	_pose(t,.12,0,0,.025*swing*c.shk,3*c.ss(t,.5,.8))
+		var fall:=fposmod(t*1.7+_env_h(i+50.0),1.0)
+		mote.position=Vector3((_env_h(i)-.5)*2.4,2.7-3.6*fall,4.35)
+	_pose(t,.1,0,0,.025*swing*c.shk,0)
 
 func _build_banquet() -> void:
 	c.stage_dark(DARK,.04,Color(.22,.21,.19),.2)
@@ -1646,13 +1693,14 @@ func _show_corridor(t: float) -> void:
 	_pose(t,0,0,0,.035*sin(u*7)*close,8*close if not narrow else -5*close)
 
 func _build_face() -> void:
-	c.stage_dark(DARK,.05,Color(.22,.21,.19),.2)
-	_room(4.4,14,Color("3c4541"))
+	c.stage_dark(DARK,.04,Color(.27,.26,.24),.6)
+	_room(4.4,14)
 	p["tube"]=c.stage_lights.back()
-	p["tube"].position=Vector3(0,1.3,7.6)
+	p["tube"].position=Vector3(0,1.3,7.2)
 	p["tube"].omni_range=5.0
-	# A second, dimmer tube nearer to you keeps the doors and the notice board readable.
-	c.motive_light(Vector3(0,1.3,3.0),Color("c9d4c6"),3.2,6.0,root)
+	p["tube"].light_color=Color("ddd8c6")
+	# A second tube nearer to you keeps the doors and the notice board readable.
+	p["near"]=c.motive_light(Vector3(0,1.3,3.0),Color("ddd8c6"),3.0,5.0,root)
 	var fx:=c.fx
 	var through_glass:=fx=="window_gaze"
 	# A school corridor at night: a notice board, two classroom doors with their plates, a fire extinguisher.
@@ -1662,81 +1710,82 @@ func _build_face() -> void:
 		_box(Vector3(.06,2.1,.95),Vector3(-2.12,-.55,z),Color("5a4a36"))
 		_text("高二(3)",Vector3(-2.1,.7,z),.14).rotation.y=PI/2
 	_box(Vector3(.3,.5,.18),Vector3(2.05,-1.3,6.0),RUST)
-	var opts:={"tone":Color(.47,.47,.43),"mouth":"wide","skew":.3,"size":1.15}
-	var faces_eye:=fx in ["gaze","trap_beg","window_gaze"]
-	if fx=="gaze": opts={"tone":Color(.45,.45,.41),"mouth":"closed","skew":.65,"eyes":"dull","size":1.12}
-	elif fx=="trap_beg": opts={"tone":Color(.46,.46,.42),"mouth":"none","eyes":"hollow"}
-	p["man"]=_fig(Vector3(.15,-1.6,7.6),"person",1.0,Color("161c20"),opts,.4)
-	p["man"].rotation.y=PI if faces_eye else 0.0
+	# One wrong thing each: the head is too big (face), the mouth too wide (laugh), the turned head (gaze),
+	# the pointing arm with a joint too many (trap_beg), the hands on the glass (window_gaze).
+	var opts:={"tone":SKIN,"mouth":"closed","skew":.2,"size":1.26,"hair":true,"socket":.75}
+	if fx=="laugh": opts={"tone":SKIN,"mouth":"closed","skew":.45,"size":1.12,"hair":true,"socket":.75}
+	elif fx=="gaze": opts={"tone":SKIN,"mouth":"closed","skew":.3,"eyes":"dull","size":1.12,"hair":true,"socket":.75}
+	elif fx=="trap_beg": opts={"tone":SKIN,"mouth":"none","eyes":"hollow","skew":0.0,"size":1.12,"hair":true}
+	elif fx=="window_gaze": opts={"tone":SKIN,"mouth":"closed","skew":.25,"size":1.12,"hair":true,"socket":.75}
+	p["man"]=_fig(Vector3(0,-1.6,8),"person",1.0,Color("262d3a"),opts,.2)
 	p["head"]=p["man"].get_meta("head")
 	if fx=="trap_beg":
-		# The begging hand: palm up, held out to you from the bent body.
-		p["beg"]=_fig_hand({"long":1.3,"thin":.6,"arm":.3,"tone":Color(.44,.44,.4)},p["man"])
-		p["beg"].position=Vector3(0,1.5,.3)
-		p["beg"].rotation=Vector3(.45,PI,PI)
+		# The right arm straight out towards the far end of the corridor; the hand has a finger joint too many.
+		p["beg"]=_fig_hand({"long":1.15,"thin":.5,"arm":.55,"extra":true,"tone":SKIN},p["man"])
+		p["beg"].position=Vector3(-.2-sin(.8)*.6,1.4,.02+cos(.8)*.6)
+		p["beg"].rotation=Vector3(0,PI-.8,0)
+		HorrorKit.pose_hand(p["beg"],.1,.1)
 	if through_glass:
-		# A partition with a window in it; the glass is thin and lets the corridor show through.
-		# The cross bar sits below his chin and the upright beside his face, so neither cuts the face.
-		p["window"]=_window(Vector3(0,-.2,2.6),Vector2(3,2.6))
-		(p["window"].get_node("GlassPane") as MeshInstance3D).material_override=_surface(Color("6f9698"),.14)
-		var wall:=Color("3c4541")
-		_box(Vector3(4.4,.8,.06),Vector3(0,1.5,2.66),wall)
-		_box(Vector3(4.4,.1,.06),Vector3(0,-1.55,2.66),wall)
-		for x in [-1.85,1.85]: _box(Vector3(.7,3.5,.06),Vector3(x,.15,2.66),wall)
+		# A partition with a window in it, close in front of you; the man stands behind the glass. A rail and
+		# the two uprights give the pane its edges; no bar crosses where his face comes.
+		p["window"]=_anchor(Vector3(0,0,.8))
+		var pane:=_box(Vector3(2.1,3.4,.02),Vector3(0,0,-.02),Color("9a9a92"),p["window"])
+		pane.material_override=_surface(Color("9a9a92"),.1)
+		for x in [-1.08,1.08]: _box(Vector3(.1,3.6,.08),Vector3(x,0,0),Color("5a5546"),p["window"])
+		_box(Vector3(2.3,.07,.08),Vector3(0,-.62,0),Color("5a5546"),p["window"])
+		_box(Vector3(3.4,3.6,.06),Vector3(-2.8,0,.06),WALL)
+		_box(Vector3(3.4,3.6,.06),Vector3(2.8,0,.06),WALL)
 		p["palms"]=[]
 		for side in [-1,1]:
-			var palm:=_fig_hand({"long":1.25,"thin":.5,"arm":.2,"tone":Color(.44,.44,.4)})
-			palm.position=Vector3(.22+side*.32,-.1,2.66)
+			var palm:=_fig_hand({"long":1.15,"thin":.4,"arm":.2,"tone":SKIN})
 			palm.rotation=Vector3(PI/2,0,0)
 			HorrorKit.pose_hand(palm,.05,.45)
 			p["palms"].append(palm)
-		p["breath"]=_sphere(Vector3(.22,-.02,2.53),.13,Color("acbcb3"))
-		p["breath"].scale=Vector3(1,.6,.04)
+		p["breath"]=_sphere(Vector3.ZERO,.125,Color("4a4d4c"))
+		p["breath"].scale=Vector3(1,1,.03)
 		var condensation:=p["breath"].material_override as StandardMaterial3D
 		condensation.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
 		condensation.depth_draw_mode=BaseMaterial3D.DEPTH_DRAW_DISABLED
-		condensation.albedo_color.a=.16
+		condensation.albedo_color.a=.35
 	focus=p["head"]
+
+## The stalker's distance to you: 8 m under the far tube, then it is nearer each time the light blinks (3.2, 1.4,
+## close). Between the cuts it only creeps. A pure function of t (a smooth step without flicker when shk is 0).
+func _a_walk(t: float, c3: float, mid: float, close: float) -> float:
+	var far:=lerpf(8.0,6.0,c.ss(t,.25,.42))
+	var near:=lerpf(1.4,1.2,c.ss(t,.62,.8))
+	return lerpf(lerpf(lerpf(far,mid,_a_cut(t,.42)),near,_a_cut(t,.62)),close,_a_cut(t,c3))
 
 func _show_face(t: float) -> void:
 	var fx:=c.fx
 	var man: Node3D=p["man"]
 	var head: Node3D=p["head"]
 	var glass:=fx=="window_gaze"
-	var beg:=fx=="trap_beg"
-	var faces_eye:=fx in ["gaze","trap_beg","window_gaze"]
-	var cut1:=_a_cut(t,.5)
-	var cut2:=_a_cut(t,.7)
-	var near:=c.ss(t,.88,1)
-	# Each time the tube dies he is nearer; between the cuts he stands perfectly still.
-	var z:=lerpf(lerpf(7.6,4.2,cut1),3.05 if glass else 1.9,cut2)
-	z-=0.0 if glass else .3*c.ss(t,.74,.88)
-	z=lerpf(z,2.75 if glass else (1.65 if beg else 1.05),near)
-	var x:=lerpf(lerpf(.15,.22 if glass else -.1,cut1),.22 if glass else 0.0,cut2)
-	man.position=Vector3(x,-1.6,z)
-	var lean:=0.0 if glass else ((.45+.1*near) if beg else .25*near)
-	man.rotation=Vector3(lean,PI if faces_eye else 0.0,0)
+	var back:=fx in ["gaze","trap_beg"]
+	var c3:=.78 if glass else .835
+	var d:=_a_walk(t,c3,3.2,.92 if glass else .5)
+	var x:=lerpf(lerpf(lerpf(.12,-.12,_a_cut(t,.42)),.06,_a_cut(t,.62)),0.0,_a_cut(t,c3))
+	man.position=Vector3(x,-1.6,d)
+	man.rotation=Vector3(0,0.0 if back else PI,0)
 	(man.get_node("Body") as Node3D).scale=Vector3(1,1+.006*sin(t*c.dur*1.6),1)
-	# The neck turns in two stages, with a pause at the quarter turn.
-	var turn:=.5*c.ss(t,.25,.31)+.5*c.ss(t,.38,.44)
-	var settle:=c.ss(t,.62,.86)
-	var roll_base:=.5*turn if fx=="face" else 0.0
-	var roll:=lerpf(roll_base,.25 if fx=="laugh" else -.25,settle)
-	head.rotation=Vector3(-.15*near,PI if faces_eye else PI-PI*turn,roll)
-	var open:=.15*c.ss(t,.4,.5)+(.15 if fx in ["gaze","trap_beg"] else .7)*settle
-	HorrorKit.pose_head(head,open)
-	var out:=_fig_blink(t,.5,.53) or _fig_blink(t,.7,.73)
-	(p["tube"] as Light3D).light_energy=0.0 if out else lerpf(2.4,.8,settle)
-	_fig_key().light_energy=0.0 if out else lerpf(3.2,5.0,c.ss(t,.6,.85))
-	if beg:
-		var curl:=.15+.25*c.ss(t,.28,.34)-.25*c.ss(t,.34,.4)+.25*c.ss(t,.4,.46)-.25*c.ss(t,.46,.52)
-		HorrorKit.pose_hand(p["beg"],curl,.3)
+	# Between the cuts he stands still and only the head moves: it turns to you, faster and faster.
+	var turn:=pow(c.ss(t,.62,.8),2.0)
+	if back: head.rotation=Vector3(0,PI-PI*c.ss(t,.58,.8),0)
+	else: head.rotation=Vector3(.15*(1.0-turn),PI-.9*(1.0-turn),(.18*c.ss(t,.62,.8)) if fx=="laugh" else 0.0)
+	HorrorKit.pose_head(head,.5*c.ss(t,.62,.8) if fx=="laugh" else 0.0)
+	var out:=_fig_blink(t,.40,.43) or _fig_blink(t,.60,.63) or _fig_blink(t,c3-.02,c3+.01)
+	(p["tube"] as Light3D).light_energy=0.0 if out else 3.0
+	(p["near"] as Light3D).light_energy=0.0 if out else 3.0
+	_fig_key().light_energy=0.0 if out else lerpf(2.8,3.4,c.ss(t,.6,.85))
 	if glass:
-		for palm: Node3D in p["palms"]:
-			palm.visible=t>=.7
-		p["breath"].visible=t>.5
-		p["breath"].scale.x=c.ss(t,.55,.85)*3
-	_pose(t,0,(.12*(1-c.ss(t,.6,.9)) if fx=="gaze" else 0.0),0,0,-2*c.ss(t,0,.25)-5*c.ss(t,.6,.95))
+		var on:=t>=.78
+		for i in 2:
+			var palm: Node3D=p["palms"][i]
+			palm.visible=on
+			palm.position=Vector3(x+(.34 if i==0 else -.34),-.22,.84)
+		p["breath"].visible=t>=.85
+		p["breath"].position=Vector3(x,.02,.82)
+	_pose(t,0,0,0,0,-3*c.ss(t,.6,.84))
 
 func _build_mirror() -> void:
 	c.stage_dark(DARK,.05,Color(.21,.21,.2),.2)
@@ -1922,52 +1971,92 @@ func _show_fall(t: float) -> void:
 	_pose(t,-.16*drop,0,0,.06*drop,9*drop)
 
 func _build_trash() -> void:
-	c.stage_dark(DARK,.05,Color(.2,.2,.19),.18)
-	# A green plastic wheelie bin seen from inside: ribbed walls, rubbish heaped below, a dull dusk sky above.
-	var plastic := _env_lit(Color("2f4a3a"),.6)
-	var rib := _env_lit(Color("3d5e4a"),.6)
-	_env_box(Vector3(3,.08,3),Vector3(0,-1.6,1),_env_lit(Color("172221"),.8))
+	c.stage_dark(DARK,.03,Color(.27,.26,.24),.6)
+	# Inside a school's galvanised bin (1.2 x 1.0 x 1.1 m), looking up through the mouth at a lamp post, the
+	# eave of the teaching block and the night sky. The lid hangs on a hinge behind the eye and swings shut.
+	var steel := _env_textured(Color("4a4842"),"grime",.9,.65)
+	steel.metallic = .35
+	var lid_steel := _env_textured(Color("6a675f"),"grime",.9,.6)
+	var rib := _env_lit(Color("3a3833"),.6,.4)
+	_env_box(Vector3(1.2,.04,1.0),Vector3(0,-.35,0),_env_lit(Color("2c2b28"),.8))
+	_env_box(Vector3(1.2,1.1,.04),Vector3(0,.2,.4),steel)
+	_env_box(Vector3(1.2,1.1,.04),Vector3(0,.2,-.6),steel)
 	for side in [-1,1]:
-		_env_box(Vector3(.12,3.5,3),Vector3(side*1.1,.1,1),plastic)
-		for k in 3: _env_box(Vector3(.05,3.4,.08),Vector3(side*1.03,.1,.2+k*1.0),rib)
-	_env_box(Vector3(2.2,3.5,.12),Vector3(0,.1,2.4),plastic)
-	for x in [-.9,-.55,-.2,.2,.55,.9]: _env_box(Vector3(.07,3.4,.05),Vector3(x,.1,2.32),rib)
-	var bag := _env_lit(Color("15181a"),.3,0,.6)
-	for entry in [[Vector3(-.55,-1.1,1.7),.42],[Vector3(.4,-1.08,2.0),.4],[Vector3(0,-1.2,1.3),.34]]:
-		var heap := _env_ball(entry[0],entry[1],bag)
-		heap.scale = Vector3(1.1,.75,1.0)
-	var wad := _env_lit(Color("c9c0a4"),.9)
-	for i in 6:
-		_env_ball(Vector3((_env_h(i+3.0)-.5)*1.6,-.82-.1*_env_h(i+9.0),1.3+_env_h(i+17.0)*.9),.06,wad,null,8)
-	var carton := _env_box(Vector3(.07,.12,.07),Vector3(.25,-.78,1.6),_env_lit(Color("d8dde0")))
+		_env_box(Vector3(.04,1.1,1.0),Vector3(side*.6,.2,-.1),steel)
+		for y in [-.1,.2,.5]: _env_box(Vector3(.06,.05,1.0),Vector3(side*.58,y,-.1),rib)
+	for y in [-.1,.2,.5]: _env_box(Vector3(1.2,.05,.06),Vector3(0,y,.37),rib)
+	# The rim: a folded lip all round the mouth.
+	_env_box(Vector3(1.28,.05,.07),Vector3(0,.76,.4),rib)
+	_env_box(Vector3(1.28,.05,.07),Vector3(0,.76,-.6),rib)
+	for side in [-1,1]: _env_box(Vector3(.07,.05,1.0),Vector3(side*.6,.76,-.1),rib)
+	var spray := _text("可回收",Vector3(0,.35,.36),.15,Color(.79,.75,.64,.6))
+	spray.shaded = true
+	# Rubbish heaped against the back wall: bin bags, balled paper, the milk carton and a test paper.
+	var bag_a := _env_lit(Color("1d2530"),.45,0,.25)
+	var bag_b := _env_lit(Color("26303b"),.45,0,.25)
+	var heap := [[Vector3(-.45,-.1,.22),.26,bag_a],[Vector3(.3,-.08,.26),.3,bag_b],[Vector3(0,-.2,.3),.26,bag_a],[Vector3(.4,-.25,-.05),.22,bag_b],[Vector3(-.42,-.25,-.05),.22,bag_b],[Vector3(0,-.27,-.12),.18,bag_a]]
+	for entry in heap:
+		var sack := _env_ball(entry[0],entry[1],entry[2],null,12)
+		sack.scale = Vector3(1.15,.8,.55)
+	var wad := _env_lit(Color("6f6955"),1.0,0,0)
+	for i in 2: _env_ball(Vector3(-.1+i*.3,.12-i*.1,.3-i*.04),.06,wad,null,8)
+	var carton := _env_box(Vector3(.09,.16,.09),Vector3(.28,.2,.3),_env_lit(Color("6c7072"),.9,0,0))
 	carton.rotation = Vector3(.3,.6,.4)
-	var test_paper := _env_box(Vector3(.26,.004,.34),Vector3(-.3,-.82,1.6),wad)
-	test_paper.rotation = Vector3(.15,.5,.1)
-	p["lid"]=_anchor(Vector3(0,1.1,2.4))
-	_env_box(Vector3(2.0,.1,2.8),Vector3(0,0,-1.35),plastic,p["lid"])
-	for x in [-.7,0,.7]: _env_box(Vector3(.08,.06,2.5),Vector3(x,-.07,-1.35),rib,p["lid"])
-	# The hand on the lid's front edge: fingers over the rim, curled down; it appears as the lid starts to close.
-	p["lidhand"]=_fig_hand({"long":1.3,"thin":.6,"arm":.25,"tone":Color(.43,.43,.4)},p["lid"])
-	p["lidhand"].position=Vector3(1.1,-.1,-1.2)
-	p["lidhand"].scale=Vector3.ONE*2.2
-	p["lidhand"].rotation=Vector3(0,PI/2,PI)
-	HorrorKit.pose_hand(p["lidhand"],.7,.15)
+	var test_paper := _env_box(Vector3(.26,.32,.004),Vector3(.38,.12,.355),_env_lit(Color("6f6955"),1.0,0,0,-1,true))
+	test_paper.rotation = Vector3(-.1,.08,.12)
+	p["scrap"]=_env_box(Vector3(.13,.004,.17),Vector3(.1,.6,.2),_env_lit(Color("6f6955"),1.0,0,0,-1,true))
+	# The lid: the same steel, hinged along the front edge behind the eye; angle 90 is open, 0 is shut.
+	p["lid"]=_anchor(Vector3(0,.8,-.6))
+	_env_box(Vector3(1.32,.04,1.34),Vector3(0,0,.67),lid_steel,p["lid"])
+	for x in [-.4,0,.4]: _env_box(Vector3(.06,.05,1.3),Vector3(x,-.04,.67),rib,p["lid"])
+	_env_box(Vector3(1.32,.07,.05),Vector3(0,-.03,1.31),rib,p["lid"])
+	for x in [-.45,.45]: _env_box(Vector3(.1,.08,.1),Vector3(x,0,.0),rib,p["lid"])
+	# The hand over the free edge of the lid, fingers curled round it; it arrives as the lid starts to come down.
+	p["lidhand"]=_fig_hand({"long":1.15,"thin":.6,"arm":.25,"tone":Color(.36,.33,.3)},p["lid"])
+	p["lidhand"].position=Vector3(.05,.05,1.2)
+	p["lidhand"].scale=Vector3.ONE*5.8
+	p["lidhand"].rotation=Vector3(0,0,0)
+	HorrorKit.pose_hand(p["lidhand"],.9,.15)
 	p["lidhand"].visible=false
-	# Dull dusk sky, with the dark corner of a classroom block and a lamp post glowing warm against it.
-	p["sky"]=_env_box(Vector3(3,.04,4),Vector3(0,2,1),_env_flat(Color("6e7a80")))
-	_env_box(Vector3(1.3,.02,1.8),Vector3(-.85,1.97,1.7),_env_flat(Color("1a1f22")))
-	_env_rod(Vector3(.9,1.97,.2),Vector3(.9,1.97,1.7),.04,_env_flat(Color("1a1f22")))
-	_env_glow(Vector3(.9,1.95,1.75),.7,Color(1,.7,.35,.8))
-	p["sliver"]=_box(Vector3(2,.015,.025),Vector3(0,1,.3),LIGHT)
-	focus=_anchor(Vector3(0,.8,2.4))
+	# The night outside: a sky with a faint glow behind the block, the block's eave and windows, a lamp post.
+	var sky_mat := _env_flat(Color("34445a"),-1,false)
+	_env_box(Vector3(30,.04,30),Vector3(0,7,3),sky_mat)
+	var wall_mat := _env_lit(Color("55575a"),.9)
+	_env_box(Vector3(16,3.2,.3),Vector3(0,3.4,4.6),wall_mat)
+	_env_box(Vector3(16,.22,1.0),Vector3(0,5.1,4.2),_env_lit(Color("6d6e6c"),.8))
+	for i in 7:
+		_env_box(Vector3(.8,.9,.04),Vector3(-4.5+i*1.5,3.4,4.42),_env_flat(Color(.45,.4,.27) if i%3!=1 else Color(.1,.12,.15),-1,false))
+	_env_rod(Vector3(1.8,-1.6,1.6),Vector3(1.8,3.3,1.6),.1,_env_lit(Color("3b3e41"),.6))
+	_env_rod(Vector3(1.8,3.3,1.6),Vector3(.25,3.1,1.0),.07,_env_lit(Color("3b3e41"),.6))
+	_env_box(Vector3(.5,.07,.22),Vector3(.2,3.05,1.0),_env_flat(Color("d9a066"),-1,false))
+	p["lampglow"]=_env_glow(Vector3(.2,3.0,1.0),2.2,Color(.85,.6,.32,.85))
+	p["lamp"]=c.key_light(Vector3(.0,2.8,.3),Vector3(0,-.2,.0),Color("d9a066"),3.0,6.0,70,root)
+	p["lamp"].spot_attenuation = .6
+	p["spill"]=c.motive_light(Vector3(0,.25,-.1),Color("d9a066"),2.0,3.0,root)
+	p["sliver"]=_box(Vector3(1.2,.015,.02),Vector3(0,.85,.4),LIGHT)
+	focus=_anchor(Vector3(0,.78,.35))
 
 func _show_trash(t: float) -> void:
-	var close:=c.ss(t,.12,.67)
-	p["lid"].rotation.x=lerpf(1.25,0,close)
-	p["sky"].visible=t<.65
-	p["lidhand"].visible=t>=.45
-	p["sliver"].scale.x=1-c.ss(t,.66,.86)
-	_pose(t,.2+.1*c.ss(t,.3,.67),0,-.12*close,.02*sin(t*22)*c.ss(t,.6,.8))
+	# 90 open to 50 (.25-.5), held (.5-.6), 20 (.8), 6 (.88).
+	var open := 90.0
+	open = lerpf(open,50.0,c.ss(t,.25,.5))
+	open = lerpf(open,20.0,c.ss(t,.6,.8))
+	open = lerpf(open,6.0,c.ss(t,.8,.88))
+	p["lid"].rotation.x=-deg_to_rad(open)
+	var arrive:=c.ss(t,.6,.68)
+	p["lidhand"].visible=t>=.6
+	p["lidhand"].position=Vector3(.05,.05+.5*(1-arrive),1.2)
+	var lamp: SpotLight3D = p["lamp"]
+	lamp.light_energy=lerpf(3.0,1.6,c.ss(t,.25,.88))
+	lamp.spot_angle=lerpf(70,25,c.ss(t,.25,.88))
+	p["spill"].light_energy=lerpf(2.0,1.6,c.ss(t,.25,.88))
+	p["lampglow"].visible=open>25
+	p["scrap"].visible=t>.48 and t<.64
+	var fall:=c.ss(t,.5,.62)
+	p["scrap"].position=Vector3(.1+.12*sin(fall*5),lerpf(.7,.3,fall),.4)
+	p["scrap"].rotation=Vector3(fall*4,fall*3,fall*2)
+	p["sliver"].visible=false
+	_pose(t,1.05+.25*c.ss(t,.25,.58)-.05*c.ss(t,.6,.88),0,0,.02*sin(t*22)*c.ss(t,.6,.8))
 	c.cue("knock",t,.72,func() -> void: c.snd("foley.door"))
 
 func _build_door() -> void:
@@ -2269,6 +2358,35 @@ func _env_on_camera(node: Node3D, offset: Transform3D) -> void:
 	node.global_transform = c.cam.global_transform*offset
 
 # ---- Environment-shot helpers of the environment tickets (_b_ prefix) ----
+
+## A brick-bond mortar texture (cached): rows .25 m high, bricks .5 m long, one tile = 1 m.
+static func _b_h(i: float) -> float:
+	return fposmod(sin(i*12.9898)*43758.5453,1.0)
+
+static func _b_brick_texture() -> ImageTexture:
+	if _env_textures.has("brick"): return _env_textures["brick"]
+	var size := 128
+	var image := Image.create(size,size,false,Image.FORMAT_RGB8)
+	for y in size:
+		for x in size:
+			var row := y/32
+			var shifted := (x+(row%2)*32)%64
+			var mortar := y%32<3 or shifted<3
+			var v := .42 if mortar else .72+.28*_b_h(float(row)*5.0+float((x+(row%2)*32)/64)*11.0)
+			if not mortar: v *= .88+.12*_b_h(x*31.0+y*17.0)
+			image.set_pixel(x,y,Color(v,v,v))
+	image.generate_mipmaps()
+	var texture := ImageTexture.create_from_image(image)
+	_env_textures["brick"]=texture
+	return texture
+
+func _b_brick_material(color: Color) -> StandardMaterial3D:
+	var m := _env_lit(color,.9,0,.1)
+	m.albedo_texture = _b_brick_texture()
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = false
+	m.uv1_scale = Vector3.ONE
+	return m
 
 ## A point on a cubic Bezier at u (0..1).
 func _b_bez(a: Vector3, b: Vector3, cc: Vector3, d: Vector3, u: float) -> Vector3:
