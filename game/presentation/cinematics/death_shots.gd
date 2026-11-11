@@ -637,10 +637,10 @@ func _show_crash(t: float) -> void:
 	var lamp := [1-c.ss(t,hit+.01,hit+.03),dim]
 	for i in 2:
 		var halo: MeshInstance3D = p["halos"][i]
-		halo.scale = Vector3.ONE*lerpf(.9,7.0,near*near*near)*maxf(lamp[i],.001)*(1 if i==0 else lerpf(.35,1,dim))
+		halo.scale = Vector3.ONE*lerpf(.9,3.4,near*near*near)*maxf(lamp[i],.001)*(1 if i==0 else lerpf(.35,1,dim))
 		halo.visible = lamp[i]>0
 		p["heads"][i].visible = lamp[i]>0
-	(p["glare_light"] as SpotLight3D).light_energy = (1.5+40*near*near*near)*(.5*lamp[0]+.5*lamp[1])*dim
+	(p["glare_light"] as SpotLight3D).light_energy = (1.5+12*near*near*near)*(.5*lamp[0]+.5*lamp[1])*dim
 	(p["beam"] as SpotLight3D).light_energy = 16.0*(1-c.ss(t,hit,hit+.01))
 	var glare := near*near*lerpf(.3,1,dim)
 	_env_param(p["glass"],"glare",glare)
@@ -1250,7 +1250,7 @@ func _show_frost(t: float) -> void:
 		puff.position = Vector3(.02*sin(i*3.0),lerpf(-.32,-.06,life),lerpf(.22,.75,life))
 		puff.scale = Vector3.ONE*lerpf(.08,.32,life)
 		_env_param(puff,"fade",sin(life*PI)*(1-i*.17))
-	_env_param(p["frost"],"grow",.5*c.ss(t,.12,.92))
+	_env_param(p["frost"],"grow",.3*c.ss(t,.12,.92))
 	_env_key(lerpf(4,2,close))
 	var shiver := c.ss(t,.3,.7)*(1-c.ss(t,.8,.95))
 	_pose(t,.03*close,.006*sin(t*c.dur*21)*shiver*c.shk,0,.012*sin(t*c.dur*17)*shiver,-4*close)
