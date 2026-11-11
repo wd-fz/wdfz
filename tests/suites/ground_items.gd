@@ -146,3 +146,59 @@ func test_app() -> void:
 	await _frames(2)
 	app.queue_free()
 	await _frames(1)
+
+
+## The redesigned bag: slot grid with capacity, a detail pane for the selected item, the same actions.
+func test_bag_ui() -> void:
+	var app := _app()
+	await _frames(2)
+	var ui := app.ui
+	var entries := [
+		{"id": "torch", "name": "手电筒 · 开着", "short": "手电筒", "text": "光很弱。", "hot": 0},
+		{"id": "phone", "name": "手机", "short": "手机", "text": "可以查看网络工具。", "hot": -1},
+		{"id": "chalk", "name": "粉笔", "short": "粉笔", "text": "白的。", "hot": 1}]
+	ui.show_bag(entries, 8)
+	await _frames(3)
+	var grid := ui.bag_panel.find_child("BagSlots", true, false) as GridContainer
+	check(ui.bag_open() and grid.get_child_count() == 8, "the bag draws one slot per capacity place")
+	check((ui.bag_panel.find_child("BagCount", true, false) as Label).text == "3 / 8", "the bag shows how full it is")
+	check(grid.find_child("SlotEmpty_3", false, false) != null and grid.find_child("SlotEmpty_7", false, false) != null, "the free places are drawn as empty slots")
+	check(ui.bag_selected() == "torch" and (grid.get_node("Slot_torch") as Button).button_pressed, "the first item is selected when the bag opens")
+	check(grid.get_node("Slot_torch").find_child("SlotHot", false, false).text == "1" and grid.get_node("Slot_chalk").find_child("SlotHot", false, false).text == "2" and grid.get_node("Slot_phone").find_child("SlotHot", false, false) == null, "hot slot badges mark the items on the hot bar")
+	check((ui.bag_panel.find_child("BagDetailName", true, false) as Label).text == "手电筒 · 开着" and (ui.bag_panel.find_child("BagDetailTag", true, false) as Label).text.contains("快捷栏 1"), "the detail pane names the selected item and its hot slot")
+	var picked := [""]
+	ui.item_drop_requested.connect(func(id: String) -> void: picked[0] = "drop:" + id)
+	ui.item_use_requested.connect(func(id: String) -> void: picked[0] = "use:" + id)
+	ui.item_hot_requested.connect(func(i: int, id: String) -> void: picked[0] = "hot%d:%s" % [i, id])
+	await _tap(grid.get_node("Slot_phone"))
+	check(ui.bag_selected() == "phone" and not (grid.get_node("Slot_torch") as Button).button_pressed, "tapping another slot moves the selection")
+	check(ui.bag_panel.find_child("Item_torch_-1", true, false) == null and ui.bag_panel.find_child("Item_phone_-1", true, false) != null, "the actions belong to the selected item only")
+	await _tap(ui.bag_panel.find_child("Item_phone_-1", true, false))
+	check(picked[0] == "use:phone", "使用 uses the selected item")
+	await _tap(ui.bag_panel.find_child("Item_phone_1", true, false))
+	check(picked[0] == "hot1:phone", "the hot slot buttons still assign the item")
+	await _tap(ui.bag_panel.find_child("Drop_phone", true, false))
+	check(picked[0] == "drop:phone", "丢弃 still drops the item")
+	ui.show_bag(entries.slice(1), 8)
+	await _frames(2)
+	check(ui.bag_selected() == "phone", "the selection survives a refresh while the item is still there")
+	ui.show_bag([], 8)
+	await _frames(2)
+	check(ui.bag_panel.find_child("BagEmpty", true, false) != null and (ui.bag_panel.find_child("BagCount", true, false) as Label).text == "0 / 8", "an empty bag says so")
+	for size: Vector2i in [Vector2i(960, 540), Vector2i(1280, 720), Vector2i(800, 450)]:
+		root.size = size
+		ui.show_bag(entries, 8)
+		await _frames(4)
+		var visible := root.get_visible_rect()
+		var close := ui.bag_panel.find_child("BagClose", true, false) as Control
+		check(visible.encloses(ui.bag_panel.get_global_rect()) and visible.encloses(close.get_global_rect()), "the bag and its close button fit a %dx%d landscape window" % [size.x, size.y])
+	root.size = Vector2i(960, 540)
+	ui.hide_bag()
+	ui.show_hot("1 · 手电筒    2 · 空", ["torch", null], ["手电筒", "空"])
+	check((ui.hud.find_child("HotName1", true, false) as Label).text == "手电筒" and (ui.hud.find_child("HotName2", true, false) as Label).text == "空", "the hot bar cards carry the item names")
+	ui.show_notice("我：拿到了「手电筒」。")
+	await _frames(2)
+	var toast := ui.get_node("%Toast") as Label
+	check(toast.visible and toast.size.x < root.get_visible_rect().size.x * 0.85 and toast.theme_type_variation == "HudPill", "notices sit on a pill sized to their text")
+	app.queue_free()
+	await _frames(1)

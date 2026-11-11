@@ -83,6 +83,10 @@ func test_interface() -> void:
 	await _frames(3)
 	var illustration := app.ui.bag_panel.find_child("ItemArt_torch", true, false) as TextureRect
 	check(illustration != null and illustration.texture == UIArt.item("torch") and illustration.mouse_filter == Control.MOUSE_FILTER_IGNORE, "the bag displays the actual item's illustration without taking input")
+	var torch_slot := app.ui.bag_panel.find_child("Slot_torch", true, false) as Button
+	app.ui._bag_scroll.ensure_control_visible(torch_slot)
+	await _tap(torch_slot)
+	check(app.ui.bag_selected() == "torch" and torch_slot.button_pressed and app.ui.bag_panel.find_child("BagDetailArt", true, false).texture == UIArt.item("torch"), "tapping a bag slot selects it and shows its picture in the detail pane")
 	var use := app.ui.bag_panel.find_child("Item_torch_-1", true, false) as Button
 	app.ui._bag_scroll.ensure_control_visible(use)
 	await _frames(3)

@@ -1331,7 +1331,8 @@ func _school_step(delta: float, rules: CampusModule, advance_calendar: bool = tr
 			talent().tick_watch(day_rules.day if day_rules != null else 1, school().tsec, SchoolClock.rate_at(school().tsec))
 			for te: Dictionary in talent().take_events():
 				ui.show_notice(String(te["text"]))
-		ui.show_hot("1 · %s    2 · %s" % [bag.item_name(String(bag.hot[0])) if bag.hot[0] != null else "空", bag.item_name(String(bag.hot[1])) if bag.hot[1] != null else "空"], bag.hot)
+		var hot_names := [bag.item_name(String(bag.hot[0])) if bag.hot[0] != null else "空", bag.item_name(String(bag.hot[1])) if bag.hot[1] != null else "空"]
+		ui.show_hot("1 · %s    2 · %s" % hot_names, bag.hot, hot_names)
 		_ground_step(bag)
 	var pose := player.capture_pose()
 	var room: Variant = rules.room(session.world_id)
@@ -1507,7 +1508,8 @@ func _bag_entries() -> Array:
 	var bag := items()
 	var out: Array = []
 	for id: String in bag.bag:
-		out.append({"id": id, "name": bag.item_name(id) + (" · 撑开着" if id == "brolly" and bag.brolly_up else ""), "text": bag.item_text(id)})
+		out.append({"id": id, "name": bag.item_name(id) + (" · 撑开着" if id == "brolly" and bag.brolly_up else "") + (" · 开着" if id == "torch" and bag.torch_on else ""),
+			"short": bag.item_name(id), "text": bag.item_text(id), "hot": bag.hot.find(id)})
 	return out
 
 
@@ -1562,7 +1564,7 @@ func _open_bag() -> void:
 	player.clear_input()
 	ui.clear_touch()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	ui.show_bag(_bag_entries())
+	ui.show_bag(_bag_entries(), items().capacity())
 
 
 func _close_bag() -> void:
@@ -1577,7 +1579,7 @@ func _use_item(id: String) -> void:
 	if bag == null:
 		return
 	if knife_flow.use(id):
-		if ui.bag_open(): ui.show_bag(_bag_entries())
+		if ui.bag_open(): ui.show_bag(_bag_entries(), items().capacity())
 		return
 	_close_bag()
 	if maze_flow.intercept_item(id) or inception_flow.use(id):
@@ -1601,7 +1603,7 @@ func _drop_item(id: String) -> void:
 	elif _ground_allowed():
 		bag.place_on_ground(id, session.world_id, _drop_spot(pose))
 		_ground_step(bag)
-	ui.show_bag(_bag_entries())
+	ui.show_bag(_bag_entries(), items().capacity())
 
 
 # ---- dropped items on the floor (InventoryModule.ground, presentation GroundItems) ----
@@ -1659,14 +1661,14 @@ func _pick_up_ground(index: int) -> void:
 	_ground_step(bag)
 	_hint_cooldown = 0.0
 	if ui.bag_open():
-		ui.show_bag(_bag_entries())
+		ui.show_bag(_bag_entries(), items().capacity())
 
 
 func _set_hot(index: int, id: String) -> void:
 	var bag := items()
 	if bag != null and bag.set_hot(index, id):
 		ui.show_notice("「%s」放到快捷栏 %d" % [bag.item_name(id), index + 1])
-		ui.show_bag(_bag_entries())
+		ui.show_bag(_bag_entries(), items().capacity())
 
 
 # ---- locker hiding (patrol.js hideIn / hideOut) ----

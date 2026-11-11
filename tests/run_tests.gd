@@ -264,6 +264,8 @@ func _run() -> void:
 	ground_items.test_rules()
 	print("CASE: ground_items.test_app")
 	await ground_items.test_app()
+	print("CASE: ground_items.test_bag_ui")
+	await ground_items.test_bag_ui()
 	print("CASE: legacy.test_random_continuity")
 	legacy.test_random_continuity()
 	print("CASE: legacy.test_reference")

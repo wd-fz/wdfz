@@ -111,6 +111,7 @@ func _quiet(app: GameApp) -> void:
 
 
 func _use_button(app: GameApp) -> void:
+	app.ui.select_bag_item("small_knife")
 	var button: Button=app.ui.bag_panel.find_child("Item_small_knife_-1",true,false)
 	check(button!=null,"captured player has a real bag-use button")
 	if button!=null: button.pressed.emit()
