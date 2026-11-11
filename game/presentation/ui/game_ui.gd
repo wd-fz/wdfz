@@ -330,7 +330,11 @@ func play_boot(reduce_motion: bool) -> void:
 	boot_splash.cue.connect(func(id: String) -> void: boot_cue.emit(id))
 	boot_splash.finished.connect(func(_skipped: bool) -> void:
 		boot_splash = null
+		menu_screen.set_process(true)
 		if menu.visible: menu_screen.enter())
+	# Under the boot animation the menu waits as a torn sliver; its opening plays once, right after.
+	menu_screen.enter()
+	menu_screen.set_process(false)
 	$Root.add_child(boot_splash)
 	if is_instance_valid(menu_preview):
 		menu_preview.begin_load()
