@@ -425,7 +425,7 @@ func _b_car(at: Vector3, yaw: float, paint: Color) -> Node3D:
 	return car
 
 func _build_garage() -> void:
-	c.stage_dark(DARK,.035,Color(.28,.265,.24),1.05)
+	c.stage_dark(DARK,.035,Color(.28,.265,.24),1.35)
 	# A basement garage, B1: a concrete shell, painted bays, numbered columns, six parked cars.
 	var concrete := _env_textured(Color("7a7870"),"grime",.35,.95)
 	_env_box(Vector3(12.4,.08,25),Vector3(0,-1.64,10.5),_env_textured(Color("5a5852"),"grime",.4,.7))
@@ -1486,32 +1486,32 @@ func _show_frost(t: float) -> void:
 	_pose(t,.03*close,.006*sin(t*c.dur*21)*shiver*c.shk,0,.012*sin(t*c.dur*17)*shiver,-4*close)
 
 func _build_broadcast() -> void:
-	c.stage_dark(DARK,.05,Color(.2,.19,.18),.18)
-	_env_room(6,10,Color("8a9087"),Color("35503f"),Color("5c5e57"))
-	p["tube"]=c.motive_light(Vector3(0,.9,1.6),Color("dfe6da"),1.8,7.0,root)
-	# The old horn speaker, hung from the ceiling, its mouth turned down at the eye; a standby lamp beside it.
-	p["speaker"]=_anchor(Vector3(-.55,1.15,3.4))
-	var profile := PackedVector2Array([Vector2(.035,0),Vector2(.05,.06),Vector2(.11,.2),Vector2(.22,.34),Vector2(.25,.35)])
-	var inner := PackedVector2Array()
-	for point in profile: inner.append(Vector2(point.x*.94,point.y-.004))
-	var horn_root := Node3D.new()
-	c.put(horn_root,0,0,0,p["speaker"])
-	horn_root.rotation.x = -2.3
-	horn_root.scale = Vector3.ONE*1.8
-	var silver := _env_lit(Color("c9c5b5"),.4,.3)
-	var shell_mat := _env_lit(Color("c9c5b5"),.4,.3)
-	shell_mat.cull_mode = BaseMaterial3D.CULL_FRONT
-	c.mesh(_env_lathe(profile,_env_segments(28)),shell_mat,0,0,0,horn_root)
-	c.mesh(_env_lathe(inner,_env_segments(28)),_env_lit(Color("23282a"),.35,.6,.5,-1,true),0,0,0,horn_root)
-	# The throat: a black plug deep in the horn, so the mouth ends in a dark hole.
-	c.mesh(_env_lathe(PackedVector2Array([Vector2(.001,.15),Vector2(.13,.15)]),_env_segments(20)),_env_lit(Color("050607"),.9,0,.1,-1,true),0,0,0,horn_root)
-	_env_rod(Vector3(0,.05,.04),Vector3(0,.8,.04),.025,_env_lit(Color("3a3f3c"),.6,.4),p["speaker"])
-	_env_box(Vector3(.3,.09,.012),Vector3(0,.62,.0),_env_lit(Color("c9c5b5"),.5),p["speaker"])
-	_text("广播",Vector3(0,.62,-.012),.07,INK,p["speaker"])
-	_env_box(Vector3(.12,.08,.04),Vector3(.75,.12,.03),_env_lit(Color("2a2e2c"),.6),p["speaker"])
-	p["lamp"]=_env_ball(Vector3(.75,.12,-.0),.018,_env_flat(Color("ff3b2a")),p["speaker"])
-	p["halo"]=_env_glow(Vector3(.75,.12,-.03),.25,Color(1,.25,.15,.8),p["speaker"])
-	p["red"]=c.motive_light(Vector3(.6,-.1,-.5),Color("ff4030"),.5,3.6,p["speaker"])
+	c.stage_dark(DARK,.04,Color(.28,.265,.24),.8)
+	_env_room(3.4,10,Color("8b8a82"),Color("3f5b4d"),Color("57554e"))
+	p["tube"]=c.motive_light(Vector3(0,.9,1.6),Color("dfe6da"),2.2,7.0,root)
+	# The school's wall speaker: a square wooden cabinet (.35 x .5 x .2 m) with dark grille cloth on the front,
+	# held out from the wall on a bracket; the standby lamp sits beside it.
+	p["speaker"]=_anchor(Vector3(-.5,.5,3.4))
+	var speaker: Node3D = p["speaker"]
+	speaker.scale = Vector3.ONE*1.2
+	var wood := _env_textured(Color("5a4a3a"),"grime",1.2,.8)
+	_env_box(Vector3(.35,.5,.2),Vector3.ZERO,wood,speaker)
+	var trim := _env_lit(Color("6e5c48"),.7)
+	for y in [-.255,.255]: _env_box(Vector3(.37,.02,.22),Vector3(0,y,0),trim,speaker)
+	for x in [-.185,.185]: _env_box(Vector3(.02,.5,.22),Vector3(x,0,0),trim,speaker)
+	p["grille"]=_env_box(Vector3(.29,.4,.012),Vector3(0,-.02,-.102),_env_lit(Color("2a2a28"),.95),speaker)
+	for i in 9: _env_box(Vector3(.29,.006,.004),Vector3(0,-.19+i*.042,-.11),_env_lit(Color("3a3a36"),.9),speaker)
+	_env_box(Vector3(.2,.05,.006),Vector3(0,.215,-.104),_env_lit(Color("b9b6aa"),.6),speaker)
+	_text("广播",Vector3(0,.215,-.109),.035,INK,speaker)
+	# The bracket: an arm from the cabinet's side to a plate on the right-hand wall, and a brace under it.
+	var iron := _env_lit(Color("3a3f3c"),.6,.4)
+	_env_rod(Vector3(-.18,.1,.04),Vector3(-1.2,.1,.04),.035,iron,speaker)
+	_env_rod(Vector3(-.17,-.2,.04),Vector3(-1.15,.04,.04),.025,iron,speaker)
+	_env_box(Vector3(.03,.28,.2),Vector3(-1.2,0,.04),iron,speaker)
+	_env_box(Vector3(.1,.07,.04),Vector3(.3,.17,-.08),_env_lit(Color("2a2e2c"),.6),speaker)
+	p["lamp"]=_env_ball(Vector3(.3,.17,-.105),.014,_env_flat(Color("ff3b2a")),speaker)
+	p["halo"]=_env_glow(Vector3(.3,.17,-.12),.2,Color(1,.25,.15,.8),speaker)
+	p["red"]=c.motive_light(Vector3(.3,.17,-.3),Color("ff4030"),.6,3.6,speaker)
 	# A free-standing glass-fronted notice board on legs: cork, a paper in the middle, three small ones around it.
 	p["notice"]=_anchor(Vector3(0,-.2,3.8))
 	var board: Node3D = p["notice"]
@@ -1533,17 +1533,21 @@ func _build_broadcast() -> void:
 
 func _show_broadcast(t: float) -> void:
 	var walk:=c.ss(t,.28,.55)
-	var lean:=c.ss(t,.62,.88)
+	var lean:=c.ss(t,.6,.8)
 	p["notice"].position.z=lerpf(3.8,2.3,walk)
-	p["speaker"].position.z=lerpf(lerpf(3.4,2.6,walk),1.6,lean)
+	# The cabinet comes down the room to .78 m from you (it is 1.1 m at the contact beat), then holds.
+	var near_z:=lerpf(lerpf(3.4,1.1,c.ss(t,.2,.55)),.78,lean)
+	p["speaker"].position.z=near_z
 	p["words"].text="你正在被记录" if t>.58 else ("不要念出名字" if c.fx=="voice" else "请停止阅读")
 	if t>.6:
 		for words: Label3D in p["others"]: words.text="你正在被记录"
-	# The standby lamp breathes; as the horn comes down it stops being a standby light.
+	# The grille cloth breathes with the voice: at most .004 m along its normal.
+	(p["grille"] as Node3D).position.z=-.102+.004*sin(t*c.dur*11)*c.ss(t,.3,.5)
+	# The standby lamp breathes (it stays a standby light: no hotter than .8 this close).
 	var breath:=.5+.5*sin(t*c.dur*2.2)
-	(p["red"] as Light3D).light_energy=lerpf(.35+.25*breath,2.2,lean)
-	(p["halo"] as Node3D).scale=Vector3.ONE*(.25+.07*breath)*(1+.8*lean)
-	_pose(t,.26*lean,0,0,0,0)
+	(p["red"] as Light3D).light_energy=.45+.15*breath
+	(p["halo"] as Node3D).scale=Vector3.ONE*(.2+.05*breath)*(1+.5*lean)
+	_pose(t,.25*c.ss(t,.3,.58)+.15*lean,0,0,0,0)
 
 func _build_bell() -> void:
 	c.stage_dark(DARK,.025,Color(.29,.27,.24),3.0)
@@ -1774,7 +1778,7 @@ func _build_corridor() -> void:
 	# loop and trap_out keep their accepted look; the other four take the neutral school plaster and a real ambient.
 	var neutral := c.fx in ["lamps","wall","squeeze","trap_wall"]
 	var plaster := WALL if neutral else Color("9aa196")
-	if neutral: c.stage_dark(DARK,.035,Color(.28,.265,.24),.75)
+	if neutral: c.stage_dark(DARK,.035,Color(.28,.265,.24),1.2 if c.fx=="lamps" else .75)
 	else: c.stage_dark(DARK,.035,Color(.21,.21,.2),.2)
 	_env_room(4.2,30,plaster,Color("3d5a50"),Color("6a6d66") if not neutral else Color("57554e"))
 	p["left"]=_anchor(Vector3(2.1,0,0))
@@ -1861,8 +1865,8 @@ func _show_corridor(t: float) -> void:
 		_fig_key().light_energy=6.5*clampf((2.1-gap)/2.1,.3,1.0)
 	elif c.fx=="lamps":
 		# Darkness creeps in from the far end and stops 2 m ahead: the key's reach shrinks to that edge, the lamp overhead stays.
-		_fig_key().light_energy=lerpf(6.5,2.2,c.ss(t,.2,.8))
-		(_fig_key() as SpotLight3D).spot_range=lerpf(12.0,3.2,c.ss(t,.2,.8))
+		_fig_key().light_energy=lerpf(6.5,12.5,c.ss(t,.2,.8))
+		(_fig_key() as SpotLight3D).spot_range=lerpf(12.0,4.0,c.ss(t,.2,.8))
 		var over: Light3D = p["over"]
 		var dim := 3.0-1.8*c.ss(t,.2,.88)
 		if c.shk>0 and _fig_blink(t,.855,.88): dim *= .3
