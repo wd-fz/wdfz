@@ -1823,7 +1823,7 @@ func _build_corridor() -> void:
 	# The lamp over your head (lamps): a pool that ends in a clear edge about 2 m ahead; it dims but never goes out.
 	p["over"]=null
 	if c.fx=="lamps":
-		p["over"]=c.motive_light(Vector3(0,1.0,.3),Color("dfe6da"),3.0,3.4,root)
+		p["over"]=c.motive_light(Vector3(0,1.0,.6),Color("dfe6da"),3.0,3.6,root)
 		(p["over"] as OmniLight3D).omni_attenuation=.5
 	p["exit"]=_anchor(Vector3(0,0,26))
 	_box(Vector3(1.8,2.8,.08),Vector3(0,-.2,0),INK,p["exit"])
@@ -1867,7 +1867,8 @@ func _show_corridor(t: float) -> void:
 		var dim := 3.0-1.8*c.ss(t,.2,.88)
 		if c.shk>0 and _fig_blink(t,.855,.88): dim *= .3
 		over.light_energy=dim
-	_pose(t,0,0,0,.035*sin(u*7)*close,8*close if not narrow else -5*close)
+	# In the dark the eye drops to the lit floor, so the pool and its edge are what the frame holds.
+	_pose(t,-.25*c.ss(t,.3,.7) if c.fx=="lamps" else 0.0,0,0,.035*sin(u*7)*close,8*close if not narrow else -5*close)
 
 func _build_face() -> void:
 	c.stage_dark(DARK,.04,Color(.27,.26,.24),.6)
