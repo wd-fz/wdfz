@@ -16,8 +16,8 @@ const TUBE := Color("d6ded4")       # a fluorescent tube's pool
 const WALL := Color("8b8a82")       # school plaster; the green dado below it is _room's
 const FOG_TONE := Color("0d1113")   # fog and sky floor: never pure black
 const GRADE_SKIP := ["flood"]       # sets whose water/dark is their own light logic
-const UNIFORM := {"person":Color("262d3a"),"sit":Color("262d3a"),"teacher":Color("2b2c30"),"roam":Color("2b2c30")}   # dark, matte clothes: a tinted figure mesh reads as a painted mannequin when it is any brighter
-const SKIN := Color(.40,.38,.35)
+const UNIFORM := {"person":Color("11141a"),"sit":Color("11141a"),"teacher":Color("131416"),"roam":Color("131416")}   # near-black matte clothes: a tinted figure mesh reads as a painted mannequin when it is any brighter
+const SKIN := Color(.17,.16,.15)   # far darker than a living face: under the stage lights anything lighter reads as a white mask
 ## Fog density of the stage dark; long or open sets keep their far subject (an exit, a road, a facade) readable.
 const FOG := {"corridor":.035,"crash":.02,"flood":.05,"fall":.012,"assembly":.04,"banquet":.04,"garage":.035,"fence":.06,"classroom":.05}
 var c: DeathStage
@@ -229,6 +229,9 @@ static func _skin_tone(tone: Variant) -> Variant:
 func _fig_head(opts: Dictionary, at: Vector3, size: float = 1.0, parent: Node3D = null) -> Node3D:
 	opts = opts.duplicate()
 	opts["tone"]=_skin_tone(opts.get("tone","wax"))
+	# Deep, empty sockets on every staged head: shallow sockets with small eyes read as a doll.
+	opts["socket"]=1.0
+	if not opts.has("eyes"): opts["eyes"]="hollow"
 	var head := HorrorKit.head(opts)
 	var face := head.get_node_or_null("Skull/Face") as MeshInstance3D
 	if face != null: face.material_override=_fig_skin(opts.get("tone","wax"),float(opts.get("rim",.25)),true)
@@ -401,73 +404,97 @@ func _show_rollcall(t: float) -> void:
 	p["name"].text="已到" if t>.78 else ("下一位" if c.fx=="names" else "未到")
 	_pose(t,0,0,0,0,-3*reach)
 
+## A parked car from boxes (nose along +x): body 4.5 x 1.8 x .7 m, roof 2.4 x 1.6 x .5 m, four wheels, dark lamp blocks.
+func _b_car(at: Vector3, yaw: float, paint: Color) -> Node3D:
+	var car := _anchor(at)
+	car.rotation.y = yaw
+	var body := _env_lit(paint,.4,.35)
+	_env_box(Vector3(4.5,.7,1.8),Vector3(0,-.97,0),body,car)
+	_env_box(Vector3(2.4,.5,1.6),Vector3(-.2,-.37,0),body,car)
+	_env_box(Vector3(2.2,.26,1.64),Vector3(-.2,-.38,0),_env_lit(Color("171c1f"),.15,0,.8),car)
+	var tyre := _env_lit(Color("151515"),.9)
+	for x in [-1.45,1.45]:
+		for z in [-.8,.8]:
+			var wheel := c.mesh(CylinderMesh.new(),tyre,x,-1.27,z,car)
+			(wheel.mesh as CylinderMesh).top_radius = .33
+			(wheel.mesh as CylinderMesh).bottom_radius = .33
+			(wheel.mesh as CylinderMesh).height = .22
+			wheel.rotation.x = PI*.5
+	_env_box(Vector3(.06,.14,1.4),Vector3(2.25,-.85,0),_env_lit(Color("2a2a28"),.3),car)
+	_env_box(Vector3(.06,.14,1.4),Vector3(-2.25,-.85,0),_env_lit(Color("4a1e1a"),.3),car)
+	return car
+
 func _build_garage() -> void:
-	c.stage_dark(DARK,.03,Color(.24,.2,.16),.22)
-	_room(10,22,Color("233034"))
-	for x in [-3.4,3.4]:
-		for z in [4,9,14,19]:
-			_box(Vector3(.45,3.5,.45),Vector3(x,.15,z),Color("49514a"))
-			_box(Vector3(.46,.22,.46),Vector3(x,-.4,z),RUST)
-			_box(Vector3(2,.01,.06),Vector3(x*.6,-1.54,z),PAPER)
-	# The far tube of the bay stands behind him: his shadow reaches down the lane towards you.
-	p["tube"]=c.stage_lights.back()
-	p["tube"].position=Vector3(.6,1.2,13.2)
-	p["tube"].omni_range=6.0
-	p["tube"].light_color=Color("d9a066")
-	# Sodium lamps down the bay: they let the pillars and parked cars read, and fade as the dark closes in.
-	p["sodium"]=[]
-	for z in [4.0,10.0,16.0]:
-		for side in [-1,1]: p["sodium"].append(c.motive_light(Vector3(side*2.4,1.5,z),Color("d9a066"),3.6,9.0,root))
-	# Parked cars either side of the lane, between the pillars: dark paint, darker glass.
-	var car_paint := _env_lit(Color("2a3338"),.35,.4)
-	var car_glass := _env_lit(Color("0e1214"),.15,0,.8)
-	for side in [-1,1]:
-		for z in [6.5,16.5]:
-			_env_box(Vector3(1.8,.55,4.2),Vector3(side*2.4,-1.15,z),car_paint)
-			_env_box(Vector3(1.6,.45,2.2),Vector3(side*2.4,-.65,z),car_glass)
-	# A pale roller shutter under that tube: the one bright thing his outline stands against.
-	var shutter:=_anchor(Vector3(0,-.2,14.4))
-	_box(Vector3(5.5,2.9,.08),Vector3.ZERO,Color("6d7770"),shutter)
-	for i in 14: _box(Vector3(5.5,.025,.04),Vector3(0,-1.35+i*.2,-.05),Color("3b4440"),shutter)
-	# Your own car: the hood edge low in the view, its two lamps throwing one beam down the bay.
-	_box(Vector3(2.2,.12,1.1),Vector3(0,-1.02,.75),Color("0d1316"))
-	p["lights"]=[]
-	for x in [-.8,.8]:
-		# The lamps themselves sit under the hood edge, out of view; only their throw is seen.
-		p["lights"].append(_box(Vector3(.4,.06,.03),Vector3(x,-1.1,1.31),LIGHT))
-		for i in 3:
-			_box(Vector3(.7+i*.5,.006,2),Vector3(x,-1.53,2+i*1.8),Color("69736b"))
-	p["beam"]=c.key_light(Vector3(0,-.85,1.4),Vector3(0,-.4,11),Color("e6dcc0"),40.0,24,18,root)
-	p["man"]=_fig(Vector3(.3,-1.6,11),"roam",.8,Color("14191c"),{"tone":Color(.27,.28,.27),"skew":.7,"mouth":"none","eyes":"hollow","size":1.25},.45)
+	c.stage_dark(DARK,.035,Color(.28,.265,.24),1.05)
+	# A basement garage, B1: a concrete shell, painted bays, numbered columns, six parked cars.
+	var concrete := _env_textured(Color("7a7870"),"grime",.35,.95)
+	_env_box(Vector3(12.4,.08,25),Vector3(0,-1.64,10.5),_env_textured(Color("5a5852"),"grime",.4,.7))
+	_env_box(Vector3(12.4,.08,25),Vector3(0,1.04,10.5),_env_textured(Color("6a6862"),"grime",.35,.95))
+	for side in [-1,1]: _env_box(Vector3(.1,2.7,25),Vector3(side*6.25,-.3,10.5),concrete)
+	_env_box(Vector3(12.4,2.7,.1),Vector3(0,-.3,22),concrete)
+	for z in [2.0,8.0,14.0,20.0]: _env_box(Vector3(12.4,.28,.5),Vector3(0,.88,z),_env_lit(Color("66645e"),.95))
+	var cars := [[3.6,4.05,"4a4f55"],[-3.6,6.75,"6b3b33"],[3.6,9.45,"8a8a84"],[-3.6,12.15,"4a4f55"],[3.6,14.85,"6b3b33"],[-3.6,17.55,"8a8a84"]]
+	var line := _env_lit(Color("b9b6aa"),.7)
+	for entry in cars:
+		_b_car(Vector3(entry[0],0,entry[1]),0.0,Color(entry[2]))
+		for dz in [-1.35,1.35]: _env_box(Vector3(5.0,.012,.1),Vector3(entry[0],-1.594,entry[1]+dz),line)
+	var number := 7
+	for z in [2.7,8.1,13.5,18.9]:
+		for side in [-1,1]:
+			_env_box(Vector3(.5,2.6,.5),Vector3(side*2.3,-.3,z),concrete)
+			_env_box(Vector3(.52,.5,.52),Vector3(side*2.3,-1.35,z),_env_lit(Color("a8924a"),.8))
+		_text("B1-%02d"%number,Vector3(2.3,.25,z-.26),.22,Color("c9c0a4"))
+		_text("B1-%02d"%(number+1),Vector3(-2.3,.25,z-.26),.22,Color("c9c0a4"))
+		number += 2
+	# Rows of fluorescent tubes (far to near), which go out one row at a time; the lamp over your head never does.
+	p["rows"]=[]
+	for z in [11.5,7.5,4.0]:
+		var tubes := []
+		for x in [-1.0,1.0]:
+			_env_box(Vector3(.2,.07,1.9),Vector3(x,.98,z),_env_lit(Color("3a3a38"),.6))
+			tubes.append(_box(Vector3(.12,.05,1.8),Vector3(x,.94,z),LIGHT))
+		p["rows"].append({"tubes":tubes,"light":c.motive_light(Vector3(0,.8,z),TUBE,3.0,6.5,root)})
+	p["over"]=c.motive_light(Vector3(0,.95,-.8),TUBE,3.0,5.0,root)
+	# The man, in the lane, standing still between the cuts.
+	p["man"]=_fig(Vector3(.3,-1.6,8),"teacher",.78,Color("2b2c30"),{"tone":SKIN,"skew":.4,"mouth":"closed","hair":true,"socket":.8,"size":1.15},.2)
 	p["man"].rotation.y=PI
-	p["shadow"]=_box(Vector3(.55,.012,1),Vector3(0,-1.535,8),Color("030506"))
-	focus=_anchor(Vector3(0,0,11))
+	# For the shadow identity his shadow arrives first: a long, pale-black slant on the floor, .1 of the shot ahead of him.
+	p["shadow"]=_box(Vector3(.7,.012,1),Vector3(0,-1.594,8),Color("000000"),null,.42)
+	p["shadow"].visible=false
+	focus=_anchor(Vector3(.3,.25,8))
+
+## How far the man is at t: 8 m, then 3.2 (.42), 1.4 (.62) and .6 (.80), each a cut on a row of lamps going out.
+func _b_garage_at(t: float) -> Vector2:
+	var d:=lerpf(lerpf(lerpf(8.0,3.2,_a_cut(t,.42)),1.4,_a_cut(t,.62)),.6,_a_cut(t,.83))
+	var x:=lerpf(lerpf(lerpf(.3,-.25,_a_cut(t,.42)),.1,_a_cut(t,.62)),.04,_a_cut(t,.83))
+	return Vector2(x,d)
 
 func _show_garage(t: float) -> void:
 	var man: Node3D=p["man"]
 	var head: Node3D=man.get_meta("head")
-	# Each time a lamp dies he is nearer; between the cuts he does not move at all.
-	var lamps:=2 if t<.35 else (1 if t<.55 else 0)
-	var rush:=c.ss(t,.76,.9)
-	var z:float=11.0 if lamps==2 else (7.0 if lamps==1 else lerpf(4.2,1.6,rush))
-	var x:float=.3 if lamps==2 else (-.25 if lamps==1 else lerpf(.35,.12,rush))
-	man.position=Vector3(x,-1.6,z)
-	man.rotation=Vector3(.5*rush,PI-.1*rush,0)
-	head.rotation=Vector3(-.15+.4*rush,PI+.25*c.ss(t,.6,.75)-.2*rush,-.35*c.ss(t,.6,.75)-.2*rush)
-	focus.position=Vector3(x,.1,z)
+	var at:=_b_garage_at(t)
+	var rush:=c.ss(t,.83,.88)
+	man.position=Vector3(at.x,-1.6,at.y)
+	man.rotation=Vector3(.1*rush,PI-.08*rush,0)
+	head.rotation=Vector3(-.15+.2*rush,PI+.2*c.ss(t,.6,.75)-.15*rush,-.25*c.ss(t,.6,.75))
+	focus.position=Vector3(at.x,.25,at.y)
+	# A row dies at every cut (flickering just before with full effects, a slow fade without).
+	var cuts:=[.42,.62,.83]
+	for i in 3:
+		var row: Dictionary=p["rows"][i]
+		var out:=_a_cut(t,cuts[i])
+		var lit:=(1.0-out)*(0.0 if _fig_blink(t,cuts[i]-.04,cuts[i]-.02) else 1.0)
+		(row["light"] as Light3D).light_energy=3.0*lit
+		for tube: Node3D in row["tubes"]: tube.visible=lit>.3
 	var shadow: Node3D=p["shadow"]
-	var long:float=(13.5-z)*.9+1.5
-	shadow.scale.z=maxf(.01,long)
-	shadow.position=Vector3(x*.8,-1.535,z-long*.5)
-	shadow.visible=lamps>0 or rush<.5
-	for i in 2: p["lights"][i].visible=i<lamps and not _fig_blink(t,.31+i*.2,.34+i*.2)
-	var beam: Light3D=p["beam"]
-	beam.light_energy=0.0 if _fig_blink(t,.31,.34) or _fig_blink(t,.51,.54) else 22.0*lamps
-	var tube: Light3D=p["tube"]
-	tube.light_energy=0.0 if _fig_blink(t,.66,.69) else 2.6*(1-c.ss(t,.8,.86))
-	_fig_key().light_energy=lerpf(2.2,3.6,rush)
-	for lamp: Light3D in p["sodium"]: lamp.light_energy=3.6*(1-.85*c.ss(t,.35,.8))
-	_pose(t,.12*rush,.025*sin(t*12)*rush*c.shk,0,0,-6*rush)
+	shadow.visible=c.fx=="shadow"
+	if shadow.visible:
+		var near:=_b_garage_at(minf(t+.1,1.0)).y
+		var far:=12.0
+		shadow.scale.z=maxf(.01,far-near)
+		shadow.position=Vector3(at.x*.9,-1.594,(near+far)*.5)
+	_fig_key().light_energy=lerpf(6.5,4.2,c.ss(t,.42,.83))
+	_pose(t,.25*rush,.025*sin(t*12)*rush*c.shk,0,0,-6*rush)
 
 func _build_backseat() -> void:
 	# The driver's seat at night: dashboard, wheel, pillars and roof lit by the instruments and the street lamps.
@@ -553,30 +580,44 @@ float h1(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
 float h2(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 float vn(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
 	return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }
+// One crack: a ragged line out of the origin along theta, ending at len.
+float seg_line(vec2 q, float theta, float len, float w) {
+	float r = length(q);
+	float a = atan(q.y, q.x);
+	float wob = .05 * (vn(vec2(r * 9.0, theta * 7.0)) - .5) + .02 * sin(r * 31.0 + theta * 5.0) * min(r, .3);
+	float da = a - theta - wob;
+	float d = abs(sin(da)) * r;
+	return (1.0 - smoothstep(w * .5, w, d)) * step(0.0, cos(da)) * (1.0 - smoothstep(len * .85, len, r));
+}
 void fragment() {
 	vec2 q = (UV - hit) * vec2(1.8, 1.0);
 	float r = length(q);
 	float a = atan(q.y, q.x);
 	float lines = 0.0;
-	float n = 17.0;
-	float sec = floor((a / 6.2831853 + .5) * n);
-	for (int k = -1; k <= 1; k++) {
-		float s = sec + float(k);
-		float ang = (s + .5 + (h1(s) - .5) * .7) / n * 6.2831853 - 3.1415927;
-		float dang = a - ang - (h1(s * 3.7 + floor(r * 22.0)) - .5) * .07;
-		float d = abs(sin(dang)) * r;
-		float len = crack * (.3 + .9 * h1(s + 17.0));
-		float w = .0016 + .0012 * r;
-		lines = max(lines, (1.0 - smoothstep(w * .4, w, d)) * step(0.0, cos(dang)) * (1.0 - smoothstep(len * .8, len, r)));
+	float w = .0022;
+	// Laminated glass: ten irregular spokes from the point of impact, each with one or two forks.
+	for (int i = 0; i < 10; i++) {
+		float fi = float(i);
+		float theta = (fi + .5 + (h1(fi * 1.7) - .5) * .8) / 10.0 * 6.2831853 - 3.1415927;
+		float len = crack * (.55 + .9 * h1(fi + 17.0));
+		vec2 dir = vec2(cos(theta), sin(theta));
+		lines = max(lines, seg_line(q, theta, len, w));
+		float s1 = .28 + .18 * h1(fi + 3.0);
+		float s2 = .55 + .15 * h1(fi + 9.0);
+		float side = h1(fi + 5.0) > .5 ? 1.0 : -1.0;
+		lines = max(lines, seg_line(q - s1 * len * dir, theta + side * (.35 + .3 * h1(fi + 11.0)), max(len * (1.0 - s1) * .55, .0001), w * .9));
+		if (h1(fi + 21.0) > .35) lines = max(lines, seg_line(q - s2 * len * dir, theta - side * (.3 + .3 * h1(fi + 13.0)), max(len * (1.0 - s2) * .5, .0001), w * .8));
 	}
-	for (int k = 1; k <= 4; k++) {
+	// Short, broken arcs close round the point of impact (all within .12 m).
+	float arcs = 0.0;
+	for (int k = 1; k <= 3; k++) {
 		float fk = float(k);
-		float rr = fk * .05 * (1.0 + .4 * h1(fk * 3.1));
-		float wob = rr * (1.0 + .06 * sin(a * 5.0 + fk * 2.0) + .03 * sin(a * 13.0 + fk) + .28 * (vn(vec2(a * 2.6 + fk * 4.1, fk * 3.7)) - .5));
-		float on = smoothstep(rr * 1.2, rr * 1.8, crack) * step(.38, h1(floor((a + 3.1416) * 2.4) + fk * 9.0));
-		lines = max(lines, .5 * on * (1.0 - smoothstep(.001, .0032, abs(r - wob))));
+		float rr = .035 * fk + .01 * h1(fk * 3.1);
+		float wob = rr * (1.0 + .04 * sin(a * 7.0 + fk * 2.0) + .1 * (vn(vec2(a * 3.0 + fk * 4.1, fk * 3.7)) - .5));
+		float on = smoothstep(.15, .4, crack) * step(.45, h1(floor((a + 3.1416) * 1.6) + fk * 9.0));
+		arcs = max(arcs, on * (1.0 - smoothstep(.0007, .0022, abs(r - wob))));
 	}
-	float crush = smoothstep(.02, .0, r) * step(.01, crack);
+	float crush = smoothstep(.012, .0, r) * step(.01, crack);
 	float drop = 0.0;
 	for (int layer = 0; layer < 2; layer++) {
 		vec2 g = UV * vec2(34.0, 21.0) * (1.0 + float(layer) * .73) + float(layer) * 5.3;
@@ -589,16 +630,19 @@ void fragment() {
 	}
 	// Beads only glitter around the oncoming light; elsewhere they are barely there.
 	drop *= rain * (.15 + exp(-length((UV - hit) * vec2(1.8, 1.0)) * 4.0));
-	float lit = .2 + glare;
-	ALBEDO = vec3(.82, .87, .88) * min(lit, 1.2);
-	ALPHA = clamp(.03 + drop * (.03 + .5 * glare) + lines * (.45 + .45 * glare) + crush * .7, 0.0, 1.0);
+	float lit = .35 + .5 * glare;
+	ALBEDO = vec3(.82, .87, .88) * min(lit, 1.0);
+	ALPHA = clamp(.03 + drop * (.03 + .3 * glare) + lines * .6 + arcs * .5 + crush * .5, 0.0, .8);
 }
 """
 
 func _build_crash() -> void:
-	# Wet asphalt that takes the beams, a centre line rushing in, reflector posts into the dark.
-	_env_box(Vector3(16,.1,97),Vector3(0,-1.35,46),_env_lit(Color("1a1f22"),.3,0,.7))
-	var paint := _env_lit(Color("8f8c7c"),.55)
+	c.stage_dark(DARK,.02,Color(.28,.265,.24),1.4)
+	# Wet asphalt that takes the beams, a centre line rushing in, reflector posts, a guard rail and trees into the dark.
+	_env_box(Vector3(16,.1,97),Vector3(0,-1.35,46),_env_lit(Color("575653"),.5,0,.4))
+	_env_box(Vector3(.05,.01,97),Vector3(0,-1.285,46),_env_lit(Color("8f8c7c"),.55))
+	_env_box(Vector3(.04,.2,97),Vector3(0,-1.3,46),_env_lit(Color("383c3c"),.35,0,.6))
+	var paint := _env_lit(Color("a09d8c"),.55)
 	for side in [-1,1]: _env_box(Vector3(.12,.01,97),Vector3(side*3.4,-1.29,46),paint)
 	for i in 16: pieces.append(_env_box(Vector3(.12,.012,2.2),Vector3(0,-1.288,0),paint))
 	p["posts"]=[]
@@ -609,10 +653,28 @@ func _build_crash() -> void:
 		_env_box(Vector3(.09,.95,.09),Vector3(0,.47,0),post_mat,post)
 		_env_box(Vector3(.06,.12,.02),Vector3(0,.82,-.05),reflector,post)
 		p["posts"].append(post)
+	# The guard rail (a long beam on posts every 4 m) and the roadside trees, both streaming past.
+	var steel := _env_lit(Color("8a8d8c"),.4,.6)
+	for side in [-1,1]: _env_box(Vector3(.05,.28,97),Vector3(side*4.2,-.85,46),steel)
+	p["rails"]=[]
+	for i in 24:
+		var rail_post := _anchor(Vector3((-1 if i%2 else 1)*4.2,-1.3,0))
+		_env_box(Vector3(.1,.8,.1),Vector3(0,.4,.03),_env_lit(Color("5a5d5c"),.5,.4),rail_post)
+		p["rails"].append(rail_post)
+	p["trees"]=[]
+	var bark := _env_lit(Color("4a3d30"),.9)
+	var leaves := _env_lit(Color("2c4a37"),.95)
+	for i in 14:
+		var tree := _anchor(Vector3((-1 if i%2 else 1)*(7.0+3.0*_env_h(i+30.0)),-1.3,0))
+		_env_box(Vector3(.4,3.4,.4),Vector3(0,1.7,0),bark,tree)
+		_env_ball(Vector3(0,4.0,0),1.7+.5*_env_h(i+40.0),leaves,tree,10)
+		p["trees"].append(tree)
+	# A faint glow of the town on the horizon.
+	_env_box(Vector3(160,14,.2),Vector3(0,5,118),_env_flat(Color("4a413a"),-1,false))
 	# Inside the car: dash, bonnet, pillars, roof edge, mirror, wheel and two dim gauges.
-	var plastic := _env_lit(Color("0c0f11"),.75,0,.3)
+	var plastic := _env_lit(Color("403f3c"),.75,0,.3)
 	_env_box(Vector3(2.3,.32,.6),Vector3(0,-.7,.98),plastic)
-	var bonnet := _env_box(Vector3(2.0,.06,1.5),Vector3(0,-.8,1.95),_env_lit(Color("1b252b"),.22,.55,.6))
+	var bonnet := _env_box(Vector3(2.0,.06,1.5),Vector3(0,-.8,1.95),_env_lit(Color("45433f"),.5,.1,.4))
 	bonnet.rotation.x = -.07
 	for side in [-1,1]:
 		_env_rod(Vector3(side*.84,-.55,1.12),Vector3(side*.64,.47,.6),.1,plastic)
@@ -628,7 +690,7 @@ func _build_crash() -> void:
 	_env_ball(Vector3.ZERO,.05,plastic,wheel)
 	p["needles"]=[]
 	for x in [.27,.45]:
-		c.torus(.045,.004,_env_flat(Color("3b6e5c")),x,-.5,.76,root,4,24)
+		c.torus(.045,.004,_env_flat(Color("6fb08e")),x,-.5,.76,root,4,24)
 		var needle := _anchor(Vector3(x,-.5,.755))
 		_env_box(Vector3(.004,.04,.002),Vector3(0,.02,0),_env_flat(Color("b06a3a")),needle)
 		p["needles"].append(needle)
@@ -639,6 +701,7 @@ func _build_crash() -> void:
 	glass.basis = Basis(Vector3.RIGHT,up.normalized(),Vector3.RIGHT.cross(up.normalized()))
 	glass.position = low
 	root.add_child(glass)
+	p["glassnode"]=glass
 	p["glass"]=c.mesh(_env_quad(Vector3(.84,0,0),Vector3(-.84,0,0),Vector3(-.64,up.length(),0),Vector3(.64,up.length(),0)),_env_shader("windshield",ENV_WINDSHIELD,{"rain":1.0 if c.fx=="car_chase" else .55},2),0,0,-.01,glass)
 	p["wipers"]=[]
 	for x in [-.62,.06]:
@@ -649,10 +712,21 @@ func _build_crash() -> void:
 		_env_box(Vector3(.52,.022,.02),Vector3(.3,.012,-.01),plastic,wiper)
 		p["wipers"].append(wiper)
 	# Our own headlights down the lane, and the oncoming truck: two points far off, then all light.
-	p["beam"]=c.key_light(Vector3(0,-.85,2.6),Vector3(0,-1.3,14),Color("d9cfae"),16.0,45,34,root)
+	p["beams"]=[]
+	for x in [-.6,.6]: p["beams"].append(c.key_light(Vector3(x,-.7,2.3),Vector3(x*.5,-1.3,22),Color("e8dcb4"),12.0,28,38,root))
+	# A thin cold moon behind the cloud: the road, rail and trees stay readable beyond the beams.
+	var moon := DirectionalLight3D.new()
+	moon.light_color = Color("c4c4bc")
+	moon.light_energy = 1.4
+	moon.shadow_enabled = false
+	moon.rotation = Vector3(-.9,PI,0)
+	root.add_child(moon)
+	c.motive_light(Vector3(0,0,.3),Color("d8d2c0"),.7,2.5,root)
+	# A dim amber glow from the instruments on the dash.
+	c.motive_light(Vector3(0,-.45,.75),Color("d9a066"),.7,1.6,root)
 	var truck := _anchor(Vector3(2.8,0,70))
 	p["truck"]=truck
-	var paint_dark := _env_lit(Color("1e2528"),.5,.3)
+	var paint_dark := _env_lit(Color("2d2c2b"),.5,.3)
 	_env_box(Vector3(2.5,2.9,.4),Vector3(0,.15,.2),paint_dark,truck)
 	_env_box(Vector3(2.2,.95,.05),Vector3(0,.95,-.03),_env_lit(Color("050708"),.15,.2,.8),truck)
 	_env_box(Vector3(2.6,.28,.4),Vector3(0,-1.05,-.08),_env_lit(Color("2b3133"),.4,.6),truck)
@@ -663,16 +737,6 @@ func _build_crash() -> void:
 		p["heads"].append(_env_ball(Vector3(x,-.62,-.05),.13,_env_flat(Color("f2ead2"),-1,false),truck,12))
 		p["halos"].append(_env_glow(Vector3(x,-.62,-.25),1,Color(1,.94,.78,1),truck,2.6))
 	p["glare_light"]=c.key_light(Vector3(0,-.6,-.4),Vector3(0,-.3,-10),Color("f0e6c8"),0.0,90,32,truck)
-	p["wash"]=_env_screen("wash","""
-uniform vec4 tint : source_color = vec4(1.0, .96, .86, 0.0);
-uniform vec2 center = vec2(0.0);
-void fragment() {
-	float asp = VIEWPORT_SIZE.x / VIEWPORT_SIZE.y;
-	float d = length((sp - center) * vec2(asp, 1.0));
-	ALBEDO = tint.rgb;
-	ALPHA = tint.a * clamp(1.15 - d * .6, 0.0, 1.0);
-}
-""")
 	focus=_anchor(Vector3(0,-.15,6))
 
 func _show_crash(t: float) -> void:
@@ -682,6 +746,8 @@ func _show_crash(t: float) -> void:
 	var travelled := 120.0*minf(t,hit)+120.0*(1-exp(-after*30))/30
 	for i in pieces.size(): pieces[i].position.z=fposmod(i*6.0-travelled,96)-1
 	for i in p["posts"].size(): p["posts"][i].position.z=fposmod(i*7.0-travelled,98)-1
+	for i in p["rails"].size(): p["rails"][i].position.z=fposmod(i*4.0-travelled,96)-1
+	for i in p["trees"].size(): p["trees"][i].position.z=fposmod(i*7.0+3.0-travelled,98)-1
 	var come := c.seg(t,.03,hit)
 	var truck: Node3D = p["truck"]
 	truck.position = Vector3(lerpf(2.8,.35,c.ss(t,.18,hit)),0,lerpf(70,2.05,come))
@@ -691,11 +757,12 @@ func _show_crash(t: float) -> void:
 	var lamp := [1-c.ss(t,hit+.01,hit+.03),dim]
 	for i in 2:
 		var halo: MeshInstance3D = p["halos"][i]
-		halo.scale = Vector3.ONE*lerpf(.9,3.4,near*near*near)*maxf(lamp[i],.001)*(1 if i==0 else lerpf(.35,1,dim))
+		halo.scale = Vector3.ONE*lerpf(.5,1.0,near*near*near)*maxf(lamp[i],.001)*(1 if i==0 else lerpf(.35,1,dim))
 		halo.visible = lamp[i]>0
 		p["heads"][i].visible = lamp[i]>0
-	(p["glare_light"] as SpotLight3D).light_energy = (1.5+12*near*near*near)*(.5*lamp[0]+.5*lamp[1])*dim
-	(p["beam"] as SpotLight3D).light_energy = 16.0*(1-c.ss(t,hit,hit+.01))
+	(p["glare_light"] as SpotLight3D).light_energy = (1.5+3.5*near*near*near)*(.5*lamp[0]+.5*lamp[1])*dim
+	# Our own beams keep burning, dimmer after the hit, so the road, rail and trees stay readable behind the cracks.
+	for beam: SpotLight3D in p["beams"]: beam.light_energy = lerpf(12.0,6.0,c.ss(t,hit,hit+.06))
 	var glare := near*near*lerpf(.3,1,dim)
 	_env_param(p["glass"],"glare",glare)
 	_env_param(p["glass"],"crack",c.ss(t,hit,hit+.12))
@@ -704,49 +771,56 @@ func _show_crash(t: float) -> void:
 	for wiper: Node3D in p["wipers"]: wiper.rotation.z = 1.3*(.5-.5*cos(beat))
 	var speed := (1-c.ss(t,hit,hit+.05))
 	for needle: Node3D in p["needles"]: needle.rotation.z = lerpf(1.9,-1.1,speed*(.92+.02*sin(t*31)))
-	# The glare swells over the last half second; with reduced effects it never washes the frame white.
-	var peak := .35 if c.shk>0 else .28
-	_env_param(p["wash"],"tint",Color(1,.95,.84,peak*c.ss(t,.47,.585)*(1-c.ss(t,.6,.7))))
-	_env_key(lerpf(1.2,4.0,c.ss(t,hit,hit+.1)))
+	_env_key(lerpf(1.6,2.6,c.ss(t,hit,hit+.1)))
+	# The glass bows in .02 m and stops (no further cracking after .70).
+	(p["glassnode"] as Node3D).position = Vector3(0,-.55,1.12)+Vector3(0,0,-.02)*c.ss(t,.8,.88)
 	var jolt := c.ss(t,hit,hit+.03)*(1-c.ss(t,hit+.05,.9))
 	_pose(t,.07*jolt*c.shk,.004*sin(t*95)*come*c.shk,-.05*jolt*c.shk,.08*c.ss(t,hit,hit+.05),3*jolt)
 
+const _CLASS_ROW := [1.8,4.2,6.6,9.0]    # the z of each row of desks; the classmate sits .75 behind his desk
+
 func _build_classroom() -> void:
-	c.stage_dark(DARK,.05,Color(.22,.22,.2),.22)
-	_room(8,18,Color("64736d"))
+	c.stage_dark(DARK,.04,Color(.27,.26,.24),.6)
+	_room(8,13)
 	p["tube"]=c.stage_lights.back()
-	p["tube"].position=Vector3(.6,1.3,5.2)
-	p["tube"].omni_range=7.5
-	p["tube"].light_color=Color("dfe6da")
-	_box(Vector3(6,1.6,.08),Vector3(0,.45,16.8),Color("294c48"))
-	p["writing"]=_text("请 回 到 你 的 座 位",Vector3(0,.6,16.72),.38)
+	p["tube"].position=Vector3(.6,1.3,4.2)
+	p["tube"].omni_range=7.0
+	p["tube"].light_color=Color("ddd8c6")
+	p["front"]=c.motive_light(Vector3(-.7,1.3,1.8),Color("ddd8c6"),2.8,4.5,root)
+	_box(Vector3(6,1.6,.08),Vector3(0,.45,11.8),Color("294c48"))
+	p["writing"]=_text("请 回 到 你 的 座 位",Vector3(0,.6,11.72),.38)
 	p["students"]=[]
 	for row in 4:
 		for col in 3:
 			var x:float=(col-1)*1.9
-			var z:float=3+row*2.6
+			var z:float=_CLASS_ROW[row]
 			pieces.append(_desk(Vector3(x,0,z)))
-			# Seated classmates, dark, facing the board; their pale heads can turn on their own.
-			var student:=_fig(Vector3(x,-1.6,z-.75),"sit",1.0,Color("101719"),{"tone":Color(.37,.38,.35),"skew":.3 if (row+col)%2 else 0.0,"mouth":"none" if col==2 else "closed"},.35)
+			# Seated classmates in uniform, facing the board; their heads can turn on their own.
+			var student:=_fig(Vector3(x,-1.6,z-.75),"sit",1.0,Color("262d3a"),{"tone":SKIN,"skew":.3 if (row+col)%2 else 0.0,"mouth":"none" if col==2 else "closed","hair":true,"socket":.8},.2)
 			p["students"].append(student)
-	for z in [3,8,13]:
+	for z in [3,6.5,10]:
 		var window := _window(Vector3(3.92,.4,z))
 		window.rotation.y=PI/2
+		(window.get_node("GlassPane") as MeshInstance3D).material_override=_surface(Color("5a5e60"),.4)
 	p["own"]=_desk(Vector3(0,0,.7))
-	p["blank"]=_box(Vector3(5.9,1.5,.04),Vector3(0,.45,16.65),Color("bbc2b1"))
+	p["blank"]=_box(Vector3(5.9,1.5,.04),Vector3(0,.45,11.65),Color("bbc2b1"))
 	p["blank"].hide()
 	if c.fx=="chalk":
-		# The one figure on the board that the eraser leaves: a chalk outline, later standing in the room.
+		# The one figure on the board that the eraser leaves: a chalk outline; the teacher who wrote it comes down the aisle.
 		var drawn:=FigureModel.make("person",Color("b9bfae"),true,.75,Color.BLACK,true,true)
 		drawn.rotation.y=PI
-		c.put(drawn,.9,-.75,16.6,root)
+		c.put(drawn,1.9,-.75,11.6,root)
 		p["drawn"]=drawn
-		# It takes the seat of the classmate the eraser removed: a dark figure with a chalk-dust edge, a pale hollow face.
-		p["chalk"]=_fig(Vector3(0,-1.6,2.25),"sit",1.0,Color(.14,.16,.15),{"tone":Color(.55,.56,.52),"mouth":"none","eyes":"hollow"},.55)
+		p["chalk"]=_fig(Vector3(.6,-1.6,10.8),"teacher",.98,Color("2b2c30"),{"tone":SKIN,"mouth":"closed","skew":.3,"size":1.2,"hair":true,"socket":.8},.2)
 	if c.fx=="assimilation":
-		# The hand that seats you: from behind, on the left shoulder (set +x is screen left).
-		p["hand"]=_fig_hand({"long":1.2,"thin":.5,"arm":.25,"tone":Color(.27,.28,.26)})
-	focus=_anchor(Vector3(0,-.15,5.6))
+		# Your own two hands on the desk: your colour at first, the classmates' grey at the end.
+		p["own_hands"]=[]
+		for side in [-1,1]:
+			var hand:=_fig_hand({"long":1.0,"thin":.3,"arm":.22,"tone":Color(.62,.52,.44),"side":side},root)
+			hand.rotation=Vector3(0,PI,0)
+			hand.position=Vector3(side*.24,-.57,.5)
+			p["own_hands"].append(hand)
+	focus=_anchor(Vector3(0,-.15,1.2))
 
 ## When a classmate's head has turned round to you (0..1), by effect; the one in front of you is last.
 func _class_turn(t: float, i: int) -> float:
@@ -754,30 +828,38 @@ func _class_turn(t: float, i: int) -> float:
 	var order:=11 if i==1 else (i*5)%11
 	return c.ss(t,.14+order*.042,.24+order*.042)
 
+## The one in front of you leans back towards you about his hips: .8 m away at the 81% frame, .55 at the end.
+func _a_class_lean(t: float) -> float:
+	return -.5*c.ss(t,.62,.8)-.06*c.ss(t,.8,.88)
+
 func _show_classroom(t: float) -> void:
 	var change:=c.ss(t,.22,.78)
 	var assimilated:=c.fx=="assimilation"
 	var staring:=c.fx=="stare"
+	var chalking:=c.fx=="chalk"
 	var erased:=not assimilated and not staring
-	var near:=c.ss(t,.8,.92)
+	var near:=c.ss(t,.8,.88)
+	var lean:=_a_class_lean(t)
 	var tube: Light3D=p["tube"]
 	var students: Array=p["students"]
 	for i in students.size():
 		var student: Node3D=students[i]
 		var head: Node3D=student.get_meta("head")
 		var row:=floori(i/3.0)
-		student.position=Vector3((i%3-1)*1.9,-1.6,3+row*2.6-.75)
+		student.position=Vector3((i%3-1)*1.9,-1.6,_CLASS_ROW[row]-.75)
 		student.rotation=Vector3.ZERO
 		head.position=(_FIG_NECK["sit"][1] as Vector3)
 		head.rotation=Vector3(0,PI,0)
 		HorrorKit.pose_head(head,0)
+		var front:=i==1
 		if erased:
-			# Erased a few at a time, each time the light falters; one comes back, already turned round.
-			student.visible=t<.3+(i%3)*.12 or (i==1 and t>=.78 and not p.has("chalk"))
-			if i==1 and t>=.78:
-				head.rotation=Vector3(-.15,0,.3)
-				head.position+=Vector3(0,.04*near,-.35*near)
-				HorrorKit.pose_head(head,.6*near)
+			# Erased a few at a time, each time the light falters; the one in front comes back, already turned round.
+			student.visible=t<.3+(i%3)*.12 or (front and t>=.62 and not chalking)
+			if front and t>=.62:
+				head.rotation=Vector3(-lean+.05,0,.3)
+				student.rotation=Vector3(lean,0,0)
+				student.position=Vector3(0,-1.1,_CLASS_ROW[0]-.75)-Basis(Vector3.RIGHT,lean)*Vector3(0,.5,0)
+				HorrorKit.pose_head(head,.5*near)
 			continue
 		var turn:=_class_turn(t,i)
 		if assimilated:
@@ -785,91 +867,117 @@ func _show_classroom(t: float) -> void:
 			student.position.z-=.15*change
 		# The bodies stay facing the board; only the heads come all the way round.
 		head.rotation=Vector3(-.12*turn,PI-PI*turn,.18*turn*sin(i*2.3))
-		if staring and i==1:
-			head.position+=Vector3(0,.12*near,-1.0*near)
-			head.rotation.z+=.35*near
-			HorrorKit.pose_head(head,.55*near)
+		if front:
+			student.rotation=Vector3(lean,0,0)
+			student.position=Vector3(student.position.x,-1.1,student.position.z)-Basis(Vector3.RIGHT,lean)*Vector3(0,.5,0)
+			head.rotation.x=-lean*turn+.05
+			head.rotation.z+=.15*near
+			HorrorKit.pose_head(head,.4*near)
 	for i in pieces.size():
 		pieces[i].position.x=(i%3-1)*1.9*(1-.16*change if assimilated else 1+.35*change*float(erased))
 	var falter:=_fig_blink(t,.28,.31) or _fig_blink(t,.4,.43) or _fig_blink(t,.52,.55) if erased else _fig_blink(t,.43,.46)
-	tube.light_energy=0.0 if falter else lerpf(3.4,1.6,c.ss(t,.6,.9))
+	tube.light_energy=0.0 if falter else 3.0
+	(p["front"] as Light3D).light_energy=0.0 if falter else 2.8
 	p["blank"].visible=erased and t>.5
 	p["blank"].scale.x=c.ss(t,.5,.82)
 	p["own"].position.z=lerpf(.7,.33,change) if assimilated else .7
 	p["writing"].text="已 归 队" if assimilated and t>.6 else "请 回 到 你 的 座 位"
-	if p.has("chalk"):
-		# Seated where the missing classmate was, turned round to face you.
-		var chalk_head: Node3D=p["chalk"].get_meta("head")
-		p["chalk"].visible=t>=.78
-		p["chalk"].position=Vector3(0,-1.6,2.25)
-		chalk_head.position=(_FIG_NECK["sit"][1] as Vector3)+Vector3(0,.04*near,-.35*near)
-		chalk_head.rotation=Vector3(-.15,0,.3)
-		HorrorKit.pose_head(chalk_head,.6*near)
+	if chalking:
+		# The teacher who wrote the name turns from the board, and from the cut at .62 is in the aisle, leaning over you.
+		var teacher: Node3D=p["chalk"]
+		var thead: Node3D=teacher.get_meta("head")
+		var cut:=_a_cut(t,.62)
+		var turn_round:=c.ss(t,.45,.6)
+		var foot:=Vector3(lerpf(.6,.95,cut),-1.6,lerpf(10.8,1.9,cut))
+		foot=foot.lerp(Vector3(.45,-1.6,1.5),near)
+		teacher.position=foot
+		teacher.rotation=Vector3(.35*near,PI*turn_round,0)
+		thead.rotation=Vector3(-.18+.5*near,PI,0)
+		HorrorKit.pose_head(thead,.25*near)
+		(teacher.get_node("Body") as Node3D).scale=Vector3(1,1+.006*sin(t*c.dur*1.6),1)
 		p["drawn"].visible=t<.8
-	if p.has("hand"):
-		var press:=c.ss(t,.55,.72)
-		var hand: Node3D=p["hand"]
-		hand.visible=t>.55
-		# From behind, over the shoulder: only the back of the hand and four fingers hang into the lower corner.
-		hand.position=Vector3(lerpf(.45,.34,press),lerpf(-.12,-.3,press),lerpf(.02,.28,press))
-		hand.rotation=Vector3(lerpf(-.25,-.9,press),lerpf(PI-.75,PI-.6,press),lerpf(-.35,-.2,press))
-		HorrorKit.pose_hand(hand,lerpf(.15,.45,press),.12,[.05],Vector2(.45*press,0))
-	_fig_key().light_energy=5.0
-	if assimilated: _pose(t,-.1*change,0,-.25*change,0,-6*change)
-	elif staring: _pose(t,-.06*near,0,0,.02*sin(t*9)*near,-5*near)
-	else: _pose(t,.07*change,0,0,.025*sin(t*9)*change,7*change-9*near)
+	if p.has("own_hands"):
+		var greyed:=roundf(c.ss(t,.25,.8)*6.0)/6.0
+		var tone:=Color(.62,.52,.44).lerp(SKIN,greyed)
+		for hand: Node3D in p["own_hands"]:
+			for mi: Node in hand.find_children("*","MeshInstance3D",true,false):
+				if mi.name!="Nail": (mi as MeshInstance3D).material_override=_fig_skin(tone,.2,true)
+			hand.position.z=(p["own"] as Node3D).position.z-.2
+			HorrorKit.pose_hand(hand,.15,.05)
+	_fig_key().light_energy=3.0+.6*near
+	var pitch:=0.0
+	if staring or erased and not chalking or assimilated: pitch=-.22*c.ss(t,.62,.8)-.04*near
+	if chalking: pitch=.4*near
+	_pose(t,pitch,0,-.25*change if assimilated else 0.0,0,-4*c.ss(t,.6,.84))
 
 func _build_assembly() -> void:
-	# An overcast morning on the playground: concrete, a rostrum with a flagpole, the teaching block behind.
-	c.stage_dark(Color("343c3f"),.03,Color(.33,.34,.35),.3)
-	p["sky"]=c.key_light(Vector3(4,6,-2),Vector3(0,-1.6,8),Color("aab2b4"),10.0,30,60,root)
-	_env_box(Vector3(24,.1,35),Vector3(0,-1.6,15),_env_textured(Color("8a8d86"),"grime",.15))
+	# An overcast morning on the playground: concrete, a rostrum, a flagpole on the left, the teaching block behind.
+	c.stage_dark(Color("55585a"),.02,Color(.3,.29,.27),.7)
+	p["sky"]=c.key_light(Vector3(4,6,-2),Vector3(0,-1.6,8),Color("d8d6cc"),8.0,30,60,root)
+	_env_box(Vector3(24,.1,35),Vector3(0,-1.6,15),_env_textured(Color("9a9a92"),"grime",.15))
 	for i in 8:
-		_box(Vector3(.035,.01,28),Vector3((i-3.5)*1.8,-1.54,12),Color("b9b9ae"))
-	_box(Vector3(8,.8,2),Vector3(0,-1.2,19),Color("5a5e58"))
+		_box(Vector3(.035,.01,28),Vector3((i-3.5)*1.8,-1.54,12),Color("c8c8bc"))
+	_box(Vector3(8,.8,2),Vector3(0,-1.2,19),Color("6a6e68"))
 	_text("保持队形",Vector3(0,-1.2,17.95),.4)
-	_rod(Vector3(3.5,-1.6,18),Vector3(3.5,6,18),.06,Color("8a8f8c"))
-	_box(Vector3(.9,.6,.02),Vector3(3.05,5.5,18),RUST)
-	_box(Vector3(30,10,.5),Vector3(0,3,26),Color("8a979a"))
+	# The flagpole, 8 m high, 12 m away on your left (+x is screen left); the red flag hangs still.
+	_rod(Vector3(7,-1.6,12),Vector3(7,6.4,12),.1,Color("8a8a84"))
+	_box(Vector3(1.4,.9,.03),Vector3(6.3,5.8,12),Color("a8322a"))
+	c.mesh(BoxMesh.new(),c._mat(Color("85837d"),-1,false,false,false),0,8,36,root).scale=Vector3(140,50,.1)
+	_box(Vector3(30,10,.5),Vector3(0,3,26),Color("a6a298"))
 	for row in 3:
 		for col in 10:
 			var lit:=(row*10+col) in [3,12,17,26]
 			var at:=Vector3((col-4.5)*2.6,.8+row*2.4,25.7)
 			if lit: c.mesh(BoxMesh.new(),c._mat(Color("d9c79a"),-1,false,false,false),at.x,at.y,at.z,root).scale=Vector3(1.2,1,.05)
-			else: _box(Vector3(1.2,1,.05),at,Color("2a3436"))
-	# Sixteen places in the square; the one at the front, second from the right, is empty: yours.
+			else: _box(Vector3(1.2,1,.05),at,Color("3a3c3a"))
+	# Sixteen places in the square; the one at the front, second from the right, is empty: yours, marked with a chalk X.
+	for sign in [-1,1]:
+		_rod(Vector3(-.65-.4,-1.53,4-.4*sign),Vector3(-.65+.4,-1.53,4+.4*sign),.05,Color("d8d8cc"))
 	p["kids"]=[]
 	for row in 4:
 		for col in 4:
 			if row==0 and col==1:
 				p["kids"].append(null)
 				continue
-			var opts:={"tone":Color(.44,.44,.4),"mouth":"none" if (row+col)%3==0 else "closed","skew":.3 if (row*4+col)%5==0 else 0.0}
-			var student:=_fig(Vector3((col-1.5)*1.3,-1.6,4+row*2.0),"person",.95,Color("1a2026"),opts,.25)
-			_box(Vector3(.26,.06,.04),Vector3(0,1.2,-.14),Color("8c8670"),student)
+			var opts:={"tone":SKIN,"mouth":"none" if (row+col)%3==0 else "closed","skew":.3 if (row*4+col)%5==0 else 0.0,"hair":true,"socket":.8,"size":1.2 if (row==0 and col==2) else 1.12}
+			var student:=_fig(Vector3((col-1.5)*1.3,-1.6,4+row*2.0),"person",.95,Color("262d3a"),opts,.2)
+			# A badge on the chest (the front is +z) and a red armband on the left upper arm.
+			_box(Vector3(.08,.03,.02),Vector3(.1,1.25,.14),Color("c9c0a4"),student)
+			_box(Vector3(.07,.1,.1),Vector3(.2,1.35,0),Color("8a2f2a"),student)
 			p["kids"].append(student)
 	focus=_anchor(Vector3(0,0,4))
 
 func _show_assembly(t: float) -> void:
-	# The square closes up in three steps with a stop between each; then the heads turn, back rows first.
+	# The square closes up in three steps with a stop between each; then the heads turn, back rows first, and the one
+	# on your left turns round, steps out of line and comes to you.
 	var step:=c.ss(t,.2,.26)+c.ss(t,.29,.35)+c.ss(t,.38,.44)
-	var squeeze:=c.ss(t,.86,1)
+	var come:=c.ss(t,.62,.8)
+	var close:=c.ss(t,.8,.88)
 	for i in 16:
 		var student: Node3D=p["kids"][i]
 		if student==null: continue
 		var row:=floori(i/4.0)
 		var col:=i%4
 		var at:=Vector3((col-1.5)*1.3,-1.6,4+row*2.0-.6*step)
-		if row==0 and (col==0 or col==2):
-			var side:=-.45 if col==0 else .45
-			at.x=lerpf(at.x,side,squeeze)
-			at.z=lerpf(at.z,1.1,squeeze)
-		student.position=at
 		var turn:=c.ss(t,.45+(3-row)*.05,.53+(3-row)*.05)
-		(student.get_meta("head") as Node3D).rotation=Vector3(-.1*turn,PI-PI*turn,.15*turn*sin(i*2.1))
-	(p["sky"] as Light3D).light_energy=lerpf(10.0,14.0,squeeze)
-	_fig_key().light_energy=3.0
-	_pose(t,-.04*c.ss(t,.2,.45),0,-.1*squeeze,0,-4*c.ss(t,.45,.9))
+		var yaw:=0.0
+		if row==0 and col==2:
+			at.x=lerpf(at.x,.7,come)
+			at.x=lerpf(at.x,.5,close)
+			at.z=lerpf(at.z,1.2,come)
+			at.z=lerpf(at.z,.62,close)
+			yaw=PI*c.ss(t,.7,.84)
+			turn=c.ss(t,.45,.53)
+		elif row==0 and col==0:
+			at.x=lerpf(at.x,-1.0,come)
+			at.z=lerpf(at.z,2.2,come)
+		student.position=at
+		student.rotation=Vector3(0,yaw,0)
+		# After the body has turned too, the head is already facing you: it has to be counted against the body's turn.
+		(student.get_meta("head") as Node3D).rotation=Vector3(-.1*turn,PI-PI*turn-yaw,.15*turn*sin(i*2.1))
+	(p["sky"] as Light3D).light_energy=lerpf(8.0,9.0,close)
+	_fig_key().light_energy=lerpf(2.6,3.4,close)
+	_pose(t,-.04*c.ss(t,.2,.45),0,-.1*close,0,-4*c.ss(t,.45,.88))
 
 
 ## A Catmull-Rom curve through points (count samples, even in the point index).
@@ -1201,78 +1309,122 @@ func _show_flood(t: float) -> void:
 		env.fog_light_color = DARK.lerp(Color(.012,.05,.055),under)
 		env.fog_density = lerpf(float(FOG["flood"]),.12+.25*c.ss(t,.8,1),under)
 
-## A school tracksuit jacket on a hanger: a draped body with folds that deepen towards an uneven hem,
-## hanging sleeves with the white stripe, and an empty collar. Origin at the hanger hook's base.
+const ENV_FROST_PANE := """
+shader_type spatial;
+render_mode unshaded, blend_mix, cull_disabled, depth_draw_never, shadows_disabled;
+uniform float grow = .1;
+float h2(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+float vn(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }
+float ridge(vec2 p) { return 1.0 - abs(vn(p) * 2.0 - 1.0); }
+void fragment() {
+	// Metres on the 1.2 x 1.4 pane; the frost grows from all four corners towards the middle.
+	vec2 m = vec2(1.2, 1.4) * (UV - .5);
+	float d = min(min(length(m - vec2(.6, .7)), length(m - vec2(-.6, .7))), min(length(m - vec2(.6, -.7)), length(m - vec2(-.6, -.7))));
+	float front = grow * .98 + .09 * (vn(m * 8.0) - .5);
+	float film = smoothstep(front, front - .14, d);
+	float reach = smoothstep(front + .1, front - .05, d);
+	// Fine feathered crystals: short branching ridges, a millimetre or two wide.
+	float f1 = pow(ridge(m * 42.0), 11.0);
+	float f2 = pow(ridge(mat2(vec2(.8, .6), vec2(-.6, .8)) * m * 77.0 + 3.0), 13.0);
+	float f3 = pow(ridge(mat2(vec2(.6, -.8), vec2(.8, .6)) * m * 130.0 + 9.0), 15.0);
+	float fern = max(f1, max(f2 * .85, f3 * .7));
+	float a = film * (.2 + .14 * vn(m * 17.0)) + fern * reach * .5;
+	ALBEDO = mix(vec3(.64, .74, .8), vec3(.93, .97, .99), fern);
+	ALPHA = clamp(a, 0.0, .6) * step(.001, grow);
+}
+"""
+
+## A school jacket on a hanger, hung from its hook (origin at the hook's base): a draped navy body with a
+## front zip line, folded-over collar flaps round an empty neck, a rolled hem, and two sleeves that are
+## separate pivots at the shoulders (meta "sleeves") so they can rise. Each sleeve carries two white stripes.
 func _env_jacket() -> Node3D:
 	var jacket := Node3D.new()
 	var cloth := _env_lit(Color(1,1,1),.95,0,.15,-1,true)
 	cloth.vertex_color_use_as_albedo = true
-	var navy := Color("1f2a3a")
+	cloth.vertex_color_is_srgb = true
+	var navy := Color("2a3445")
+	var zip_color := Color("9a9a94")
 	var body := _env_grid(_env_segments(36),_env_segments(18),func(u: float, v: float) -> Vector3:
 		var a := u*TAU
 		var open := c.ss(v,0,.16)
 		var w := lerpf(.065,.235,open)+.03*v
 		var d := lerpf(.055,.085,open)+.01*v
-		var fold := 1+.07*sin(a*7+v*2.5)*c.ss(v,.2,1)+.03*sin(a*13)*v
-		var y := -.07*open-maxf(v-.16,0)*.78+.025*sin(a*3+1)*v*v
+		var fold := 1+.06*sin(a*7+v*2.5)*c.ss(v,.2,1)+.03*sin(a*13)*v
+		var y := -.07*open-maxf(v-.16,0)*.78+.02*sin(a*3+1)*v*v
 		return Vector3(cos(a)*w*fold,y,sin(a)*d*fold),true,func(u: float, v: float) -> Color:
-		var zip := absf(fposmod(u-.75+.5,1)-.5)<.012 and v>.1
-		return navy.lightened(.12) if zip else navy.darkened(.08*sin(u*TAU*7)*c.ss(v,.2,1)))
+		var zip := absf(fposmod(u-.75+.5,1)-.5)<.011 and v>.1
+		var hem := v>.93
+		var base := navy.darkened(.08*sin(u*TAU*7)*c.ss(v,.2,1))
+		if hem: base = navy.lightened(.1)
+		return zip_color if zip else base)
 	c.mesh(body,cloth,0,0,0,jacket)
+	# Rolled hem: a thin band hugging the lower edge of the body.
+	_env_box(Vector3(.46,.018,.18),Vector3(0,-.07-.84*.78+.004,0),_env_lit(navy.lightened(.14),.9),jacket)
+	# Folded collar flaps round the empty neck, and the pale zip pull.
+	var flap := _env_lit(navy.lightened(.12),.9)
 	for side in [-1,1]:
-		var sleeve := _env_grid(_env_segments(14),_env_segments(12),func(u: float, v: float) -> Vector3:
-			var a := u*TAU
-			var r := lerpf(.06,.048,v)*(1+.08*sin(a*5+v*9)*v)
-			var center := Vector3(side*lerpf(.215,.25,v),-.07-v*.6,lerpf(0,.025,v))
-			return center+Vector3(cos(a)*r,0,sin(a)*r),true,func(u: float, _v: float) -> Color:
-			return Color("d9dad2") if absf(fposmod(u-(.0 if side>0 else .5)+.5,1)-.5)<.07 else navy)
-		c.mesh(sleeve,cloth,0,0,0,jacket)
-		# Two white bars round the cuff of each sleeve.
-		for v in [.5,.6]:
-			_env_box(Vector3(.12,.014,.115),Vector3(side*lerpf(.215,.25,v),-.07-v*.6,lerpf(0,.025,v)),_env_lit(Color("c9cdc4"),.9),jacket)
+		var f := _env_box(Vector3(.1,.014,.075),Vector3(side*.062,-.032,-.05),flap,jacket)
+		f.rotation = Vector3(.5,side*.35,side*.55)
+	_env_box(Vector3(.014,.04,.006),Vector3(0,-.12,-.092),_env_lit(zip_color,.4,.6),jacket)
 	# The collar is empty: a hollow going down into black.
-	_env_ball(Vector3(0,-.055,0),.058,_env_flat(Color("020304")),jacket,10).scale = Vector3(1,.35,.9)
-	var wire := _env_lit(Color("8d9190"),.35,.8)
+	_env_ball(Vector3(0,-.06,-.004),.052,_env_flat(Color("020304")),jacket,10).scale = Vector3(1,.35,.9)
+	var wire := _env_lit(Color("8a8a84"),.35,.8)
 	_env_rod(Vector3(-.2,-.06,0),Vector3(0,.03,0),.008,wire,jacket)
 	_env_rod(Vector3(.2,-.06,0),Vector3(0,.03,0),.008,wire,jacket)
 	_env_rod(Vector3(0,.03,0),Vector3(0,.1,0),.008,wire,jacket)
+	var sleeves := []
+	for side in [-1,1]:
+		var pivot := Node3D.new()
+		pivot.position = Vector3(side*.215,-.07,0)
+		jacket.add_child(pivot)
+		var sleeve := _env_grid(_env_segments(14),_env_segments(12),func(u: float, v: float) -> Vector3:
+			var a := u*TAU
+			var r := lerpf(.062,.048,v)*(1+.06*sin(a*5+v*9)*v)
+			return Vector3(side*.012*v+cos(a)*r,-v*.6,sin(a)*r),true,func(u: float, v: float) -> Color:
+			# Two narrow white stripes down the outer side (about .02 m wide each).
+			var du := fposmod(u-(.875 if side>0 else .625)+.5,1)-.5
+			var stripe := absf(absf(du)-.045)<.026
+			var cuff := v>.92
+			return Color("c9c6bb") if stripe else (navy.lightened(.14) if cuff else navy.darkened(.06*sin(u*TAU*5)*v)))
+		c.mesh(sleeve,cloth,0,0,0,pivot)
+		sleeves.append(pivot)
+	jacket.set_meta("sleeves",sleeves)
 	return jacket
 
 func _build_frost() -> void:
-	c.stage_dark(DARK,.05,Color(.18,.2,.23),.2)
-	_env_room(5,10,Color("56656a"),Color("2c4148"),Color("3c4547"))
-	var window := _window(Vector3(0,.4,8.9),Vector2(2.6,2.2))
-	(window.get_node("GlassPane") as MeshInstance3D).material_override = _env_flat(Color("4a6a7c"))
-	c.motive_light(Vector3(0,.3,8.0),Color("9cc0d6"),4.5,10,root)
-	_env_rod(Vector3(-2.2,.62,4.5),Vector3(2.2,.62,4.5),.03,_env_lit(Color("6c716f"),.4,.7))
-	for i in 7:
-		var coat := _env_jacket()
-		root.add_child(coat)
-		pieces.append(coat)
-	p["frost"]=_env_screen("frost","""
-uniform float grow = 0.0;
-uniform float time = 0.0;
-float ridge(vec2 p) { return 1.0 - abs(vn(p) * 2.0 - 1.0); }
-void fragment() {
-	float asp = VIEWPORT_SIZE.x / VIEWPORT_SIZE.y;
-	vec2 p = sp * vec2(asp, 1.0);
-	// 0 at the frame's edge, 1 at its centre; the front creeps in unevenly.
-	float e = min((1.0 - abs(sp.x)) * asp, 1.0 - abs(sp.y));
-	float front = grow * .9 + .18 * (vn(p * 2.3) - .5) + .08 * (vn(p * 7.0) - .5);
-	// Feathered crystals: sharpened ridges at three scales, each domain turned.
-	mat2 r1 = mat2(vec2(.8, .6), vec2(-.6, .8));
-	float f1 = pow(ridge(p * 5.0), 14.0);
-	float f2 = pow(ridge(r1 * p * 11.0 + 3.0), 18.0);
-	float f3 = pow(ridge(r1 * r1 * p * 23.0 + 7.0), 22.0);
-	float fern = max(f1, max(f2 * .9, f3 * .75));
-	float solid = smoothstep(front - .02, front - .25, e);
-	float reach = smoothstep(front + .16, front - .02, e);
-	float grain = step(.93, h2(floor(FRAGCOORD.xy * .5))) * solid;
-	float a = clamp(solid * (.38 + .25 * vn(p * 9.0)) + fern * reach * .85 + grain * .3, 0.0, .92);
-	ALBEDO = mix(vec3(.62, .72, .78), vec3(.9, .95, .97), fern);
-	ALPHA = a * step(.001, grow);
-}
-""")
+	c.stage_dark(DARK,.04,Color(.28,.265,.24),1.3)
+	# A dormitory in winter: bed and desk, a frosting window at the upper left of the frame, and a uniform on a rail.
+	_env_room(4.6,6.2,Color("8b8a82"),Color("3f5b4d"),Color("57554e"))
+	var window := _window(Vector3(1.45,.8,5.15),Vector2(1.2,1.4))
+	(window.get_node("GlassPane") as MeshInstance3D).material_override = _env_flat(Color("46586a"))
+	var pane := MeshInstance3D.new()
+	pane.mesh = QuadMesh.new()
+	(pane.mesh as QuadMesh).size = Vector2(1.2,1.4)
+	pane.material_override = _env_shader("frostpane",ENV_FROST_PANE,{"grow":.1},5)
+	c.put(pane,0,0,-.075,window)
+	p["pane"]=pane
+	# Moonlight from the window (the cold side) and a warm bedside lamp low on the right: the one scene of this
+	# set allowed a cold/warm contrast.
+	c.motive_light(Vector3(1.45,.8,4.5),Color("8fa6c8"),1.2,8.0,root)
+	var lamp := c.motive_light(Vector3(-1.5,-.55,3.0),Color("e0b98a"),1.8,6.0,root)
+	p["lamp"]=lamp
+	_env_box(Vector3(.2,.04,.2),Vector3(-1.5,-.82,3.0),_env_lit(Color("8a8a84"),.5,.4))
+	_env_glow(Vector3(-1.5,-.62,3.0),.6,Color(1,.72,.4,.7))
+	# The bed's edge (blanket, pillow, frame) and the desk under the window.
+	var frame := _env_lit(Color("4b3d30"),.7)
+	_env_box(Vector3(1.0,.1,2.1),Vector3(-1.65,-1.2,3.9),frame)
+	_env_box(Vector3(.96,.2,2.0),Vector3(-1.65,-1.06,3.9),_env_lit(Color("5e5f6c"),.95))
+	_env_box(Vector3(.6,.1,.4),Vector3(-1.7,-.9,4.7),_env_lit(Color("b9b6aa"),.95))
+	for x in [-2.1,-1.2]:
+		for z in [2.9,4.9]: _env_box(Vector3(.06,.45,.06),Vector3(x,-1.4,z),frame)
+	var desk := _desk(Vector3(1.5,0,4.55))
+	desk.rotation.y = PI
+	# The rail the uniform hangs from, and the uniform itself (one coat; the sleeves are its own).
+	p["rail"]=_env_rod(Vector3(-1.4,.62,3.2),Vector3(1.4,.62,3.2),.03,_env_lit(Color("8a8a84"),.4,.7))
+	p["coat"]=_env_jacket()
+	root.add_child(p["coat"])
+	(p["coat"] as Node3D).scale = Vector3.ONE*1.25
 	p["breaths"]=[]
 	for i in 5:
 		var puff := MeshInstance3D.new()
@@ -1294,37 +1446,42 @@ void fragment() {
 	float n = vn(UV * 5.0 + seed * 7.0) * .6 + vn(UV * 11.0 - seed * 3.0) * .4;
 	float body = smoothstep(.5, .1, length(q) + (n - .5) * .35);
 	ALBEDO = vec3(.78, .84, .86);
-	ALPHA = body * fade * .32;
+	ALPHA = body * fade * .3;
 }
 """,{"seed":float(i)},5)
 		root.add_child(puff)
 		p["breaths"].append(puff)
-	focus=_anchor(Vector3(0,0,4.5))
+	focus=p["coat"]
 
 func _show_frost(t: float) -> void:
-	var close := c.ss(t,.2,.86)
-	# The rack's coats sway, then drift towards you; the middle one comes until its empty collar is at your eyes.
-	for i in pieces.size():
-		var coat: Node3D = pieces[i]
-		var sway := sin(t*c.dur*1.3+i*1.7)
-		if i==3:
-			var come := c.ss(t,.3,.9)
-			coat.position = Vector3(.03*sway*(1-come),lerpf(.62,.14,come),lerpf(4.5,.62,come))
-			coat.rotation = Vector3(.05*sway*(1-come),PI+.12*(1-come),.03*sway)
-		else:
-			coat.position = Vector3((i-3)*.58,.62,4.5-close*(.9+_env_h(i+1.0)*.6))
-			coat.rotation = Vector3(.04*sway,PI+(_env_h(i+4.0)-.5)*.5,.025*sway)
-	# Five breaths, each fainter and later than the one before; then none.
+	var sway := sin(t*c.dur*1.3)
+	var calm := 1-c.ss(t,.5,.62)
+	var coat: Node3D = p["coat"]
+	# The uniform creeps closer all along, stops for the pause (.55-.62), then comes on to 1.3 m with its sleeves rising.
+	var z := lerpf(3.2,1.7,c.ss(t,.05,.55))
+	z = lerpf(z,1.3,c.ss(t,.62,.8))
+	coat.position = Vector3(0,.5,z)
+	coat.rotation = Vector3(.04*sway*calm,.05*sway*calm,.035*sway*calm)
+	var lift := deg_to_rad(lerpf(0,48,c.ss(t,.62,.8))+lerpf(0,17,c.ss(t,.8,.88)))
+	var sleeves: Array = coat.get_meta("sleeves")
+	for i in 2:
+		var side := -1.0 if i==0 else 1.0
+		var pivot: Node3D = sleeves[i]
+		var hang := .06*sin(t*c.dur*1.7+i*2.0)*calm
+		pivot.rotation = Vector3(lift+hang,0,side*.12*lift)
+	(p["rail"] as Node3D).position.z = z-3.2+0.0
+	_env_param(p["pane"],"grow",lerpf(.1,.7,c.ss(t,.1,.88)))
+	# Breath: five short puffs low in the frame (each .06 of the shot), fainter every time.
 	for i in 5:
 		var puff: MeshInstance3D = p["breaths"][i]
 		var start := [.06,.26,.45,.62,.76][i] as float
-		var life := c.seg(t,start,start+.16)
+		var life := c.seg(t,start,start+.06)
 		puff.visible = life>0 and life<1
-		puff.position = Vector3(.02*sin(i*3.0),lerpf(-.32,-.06,life),lerpf(.22,.75,life))
-		puff.scale = Vector3.ONE*lerpf(.08,.32,life)
+		puff.position = Vector3(.02*sin(i*3.0),lerpf(-.32,-.26,life),.5)
+		puff.scale = Vector3.ONE*lerpf(.1,.2,life)
 		_env_param(puff,"fade",sin(life*PI)*(1-i*.17))
-	_env_param(p["frost"],"grow",.3*c.ss(t,.12,.92))
-	_env_key(lerpf(4,2,close))
+	var close := c.ss(t,.2,.86)
+	_env_key(lerpf(5.0,3.0,close))
 	var shiver := c.ss(t,.3,.7)*(1-c.ss(t,.8,.95))
 	_pose(t,.03*close,.006*sin(t*c.dur*21)*shiver*c.shk,0,.012*sin(t*c.dur*17)*shiver,-4*close)
 
@@ -1614,12 +1771,16 @@ func _show_ritual(t: float) -> void:
 	_pose(t,-.05*c.ss(t,.5,.8),0,-.12*press,0,-4*c.ss(t,.5,.95))
 
 func _build_corridor() -> void:
-	c.stage_dark(DARK,.035,Color(.21,.21,.2),.2)
-	_env_room(4.2,30,Color("9aa196"),Color("3d5a50"),Color("6a6d66"))
+	# loop and trap_out keep their accepted look; the other four take the neutral school plaster and a real ambient.
+	var neutral := c.fx in ["lamps","wall","squeeze","trap_wall"]
+	var plaster := WALL if neutral else Color("9aa196")
+	if neutral: c.stage_dark(DARK,.035,Color(.28,.265,.24),.75)
+	else: c.stage_dark(DARK,.035,Color(.21,.21,.2),.2)
+	_env_room(4.2,30,plaster,Color("3d5a50"),Color("6a6d66") if not neutral else Color("57554e"))
 	p["left"]=_anchor(Vector3(2.1,0,0))
 	p["right"]=_anchor(Vector3(-2.1,0,0))
 	# A wall skin on each moving group: it carries the doors and notice boards when the walls close in.
-	var skin := _env_textured(Color("9aa196"),"grime",.35)
+	var skin := _env_textured(plaster,"grime",.35)
 	for side in [1,-1]:
 		var group: Node3D = p["left"] if side==1 else p["right"]
 		_env_box(Vector3(.06,3.6,26),Vector3(-side*.05,.15,12),skin,group)
@@ -1629,7 +1790,7 @@ func _build_corridor() -> void:
 	var door_mat := _env_lit(Color("5a4837"),.6)
 	var glass_mat := _env_lit(Color("141c1e"),.2,0,.8)
 	var board_mat := _env_lit(Color("6b5536"))
-	var paper_mat := _env_lit(Color("c9c0a4"),.8)
+	var paper_mat := _env_lit(Color("c9c0a4"),1.0,0,0)
 	for side in [1,-1]:
 		var group: Node3D = p["left"] if side==1 else p["right"]
 		for i in 7:
@@ -1652,13 +1813,18 @@ func _build_corridor() -> void:
 	p["lamps"]=[]
 	p["lamp_lights"]=[]
 	# A fill between the walls: the cold key grazes whichever wall it sits beside once they close in.
-	p["fill"]=c.motive_light(Vector3(0,.3,.8),Color("dfe6da"),0.0,5.0,root)
+	p["fill"]=c.motive_light(Vector3(0,.4,-.8),Color("dfe6da"),0.0,5.0,root)
 	var tube_mat := _env_flat(Color("e8ecdf"))
 	for i in 7:
 		var z: float = 3+i*3.6
 		p["lamps"].append(_env_box(Vector3(1,.03,.18),Vector3(0,1.88,z),tube_mat))
 	for z in [3.0,10.2,17.4,24.6]:
 		p["lamp_lights"].append(c.motive_light(Vector3(0,1.5,z),Color("dfe6da"),1.6,4.5,root))
+	# The lamp over your head (lamps): a pool that ends in a clear edge about 2 m ahead; it dims but never goes out.
+	p["over"]=null
+	if c.fx=="lamps":
+		p["over"]=c.motive_light(Vector3(0,1.0,.3),Color("dfe6da"),3.0,3.4,root)
+		(p["over"] as OmniLight3D).omni_attenuation=.5
 	p["exit"]=_anchor(Vector3(0,0,26))
 	_box(Vector3(1.8,2.8,.08),Vector3(0,-.2,0),INK,p["exit"])
 	_box(Vector3(1.55,2.6,.1),Vector3(0,-.2,-.02),Color("9aa790"),p["exit"])
@@ -1680,16 +1846,27 @@ func _show_corridor(t: float) -> void:
 	p["left"].rotation.z=.06*close if narrow else 0.0
 	p["right"].rotation.z=-.06*close if narrow else 0.0
 	p["exit"].position.z=26+close*20 if same else 26
-	(p["fill"] as Light3D).light_energy=.45*close if narrow else 0.0
+	(p["fill"] as Light3D).light_energy=.5*close if narrow else 0.0
 	for i in p["bays"].size():
 		p["bays"][i].position.z=-1.2+fposmod((i%7)*3.6+4.2-u*5,25.2)
 	if p["again"]!=null: p["again"].visible=t>=.45 and t<.55
 	for i in p["lamps"].size():
 		p["lamps"][i].visible=t<.2+(6-i)*.09 if c.fx=="lamps" else true
 	for k in p["lamp_lights"].size():
-		(p["lamp_lights"][k] as Light3D).light_energy=0.0 if c.fx=="lamps" and t>=.2+(6-k*2)*.09 else 1.6
-	if narrow: _env_key(lerpf(3,4,close))
-	elif c.fx=="lamps": _env_key(lerpf(3.0,.6,c.ss(t,.2,.8)))
+		var light: Light3D = p["lamp_lights"][k]
+		if c.fx=="lamps": light.light_energy=0.0 if t>=.2+(6-k*2)*.09 else 1.6
+		elif narrow: light.light_energy=lerpf(3.0,1.2,close)
+	if narrow:
+		# The nearer a wall, the harder the key grazes it: fade it with the wall's distance (never to a white board).
+		_fig_key().light_energy=6.5*clampf((2.1-gap)/2.1,.3,1.0)
+	elif c.fx=="lamps":
+		# Darkness creeps in from the far end and stops 2 m ahead: the key's reach shrinks to that edge, the lamp overhead stays.
+		_fig_key().light_energy=lerpf(6.5,2.2,c.ss(t,.2,.8))
+		(_fig_key() as SpotLight3D).spot_range=lerpf(12.0,3.2,c.ss(t,.2,.8))
+		var over: Light3D = p["over"]
+		var dim := 3.0-1.8*c.ss(t,.2,.88)
+		if c.shk>0 and _fig_blink(t,.855,.88): dim *= .3
+		over.light_energy=dim
 	_pose(t,0,0,0,.035*sin(u*7)*close,8*close if not narrow else -5*close)
 
 func _build_face() -> void:
@@ -1787,40 +1964,65 @@ func _show_face(t: float) -> void:
 		p["breath"].position=Vector3(x,.02,.82)
 	_pose(t,0,0,0,0,-3*c.ss(t,.6,.84))
 
+const _MZ := .42    # the glass plane at the end of the push-in, in the rig's own coordinates
+
+## The washroom mirror: you at the basins, a small tiled room on the far side of the glass with a stall door in
+## its back wall. Everything is in one rig that is pushed towards you (the push-in), so the lamps move with it.
 func _build_mirror() -> void:
-	c.stage_dark(DARK,.05,Color(.21,.21,.2),.2)
-	_env_room(5,9,Color("8d958c"),Color("c9cdc4"),Color("5b605a"))
-	c.motive_light(Vector3(0,1.3,1.2),TUBE,2.8,5.0,root)
-	# The wash basins in front of the mirror: a counter, two basins, taps, a bottle of soap.
-	_box(Vector3(2.6,.12,.55),Vector3(0,-.75,2.7),Color("bfc2b8"))
-	_box(Vector3(2.5,.8,.5),Vector3(0,-1.2,2.7),Color("5b605a"))
+	c.stage_dark(DARK,.04,Color(.27,.26,.24),.6)
+	var rig:=_anchor(Vector3.ZERO)
+	p["rig"]=rig
+	var dado:=Color("4c5a4a")
+	var tile:=WALL
+	# Our side of the glass: a tiled washroom with the basins in front of the mirror.
+	_box(Vector3(5,.08,5.02),Vector3(0,-1.6,-1.79),Color("57554e"),rig)
+	_box(Vector3(5,.08,5.02),Vector3(0,1.9,-1.79),Color("6f6d66"),rig)
+	for side in [-1,1]:
+		_box(Vector3(.08,3.5,5.02),Vector3(side*2.5,.15,-1.79),tile,rig)
+		_box(Vector3(.03,1.15,5.02),Vector3(side*2.46,-1.025,-1.79),dado,rig)
+	for z in [-.2,.5]: _box(Vector3(1.1,.03,.2),Vector3(0,1.82,z),LIGHT,rig)
+	c.motive_light(Vector3(0,1.3,-.2),Color("ddd8c6"),1.5,5.0,rig)
+	_box(Vector3(2.6,.1,.55),Vector3(0,-.75,_MZ-.3),Color("bfc2b8"),rig)
+	_box(Vector3(2.5,.8,.5),Vector3(0,-1.2,_MZ-.3),Color("5b605a"),rig)
 	for x in [-.6,.6]:
-		_box(Vector3(.45,.08,.35),Vector3(x,-.66,2.68),Color("9da39b"))
-		_rod(Vector3(x,-.69,2.86),Vector3(x,-.5,2.86),.025,Color("8a8f8c"))
-		_rod(Vector3(x,-.5,2.86),Vector3(x,-.5,2.76),.025,Color("8a8f8c"))
-	_box(Vector3(.06,.14,.06),Vector3(-1.0,-.62,2.8),Color("6b8a6a"))
-	# The wall with the mirror set in it; the glass is dark and half clear, with a second washroom behind.
-	var tile:=Color("6f7a72")
-	_box(Vector3(5,1.05,.08),Vector3(0,1.375,3.07),tile)
-	_box(Vector3(5,.95,.08),Vector3(0,-1.125,3.07),Color("a5aaa1"))
-	for s in [-1,1]: _box(Vector3(1.4,2.5,.08),Vector3(s*1.8,.1,3.07),tile)
-	p["frame"]=_anchor(Vector3(0,.1,3))
+		_box(Vector3(.45,.08,.35),Vector3(x,-.69,_MZ-.32),Color("9da39b"),rig)
+		_rod(Vector3(x,-.69,_MZ-.1),Vector3(x,-.5,_MZ-.1),.025,Color("8a8f8c"),rig)
+	# The wall with the mirror set in it.
+	_box(Vector3(5,1.0,.08),Vector3(0,1.4,_MZ+.04),tile,rig)
+	_box(Vector3(5,.9,.08),Vector3(0,-1.15,_MZ+.04),Color("a5aaa1"),rig)
+	for side in [-1,1]: _box(Vector3(1.3,1.6,.08),Vector3(side*1.85,.1,_MZ+.04),tile,rig)
 	var rim:=Color("8a8f8c")
-	_box(Vector3(2.4,.1,.08),Vector3(0,.8,0),rim,p["frame"])
-	_box(Vector3(2.4,.1,.08),Vector3(0,-.8,0),rim,p["frame"])
-	for s in [-1,1]: _box(Vector3(.1,1.5,.08),Vector3(s*1.15,0,0),rim,p["frame"])
-	_env_box(Vector3(2.1,1.4,.01),Vector3(0,0,-.02),_env_lit(Color("1c2624"),.3,.1,.4,.55),p["frame"])
-	_box(Vector3(2.6,.12,.55),Vector3(0,-.75,3.3),Color("8f9389"))
-	_box(Vector3(1.0,2.2,.1),Vector3(0,-.5,6.4),Color("3e3328"))
-	c.motive_light(Vector3(0,1.2,5.2),TUBE,1.2,4,root)
-	# A dim lamp inside the mirror world, in front of the one standing there.
-	c.motive_light(Vector3(0,.9,3.5),Color("c9d4c6"),2.4,2.4,root)
-	p["refl"]=_fig(Vector3(0,-1.6,3.9),"person",1.0,Color("1a2026"),{"tone":Color(.44,.45,.41),"mouth":"closed","skew":0.0,"size":1.12},.3)
+	_box(Vector3(2.5,.1,.1),Vector3(0,.95,_MZ),rim,rig)
+	_box(Vector3(2.5,.1,.1),Vector3(0,-.75,_MZ),rim,rig)
+	for side in [-1,1]: _box(Vector3(.1,1.7,.1),Vector3(side*1.25,.1,_MZ),rim,rig)
+	# A thin cool-grey glass over the opening: what is in it is a little darker and colder than this side.
+	p["glass"]=_box(Vector3(2.4,1.6,.01),Vector3(0,.1,_MZ),Color("62676c"),rig,.15)
+	# The mirrored washroom: shallow, tiled, a stall door in its back wall (the one place that is cold).
+	var depth:=2.8
+	var wz:=_MZ+.05
+	_box(Vector3(4,.08,depth),Vector3(0,-1.6,wz+depth*.5),Color("57554e"),rig)
+	_box(Vector3(4,.08,depth),Vector3(0,1.9,wz+depth*.5),Color("6f6d66"),rig)
+	for side in [-1,1]:
+		_box(Vector3(.08,3.5,depth),Vector3(side*2.0,.15,wz+depth*.5),tile,rig)
+		_box(Vector3(.03,1.15,depth),Vector3(side*1.96,-1.025,wz+depth*.5),dado,rig)
+		_box(Vector3(.05,2.1,.8),Vector3(side*1.92,-.55,wz+1.0+(.9 if side>0 else 0.0)),Color("8a7f6a"),rig)
+	var back:=wz+depth
+	for side in [-1,1]: _box(Vector3(1.5,3.5,.08),Vector3(side*1.25,.15,back),tile,rig)
+	_box(Vector3(1,1.4,.08),Vector3(0,1.2,back),tile,rig)
+	_box(Vector3(1,2.1,.4),Vector3(0,-.55,back+.25),Color("0d0d0d"),rig)
+	p["door"]=_anchor(Vector3(-.5,-.55,back-.03))
+	rig.add_child(p["door"])
+	p["door"].reparent(rig,false)
+	_box(Vector3(1.0,2.1,.05),Vector3(.5,0,0),Color("8a7f6a"),p["door"])
+	_box(Vector3(1.1,.03,.2),Vector3(0,1.82,wz+1.4),LIGHT,rig)
+	c.motive_light(Vector3(0,1.2,wz+1.4),Color("d2d4d0"),1.4,4.2,rig)
+	# The one who stands in there: in your uniform, in the dark doorway, then close behind the glass.
+	p["refl"]=_fig(Vector3(.4,-1.6,_MZ+2.2),"person",1.0,Color("262d3a"),{"tone":SKIN,"mouth":"closed","skew":.2,"size":1.2,"hair":true,"socket":.8},.2,rig)
 	p["refl"].rotation.y=PI
 	p["head"]=p["refl"].get_meta("head")
 	p["hands"]=[]
 	for i in 2:
-		var h:=_fig_hand({"long":1.2,"thin":.4,"arm":.28,"tone":Color(.43,.44,.4)})
+		var h:=_fig_hand({"long":1.1,"thin":.4,"arm":.28,"tone":SKIN},rig)
 		h.rotation=Vector3(PI/2,0,0)
 		p["hands"].append(h)
 	# Cracks leave the two palms, five and four of them, each its own length.
@@ -1828,37 +2030,41 @@ func _build_mirror() -> void:
 	var crack:=_surface(PAPER,.55)
 	for i in 9:
 		var left:=i<5
-		var from:=Vector3(.35 if left else -.35,-.05,2.97)
-		var a:=(TAU*(i if left else i-5)/(5.0 if left else 4.0))+.4*_env_h(i)+(0.0 if left else .5)
-		var len:=.3+.6*_env_h(i+3.0)
-		var to:=Vector3(clampf(from.x+cos(a)*len,-1.0,1.0),clampf(from.y+sin(a)*len,-.62,.8),2.97)
-		var rod:=_rod(from,to,.005,PAPER)
+		var from:=Vector3(.3 if left else -.3,-.15,_MZ-.012)
+		var ang:=(TAU*(i if left else i-5)/(5.0 if left else 4.0))+.4*_env_h(i)+(0.0 if left else .5)
+		var len:=.15+.25*_env_h(i+3.0)
+		var to:=Vector3(clampf(from.x+cos(ang)*len,-1.1,1.1),clampf(from.y+sin(ang)*len,-.65,.85),_MZ-.012)
+		var rod:=_rod(from,to,.003,PAPER,rig)
 		rod.material_override=crack
 		p["fractures"].append(rod)
 	focus=p["head"]
 
 func _show_mirror(t: float) -> void:
+	var rig: Node3D=p["rig"]
 	var refl: Node3D=p["refl"]
 	var head: Node3D=p["head"]
-	var step:=c.ss(t,.38,.55)
-	var out:=c.ss(t,.66,.82)
-	var close:=c.ss(t,.88,1)
-	# It steps up to the glass, stops, then leans out through the mirror towards you.
-	refl.position=Vector3(0,-1.6,lerpf(lerpf(lerpf(3.9,3.2,step),2.45,out),1.65,close))
-	refl.rotation=Vector3(.45*out+.05*close,PI,0)
-	head.rotation=Vector3(.3*out,PI,.32*c.ss(t,.2,.38)+.1*close)
-	HorrorKit.pose_head(head,.2*c.ss(t,.55,.68)+.2*close)
+	# The push-in: you lean over the basins to the glass, finished by .55.
+	rig.position=Vector3(0,0,1.9*(1.0-c.ss(t,0,.55)))
+	p["door"].rotation.y=1.0*c.ss(t,.22,.5)
+	refl.visible=t>=.3
+	var walk:=c.ss(t,.62,.8)
+	var close:=c.ss(t,.8,.88)
+	var z:=lerpf(lerpf(_MZ+2.2,_MZ+.3,walk),_MZ+.17,close)
+	var x:=lerpf(lerpf(.4,0.0,c.ss(t,.55,.8)),0.0,close)+.04*sin(t*c.dur*1.3)*(1.0-walk)
+	refl.position=Vector3(x,-1.6,z)
+	refl.rotation=Vector3(0,PI,0)
+	(refl.get_node("Body") as Node3D).scale=Vector3(1,1+.006*sin(t*c.dur*1.6),1)
+	head.rotation=Vector3(0,PI,.22*c.ss(t,.3,.5)*(1.0-walk))
+	HorrorKit.pose_head(head,0.0)
 	for i in 2:
 		var s:=1.0 if i==0 else -1.0
 		var hand: Node3D=p["hands"][i]
-		hand.visible=t>=.42
-		var grip:=c.ss(t,.68,.8)
-		var at:=Vector3(s*.35,-.9,3.5).lerp(Vector3(s*.35,-.05,2.98),c.ss(t,.42,.48))
-		hand.position=at.lerp(Vector3(s*1.05,.1,2.97),grip)
-		HorrorKit.pose_hand(hand,lerpf(.1,.6,grip),.4)
-	for i in 9: p["fractures"][i].visible=t>.48+i*.012
-	_fig_key().light_energy=lerpf(2.0,4.5,out)
-	_pose(t,0,0,0,.03*c.ss(t,.68,.9)*c.shk,-4*c.ss(t,.55,.95))
+		hand.visible=t>=.66
+		hand.position=Vector3(x+s*.3,-.15,maxf(_MZ+.025,z-.22))
+		HorrorKit.pose_hand(hand,lerpf(.1,.05,walk),.45)
+	for i in 9: p["fractures"][i].visible=t>.74+i*.01
+	_fig_key().light_energy=lerpf(1.6,2.6,c.ss(t,.6,.85))
+	_pose(t,0,0,0,0,-3*c.ss(t,.6,.85))
 
 func _build_paper() -> void:
 	c.stage_dark(DARK,.05,Color(.19,.2,.22),.18)
