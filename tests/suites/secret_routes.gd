@@ -66,6 +66,7 @@ func test_beast_app() -> void:
 	app.items().add("coin")
 	app._drop_item("coin")
 	check(app.routes().beast_drop and not app.items().has("coin") and app.saves.exists(),"real inventory removal unlocks and saves the route")
+	check(app.items().ground.is_empty(),"an accepted offering does not also leave the item on the floor")
 	app.load_game()
 	app.set_physics_process(false)
 	app.player.enabled=false

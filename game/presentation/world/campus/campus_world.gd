@@ -18,6 +18,8 @@ var banner: DayBanner
 var chalk: ChalkNotes
 var phantoms: Phantoms
 var traces: Traces
+## Dropped items on this scene's floor (InventoryModule.ground_in); the app syncs them every frame.
+var ground_items: GroundItems
 var _traces_seen := -1
 var _trace_data: Array=[]
 var broadcast_props: BroadcastProps
@@ -61,6 +63,9 @@ func _ready() -> void:
 	traces.build(scene_id, layout if is_room() else null, CampusWorld.pending_traces)
 	_traces_seen = CampusWorld.pending_traces.size()
 	_trace_data=CampusWorld.pending_traces.duplicate(true)
+	ground_items = GroundItems.new()
+	ground_items.ground_height = visual_ground.height
+	add_child(ground_items)
 	if is_room():
 		broadcast_props = BroadcastProps.new()
 		broadcast_props.name = "BroadcastProps"
@@ -603,6 +608,13 @@ func _process(delta: float) -> void:
 	if _scatter_t >= SCATTER_SECONDS:
 		_scatter.queue_free()
 		_scatter = null
+
+
+func sync_ground_items(list: Array, focus: int) -> void:
+	if ground_items == null:
+		return
+	ground_items.sync(list)
+	ground_items.set_focus(focus)
 
 
 ## Rebuild the leftovers when an anomaly has just left one (the list of AnomalyModule.traces).

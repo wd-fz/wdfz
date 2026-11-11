@@ -245,6 +245,7 @@ func _process(delta: float) -> void:
 	if _toast_seconds > 0.0:
 		_toast_seconds -= delta
 		%Toast.visible = _toast_seconds > 0.0
+		%Toast.modulate.a = clampf(_toast_seconds / 0.6, 0.0, 1.0)
 
 
 ## A phone held upright: the controls are roomier sideways (mobile.js asks for landscape).
@@ -262,6 +263,7 @@ func _resize() -> void:
 		_fit_choice.call_deferred()
 	_refit_touch.call_deferred()
 	_fit_bag.call_deferred()
+	_fit_toast.call_deferred()
 	_fit_ending.call_deferred()
 	_fit_settings.call_deferred()
 	_fit_menu_scrolls.call_deferred()
@@ -404,16 +406,6 @@ func _style_hud() -> void:
 	_status_line.add_theme_stylebox_override("normal", _status_style)
 	_status_line.position = Vector2(20, 72)
 	_status_line.add_theme_font_size_override("font_size", 14)
-	_hot_label.theme_type_variation = "HudCard"
-	var hot_style := _status_style.duplicate() as StyleBoxFlat
-	hot_style.content_margin_left = BASE_THEME.get_stylebox("normal", "HudCard").content_margin_left
-	hot_style.border_color = Color(0.92, 0.9, 0.85, 0.25)
-	_hot_label.add_theme_stylebox_override("normal", hot_style)
-	_hot_label.self_modulate.a = 0.0 if _hot_label.text.is_empty() else 1.0
-	_hot_label.offset_left = 20
-	_hot_label.offset_top = -58
-	_hot_label.offset_bottom = -18
-	_hot_label.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	var prompt := %Prompt as Label
 	prompt.theme_type_variation = "HudPill"
 	prompt.autowrap_mode = TextServer.AUTOWRAP_OFF
@@ -503,7 +495,30 @@ func show_stamina(value: float, maximum: float, out_of_breath: bool) -> void:
 	_stamina.modulate = Color(0.85, 0.45, 0.35) if out_of_breath else Color(0.55, 0.75, 0.95)
 
 
-## Bag panel (old manual 背包 tab): name, description, 使用 and the two hot slots.
+## Bag panel (old manual 背包 tab), redesigned 2026-11-11: a slot grid that shows the capacity on the left
+## and the selected item's picture, description and actions on the right. The actions are the same
+## as before (使用, the two hot slots, 丢弃); dropping now leaves the item on the floor.
+const BAG_COLUMNS := 4
+var _bag_detail: VBoxContainer
+var _bag_count: Label
+var _bag_hint: Label
+var _bag_body: HBoxContainer
+var _bag_entries: Array = []
+var _bag_selected := ""
+var _bag_capacity := 8
+var _bag_group := ButtonGroup.new()
+
+
+func _slot_style(bg: Color, edge: Color, width: int) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = bg
+	style.border_color = edge
+	style.set_border_width_all(width)
+	style.set_corner_radius_all(10)
+	style.set_content_margin_all(6)
+	return style
+
+
 func _build_bag() -> void:
 	bag_panel = PanelContainer.new()
 	bag_panel.name = "BagPanel"
@@ -513,20 +528,59 @@ func _build_bag() -> void:
 	bag_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	bag_panel.custom_minimum_size = Vector2(440, 0)
 	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	var head := HBoxContainer.new()
+	head.name = "BagHead"
+	head.add_theme_constant_override("separation", 10)
+	head.add_child(UIArt.view(UIArt.surface("empty_bag"), Vector2(30, 30)))
 	var title := Label.new()
 	title.text = "随身物品 · 背包"
-	title.add_theme_color_override("font_color",UISkin.ACCENT)
-	box.add_child(title)
+	title.theme_type_variation = "HeadingLabel"
+	title.add_theme_color_override("font_color", UISkin.ACCENT)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	_bag_count = Label.new()
+	_bag_count.name = "BagCount"
+	_bag_count.theme_type_variation = "HudPill"
+	_bag_count.add_theme_font_size_override("font_size", 14)
+	head.add_child(_bag_count)
+	box.add_child(head)
 	_bag_scroll = TouchScroll.new()
+	_bag_scroll.name = "BagScroll"
 	_bag_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_bag_scroll.follow_focus = true
 	_bag_scroll.custom_minimum_size.y = 300
-	_bag_list = VBoxContainer.new()
-	_bag_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_bag_list.add_theme_constant_override("separation",12)
-	_bag_scroll.add_child(_bag_list)
+	_bag_body = HBoxContainer.new()
+	_bag_body.name = "BagBody"
+	_bag_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_bag_body.add_theme_constant_override("separation", 16)
+	_bag_scroll.add_child(_bag_body)
+	var grid := GridContainer.new()
+	grid.name = "BagSlots"
+	grid.columns = BAG_COLUMNS
+	grid.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	_bag_body.add_child(grid)
+	_bag_list = grid
+	var detail_panel := PanelContainer.new()
+	detail_panel.name = "BagDetail"
+	detail_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var detail_style := UISkin.panel(14)
+	detail_style.bg_color = UISkin.CARD
+	detail_style.border_color = UISkin.CARD_EDGE
+	detail_style.shadow_size = 0
+	detail_style.set_corner_radius_all(12)
+	detail_panel.add_theme_stylebox_override("panel", detail_style)
+	_bag_detail = VBoxContainer.new()
+	_bag_detail.add_theme_constant_override("separation", 8)
+	detail_panel.add_child(_bag_detail)
+	_bag_body.add_child(detail_panel)
 	box.add_child(_bag_scroll)
 	_bag_drop_row = HBoxContainer.new()
+	_bag_drop_row.name = "BagDropConfirm"
+	_bag_drop_row.add_theme_constant_override("separation", 10)
 	_bag_drop_row.visible = false
 	box.add_child(_bag_drop_row)
 	_bag_drop_label = Label.new()
@@ -549,12 +603,25 @@ func _build_bag() -> void:
 		_cancel_drop()
 		if not id.is_empty(): item_drop_requested.emit(id))
 	_bag_drop_row.add_child(discard)
+	var foot := HBoxContainer.new()
+	foot.name = "BagFoot"
+	foot.add_theme_constant_override("separation", 12)
+	_bag_hint = Label.new()
+	_bag_hint.name = "BagHint"
+	_bag_hint.text = "丢弃的东西会留在脚边的地上，看着它按交互键可以捡回来。"
+	_bag_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_bag_hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_bag_hint.add_theme_font_size_override("font_size", 13)
+	_bag_hint.add_theme_color_override("font_color", UISkin.MUTED)
+	foot.add_child(_bag_hint)
 	var close := Button.new()
 	close.name = "BagClose"
 	close.text = "关闭背包"
-	close.custom_minimum_size.y = 44
+	close.custom_minimum_size = Vector2(140, 44)
+	UIArt.button(close, UIArt.nav("close"), 20)
 	close.pressed.connect(func() -> void: bag_closed.emit())
-	box.add_child(close)
+	foot.add_child(close)
+	box.add_child(foot)
 	bag_panel.add_child(box)
 	$Root.add_child(bag_panel)
 	bag_panel.minimum_size_changed.connect(func() -> void: _fit_bag.call_deferred())
@@ -567,101 +634,296 @@ func _build_bag() -> void:
 	_search_ring.max_value = 1.0
 	_search_ring.visible = false
 	hud.add_child(_search_ring)
+	# The text line stays as a hidden record of the slots; the cards below carry key, picture and name.
 	_hot_label = Label.new()
 	_hot_label.name = "HotSlots"
 	_hot_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	_hot_label.position = Vector2(16, -40)
 	_hot_label.add_theme_font_size_override("font_size", 14)
+	_hot_label.visible = false
 	hud.add_child(_hot_label)
 	_hot_icons = HBoxContainer.new()
 	_hot_icons.name = "HotItemArt"
 	_hot_icons.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	_hot_icons.position = Vector2(20, -132)
+	_hot_icons.offset_left = 20
+	_hot_icons.offset_top = -98
+	_hot_icons.offset_bottom = -20
+	_hot_icons.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_hot_icons.add_theme_constant_override("separation", 8)
 	_hot_icons.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(_hot_icons)
 	for i in 2:
 		var slot := PanelContainer.new()
+		slot.name = "HotSlot%d" % (i + 1)
 		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		slot.add_theme_stylebox_override("panel", UISkin.panel(8))
+		var style := _slot_style(Color(0.03, 0.05, 0.06, 0.66), Color(0.92, 0.9, 0.85, 0.18), 1)
+		style.set_content_margin_all(6)
+		slot.add_theme_stylebox_override("panel", style)
 		_hot_icons.add_child(slot)
-		var body := HBoxContainer.new()
+		var body := VBoxContainer.new()
 		body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		body.add_theme_constant_override("separation", 2)
 		slot.add_child(body)
-		var key := Label.new()
-		key.text = str(i + 1)
-		key.add_theme_color_override("font_color", UISkin.MUTED)
-		body.add_child(key)
-		var art := UIArt.view(null, Vector2(48, 48))
+		var art := UIArt.view(null, Vector2(56, 44))
 		art.name = "HotIllustration%d" % (i + 1)
 		body.add_child(art)
 		_hot_art.append(art)
+		var name_label := Label.new()
+		name_label.name = "HotName%d" % (i + 1)
+		name_label.text = "空"
+		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_label.clip_text = true
+		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		name_label.custom_minimum_size.x = 56
+		name_label.add_theme_font_size_override("font_size", 12)
+		name_label.add_theme_color_override("font_color", UISkin.MUTED)
+		body.add_child(name_label)
+		var key := Label.new()
+		key.name = "HotKey%d" % (i + 1)
+		key.text = str(i + 1)
+		key.theme_type_variation = "HudPill"
+		key.add_theme_font_size_override("font_size", 11)
+		var cap := BASE_THEME.get_stylebox("normal", "HudPill").duplicate() as StyleBoxFlat
+		cap.set_content_margin_all(1)
+		cap.content_margin_left = 6
+		cap.content_margin_right = 6
+		cap.set_corner_radius_all(5)
+		key.add_theme_stylebox_override("normal", cap)
+		key.position = Vector2(-4, -6)
+		key.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		# A PanelContainer lays its children out; a plain Control keeps the key cap free in the corner.
+		var anchor := Control.new()
+		anchor.name = "HotKeyAnchor%d" % (i + 1)
+		anchor.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		anchor.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		anchor.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		anchor.add_child(key)
+		slot.add_child(anchor)
 
 
-func show_bag(entries: Array) -> void:
+func _bag_slot(e: Dictionary, size: float) -> Button:
+	var id := String(e["id"])
+	var slot := Button.new()
+	slot.name = "Slot_" + id
+	slot.toggle_mode = true
+	slot.button_group = _bag_group
+	slot.custom_minimum_size = Vector2(size, size)
+	slot.tooltip_text = String(e["name"])
+	slot.add_theme_stylebox_override("normal", _slot_style(UISkin.CARD, UISkin.CARD_EDGE, 1))
+	slot.add_theme_stylebox_override("hover", _slot_style(UISkin.CARD.lightened(0.05), Color(UISkin.ACCENT, 0.55), 1))
+	slot.add_theme_stylebox_override("pressed", _slot_style(UISkin.CARD.lightened(0.08), UISkin.ACCENT, 2))
+	slot.add_theme_stylebox_override("hover_pressed", _slot_style(UISkin.CARD.lightened(0.1), UISkin.ACCENT, 2))
+	slot.button_pressed = id == _bag_selected
+	var art := UIArt.view(UIArt.item(id), Vector2.ZERO)
+	art.name = "ItemArt_" + id
+	art.tooltip_text = String(e["name"])
+	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	art.offset_left = 8
+	art.offset_top = 6
+	art.offset_right = -8
+	art.offset_bottom = -20
+	slot.add_child(art)
+	var label := Label.new()
+	label.name = "SlotName"
+	label.text = String(e["short"]) if e.has("short") else String(e["name"])
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.clip_text = true
+	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_color_override("font_color", UISkin.INK)
+	label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	label.offset_top = -20
+	label.offset_left = 4
+	label.offset_right = -4
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot.add_child(label)
+	var hot := int(e.get("hot", -1))
+	if hot >= 0:
+		var badge := Label.new()
+		badge.name = "SlotHot"
+		badge.text = str(hot + 1)
+		badge.theme_type_variation = "HudPill"
+		badge.add_theme_font_size_override("font_size", 11)
+		var cap := BASE_THEME.get_stylebox("normal", "HudPill").duplicate() as StyleBoxFlat
+		cap.set_content_margin_all(1)
+		cap.content_margin_left = 6
+		cap.content_margin_right = 6
+		cap.set_corner_radius_all(5)
+		cap.border_color = UISkin.WARM
+		badge.add_theme_stylebox_override("normal", cap)
+		badge.add_theme_color_override("font_color", UISkin.WARM)
+		badge.position = Vector2(4, 4)
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(badge)
+	slot.pressed.connect(select_bag_item.bind(id))
+	slot.focus_entered.connect(func() -> void:
+		if _bag_selected != id: select_bag_item(id))
+	return slot
+
+
+func _empty_slot(index: int, size: float) -> Panel:
+	var empty := Panel.new()
+	empty.name = "SlotEmpty_%d" % index
+	empty.custom_minimum_size = Vector2(size, size)
+	empty.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := _slot_style(Color(UISkin.CARD, 0.45), Color(UISkin.CARD_EDGE, 0.7), 1)
+	empty.add_theme_stylebox_override("panel", style)
+	return empty
+
+
+func _slot_size() -> float:
+	var screen := get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(960, 540)
+	var width := minf(900.0, screen.x - 24.0)
+	return clampf((width * 0.38 - 8.0 * (BAG_COLUMNS - 1)) / BAG_COLUMNS, 60.0, 86.0)
+
+
+## entries: [{id, name, text, hot (-1, 0 or 1)}]; capacity is the bag size (empty slots are drawn).
+func show_bag(entries: Array, capacity: int = -1) -> void:
+	_bag_entries = entries.duplicate(true)
+	if capacity > 0:
+		_bag_capacity = capacity
+	var ids: Array = entries.map(func(e: Dictionary) -> String: return String(e["id"]))
+	if not ids.has(_bag_selected):
+		_bag_selected = String(ids[0]) if not ids.is_empty() else ""
 	_cancel_drop()
 	_bag_scroll.stop_motion()
 	for child in _bag_list.get_children():
 		_bag_list.remove_child(child)
 		child.queue_free()
-	if entries.is_empty():
-		var empty := Label.new()
-		empty.text = "背包是空的。\n探索时找到的物品会收在这里。"
-		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		empty.add_theme_color_override("font_color",UISkin.MUTED)
-		_bag_list.add_child(UIArt.view(UIArt.surface("empty_bag"), Vector2(0, 112)))
-		_bag_list.add_child(empty)
+	_bag_group = ButtonGroup.new()
+	var size := _slot_size()
 	for e: Dictionary in entries:
-		var row := UISkin.card(_bag_list)
-		var details := HBoxContainer.new()
-		details.add_theme_constant_override("separation", 16)
-		row.add_child(details)
-		var art := UIArt.view(UIArt.item(String(e["id"])), Vector2(88, 96))
-		art.name = "ItemArt_" + String(e["id"])
-		art.tooltip_text = String(e["name"])
-		details.add_child(art)
-		var copy := VBoxContainer.new()
-		copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		copy.add_theme_constant_override("separation", 8)
-		details.add_child(copy)
-		var name := Label.new()
-		name.text = String(e["name"])
-		name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		name.add_theme_color_override("font_color",UISkin.ACCENT)
-		copy.add_child(name)
-		var desc := Label.new()
-		desc.text = String(e["text"])
-		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		desc.custom_minimum_size.x = 0
-		desc.add_theme_color_override("font_color",UISkin.MUTED)
-		copy.add_child(desc)
-		var buttons := HFlowContainer.new()
-		var id := String(e["id"])
-		for spec: Array in [["使用", -1], ["放到快捷栏 1", 0], ["放到快捷栏 2", 1], ["丢弃", -2]]:
-			var b := Button.new()
-			b.text = spec[0]
-			b.custom_minimum_size.y = 44
-			b.name = "Drop_" + id if spec[1] == -2 else "Item_%s_%d" % [id, int(spec[1])]
-			if spec[1] == -1:
-				b.theme_type_variation = "PrimaryButton"
-				b.pressed.connect(item_use_requested.emit.bind(id))
-			elif spec[1] == -2:
-				b.theme_type_variation = "DangerButton"
-				b.pressed.connect(func() -> void:
-					_bag_pending_drop = id
-					_bag_drop_label.text = "丢弃「%s」？" % e["name"]
-					_bag_drop_row.show()
-					_fit_bag.call_deferred())
-			else:
-				b.pressed.connect(item_hot_requested.emit.bind(int(spec[1]), id))
-			buttons.add_child(b)
-		row.add_child(buttons)
+		_bag_list.add_child(_bag_slot(e, size))
+	for i in range(entries.size(), maxi(_bag_capacity, entries.size())):
+		_bag_list.add_child(_empty_slot(i, size))
+	_bag_count.text = "%d / %d" % [entries.size(), maxi(_bag_capacity, entries.size())]
+	_bag_count.add_theme_color_override("font_color", UISkin.WARM if entries.size() >= _bag_capacity else UISkin.INK)
+	_show_bag_detail()
+	var was_open := bag_panel.visible
 	bag_panel.visible = true
 	_fit_bag()
+	_fit_bag.call_deferred()     # wrapped text and the action row settle after their first layout pass
+	if not was_open:
+		_bag_scroll.scroll_vertical = 0
+	if not was_open and not _touch_enabled:
+		var slot := _bag_list.get_node_or_null("Slot_" + _bag_selected) as Button
+		if slot != null:
+			slot.grab_focus.call_deferred()
+
+
+func select_bag_item(id: String) -> void:
+	if id != _bag_selected:
+		_cancel_drop()
+	_bag_selected = id
+	for child in _bag_list.get_children():
+		if child is Button:
+			(child as Button).set_pressed_no_signal(child.name == "Slot_" + id)
+	_show_bag_detail()
+
+
+func bag_selected() -> String:
+	return _bag_selected
+
+
+func _show_bag_detail() -> void:
+	for child in _bag_detail.get_children():
+		_bag_detail.remove_child(child)
+		child.queue_free()
+	var entry: Dictionary = {}
+	for e: Dictionary in _bag_entries:
+		if String(e["id"]) == _bag_selected:
+			entry = e
+	if entry.is_empty():
+		_bag_detail.add_child(UIArt.view(UIArt.surface("empty_bag"), Vector2(0, 120)))
+		var empty := Label.new()
+		empty.name = "BagEmpty"
+		empty.text = "背包是空的。\n探索时找到的物品会收在这里。"
+		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty.add_theme_color_override("font_color", UISkin.MUTED)
+		_bag_detail.add_child(empty)
+		return
+	var id := String(entry["id"])
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 14)
+	_bag_detail.add_child(top)
+	var art := UIArt.view(UIArt.item(id), Vector2(96, 96))
+	art.name = "BagDetailArt"
+	top.add_child(art)
+	var copy := VBoxContainer.new()
+	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	copy.alignment = BoxContainer.ALIGNMENT_CENTER
+	copy.add_theme_constant_override("separation", 6)
+	top.add_child(copy)
+	var name_label := Label.new()
+	name_label.name = "BagDetailName"
+	name_label.text = String(entry["name"])
+	name_label.theme_type_variation = "HeadingLabel"
+	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	name_label.custom_minimum_size.x = 140
+	name_label.add_theme_color_override("font_color", UISkin.ACCENT)
+	copy.add_child(name_label)
+	var hot := int(entry.get("hot", -1))
+	var tag := Label.new()
+	tag.name = "BagDetailTag"
+	tag.text = ("在快捷栏 %d · 按 %d 直接使用" % [hot + 1, hot + 1]) if hot >= 0 else "不在快捷栏"
+	tag.add_theme_font_size_override("font_size", 13)
+	tag.add_theme_color_override("font_color", UISkin.WARM if hot >= 0 else UISkin.MUTED)
+	copy.add_child(tag)
+	var desc := Label.new()
+	desc.name = "BagDetailText"
+	desc.text = String(entry["text"])
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# A known wrap width from the first layout pass: an autowrapped label at width 0 asks for one line per glyph.
+	desc.custom_minimum_size.x = 260
+	desc.add_theme_color_override("font_color", UISkin.INK.darkened(0.12))
+	_bag_detail.add_child(desc)
+	# A grid (not a flow) so the panel always knows the row's height; large text gets two columns.
+	var buttons := GridContainer.new()
+	buttons.name = "BagActions"
+	var root_theme := $Root.theme as Theme
+	buttons.columns = 4 if root_theme == null or root_theme.default_font_size <= 18 else 2
+	buttons.add_theme_constant_override("h_separation", 8)
+	buttons.add_theme_constant_override("v_separation", 8)
+	for spec: Array in [["使用", -1, "interact"], ["快捷栏 1", 0, ""], ["快捷栏 2", 1, ""], ["丢弃", -2, "close"]]:
+		var b := Button.new()
+		b.text = spec[0]
+		b.custom_minimum_size = Vector2(84, 44)
+		b.name = "Drop_" + id if spec[1] == -2 else "Item_%s_%d" % [id, int(spec[1])]
+		if spec[1] == -1:
+			b.theme_type_variation = "PrimaryButton"
+			b.custom_minimum_size.x = 100
+			b.pressed.connect(item_use_requested.emit.bind(id))
+		elif spec[1] == -2:
+			b.theme_type_variation = "DangerButton"
+			b.tooltip_text = "放在脚边的地上，之后可以捡回来"
+			var shown := String(entry["short"]) if entry.has("short") else String(entry["name"])
+			b.pressed.connect(func() -> void:
+				_bag_pending_drop = id
+				_bag_drop_label.text = "丢弃「%s」？它会留在脚边的地上。" % shown
+				_bag_drop_row.show()
+				_fit_bag.call_deferred())
+		else:
+			var slot_index := int(spec[1])
+			if hot == slot_index:
+				b.text = "✓ " + String(spec[0])
+				b.tooltip_text = "已经在快捷栏 %d" % (slot_index + 1)
+			else:
+				b.tooltip_text = "放到快捷栏 %d" % (slot_index + 1)
+			b.pressed.connect(item_hot_requested.emit.bind(slot_index, id))
+		buttons.add_child(b)
+	_bag_detail.add_child(buttons)
 
 
 func _fit_bag() -> void:
-	PanelLayout.fit(bag_panel,_bag_scroll,640,420)
+	if bag_panel == null or not bag_panel.visible:
+		return
+	var size := _slot_size()
+	for child in _bag_list.get_children():
+		(child as Control).custom_minimum_size = Vector2(size, size)
+	var grid_w := size * BAG_COLUMNS + 8.0 * (BAG_COLUMNS - 1)
+	var rows := ceili(float(_bag_list.get_child_count()) / BAG_COLUMNS)
+	PanelLayout.fit(bag_panel, _bag_scroll, grid_w + 540.0, maxf(rows * (size + 8.0), 300.0))
 
 
 func hide_bag() -> void:
@@ -685,14 +947,20 @@ func show_search(progress: float) -> void:
 	_search_ring.value = progress
 
 
-func show_hot(text: String, ids: Array = []) -> void:
+## The two hot slots: key cap, the item's picture and its name (empty slots say so).
+func show_hot(text: String, ids: Array = [], names: Array = []) -> void:
 	_hot_label.text = text
-	_hot_label.self_modulate.a = 0.0 if text.is_empty() else 1.0     # an empty card would show as a stray bracket
 	for i in 2:
 		var id := String(ids[i]) if i < ids.size() and ids[i] != null else ""
 		var texture := UIArt.item(id)
 		if _hot_art[i].texture != texture:
 			_hot_art[i].texture = texture
+		var name_label := _hot_icons.get_child(i).find_child("HotName%d" % (i + 1), true, false) as Label
+		var shown := String(names[i]) if i < names.size() and id != "" else ("空" if id == "" else id)
+		if name_label != null and name_label.text != shown:
+			name_label.text = shown
+			name_label.add_theme_color_override("font_color", UISkin.INK if id != "" else UISkin.MUTED)
+		(_hot_icons.get_child(i) as Control).modulate.a = 1.0 if id != "" else 0.6
 		var button := _touch_buttons.get("hot%d" % (i + 1)) as Button
 		if button != null and button.icon != texture:
 			button.icon = texture
@@ -1446,7 +1714,6 @@ func _refit_touch() -> void:
 	UIArt.compact_button(_touch_buttons["torch"], UIArt.item("torch"))
 	UIArt.compact_button(%TouchInteract, UIArt.nav(_prompt_art))
 	UIArt.compact_button(%TouchSprint, UIArt.nav("sprint"))
-	_hot_label.visible = not _touch_enabled
 	_hot_icons.visible = not _touch_enabled
 
 
@@ -1473,6 +1740,7 @@ func apply_caption_scale(mult: float) -> void:
 	if _captions != null:
 		_captions.add_theme_font_size_override("font_size", roundi(15.0 * mult))
 	%Toast.add_theme_font_size_override("font_size", roundi(18.0 * mult))
+	_fit_toast()
 
 
 ## Film grain shares the world pass, so it never alters text or normal-world colours.
@@ -2279,7 +2547,48 @@ func set_save_available(available: bool) -> void:
 func show_notice(text: String) -> void:
 	%Toast.text = text
 	%Toast.visible = not text.is_empty()
+	%Toast.modulate.a = 1.0
 	_toast_seconds = 6.0
+	_fit_toast()
+
+
+## The notice line sits on a translucent pill as wide as its text (at most 62 % of the screen, below the
+## status card and clear of the captions), so it stays readable over a bright board or a busy wall
+## without hiding the scene behind a band.
+func _fit_toast() -> void:
+	var toast := %Toast as Label
+	if toast.theme_type_variation != "HudPill":
+		toast.theme_type_variation = "HudPill"
+		toast.anchor_left = 0.5
+		toast.anchor_right = 0.5
+		toast.anchor_top = 0.26
+		toast.anchor_bottom = 0.26
+		toast.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		toast.grow_vertical = Control.GROW_DIRECTION_END
+		toast.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		toast.add_theme_constant_override("shadow_outline_size", 3)
+		var pill := BASE_THEME.get_stylebox("normal", "HudPill").duplicate() as StyleBoxFlat
+		pill.set_corner_radius_all(14)
+		pill.content_margin_top = 8
+		pill.content_margin_bottom = 9
+		pill.bg_color = Color(0.03, 0.05, 0.06, 0.72)
+		toast.add_theme_stylebox_override("normal", pill)
+	if toast.text.is_empty():
+		return
+	var screen := get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(960, 540)
+	var font := toast.get_theme_font("font")
+	var font_size := toast.get_theme_font_size("font_size")
+	var margins := toast.get_theme_stylebox("normal").get_minimum_size().x
+	var width := 0.0
+	for line: String in toast.text.split("\n"):
+		width = maxf(width, font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
+	width = minf(ceilf(width + margins + 2.0), screen.x * 0.62)     # clear of the status card and captions on the left
+	# An autowrapped label has almost no minimum width of its own: pin the width, the height follows the text.
+	toast.custom_minimum_size = Vector2(width, 0.0)
+	toast.offset_left = -width * 0.5
+	toast.offset_right = width * 0.5
+	toast.offset_top = 0.0
+	toast.offset_bottom = 0.0
 
 
 func toast_text() -> String:
@@ -2306,7 +2615,7 @@ var _status_art: TextureRect
 var _stamina: ProgressBar
 var _status_on := false
 var bag_panel: PanelContainer
-var _bag_list: VBoxContainer
+var _bag_list: GridContainer
 var _bag_scroll: TouchScroll
 var _search_ring: ProgressBar
 var _hot_label: Label

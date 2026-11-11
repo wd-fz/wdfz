@@ -1006,6 +1006,9 @@ func _refresh_interaction_prompt() -> void:
 	if player.has_focus():
 		ui.show_prompt(player.focus_prompt())
 		return
+	if _ground_target >= 0 and items() != null:
+		ui.show_prompt("拾取「%s」" % items().ground_name(_ground_target))
+		return
 	if _hint_cooldown <= 0.0:
 		_hint_cooldown = 0.1
 		var radio_hint := rules_dlc_flow.hint()
@@ -1085,6 +1088,10 @@ func _campus_interact() -> void:
 	# tryInteract: a seated player stands up first.
 	if day_rules != null and day_rules.seated:
 		_stand_up("我站了起来。")
+		return
+	var lying := _ground_pick_index()
+	if lying >= 0:
+		_pick_up_ground(lying)
 		return
 	var radio := broadcast()
 	if radio != null:
@@ -1321,7 +1328,9 @@ func _school_step(delta: float, rules: CampusModule, advance_calendar: bool = tr
 			talent().tick_watch(day_rules.day if day_rules != null else 1, school().tsec, SchoolClock.rate_at(school().tsec))
 			for te: Dictionary in talent().take_events():
 				ui.show_notice(String(te["text"]))
-		ui.show_hot("1 · %s    2 · %s" % [bag.item_name(String(bag.hot[0])) if bag.hot[0] != null else "空", bag.item_name(String(bag.hot[1])) if bag.hot[1] != null else "空"], bag.hot)
+		var hot_names := [bag.item_name(String(bag.hot[0])) if bag.hot[0] != null else "空", bag.item_name(String(bag.hot[1])) if bag.hot[1] != null else "空"]
+		ui.show_hot("1 · %s    2 · %s" % hot_names, bag.hot, hot_names)
+		_ground_step(bag)
 	var pose := player.capture_pose()
 	var room: Variant = rules.room(session.world_id)
 	var p: Array = pose["position"]
@@ -1496,7 +1505,8 @@ func _bag_entries() -> Array:
 	var bag := items()
 	var out: Array = []
 	for id: String in bag.bag:
-		out.append({"id": id, "name": bag.item_name(id) + (" · 撑开着" if id == "brolly" and bag.brolly_up else ""), "text": bag.item_text(id)})
+		out.append({"id": id, "name": bag.item_name(id) + (" · 撑开着" if id == "brolly" and bag.brolly_up else "") + (" · 开着" if id == "torch" and bag.torch_on else ""),
+			"short": bag.item_name(id), "text": bag.item_text(id), "hot": bag.hot.find(id)})
 	return out
 
 
@@ -1551,7 +1561,7 @@ func _open_bag() -> void:
 	player.clear_input()
 	ui.clear_touch()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	ui.show_bag(_bag_entries())
+	ui.show_bag(_bag_entries(), items().capacity())
 
 
 func _close_bag() -> void:
@@ -1566,7 +1576,7 @@ func _use_item(id: String) -> void:
 	if bag == null:
 		return
 	if knife_flow.use(id):
-		if ui.bag_open(): ui.show_bag(_bag_entries())
+		if ui.bag_open(): ui.show_bag(_bag_entries(), items().capacity())
 		return
 	_close_bag()
 	if maze_flow.intercept_item(id) or inception_flow.use(id):
@@ -1582,18 +1592,80 @@ func _drop_item(id: String) -> void:
 		facilities().flags[id] = false     # the unique portal materials can be taken again where they were found
 	for line: String in bag.take_notices():
 		ui.show_notice(line)
-	ui.show_bag(_bag_entries())
-	var p: Array = player.capture_pose()["position"]
+	var pose := player.capture_pose()
+	var p: Array = pose["position"]
 	var room: Variant = campus().room(session.world_id)
 	if routes().offer_item(room, CampusGeometry.to_world(room,p[0],p[2]),school().tsec,school().day):
 		_apply_route_events(routes())
+	elif _ground_allowed():
+		bag.place_on_ground(id, session.world_id, _drop_spot(pose))
+		_ground_step(bag)
+	ui.show_bag(_bag_entries(), items().capacity())
+
+
+# ---- dropped items on the floor (InventoryModule.ground, presentation GroundItems) ----
+
+## The bag index of the ground item in reach and in front, -1 for none; refreshed every campus step.
+var _ground_target := -1
+
+
+## Only ordinary scenes keep what is put down; moving cabins, the maze and dreams are rebuilt or left for good.
+func _ground_allowed() -> bool:
+	var rules := campus()
+	return session != null and rules != null and rules.knows(session.world_id) and not maze_flow.here() and not inception_flow.here() \
+		and not session.world_id in ElevatorModule.RIDE_ROOMS and not driving()
+
+
+## A little in front of the feet, but never further than the body radius so it cannot land inside a wall.
+func _drop_spot(pose: Dictionary) -> Vector3:
+	var p: Array = pose["position"]
+	var yaw := float(pose["yaw"])
+	return Vector3(float(p[0]) - sin(yaw) * 0.28, float(p[1]), float(p[2]) - cos(yaw) * 0.28)
+
+
+func _ground_pick_index() -> int:
+	var bag := items()
+	if bag == null or bag.ground.is_empty() or not _ground_allowed() or _dead():
+		return -1
+	var eye := player.camera.global_transform
+	return bag.ground_target(session.world_id, player.global_position, eye.origin, -eye.basis.z)
+
+
+func _ground_step(bag: InventoryModule) -> void:
+	_ground_target = _ground_pick_index()
+	var world := _campus_world()
+	if world == null:
+		return
+	var local := -1
+	var n := 0
+	for i in bag.ground.size():
+		if String(bag.ground[i]["world"]) == session.world_id:
+			if i == _ground_target:
+				local = n
+			n += 1
+	world.sync_ground_items(bag.ground_in(session.world_id) if _ground_allowed() else [], local)
+
+
+func _pick_up_ground(index: int) -> void:
+	var bag := items()
+	var id := bag.pick_up(index)
+	if not id.is_empty():
+		audio.play("ui.pickup")
+		if id in ["coil", "lens", "vial"] and facilities() != null:
+			facilities().flags[id] = true     # carried again: the source does not hand out a second one
+	for text: String in bag.take_notices():
+		ui.show_notice(text)
+	_ground_step(bag)
+	_hint_cooldown = 0.0
+	if ui.bag_open():
+		ui.show_bag(_bag_entries(), items().capacity())
 
 
 func _set_hot(index: int, id: String) -> void:
 	var bag := items()
 	if bag != null and bag.set_hot(index, id):
 		ui.show_notice("「%s」放到快捷栏 %d" % [bag.item_name(id), index + 1])
-		ui.show_bag(_bag_entries())
+		ui.show_bag(_bag_entries(), items().capacity())
 
 
 # ---- locker hiding (patrol.js hideIn / hideOut) ----
