@@ -13,7 +13,7 @@ var bar: ProgressBar
 var hold_button: Button
 var chooser: OptionButton
 var leave_button: Button
-var _scroll: ScrollContainer
+var _scroll: TouchScroll
 var _holding := false
 var _key := ""
 
@@ -48,7 +48,7 @@ func _init() -> void:
 		closed.emit())
 	head.add_child(leave_button)
 	box.add_child(head)
-	_scroll = ScrollContainer.new()
+	_scroll = TouchScroll.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.follow_focus = true
 	var body := VBoxContainer.new()

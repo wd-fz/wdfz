@@ -61,10 +61,15 @@ signal ending_wake_requested
 var _mode := "menu"
 var fullscreen_toggle_allowed := GameSettings.can_toggle_fullscreen()
 var choice_panel: PanelContainer
+var selection_panel: SelectionPanel
 var lift_close_button: Button
 var _choice_box: VBoxContainer
-var _choice_scroll: ScrollContainer
+var _choice_scroll: TouchScroll
 var _choice_text: Label
+var _choice_cancel: Button
+var _bag_drop_row: HBoxContainer
+var _bag_drop_label: Label
+var _bag_pending_drop := ""
 var _touch_enabled := false
 var _paper_flying := false
 var _paper_pad: PaperFlightPad
@@ -317,7 +322,7 @@ func _update_orient_hint() -> void:
 	_orient_hint.visible = upright and _touch_enabled
 
 
-## Old UI.choice: a short prompt with buttons; keys 1–9 pick, Esc / 算了 closes.
+## Gameplay prompt: keys 1–9 pick; Esc / cancel closes when permitted.
 func _build_choice() -> void:
 	choice_panel = PanelContainer.new()
 	choice_panel.name = "ChoicePanel"
@@ -334,10 +339,15 @@ func _build_choice() -> void:
 	box.add_child(_choice_text)
 	_choice_box = VBoxContainer.new()
 	_choice_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_choice_scroll = ScrollContainer.new()
+	_choice_scroll = TouchScroll.new()
 	_choice_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_choice_scroll.add_child(_choice_box)
 	box.add_child(_choice_scroll)
+	_choice_cancel = Button.new()
+	_choice_cancel.text = "返回 / 取消"
+	_choice_cancel.custom_minimum_size.y = 48
+	_choice_cancel.pressed.connect(choice_selected.emit.bind(-1))
+	box.add_child(_choice_cancel)
 	choice_panel.add_child(box)
 	$Root.add_child(choice_panel)
 	lift_close_button = Button.new()
@@ -535,7 +545,7 @@ func _build_bag() -> void:
 	_bag_count.add_theme_font_size_override("font_size", 14)
 	head.add_child(_bag_count)
 	box.add_child(head)
-	_bag_scroll = ScrollContainer.new()
+	_bag_scroll = TouchScroll.new()
 	_bag_scroll.name = "BagScroll"
 	_bag_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_bag_scroll.follow_focus = true
@@ -568,6 +578,31 @@ func _build_bag() -> void:
 	detail_panel.add_child(_bag_detail)
 	_bag_body.add_child(detail_panel)
 	box.add_child(_bag_scroll)
+	_bag_drop_row = HBoxContainer.new()
+	_bag_drop_row.name = "BagDropConfirm"
+	_bag_drop_row.add_theme_constant_override("separation", 10)
+	_bag_drop_row.visible = false
+	box.add_child(_bag_drop_row)
+	_bag_drop_label = Label.new()
+	_bag_drop_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_bag_drop_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_bag_drop_row.add_child(_bag_drop_label)
+	var keep := Button.new()
+	keep.text = "保留"
+	keep.name = "BagKeep"
+	keep.custom_minimum_size.y = 48
+	keep.pressed.connect(_cancel_drop)
+	_bag_drop_row.add_child(keep)
+	var discard := Button.new()
+	discard.text = "确认丢弃"
+	discard.name = "BagConfirmDrop"
+	discard.custom_minimum_size.y = 48
+	discard.theme_type_variation = "DangerButton"
+	discard.pressed.connect(func() -> void:
+		var id := _bag_pending_drop
+		_cancel_drop()
+		if not id.is_empty(): item_drop_requested.emit(id))
+	_bag_drop_row.add_child(discard)
 	var foot := HBoxContainer.new()
 	foot.name = "BagFoot"
 	foot.add_theme_constant_override("separation", 12)
@@ -750,6 +785,8 @@ func show_bag(entries: Array, capacity: int = -1) -> void:
 	var ids: Array = entries.map(func(e: Dictionary) -> String: return String(e["id"]))
 	if not ids.has(_bag_selected):
 		_bag_selected = String(ids[0]) if not ids.is_empty() else ""
+	_cancel_drop()
+	_bag_scroll.stop_motion()
 	for child in _bag_list.get_children():
 		_bag_list.remove_child(child)
 		child.queue_free()
@@ -775,6 +812,8 @@ func show_bag(entries: Array, capacity: int = -1) -> void:
 
 
 func select_bag_item(id: String) -> void:
+	if id != _bag_selected:
+		_cancel_drop()
 	_bag_selected = id
 	for child in _bag_list.get_children():
 		if child is Button:
@@ -858,7 +897,12 @@ func _show_bag_detail() -> void:
 		elif spec[1] == -2:
 			b.theme_type_variation = "DangerButton"
 			b.tooltip_text = "放在脚边的地上，之后可以捡回来"
-			b.pressed.connect(item_drop_requested.emit.bind(id))
+			var shown := String(entry["short"]) if entry.has("short") else String(entry["name"])
+			b.pressed.connect(func() -> void:
+				_bag_pending_drop = id
+				_bag_drop_label.text = "丢弃「%s」？它会留在脚边的地上。" % shown
+				_bag_drop_row.show()
+				_fit_bag.call_deferred())
 		else:
 			var slot_index := int(spec[1])
 			if hot == slot_index:
@@ -883,7 +927,15 @@ func _fit_bag() -> void:
 
 
 func hide_bag() -> void:
+	_cancel_drop()
 	bag_panel.visible = false
+
+
+func _cancel_drop() -> void:
+	_bag_pending_drop = ""
+	if is_instance_valid(_bag_drop_row):
+		_bag_drop_row.hide()
+		_fit_bag.call_deferred()
 
 
 func bag_open() -> bool:
@@ -939,7 +991,7 @@ func _build_death() -> void:
 	death_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	death_panel.minimum_size_changed.connect(func() -> void: _fit_documents.call_deferred())
 	var box := VBoxContainer.new()
-	_death_scroll = ScrollContainer.new()
+	_death_scroll = TouchScroll.new()
 	_death_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_death_scroll.follow_focus = true
 	_death_text = Label.new()
@@ -1152,7 +1204,7 @@ func show_list(head: String, rows: Array) -> void:
 		_ach_head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_ach_head.add_theme_color_override("font_color",UISkin.ACCENT)
 		box.add_child(_ach_head)
-		var scroll := ScrollContainer.new()
+		var scroll := TouchScroll.new()
 		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 		scroll.follow_focus = true
 		scroll.custom_minimum_size = Vector2(520, 360)
@@ -1169,6 +1221,7 @@ func show_list(head: String, rows: Array) -> void:
 		UIArt.decorate(ach_panel)
 		$Root.add_child(ach_panel)
 	if is_instance_valid(_ach_tabs): _ach_tabs.hide()
+	(_ach_list.get_parent() as TouchScroll).stop_motion()
 	if is_instance_valid(_list_extra):
 		_list_extra.hide()
 		_list_extra.queue_free()
@@ -1348,8 +1401,8 @@ func cut_fade(v: float) -> void:
 var _import_panel: PanelContainer
 var _import_text: TextEdit
 var _import_msg: Label
-var _import_scroll: ScrollContainer
-var _death_scroll: ScrollContainer
+var _import_scroll: TouchScroll
+var _death_scroll: TouchScroll
 
 
 ## 导入旧存档: paste the old save's JSON (the localStorage entry "wdfz3d"), see game/features/compatibility/legacy_save.gd.
@@ -1369,7 +1422,7 @@ func show_import() -> void:
 		head.text = "导入旧版存档"
 		head.modulate = Color(1.0, 0.9, 0.55)
 		box.add_child(head)
-		_import_scroll = ScrollContainer.new()
+		_import_scroll = TouchScroll.new()
 		_import_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 		_import_scroll.follow_focus = true
 		var body := VBoxContainer.new()
@@ -1701,7 +1754,7 @@ func set_grain(on: bool) -> void:
 var notes_panel: PanelContainer
 var _notes_box: VBoxContainer
 var _notes_search: LineEdit
-var _notes_scroll: ScrollContainer
+var _notes_scroll: TouchScroll
 const NOTE_COLORS := {"事实": Color(0.78, 0.86, 0.95), "推测": Color(0.95, 0.85, 0.6), "验证": Color(0.65, 0.9, 0.7), "线索": Color(0.88, 0.75, 0.95), "规则": Color(0.87, 0.81, 0.66)}
 const NOTE_ART := {"事实": "fact", "推测": "guess", "验证": "verify", "线索": "clue", "规则": "rules"}
 
@@ -1728,7 +1781,7 @@ func show_notes(data: Dictionary) -> void:
 		_notes_search.placeholder_text = "搜索记录（事实、地点）"
 		_notes_search.text_changed.connect(func(t: String) -> void: notes_requested.emit(t))
 		outer.add_child(_notes_search)
-		_notes_scroll = ScrollContainer.new()
+		_notes_scroll = TouchScroll.new()
 		_notes_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 		_notes_scroll.follow_focus = true
 		_notes_box = VBoxContainer.new()
@@ -1745,6 +1798,7 @@ func show_notes(data: Dictionary) -> void:
 		notes_panel.add_child(outer)
 		UIArt.decorate(notes_panel)
 		$Root.add_child(notes_panel)
+	_notes_scroll.stop_motion()
 	for child in _notes_box.get_children():
 		_notes_box.remove_child(child)
 		child.queue_free()
@@ -2027,7 +2081,7 @@ func terminal_open() -> bool:
 ## Ending card (story.js showEndingCard): tag, title, lines, day/time, back to the menu.
 var ending_panel: PanelContainer
 var _ending_text: Label
-var _ending_scroll: ScrollContainer
+var _ending_scroll: TouchScroll
 var _ending_art: TextureRect
 
 
@@ -2049,7 +2103,7 @@ func show_ending(title: String, tag: String, lines: Array, meta: String, achieve
 		ending_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		ending_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 		ending_panel.custom_minimum_size = Vector2(520, 0)
-		_ending_scroll=ScrollContainer.new()
+		_ending_scroll=TouchScroll.new()
 		_ending_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
 		ending_panel.add_child(_ending_scroll)
 		var box := VBoxContainer.new()
@@ -2221,6 +2275,8 @@ var _choice_cancellable := true
 
 
 func show_choice(text: String, labels: Array, cancellable: bool = true, illustrations: Array = []) -> void:
+	if is_instance_valid(selection_panel): selection_panel.hide()
+	_choice_scroll.stop_motion()
 	_paper_read = false
 	if is_instance_valid(_paper_progress): _paper_progress.hide()
 	_choice_cancellable = cancellable
@@ -2233,6 +2289,7 @@ func show_choice(text: String, labels: Array, cancellable: bool = true, illustra
 		var b := Button.new()
 		b.text = "%d. %s" % [i + 1, labels[i]]
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		b.custom_minimum_size.y = 48
 		if i < illustrations.size() and illustrations[i] is Texture2D:
 			b.icon = illustrations[i]
 			b.expand_icon = true
@@ -2244,18 +2301,14 @@ func show_choice(text: String, labels: Array, cancellable: bool = true, illustra
 			b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		b.pressed.connect(choice_selected.emit.bind(i))
 		_choice_box.add_child(b)
-	if cancellable:
-		var cancel := Button.new()
-		cancel.text = "算了"
-		cancel.pressed.connect(choice_selected.emit.bind(-1))
-		_choice_box.add_child(cancel)
+	_choice_cancel.visible = cancellable
 	_choice_scroll.scroll_vertical = 0
 	choice_panel.visible = true
 	_choice_refit = false
 	_fit_choice()
 
 
-## Long lists (the talent pick) scroll inside the panel instead of running off a phone screen.
+## Gameplay choices keep their immediate responses; navigation stays outside the list.
 func _fit_choice() -> void:
 	var view := get_viewport().get_visible_rect().size
 	choice_panel.custom_minimum_size.x = minf(840.0 if _choice_has_art else 560.0, view.x - 32.0)
@@ -2264,7 +2317,8 @@ func _fit_choice() -> void:
 	for child in _choice_box.get_children():
 		if not child.is_queued_for_deletion():
 			want += (child as Control).get_combined_minimum_size().y + 4.0
-	var room := maxf(120.0, view.y * 0.86 - _choice_text.get_combined_minimum_size().y - 40.0)
+	var footer := _choice_cancel.get_combined_minimum_size().y + 8.0 if _choice_cancel.visible else 0.0
+	var room := maxf(64.0, view.y * 0.86 - _choice_text.get_combined_minimum_size().y - 40.0 - footer)
 	_choice_scroll.custom_minimum_size.y = minf(want, room)
 	var size := choice_panel.get_combined_minimum_size()
 	choice_panel.offset_left = -size.x / 2.0
@@ -2291,12 +2345,23 @@ func _refit_choice_later() -> void:
 
 func hide_choice() -> void:
 	choice_panel.visible = false
+	if is_instance_valid(selection_panel): selection_panel.hide()
 	_paper_read = false
 	if is_instance_valid(_paper_progress): _paper_progress.hide()
 
 
 func choice_open() -> bool:
-	return choice_panel != null and choice_panel.visible
+	return choice_panel != null and choice_panel.visible or is_instance_valid(selection_panel) and selection_panel.visible
+
+
+func show_selection(title: String, mode: String, entries: Array) -> void:
+	hide_choice()
+	if not is_instance_valid(selection_panel):
+		selection_panel = SelectionPanel.new()
+		$Root.add_child(selection_panel)
+		selection_panel.confirmed.connect(choice_selected.emit)
+		selection_panel.canceled.connect(choice_selected.emit.bind(-1))
+	selection_panel.open(title, mode, entries)
 
 
 func set_lift_close(visible_now: bool) -> void:
@@ -2305,6 +2370,7 @@ func set_lift_close(visible_now: bool) -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
+	if is_instance_valid(selection_panel) and selection_panel.visible: return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
 		if is_instance_valid(_layout_editor):
 			_layout_editor.queue_free()
@@ -2326,7 +2392,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif key >= KEY_1 and key <= KEY_9:
 		var index := key - KEY_1
-		if index < _choice_box.get_child_count() - (1 if _choice_cancellable else 0):
+		if index < _choice_box.get_child_count():
 			choice_selected.emit(index)
 			get_viewport().set_input_as_handled()
 	elif key == KEY_ESCAPE and _choice_cancellable:
@@ -2527,7 +2593,7 @@ var _stamina: ProgressBar
 var _status_on := false
 var bag_panel: PanelContainer
 var _bag_list: GridContainer
-var _bag_scroll: ScrollContainer
+var _bag_scroll: TouchScroll
 var _search_ring: ProgressBar
 var _hot_label: Label
 var _hot_icons: HBoxContainer

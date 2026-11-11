@@ -62,18 +62,21 @@ func test_interface() -> void:
 		app.ui.apply_text_scale(125)
 		app._pick_talent("easy")
 		await _frames(5)
-		check(root.get_visible_rect().encloses(app.ui.choice_panel.get_global_rect()), "illustrated talent choices fit landscape " + str(view))
-		check(app.ui._choice_scroll.scroll_vertical == 0, "opening talent selection starts at the first illustrated talent")
+		check(root.get_visible_rect().encloses(app.ui.selection_panel.shell.get_global_rect()), "illustrated talent choices fit landscape " + str(view))
+		check(app.ui.selection_panel.list_scroll.scroll_vertical == 0, "opening talent selection starts at the first illustrated talent")
 		for i in TalentModule.KEYS.size():
-			var button := app.ui._choice_box.get_child(i) as Button
-			check(button.icon == UIArt.talent(TalentModule.KEYS[i]) and button.text.contains("限制："), "talent artwork keeps the effect and limitation: " + String(TalentModule.KEYS[i]))
-		app.ui._choice_scroll.scroll_vertical = 10000
+			var button := app.ui.selection_panel.cards[i]
+			app.ui.selection_panel.select(i)
+			check(button.icon == UIArt.talent(TalentModule.KEYS[i]) and app.ui.selection_panel._limit.text == TalentModule.DEF[TalentModule.KEYS[i]]["limit"], "talent artwork keeps the effect and limitation: " + String(TalentModule.KEYS[i]))
+		app.ui.selection_panel.list_scroll.scroll_vertical = 10000
 		app.ui.hide_choice()
 	root.size = Vector2i(960, 540)
 	app._pick_talent("easy")
 	await _frames(4)
-	await _tap(app.ui._choice_box.get_child(0))
-	check(app.session != null and app.talent().id == "tech" and app.items().has("phone"), "tapping an illustrated talent still starts the selected talent")
+	await _tap(app.ui.selection_panel.cards[0])
+	check(app.session == null, "previewing an illustrated talent waits for confirmation")
+	await _tap(app.ui.selection_panel.confirm_button)
+	check(app.session != null and app.talent().id == "tech" and app.items().has("phone"), "confirming an illustrated talent starts the selected talent")
 	if app._opening_cut != null and app._opening_cut.on:
 		app._opening_cut.end(true)
 	else:

@@ -458,18 +458,15 @@ func _speedrun_menu() -> void:
 
 
 func _pick_talent(difficulty: String, speed: bool = false) -> void:
-	var labels: Array = []
-	var illustrations: Array[Texture2D] = []
+	var entries: Array = []
 	for k: String in TalentModule.KEYS:
 		var d: Dictionary = TalentModule.DEF[k]
-		labels.append("%s\n%s\n限制：%s" % [d["n"], d["does"], d["limit"]])
-		illustrations.append(UIArt.talent(k))
-	labels.append("随机一个天赋")
-	illustrations.append(UIArt.talent("random"))
+		entries.append({"name":d["n"], "role":d["role"], "effect":d["does"], "limit":d["limit"], "art":UIArt.talent(k)})
+	entries.append({"name":"随机天赋", "role":"让命运替你选择。", "effect":"确认开始时，从七种天赋中随机获得一种。", "limit":"同样遵守抽中天赋的全部限制；浏览或取消不会抽取。", "art":UIArt.talent("random")})
 	_choice_count += 1
 	var mine := _choice_count
 	_choice_handler = func(index: int) -> void:
-		if mine != _choice_count or index < 0:
+		if mine != _choice_count or index < 0 or index > TalentModule.KEYS.size():
 			return
 		var pick := String(TalentModule.KEYS[index]) if index < TalentModule.KEYS.size() else String(TalentModule.KEYS[randi() % TalentModule.KEYS.size()])
 		if speed:
@@ -478,7 +475,7 @@ func _pick_talent(difficulty: String, speed: bool = false) -> void:
 			speedrun.disarm()
 		start_new_game(difficulty, pick)
 		_play_opening()
-	ui.show_choice("%s · 选择天赋（每局一个；限制写在卡片上）" % ("梦魇" if difficulty == "hard" else "预知梦"), labels, true, illustrations)
+	ui.show_selection("选择天赋", ("梦魇" if difficulty == "hard" else "预知梦") + (" · 速通" if speed else " · 每局一个"), entries)
 
 
 ## Carry what can be carried of an old Web save into a new run (game/features/compatibility/legacy_save.gd). Returns "" or why not.

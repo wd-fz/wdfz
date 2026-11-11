@@ -39,20 +39,14 @@ func test_editor() -> void:
 	check(stored.get_int("touch") == app.settings.get_int("touch"), "the actual UI persists its value to settings.json")
 	panel.scroll.scroll_vertical = 0
 	await _frames(3)
-	# ScrollContainer's native drag path is gated on the display's touchscreen hint.
-	var old_emulation := Input.emulate_touch_from_mouse
-	Input.emulate_touch_from_mouse = true
+	# The shared scroller consumes real fingers even without a touchscreen hint.
 	var description := panel.find_child("Setting_touch",true,false).get_child(1) as Label
 	var swipe := description.get_global_rect().get_center()
 	await _finger(0,swipe,true)
 	await _drag(0,swipe-Vector2(0,25),Vector2(0,-25))
 	await _drag(0,swipe-Vector2(0,80),Vector2(0,-55))
 	await _finger(0,swipe-Vector2(0,80),false)
-	if DisplayServer.is_touchscreen_available():
-		check(panel.scroll.scroll_vertical > 0, "a finger swipe scrolls settings content")
-	else:
-		print("NOTE: native touch-scroll assertion requires a window display with the touchscreen hint")
-	Input.emulate_touch_from_mouse = old_emulation
+	check(panel.scroll.scroll_vertical > 0, "a finger swipe scrolls settings content without mouse emulation")
 	check(panel._close.get_global_rect().position.y < panel.scroll.get_global_rect().position.y,
 		"the close button remains outside the scrolling body")
 	await _tap(panel._nav_buttons["声音"])
