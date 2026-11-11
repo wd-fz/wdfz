@@ -1,7 +1,12 @@
 extends SceneTree
 ## HorrorKit close-ups side by side (needs a display):
-## godot --path . --script res://tools/capture/capture_horror_kit.gd [-- quality]
-## Output: build/previews/horrorkit/hands.png (poses), hand-variants.png, heads.png, heads-dark.png (one cold key light).
+## godot --path . --script res://tools/capture/capture_horror_kit.gd [-- quality [kit|world|all]]
+## Output: build/previews/horrorkit/hands.png (poses), hand-variants.png, heads.png, heads-dark.png (one cold key light),
+## hand-close.png (palm up, claw, fist close-ups); with "world": the stall hand in the real teach1 toilet (dark, torch,
+## close), the jump and turn-back smile, and the anomaly figures up close (stall-*.png, smile-*.png, figure-*.png).
+## Positions, event state and elapsed time are injected; this is not a natural playthrough.
+
+const APP := preload("res://game/app/app.tscn")
 
 var world: Node3D
 var cam: Camera3D
@@ -60,7 +65,15 @@ func _shot(name: String) -> void:
 func _run() -> void:
 	root.size = Vector2i(1280, 720)
 	DirAccess.make_dir_recursive_absolute("res://build/previews/horrorkit")
-	var q := int(OS.get_cmdline_user_args()[0]) if not OS.get_cmdline_user_args().is_empty() else 4
+	var args := OS.get_cmdline_user_args()
+	var q := int(args[0]) if not args.is_empty() else 4
+	var mode := String(args[1]) if args.size() > 1 else "kit"
+	if mode in ["kit", "all"]: await _kit(q)
+	if mode in ["world", "all"]: await _world()
+	quit()
+
+
+func _kit(q: int) -> void:
 	# Hands: relaxed, splayed, claw, curled, palm up beckoning.
 	_stage(.25)
 	var poses := [[.15, .2, []], [-.12, 1.0, []], [.2, .7, [null, [-.25, 1.3, 1.1], [-.25, 1.4, 1.2], [-.2, 1.3, 1.1], [-.1, 1.2, 1.0]]], [.95, .1, []], [.4, .3, [.1]]]
@@ -105,5 +118,100 @@ func _run() -> void:
 		key.light_energy = 1.6 if not dark else 1.0
 		key.spot_angle = 50 if not dark else 22
 		await _shot("heads-dark" if dark else "heads")
+	# Close-ups: palm up and curling, a claw, a fist (the finger joints and nails).
+	_stage(.12)
+	var close := [[.25, .35, [], Vector3(0, PI, PI)], [.2, .7, [null, [-.25, 1.3, 1.1], [-.25, 1.4, 1.2], [-.2, 1.3, 1.1], [-.1, 1.2, 1.0]], Vector3(0, PI, 0)], [1.0, .05, [], Vector3(0, PI, 0)]]
+	for i in close.size():
+		var h := HorrorKit.hand({"quality": q, "long": 1.2, "thin": .35})
+		HorrorKit.pose_hand(h, close[i][0], close[i][1], close[i][2])
+		h.position = Vector3((i - 1) * .2, 0, 0)
+		h.rotation = close[i][3]
+		world.add_child(h)
+	_aim(cam, Vector3(0, .3, .42), Vector3(0, 0, .08))
+	_aim(key, Vector3(-.5, .9, .7), Vector3(0, 0, .05))
+	key.light_energy = 1.4
+	await _shot("hand-close")
+	# Heads with hair and a bust, a little turned, under a low key: an ordinary student, but wrong.
+	_stage(.03, false)
+	var busts := [{"hair": true}, {"hair": true, "mouth": "wide", "open": .8, "skew": .6}, {"mouth": "none", "eyes": "hollow", "hair": true}]
+	for i in busts.size():
+		var opts: Dictionary = busts[i]
+		opts["quality"] = q
+		var hd := HorrorKit.bust(opts)
+		hd.position = Vector3((i - 1) * .26, 0, 0)
+		hd.rotation.y = [.5, 0.0, -.5][i]
+		world.add_child(hd)
+	_aim(cam, Vector3(0, -.03, -1.1), Vector3(0, -.06, 0))
+	_aim(key, Vector3(-.8, .5, -.9), Vector3(0, 0, 0))
+	key.light_energy = 1.2
+	key.spot_angle = 30
+	await _shot("heads-profile")
 	world.free()
-	quit()
+	world = null
+
+
+## The real game: the stall hand in teach1's toilet, the smiles and the anomaly figures.
+func _world() -> void:
+	var app: GameApp = APP.instantiate()
+	app.saves = SaveStore.new("user://capture-horror-kit/save.json")
+	app.settings = GameSettings.new("user://capture-horror-kit/settings.json")
+	root.add_child(app)
+	await process_frame
+	app.wuda_roll = func() -> float: return 1
+	app.start_new_game("hard", "none")
+	app.set_physics_process(false)
+	app.player.set_physics_process(false)
+	app._stand_up()
+	app.patrol().pat["safety"] = 999.0
+	var room := CampusData.layout("teach1")
+	# Standing in the toilet (tiles 58..61 x 16..19), facing the stalls (row 16); the hand comes 8 units ahead.
+	var me := CampusGeometry.tile_center(room, 58, 18) + Vector2(1, 2.5)
+	var ang := -PI / 2 + .1
+	var src := me + Vector2(cos(ang), sin(ang)) * 8.0
+	for night in [false, true]:
+		app.school().tsec = 1500 if night else 720
+		for setup in [["stand", 0.0, -1.0, false], ["torch", 0.0, -1.0, true], ["close", 5.5, -1.3, false], ["crouch", -1.0, -.62, true]]:
+			var at := CampusGeometry.to_scene(room, me + Vector2(cos(ang), sin(ang)) * float(setup[1]))
+			if app.session.world_id != "teach1": app.travel("teach1", {"position": [at.x, 0, at.y], "yaw": CampusGeometry.yaw_from_ang(ang), "pitch": setup[2]}, false)
+			app.player.restore_pose({"position": [at.x, 0, at.y], "yaw": CampusGeometry.yaw_from_ang(ang), "pitch": setup[2]})
+			var eye_y := app.player.camera.position.y
+			if setup[0] == "crouch": app.player.camera.position.y = .55
+			var cw := app._campus_world()
+			cw.anomaly_fx.visual_seed = 42
+			var data := {"src": {"x": src.x, "y": src.y}, "chosen": null, "scene": "teach1"}
+			app.anomaly().an.merge({"id": "hand", "active": true, "t": 2.0, "acc": 0.0, "data": data}, true)
+			for frame in 150:
+				cw.anomaly_fx.update(1.0 / 60, app.anomaly().an, room, "teach1", app.player.position, Vector2.from_angle(ang))
+			if setup[3] and not app.items().has("torch"): app.items().add("torch")
+			app.items().torch_on = setup[3]
+			app.player.camera.get_node("Torch").visible = setup[3]
+			cw.lighting.update(0, app.school().tsec, app.player.camera)
+			app._school_step(0, app.campus())
+			app.ui.show_notice("")
+			app.ui.show_prompt("")
+			await _shot_n("stall-%s%s" % ["night-" if night else "", setup[0]], 10)
+			app.player.camera.position.y = eye_y
+			app.anomaly().end_now()
+	# The smiles: in your face (0.1 s, 0.3 s, 1.0 s) and behind you (turned, 0.4 s, 1.5 s), in the dark corridor.
+	app.school().tsec = 1500
+	var corridor := CampusGeometry.to_scene(room, CampusGeometry.tile_center(room, 30, 19))
+	app.travel("teach1", {"position": [corridor.x, 0, corridor.y], "yaw": CampusGeometry.yaw_from_ang(0), "pitch": 0.0}, false)
+	var cw2 := app._campus_world()
+	cw2.lighting.update(0, app.school().tsec, app.player.camera)
+	for spec in [["jump", .1], ["jump", .3], ["jump", 1.0], ["behind", .4], ["behind", 1.5]]:
+		var cam_pos := app.player.camera.global_position
+		cw2.phantoms.show_smile(spec[0], cam_pos, CampusGeometry.ang_from_yaw(app.player.rotation.y))
+		var steps := int(float(spec[1]) * 60)
+		for _i in steps: cw2.phantoms.tick_smile(1.0 / 60, cam_pos)
+		await _shot_n("smile-%s-%.1f" % spec, 2)
+		cw2.phantoms.clear_smile()
+	app.return_to_menu()
+	app.queue_free()
+	await process_frame
+
+
+func _shot_n(name: String, frames: int) -> void:
+	for _i in frames: await process_frame
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png("res://build/previews/horrorkit/%s.png" % name)
+	print("CAPTURED: " + name)

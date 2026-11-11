@@ -194,11 +194,14 @@ func build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vect
 
 
 ## The hand from under the stall partition: palm up, the palm centred where the old block lay
-## (0, .16, 0); fingers reach towards where the player stood when it appeared (+z if on the spot), the
-## forearm running back and down under the gap. A little waxen self-light keeps it readable in a dark
-## toilet. Its fingers move with advance(); nothing else does.
-const HAND_SCALE:=2.1
+## (0, .16, 0); fingers reach towards where the player stood when it appeared (+z if on the spot). The
+## forearm rises out of a dark split in the floor tiles behind the wrist, so where it goes in is hidden by
+## the floor itself and the split's shadow; the hand is bent back at the wrist to hold the palm up. A little
+## waxen self-light keeps it readable in a dark toilet. Its fingers move with advance(); nothing else does.
+const HAND_SCALE:=1.6
 const HAND_PALM:=Vector3(0,.16,0)
+const HAND_RISE:=.46      # the forearm's angle out of the floor, rad
+const HAND_BEND:=-.42     # the wrist bent back to level the palm
 
 func _hand(tier: int, p: Vector3, feet: Vector3) -> void:
 	var holder:=Node3D.new()
@@ -207,21 +210,89 @@ func _hand(tier: int, p: Vector3, feet: Vector3) -> void:
 	var toward:=Vector2(feet.x-p.x,feet.z-p.z)
 	if toward.length()>.05: holder.rotation.y=atan2(toward.x,toward.y)
 	holder.scale=Vector3.ONE*HAND_SCALE
-	var hand:=HorrorKit.hand({"quality":tier,"long":1.2,"thin":.35,"arm":.34,"glow":.3})
-	# Palm up (roll), fingers to +z (turn), the arm sloping down behind the wrist (pitch).
-	hand.rotation=Vector3(-.22,PI,PI)
+	var hand:=HorrorKit.hand({"quality":tier,"long":1.22,"thin":.3,"arm":.42,"glow":.15,"fade":Vector2(.12,.42)})
+	# Palm up (roll), fingers to +z (turn), the forearm dropping steeply into the floor behind (pitch).
+	hand.rotation=Vector3(HAND_RISE,PI,PI)
 	hand.position=-(hand.basis*Vector3(0,0,-.045))
 	holder.add_child(hand)
+	# Where the forearm meets the floor (holder-local, unscaled): along the arm from the wrist.
+	var floor_y:=-HAND_PALM.y/HAND_SCALE
+	var wrist:=hand.position
+	var arm_dir:=hand.basis*Vector3(0,0,1)
+	var enter:=wrist+arm_dir*((floor_y-wrist.y)/arm_dir.y)
+	var split:=MeshInstance3D.new()
+	split.name="FloorSplit"
+	split.mesh=_split_mesh()
+	split.material_override=_split_material()
+	split.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	split.position=Vector3(enter.x,floor_y+.004/HAND_SCALE,enter.z)
+	holder.add_child(split)
 	add_child(holder)
 	items.append(holder)
 	position=p
 	_pose_hand()
 
+
+## A split in the floor around the arm: a black, ragged slit across the arm, opening into a soft stain.
+## Built once in the arm's frame (x across, z along the arm, away from the player is -z).
+static func _split_mesh() -> ArrayMesh:
+	var st:=SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n:=28
+	var rings:=[[.0,1.0],[.45,.97],[1.0,.6],[1.8,0.0]]
+	var shape:=func(a: float, k: float) -> Vector3:
+		# Ragged, longer across the arm than along it; a crack line runs off both ends.
+		var rag:=1.0+.18*sin(a*5.0+1.3)+.1*sin(a*11.0+.4)+.06*sin(a*23.0)
+		var crack:=1.0+1.4*pow(absf(cos(a)),24.0)*k
+		return Vector3(cos(a)*.085*rag*crack*maxf(k,.12),0,sin(a)*.05*rag*maxf(k,.12)-.01)
+	var verts:=[]
+	for r in rings.size():
+		var ring:=[]
+		for i in n:
+			var a:=TAU*i/n
+			st.set_color(Color(0,0,0,float(rings[r][1])))
+			st.add_vertex(shape.call(a,float(rings[r][0])))
+			ring.append(r*n+i)
+		verts.append(ring)
+	for i in range(1,n-1):
+		st.add_index(0)
+		st.add_index(i+1)
+		st.add_index(i)
+	for r in rings.size()-1:
+		for i in n:
+			var j:=(i+1)%n
+			st.add_index(verts[r][i])
+			st.add_index(verts[r][j])
+			st.add_index(verts[r+1][j])
+			st.add_index(verts[r][i])
+			st.add_index(verts[r+1][j])
+			st.add_index(verts[r+1][i])
+	return st.commit()
+
+
+static func _split_material() -> StandardMaterial3D:
+	var m:=StandardMaterial3D.new()
+	m.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.vertex_color_use_as_albedo=true
+	m.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.cull_mode=BaseMaterial3D.CULL_DISABLED
+	m.depth_draw_mode=BaseMaterial3D.DEPTH_DRAW_DISABLED
+	return m
+
+
 func _pose_hand() -> void:
 	var hand: Node3D=items[0].get_child(0)
 	var slow:=time*.9
-	# Fingers curl in turn and open again: slow, uneven, never still.
-	HorrorKit.pose_hand(hand,.2,.35,[.1+.06*sin(slow),.18+.2*maxf(0,sin(slow)),.22+.16*maxf(0,sin(slow-.5)),.26+.1*maxf(0,sin(slow-1)),.3+.08*sin(slow-1.4)],Vector2(-.25,0))
+	# Fingers curl in turn and open again, index finger first: slow, uneven, never still. The thumb
+	# twitches inwards now and then; the wrist sags and lifts a little, like something breathing.
+	var wave:=func(lag: float) -> float: return maxf(0.0,sin(slow-lag))
+	HorrorKit.pose_hand(hand,.25,.3,[
+		.1+.06*sin(slow*.7)+.12*wave.call(2.2),
+		.2+.3*wave.call(.0)+.04*sin(time*2.3),
+		.24+.32*wave.call(.45),
+		.28+.34*wave.call(.9),
+		.33+.36*wave.call(1.35)],
+		Vector2(HAND_BEND+.06*sin(time*.6),.05*sin(time*.4)))
 
 
 func _feast(p: Vector3, room: Variant) -> void:
