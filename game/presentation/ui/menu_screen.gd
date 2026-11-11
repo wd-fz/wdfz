@@ -2,7 +2,7 @@ class_name MenuScreen
 extends Control
 ## Shared responsive menu shell. Existing controls keep their signals and owner IDs.
 var description: Label
-var scroll: ScrollContainer
+var scroll: TouchScroll
 var _layout: HBoxContainer
 var _hero: VBoxContainer
 var _card: PanelContainer
@@ -84,7 +84,7 @@ func setup(content: VBoxContainer, paused_menu: bool) -> void:
 	_continue.reparent(box,false)
 	_continue.custom_minimum_size.y = 54
 	_continue.theme_type_variation = "PrimaryButton"
-	scroll = ScrollContainer.new()
+	scroll = TouchScroll.new()
 	scroll.name = "MenuScroll"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL

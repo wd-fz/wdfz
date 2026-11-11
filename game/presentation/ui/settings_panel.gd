@@ -82,7 +82,7 @@ var selected := "画面"
 var fullscreen_toggle_allowed := GameSettings.can_toggle_fullscreen()
 var values := {}
 var shell: PanelContainer
-var scroll: ScrollContainer
+var scroll: TouchScroll
 var controls := {}
 var _page_boxes := {}
 var _nav_buttons := {}
@@ -150,7 +150,7 @@ func _ready() -> void:
 	_nav.vertical = true
 	_nav.add_theme_constant_override("separation", 8)
 	_body.add_child(_nav)
-	scroll = ScrollContainer.new()
+	scroll = TouchScroll.new()
 	scroll.name = "SettingsScroll"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -277,6 +277,7 @@ func _add_graphics(column: VBoxContainer) -> void:
 
 func select_graphics_section(id: String) -> void:
 	if not _graphics_boxes.has(id): return
+	scroll.stop_motion()
 	graphics_section=id
 	for key: String in _graphics_boxes:
 		_graphics_boxes[key].visible=key==id
@@ -588,6 +589,7 @@ func _changed(key: String, value: int) -> void:
 
 func select_page(id: String) -> void:
 	if not _page_boxes.has(id): return
+	scroll.stop_motion()
 	selected = id
 	_cancel_clear()
 	if not _capturing.is_empty(): _stop_capture()

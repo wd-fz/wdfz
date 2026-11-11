@@ -23,8 +23,9 @@ var extra: VBoxContainer     # the camera page: shoot, flash, the album
 var flash_button: Button
 var album: VBoxContainer
 var _layout: HBoxContainer
-var _body_scroll: ScrollContainer
-var _nav_scroll: ScrollContainer
+var _body_scroll: TouchScroll
+var _nav_scroll: TouchScroll
+var _selected_app := ""
 
 
 func _init() -> void:
@@ -61,7 +62,7 @@ func _init() -> void:
 	_layout = HBoxContainer.new()
 	_layout.add_theme_constant_override("separation",16)
 	box.add_child(_layout)
-	_nav_scroll = ScrollContainer.new()
+	_nav_scroll = TouchScroll.new()
 	_nav_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_nav_scroll.follow_focus = true
 	_layout.add_child(_nav_scroll)
@@ -69,7 +70,7 @@ func _init() -> void:
 	nav.add_theme_constant_override("separation", 4)
 	nav.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_nav_scroll.add_child(nav)
-	_body_scroll = ScrollContainer.new()
+	_body_scroll = TouchScroll.new()
 	_body_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_body_scroll.follow_focus = true
 	_body_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -116,7 +117,7 @@ func _init() -> void:
 	flash_button.toggle_mode = true
 	flash_button.pressed.connect(func() -> void: flash_pressed.emit())
 	extra.add_child(flash_button)
-	var shelf := ScrollContainer.new()
+	var shelf := TouchScroll.new()
 	shelf.custom_minimum_size = Vector2(0, 150)
 	shelf.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	album = VBoxContainer.new()
@@ -156,6 +157,10 @@ func _fit() -> void:
 
 ## Select the app visually. action: "" hides the button; label its text.
 func select(app: String, action: String, label: String, disabled: bool) -> void:
+	if app != _selected_app:
+		_nav_scroll.stop_motion()
+		_body_scroll.stop_motion()
+		_selected_app = app
 	for k: String in app_buttons:
 		(app_buttons[k] as Button).button_pressed = k == app
 	screen.visible = app == "plane"

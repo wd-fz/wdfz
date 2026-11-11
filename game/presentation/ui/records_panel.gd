@@ -21,7 +21,7 @@ var _sort := "time"
 var _body: VBoxContainer
 var _head: Label
 var _tabs: HFlowContainer
-var _scroll: ScrollContainer
+var _scroll: TouchScroll
 var _close_button: Button
 
 # The viewer.
@@ -60,7 +60,7 @@ func _init(store: RunRecords = null, rooms: Dictionary = {}) -> void:
 	box.add_child(_head)
 	_tabs = HFlowContainer.new()
 	box.add_child(_tabs)
-	_scroll = ScrollContainer.new()
+	_scroll = TouchScroll.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.follow_focus = true
 	_body = VBoxContainer.new()
@@ -162,6 +162,7 @@ func filtered() -> Array:
 
 
 func _refresh() -> void:
+	_scroll.stop_motion()
 	for c in _body.get_children():
 		c.queue_free()
 	for c in _tabs.get_children():

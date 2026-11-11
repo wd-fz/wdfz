@@ -23,7 +23,7 @@ var foot_button: Button
 var replay_button: Button
 var back_button: Button
 var current: Dictionary = {}
-var _scroll: ScrollContainer
+var _scroll: TouchScroll
 var _feet: HFlowContainer
 
 
@@ -37,7 +37,7 @@ func _init() -> void:
 	add_theme_stylebox_override("panel", back)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)
-	_scroll = ScrollContainer.new()
+	_scroll = TouchScroll.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.follow_focus = true
 	var content := VBoxContainer.new()
@@ -195,6 +195,7 @@ func _section(title: String) -> void:
 
 ## Open for a record (or a result). opts: replay (the replay pack, for the report card), back_label, silent, reduce.
 func open(m: Dictionary, opts: Dictionary = {}) -> void:
+	_scroll.stop_motion()
 	current = m
 	_grade_art.texture = UIArt.grade(String(m["grade"]))
 	# A granted grade sample is not a discovered ending.
