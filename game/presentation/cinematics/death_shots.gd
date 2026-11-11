@@ -2015,7 +2015,6 @@ func _build_mirror() -> void:
 	_box(Vector3(1,1.4,.08),Vector3(0,1.2,back),tile,rig)
 	_box(Vector3(1,2.1,.4),Vector3(0,-.55,back+.25),Color("0d0d0d"),rig)
 	p["door"]=_anchor(Vector3(-.5,-.55,back-.03))
-	rig.add_child(p["door"])
 	p["door"].reparent(rig,false)
 	_box(Vector3(1.0,2.1,.05),Vector3(.5,0,0),Color("8a7f6a"),p["door"])
 	_box(Vector3(1.1,.03,.2),Vector3(0,1.82,wz+1.4),LIGHT,rig)
