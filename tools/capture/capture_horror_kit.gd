@@ -203,8 +203,23 @@ func _world() -> void:
 		cw2.phantoms.show_smile(spec[0], cam_pos, CampusGeometry.ang_from_yaw(app.player.rotation.y))
 		var steps := int(float(spec[1]) * 60)
 		for _i in steps: cw2.phantoms.tick_smile(1.0 / 60, cam_pos)
+		app.ui.show_prompt("")
 		await _shot_n("smile-%s-%.1f" % spec, 2)
 		cw2.phantoms.clear_smile()
+	# The anomaly figures up close (twin, repeat, necker), 3.2 m ahead in the dark corridor, torch on them.
+	for kind in ["twin", "repeat", "necker"]:
+		var props := AnomalyProps.new()
+		cw2.add_child(props)
+		var ahead := Vector3(cos(0.0), 0, sin(0.0))
+		var here := app.player.camera.global_position
+		var at := Vector3(here.x + ahead.x * 3.2, 0, here.z + ahead.z * 3.2)
+		props.build(kind, {}, null, at, Vector2.RIGHT, 4)
+		if kind == "necker": props.items[0].position.z = here.z
+		props.items[0].rotation.y = atan2(here.x - props.items[0].position.x, here.z - props.items[0].position.z)
+		if kind == "necker": props.items[0].position.x = here.x + 8.5
+		app.ui.show_prompt("")
+		await _shot_n("figure-%s" % kind, 3)
+		props.queue_free()
 	app.return_to_menu()
 	app.queue_free()
 	await process_frame

@@ -127,13 +127,17 @@ func test_stage_lights() -> void:
 	cancelled.queue_free()
 	await _frames(2)
 	check(view.environment == env_before and owned.all(func(l: Variant) -> bool: return not is_instance_valid(l)), "a freed stage leaves no lights or environment behind")
-	# The crowd keeps its old unlit stage: no environment override.
+	# The crowd's lift is lit by one strip light of its own (the stage's dark environment and one motive light), and
+	# frees both with the stage.
 	var crowd := DeathCG.new()
 	app.add_child(crowd)
 	crowd.begin("crowd", app.player, app._campus_world(), app.ui, 4.2)
-	check(view.environment == env_before and crowd.stage_lights.is_empty(), "the crowd stage is untouched by the stage lights")
+	var crowd_lights: Array = crowd.stage_lights.duplicate()
+	check(view.environment != env_before and crowd_lights.size() == 1, "the crowd stage lights its lift with one strip light of its own")
 	crowd.finish()
 	crowd.queue_free()
+	await _frames(2)
+	check(view.environment == env_before and crowd_lights.all(func(l: Variant) -> bool: return not is_instance_valid(l)), "the crowd stage leaves no light or environment behind")
 	cg.queue_free()
 	app.return_to_menu()
 	app.queue_free()

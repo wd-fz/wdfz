@@ -3,6 +3,11 @@ extends "res://tests/support/test_suite.gd"
 func original_data() -> Dictionary:
 	return JSON.parse_string(FileAccess.get_file_as_bytes("res://tests/fixtures/death_timelines-reference.json.gz").decompress_dynamic(32*1024*1024,FileAccess.COMPRESSION_GZIP).get_string_from_utf8())
 
+## Deliberate re-lighting of a flat panel (reference colour -> current colour, sRGB): the lift crowd's outside
+## backdrop is a dimmer, lit panel now so the door gap no longer glows pure white. Position, size, visibility,
+## alpha and timing are still checked against the reference.
+const RESTYLED := [[Color("#b9b6a8"), Color("#8a877c")]]
+
 func near(value: Vector3, expected: Array, tolerance: float = .0002) -> bool:
 	return value.distance_to(Vector3(expected[0],expected[1],expected[2]))<tolerance
 
@@ -34,7 +39,8 @@ func compare(actual: Variant, expected: Variant, label: String, errors: Array) -
 		if material!=null and expected.has("vertexColors") and material.vertex_color_use_as_albedo!=expected["vertexColors"]: errors.append(label+" vertex tint")
 		if material!=null and expected.has("color"):
 			var color := material.albedo_color.srgb_to_linear()
-			if not near(Vector3(color.r,color.g,color.b),expected["color"],.00001): errors.append(label+" color")
+			var restyled := RESTYLED.any(func(pair: Array) -> bool: return near(Vector3(color.r,color.g,color.b),[pair[1].srgb_to_linear().r,pair[1].srgb_to_linear().g,pair[1].srgb_to_linear().b],.00001) and near(Vector3(pair[0].srgb_to_linear().r,pair[0].srgb_to_linear().g,pair[0].srgb_to_linear().b),expected["color"],.00001))
+			if not restyled and not near(Vector3(color.r,color.g,color.b),expected["color"],.00001): errors.append(label+" color")
 	if expected.has("instances") and DisplayServer.get_name()!="headless":
 		var mesh: MultiMesh = actual.multimesh
 		if mesh.instance_count!=expected["instances"].size(): errors.append(label+" instance count")

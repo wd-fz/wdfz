@@ -19,8 +19,8 @@ const THUMB_LEN := [.04,.032,.027]
 const JAW_PIVOT := Vector3(0,-.026,.006)
 const LIP_Y := -.43                             # the mouth line, as the y of a unit direction
 const TONES := {
-	"wax":{"base_color":Color(.66,.65,.59),"vein_color":Color(.4,.46,.5),"deep_color":Color(.035,.03,.03),"vein_amount":.45,"mottle":.16,
-		"rim_color":Color(.55,.66,.73),"rim_strength":.45,"rim_emit":.04,"gloss":.12,"shininess":16.0},
+	"wax":{"base_color":Color(.56,.57,.52),"vein_color":Color(.4,.46,.5),"deep_color":Color(.25,.16,.18),"vein_amount":.45,"mottle":.16,
+		"rim_color":Color(.55,.66,.73),"rim_strength":.45,"rim_emit":.04,"gloss":.1,"shininess":16.0},
 	"shadow":{"base_color":Color(.022,.025,.028),"vein_color":Color(.05,.06,.07),"deep_color":Color(0,0,0),"vein_amount":.25,"mottle":.4,
 		"rim_color":Color(.42,.52,.6),"rim_strength":1.3,"rim_emit":.3,"gloss":.12,"shininess":12.0},
 	"nail":{"base_color":Color(.56,.54,.47),"vein_color":Color(.4,.37,.32),"deep_color":Color(.012,.01,.008),"vein_amount":0.0,"mottle":.5,
@@ -30,7 +30,7 @@ const TONES := {
 	"cavity":{"base_color":Color(.008,.006,.006),"vein_color":Color(.008,.006,.006),"deep_color":Color(0,0,0),"vein_amount":0.0,"mottle":0.0,
 		"rim_color":Color(0,0,0),"rim_strength":0.0,"rim_emit":0.0,"gloss":0.0,"shininess":8.0,"pores":0.0,"smudge":0.0},
 	"hair":{"base_color":Color(.016,.015,.014),"vein_color":Color(.03,.028,.026),"deep_color":Color(0,0,0),"vein_amount":.6,"mottle":.5,
-		"rim_color":Color(.36,.42,.48),"rim_strength":.4,"rim_emit":.04,"rim_power":4.0,"gloss":.08,"shininess":8.0,"noise_scale":260.0,
+		"rim_color":Color(.36,.42,.48),"rim_strength":.4,"rim_emit":.04,"rim_power":4.0,"gloss":.0,"shininess":8.0,"noise_scale":260.0,
 		"vein_stretch":Vector3(1.0,.12,1.0),"pores":0.0,"smudge":0.0},
 }
 ## A figure's clothes and body: matte, near black, no highlight; only a narrow cold edge shows its volume.
@@ -84,7 +84,7 @@ void fragment() {
 	float shade = pow(mix(1.0, COLOR.r, vertex_shade), 2.2);
 	vec3 skin = mix(base_color, vein_color, clamp(vein + blot * mottle, 0.0, 1.0));
 	skin *= (1.0 - pore) * (1.0 - smear);
-	ALBEDO = mix(deep_color, skin, shade);
+	ALBEDO = mix(deep_color * clamp(shade * 4.0, 0.0, 1.0), skin, shade);
 	ROUGHNESS = .9;
 	SPECULAR = .1;
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), rim_power);
@@ -314,6 +314,7 @@ static func _chain(base: Node3D, lengths: Array, r: float, thin: float, q: int, 
 		var r0: float = radius.call(j)
 		var r1: float = r0 * .8 if tip else radius.call(j + 1)
 		var knuckle := 0.0 if tip else r * (.1 + .22 * thin) * (1.0 - .35 * float(j) / maxf(1, n - 1))
+		_part(joint, "Knuckle", _ellipsoid(Vector3.ONE * r0 * 1.06, q), mat)
 		_part(joint, "Bone", _phalanx(float(lengths[j]), r0, r1, knuckle, tip, q), mat)
 		if tip and nail != null:
 			_part(joint, "Nail", _nail(float(lengths[j]), r0, r1, q), nail)
@@ -778,10 +779,14 @@ static func _hair_mesh(mouth: String, skew: float, q: int) -> Mesh:
 		var line := lerpf(.4, -.55, smoothstep(-.75, .75, d.z))
 		# Clear of the ears; a short fringe dips over the middle of the forehead.
 		line = maxf(line, .12 * smoothstep(.7, .9, absf(d.x)) * smoothstep(.5, .05, d.z))
-		line -= .06 * exp(-pow(d.x / .35, 2.0)) * smoothstep(-.4, -.8, d.z)
+		line -= .075 * exp(-pow(d.x / .35, 2.0)) * smoothstep(-.4, -.8, d.z)
+		# A ragged edge instead of a bowl rim.
+		line += (.018 * sin(th * 7.0) + .012 * sin(th * 13.0)) * smoothstep(.9, .3, d.y)
 		var h := d.y - line
 		var grow := smoothstep(-.03, .12, h)
 		var thick := lerpf(-.003, .0065 + .003 * smoothstep(.6, 1.0, d.y), grow)
+		# The unskinned shell must not show through an open mouth: below the face's hairline it sinks deep into the skull.
+		thick -= .03 * smoothstep(0.0, -.25, d.y) * smoothstep(.3, -.2, d.z) * (1.0 - grow)
 		var at: Vector3 = _head_point(d, mouth, skew)[0]
 		return [at + d * thick, lerpf(.4, 1.0, grow)]
 	_meshes[key] = _sweep(rows, rows * 2, f)
@@ -899,6 +904,10 @@ static func _neck(length: float, q: int, girth: float = 1.0) -> Mesh:
 		var th := v * TAU
 		var bend := .02 * sin(t * PI) * minf(1.0, length / .4)
 		var shade := lerpf(.85, .1, smoothstep(.2, 1.0, t))
+		if girth > 1.0:
+			# A bust's neck shows through an open mouth: its top, up inside the jaw, is slim and in shadow.
+			r *= lerpf(.6, 1.0, smoothstep(.0, .4, t))
+			shade *= lerpf(.1, 1.0, smoothstep(.1, .45, t))
 		return [Vector3(r * sin(th), y, r * cos(th) * .92 + bend), shade]
 	_meshes[key] = _sweep(rows, seg, f)
 	return _meshes[key]

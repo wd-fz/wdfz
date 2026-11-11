@@ -4979,6 +4979,7 @@ func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 				var sw := _campus_world()
 				if sw != null and sw.phantoms != null:
 					var cp := player.camera.global_position
+					sw.phantoms.reduce_flash = settings.get_int("reduce_flash") == 1
 					sw.phantoms.show_smile(String(e["mode"]), cp, CampusGeometry.ang_from_yaw(player.rotation.y))
 					if e["mode"] == "jump":
 						ui.flash_hurt(0.6)
