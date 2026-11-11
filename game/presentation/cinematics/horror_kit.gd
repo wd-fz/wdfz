@@ -19,10 +19,10 @@ const THUMB_LEN := [.04,.032,.027]
 const JAW_PIVOT := Vector3(0,-.026,.006)
 const LIP_Y := -.43                             # the mouth line, as the y of a unit direction
 const TONES := {
-	"wax":{"base_color":Color(.56,.57,.52),"vein_color":Color(.4,.46,.5),"deep_color":Color(.25,.16,.18),"vein_amount":.45,"mottle":.16,
-		"rim_color":Color(.55,.66,.73),"rim_strength":.45,"rim_emit":.04,"gloss":.1,"shininess":16.0},
+	"wax":{"base_color":Color(.47,.45,.41),"vein_color":Color(.4,.46,.5),"deep_color":Color(.25,.16,.18),"vein_amount":.45,"mottle":.16,
+		"rim_color":Color(.55,.55,.52),"rim_strength":.45,"rim_emit":.0,"gloss":.1,"shininess":16.0},
 	"shadow":{"base_color":Color(.022,.025,.028),"vein_color":Color(.05,.06,.07),"deep_color":Color(0,0,0),"vein_amount":.25,"mottle":.4,
-		"rim_color":Color(.42,.52,.6),"rim_strength":1.3,"rim_emit":.3,"gloss":.12,"shininess":12.0},
+		"rim_color":Color(.45,.47,.48),"rim_strength":.5,"rim_emit":.05,"gloss":.12,"shininess":12.0},
 	"nail":{"base_color":Color(.56,.54,.47),"vein_color":Color(.4,.37,.32),"deep_color":Color(.012,.01,.008),"vein_amount":0.0,"mottle":.5,
 		"rim_color":Color(.5,.55,.55),"rim_strength":.3,"rim_emit":.02,"gloss":.55,"shininess":50.0,"noise_scale":140.0,"pores":0.0},
 	"eye":{"base_color":Color(.5,.53,.5),"vein_color":Color(.4,.44,.44),"deep_color":Color(.03,.03,.03),"vein_amount":0.0,"mottle":.3,
@@ -34,7 +34,7 @@ const TONES := {
 		"vein_stretch":Vector3(1.0,.12,1.0),"pores":0.0,"smudge":0.0},
 }
 ## A figure's clothes and body: matte, near black, no highlight; only a narrow cold edge shows its volume.
-const FIGURE := {"vein_amount":.0,"mottle":.25,"rim_color":Color(.4,.5,.6),"rim_strength":.85,"rim_emit":.1,"rim_power":5.0,
+const FIGURE := {"vein_amount":.0,"mottle":.25,"rim_color":Color(.5,.5,.48),"rim_strength":.35,"rim_emit":.0,"rim_power":5.0,
 	"gloss":0.0,"shininess":4.0,"wrap":.15,"pores":0.0,"smudge":.5}
 const SHADER := """
 shader_type spatial;
@@ -187,6 +187,9 @@ static func is_dark(tone: Variant) -> bool:
 ## tint: 0 near black (default) .. 1 keeps the colour as given. cut_y: fragments of the figure's own mesh
 ## above this height (its local metres, feet at 0) are not drawn, so a HorrorKit head can take its place.
 static func figure_skin(col: Color, tint: float = 0.0, cut_y: float = INF) -> ShaderMaterial:
+	if col.get_luminance() < .12:
+		col = Color("2a3445")  # a black body is a hole: dress it as a school uniform and keep that colour
+		tint = 1.0
 	var key := "fig|%s|%.3f|%.3f" % [col.to_html(), tint, minf(cut_y, 1e6)]
 	if _materials.has(key): return _materials[key]
 	var params: Dictionary = FIGURE.duplicate()
@@ -541,12 +544,13 @@ static func _forearm(length: float, flesh: float, side: float, q: int, fade: Vec
 
 ## opts: mouth ("closed", "none": a smooth blank lower face, "wide": splits back towards the cheeks),
 ## open (0..1 initial jaw), eyes ("dull": milky eyes deep in the sockets, "hollow": empty sockets),
-## skew (0..1: the left eye sits higher, further out and smaller), neck (length of a neck below, m),
+## socket (.3..1: eye socket depth, 1 default), skew (0..1: the left eye sits higher, further out and smaller), neck (length of a neck below, m),
 ## hair (false: short black hair over the crown, back and sides), tone, glow, quality.
 static func head(opts: Dictionary = {}) -> Node3D:
 	var q := tier(opts.get("quality", -1))
 	var mouth := String(opts.get("mouth", "closed"))
 	var skew := clampf(float(opts.get("skew", 0.0)), 0.0, 1.0)
+	var socket := clampf(float(opts.get("socket", 1.0)), .3, 1.0)  # how deep the eye sockets are (1 the default)
 	var tone: Variant = opts.get("tone", "wax")
 	var glow := float(opts.get("glow", 0.0))
 	var mat := _face_skin(tone, glow)
@@ -560,7 +564,7 @@ static func head(opts: Dictionary = {}) -> Node3D:
 	skel.set_bone_parent(1, 0)
 	skel.set_bone_rest(1, Transform3D(Basis(), JAW_PIVOT))
 	skel.reset_bone_poses()
-	var face := _part(skel, "Face", _head_mesh(mouth, skew, q), mat)
+	var face := _part(skel, "Face", _head_mesh(mouth, skew, q, socket), mat)
 	if not _skins.has("head"): _skins["head"] = skel.create_skin_from_rest_transforms()
 	face.skin = _skins["head"]
 	face.skeleton = NodePath("..")
@@ -570,7 +574,7 @@ static func head(opts: Dictionary = {}) -> Node3D:
 	if String(opts.get("eyes", "dull")) == "dull" and not is_dark(tone):
 		for s in [-1.0, 1.0]:
 			var c := _socket(s, skew)
-			var at: Vector3 = _head_point(c, mouth, skew)[0]
+			var at: Vector3 = _head_point(c, mouth, skew, socket)[0]
 			var eye := _part(skel, "EyeL" if s < 0 else "EyeR", _ellipsoid(Vector3.ONE * .0125 * (1.0 - (.12 * skew if s < 0 else 0.0)), q), skin("eye", glow))
 			eye.position = at - c * .0105
 	var neck := float(opts.get("neck", 0.0))
@@ -578,7 +582,7 @@ static func head(opts: Dictionary = {}) -> Node3D:
 		var tube := _part(skel, "Neck", _neck(neck, q), mat)
 		tube.position = Vector3(0, -.06, .03)
 	if bool(opts.get("hair", false)):
-		_part(skel, "Hair", _hair_mesh(mouth, skew, q), skin("hair", glow * .3))
+		_part(skel, "Hair", _hair_mesh(mouth, skew, q, socket), skin("hair", glow * .3))
 	root.set_meta("horror_head", {"skeleton": skel, "max": 0.0 if mouth == "none" else (.62 if mouth == "wide" else .4), "mouth": mouth})
 	pose_head(root, float(opts.get("open", 0.0)))
 	return root
@@ -611,7 +615,7 @@ static func _blob(d: Vector3, c: Vector3, sx: float, sy: float, sz: float) -> fl
 ## The rest shape of the head at unit direction d: [position, shade]. An ordinary skull (a low crown, a
 ## jaw nearly as wide as the cheeks, cheekbones, a nose with a bridge, a philtrum, a chin, plain ears);
 ## only the sockets are too deep and the mouth is wrong.
-static func _head_point(d: Vector3, mouth: String, skew: float) -> Array:
+static func _head_point(d: Vector3, mouth: String, skew: float, socket: float = 1.0) -> Array:
 	var p := Vector3(d.x * .075, d.y * .104, d.z * .095)
 	if d.z > 0: p.z *= 1.0 + .07 * d.z * smoothstep(-.6, .3, d.y)
 	p.y *= 1.0 - .13 * smoothstep(.5, 1.0, d.y)
@@ -629,8 +633,8 @@ static func _head_point(d: Vector3, mouth: String, skew: float) -> Array:
 	for s in [-1.0, 1.0]:
 		var size := 1.0 - (.12 * skew if s < 0 else 0.0)
 		var g := _bump(d, _socket(s, skew), .17 * size, .12 * size)
-		push -= .024 * g * size
-		shade *= 1.0 - .95 * pow(g, .5)
+		push -= .024 * g * size * socket
+		shade *= 1.0 - .95 * pow(g, .5) * socket
 		var rim := _bump(d, _socket(s, skew) + Vector3(0, .16, 0), .22, .055)
 		push += .006 * rim
 		# Cheekbones, the hollow under them, the jaw angle, the temple.
@@ -649,7 +653,7 @@ static func _head_point(d: Vector3, mouth: String, skew: float) -> Array:
 		shade *= 1.0 - .55 * _bump(d, Vector3(.045 * s, -.3, -.95).normalized(), .025, .02)
 	# The nose: a bridge from between the eyes to a rounded tip, short underneath.
 	var ridge := exp(-pow(d.x / lerpf(.05, .085, smoothstep(.05, -.25, d.y)), 2.0)) * smoothstep(.16, .06, d.y) * smoothstep(-.33, -.25, d.y) * front
-	push += ridge * (.004 + .019 * smoothstep(.06, -.25, d.y))
+	push += ridge * (.004 + (.016 if mouth == "wide" else .019) * smoothstep(.06, -.25, d.y))
 	shade *= 1.0 - .15 * exp(-pow(d.x / .09, 2.0)) * exp(-pow((d.y + .33) / .03, 2.0)) * front
 	# The philtrum: a shallow groove from the nose to the upper lip.
 	var phil := exp(-pow(d.x / .028, 2.0)) * smoothstep(-.31, -.34, d.y) * smoothstep(LIP_Y - .01, LIP_Y + .04, d.y) * front
@@ -677,8 +681,8 @@ static func _jaw_weight(d: Vector3) -> float:
 	return smoothstep(LIP_Y + .03, LIP_Y - .06, d.y) * smoothstep(.45, -.2, d.z)
 
 
-static func _head_mesh(mouth: String, skew: float, q: int) -> Mesh:
-	var key := "head|%s|%.3f|%d" % [mouth, skew, q]
+static func _head_mesh(mouth: String, skew: float, q: int, socket: float = 1.0) -> Mesh:
+	var key := "head|%s|%.3f|%d|%.2f" % [mouth, skew, q, socket]
 	if _meshes.has(key): return _meshes[key]
 	var rows: int = [22, 28, 36, 44, 52][q]
 	var cols: int = [32, 40, 52, 64, 80][q]
@@ -708,7 +712,7 @@ static func _head_mesh(mouth: String, skew: float, q: int) -> Mesh:
 		for j in (1 if pole else cols):
 			var th := TAU * j / cols
 			var d: Vector3 = dir.call(phi, th)
-			var pt: Array = _head_point(d, mouth, skew)
+			var pt: Array = _head_point(d, mouth, skew, socket)
 			var w := _jaw_weight(d) if mouth != "none" else 0.0
 			var m: float = mouth_w.call(th)
 			if i == split: w = lerpf(w, 0.0, m)
@@ -742,12 +746,17 @@ static func _head_mesh(mouth: String, skew: float, q: int) -> Mesh:
 			for j in cols:
 				var th := TAU * j / cols
 				var d: Vector3 = dir.call(phi, th)
-				var pt: Array = _head_point(d, mouth, skew)
+				var pt: Array = _head_point(d, mouth, skew, socket)
 				var m: float = mouth_w.call(th)
 				var w := lerpf(_jaw_weight(d), w0, m)
 				for layer in 2:
 					var at: Vector3 = pt[0] - d * (.009 * layer) + Vector3(0, (.0025 if r == 0 else -.0025) * layer, 0)
-					st.set_color(Color.BLACK if layer == 1 else Color(.05, .05, .05))
+					if mouth == "wide":
+						# Lips of skin (a shade darker than the face); only the deep corners of the mouth go dark.
+						var corner := smoothstep(.45, 1.0, absf(wrapf(th - PI, -PI, PI)) / half)
+						st.set_color(Color(.62, .62, .62) if layer == 0 else Color.WHITE * lerpf(.3, .02, corner))
+					else:
+						st.set_color(Color.BLACK if layer == 1 else Color(.05, .05, .05))
 					st.set_bones(PackedInt32Array([0, 1, 0, 0]))
 					st.set_weights(PackedFloat32Array([1.0 - w, w, 0, 0]))
 					st.add_vertex(at)
@@ -768,8 +777,8 @@ static func _head_mesh(mouth: String, skew: float, q: int) -> Mesh:
 
 
 ## Short hair: a shell over the crown, the back and the sides, sunk under the skin below the hairline.
-static func _hair_mesh(mouth: String, skew: float, q: int) -> Mesh:
-	var key := "hair|%s|%.3f|%d" % [mouth, skew, q]
+static func _hair_mesh(mouth: String, skew: float, q: int, socket: float = 1.0) -> Mesh:
+	var key := "hair|%s|%.3f|%d|%.2f" % [mouth, skew, q, socket]
 	if _meshes.has(key): return _meshes[key]
 	var rows: int = [20, 26, 34, 42, 50][q]
 	var f := func(u: float, v: float) -> Array:
@@ -787,7 +796,7 @@ static func _hair_mesh(mouth: String, skew: float, q: int) -> Mesh:
 		var thick := lerpf(-.003, .0065 + .003 * smoothstep(.6, 1.0, d.y), grow)
 		# The unskinned shell must not show through an open mouth: below the face's hairline it sinks deep into the skull.
 		thick -= .03 * smoothstep(0.0, -.25, d.y) * smoothstep(.3, -.2, d.z) * (1.0 - grow)
-		var at: Vector3 = _head_point(d, mouth, skew)[0]
+		var at: Vector3 = _head_point(d, mouth, skew, socket)[0]
 		return [at + d * thick, lerpf(.4, 1.0, grow)]
 	_meshes[key] = _sweep(rows, rows * 2, f)
 	return _meshes[key]
@@ -810,6 +819,16 @@ static func bust(opts: Dictionary = {}) -> Node3D:
 	var cloth := _cloth(opts.get("cloth", Color(.05, .055, .06)))
 	var torso := _part(root, "Torso", _torso(body, q), cloth)
 	torso.position = Vector3(0, -.165, .03)
+	if opts.has("collar"):
+		# A shirt collar: a flat ring round the base of the neck.
+		var ring := TorusMesh.new()
+		ring.inner_radius = .054
+		ring.outer_radius = .07
+		ring.rings = 16
+		ring.ring_segments = 6
+		var collar := _part(root, "Collar", ring, _cloth(opts["collar"]))
+		collar.position = Vector3(0, -.148, .03)
+		collar.scale = Vector3(1, .5, 1)
 	root.set_meta("horror_bust", {"head": hd, "torso": torso})
 	return root
 

@@ -82,8 +82,8 @@ func _figure_horror(hex: String, p: Vector3, type: String, size: float, opts: Di
 	var spec: Array=FIG_NECK[type]
 	HorrorKit.dress(model,HorrorKit.figure_skin(Color(hex),0.0,float(spec[0])))
 	n.add_child(model)
-	var tone:=Color(.42,.43,.4)
-	var head_opts:={"tone":tone,"mouth":"none","eyes":"hollow","quality":_tier}
+	var tone:="wax"
+	var head_opts:={"tone":tone,"mouth":"none","eyes":"hollow","quality":_tier,"socket":.7}
 	head_opts.merge(opts,true)
 	var head:=HorrorKit.head(head_opts)
 	# Matte: the kit's shader with no gloss and only a faint cold edge, so a light picks out the brow and cheek.
@@ -98,10 +98,54 @@ func _figure_horror(hex: String, p: Vector3, type: String, size: float, opts: Di
 	head.scale=Vector3.ONE*size*head_size*1.3 # the kit head is a little smaller than the model's own
 	head.position=(spec[1] as Vector3)*size
 	n.add_child(head)
+	# A white shirt collar at the neck root, so the dark body reads as a school uniform.
+	var ring:=TorusMesh.new()
+	ring.inner_radius=.055
+	ring.outer_radius=.085
+	var collar:=MeshInstance3D.new()
+	collar.name="Collar"
+	collar.mesh=ring
+	collar.material_override=HorrorKit._cloth(Color("b9b6aa"))
+	collar.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	collar.scale=Vector3(1,.55,1)*size
+	collar.position=Vector3(0,float(spec[0])-.02,.005)*size
+	if type=="neck":
+		# The wrong neck: bare skin (not cloth), thicker at the shoulders and under the jaw, with a ridge for each vertebra;
+		# the collar sits where the shoulders end, not under the head.
+		collar.position=Vector3(0,2.205,.005)*size
+		collar.scale=Vector3(1.35,.7,1.35)*size
+		var tube:=MeshInstance3D.new()
+		tube.name="BareNeck"
+		tube.mesh=_bare_neck_mesh(2.2,float(spec[0])-.05)
+		tube.material_override=matte
+		tube.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		tube.position=Vector3(0,0,.005)*size
+		tube.scale=Vector3.ONE*size
+		n.add_child(tube)
+	n.add_child(collar)
 	n.position=p
 	add_child(n)
 	items.append(n)
 	return n
+
+
+## A long bare neck from y0 to y1 (model metres): a lathe, widest at the base and under the jaw, a ridge per vertebra.
+static func _bare_neck_mesh(y0: float, y1: float) -> ArrayMesh:
+	var st:=SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rows:=36
+	var seg:=16
+	for i in rows:
+		for j in seg:
+			var pts:=[]
+			for corner in [[0,0],[0,1],[1,1],[1,0]]:
+				var t:=float(i+corner[0])/rows
+				var a:=TAU*float(j+corner[1])/seg
+				var r:=lerpf(.082,.07,smoothstep(0.0,.35,t))+.006*smoothstep(.8,1.0,t)+.007*pow(maxf(0.0,sin(t*TAU*7.0)),2.0)
+				pts.append(Vector3(cos(a)*r,lerpf(y0,y1,t),sin(a)*r))
+			for k in [0,1,2,0,2,3]: st.add_vertex(pts[k])
+	st.generate_normals()
+	return st.commit()
 
 
 static func wall_face(room: Variant, feet: Vector3) -> Dictionary:
@@ -242,8 +286,8 @@ func build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vect
 ## self-light keeps it readable in a dark toilet. Its fingers tap in turn with advance(); nothing else moves.
 const HAND_SCALE:=1.6
 const HAND_PALM:=Vector3(0,.16,0)
-const HAND_RISE:=.3       # the forearm's angle out of the floor, rad
-const HAND_BEND:=.55      # the wrist bent down so the fingertips reach the tiles
+const HAND_RISE:=.42      # the forearm's angle out of the floor, rad
+const HAND_BEND:=.7      # the wrist bent down so the fingertips reach the tiles
 
 func _hand(tier: int, p: Vector3, feet: Vector3) -> void:
 	var holder:=Node3D.new()
@@ -252,11 +296,15 @@ func _hand(tier: int, p: Vector3, feet: Vector3) -> void:
 	var toward:=Vector2(feet.x-p.x,feet.z-p.z)
 	if toward.length()>.05: holder.rotation.y=atan2(toward.x,toward.y)
 	holder.scale=Vector3.ONE*HAND_SCALE
-	var hand:=HorrorKit.hand({"quality":tier,"long":1.32,"thin":.3,"arm":.42,"glow":.08,"tone":Color(.5,.51,.47),"fade":Vector2(.9,1.0)})
+	var hand:=HorrorKit.hand({"quality":tier,"long":1.32,"thin":.55,"arm":.42,"glow":.9,"tone":Color(.55,.49,.44),"fade":Vector2(.9,1.0)})
 	# Back up (no roll), fingers to +z (turn), the forearm sloping down into the floor behind (pitch).
 	hand.rotation=Vector3(HAND_RISE,PI,0)
 	hand.position=-(hand.basis*Vector3(0,0,-.045))
 	holder.add_child(hand)
+	# Darker nails than the skin, so the tips read from above.
+	var nail_mat:=HorrorKit.skin("nail",.0).duplicate() as ShaderMaterial
+	nail_mat.set_shader_parameter("base_color",Color(.3,.26,.24))
+	for nail: Node in hand.find_children("Nail","MeshInstance3D",true,false): (nail as MeshInstance3D).material_override=nail_mat
 	# Where the forearm meets the floor (holder-local, unscaled): along the arm from the wrist.
 	var floor_y:=-HAND_PALM.y/HAND_SCALE
 	var wrist:=hand.position
@@ -270,11 +318,80 @@ func _hand(tier: int, p: Vector3, feet: Vector3) -> void:
 	split.position=Vector3(enter.x,floor_y+.004/HAND_SCALE,enter.z)
 	holder.add_child(split)
 	_split_chips(split)
+	_hand_sleeve(holder,wrist,arm_dir,(floor_y-wrist.y)/arm_dir.y)
+	_hand_stain(holder,floor_y)
 	add_child(holder)
 	items.append(holder)
 	position=p
 	_pose_hand()
 	_fingertip_shadows(holder,hand,floor_y)
+
+
+## A short length of uniform sleeve on the forearm where it goes into the floor: a ragged-edged tube a quarter wider than
+## the arm (holder-local; 7 cm in the world), so the hand has a size and an owner.
+func _hand_sleeve(holder: Node3D, wrist: Vector3, arm_dir: Vector3, reach: float) -> void:
+	var st:=SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n:=16
+	var length:=.07/HAND_SCALE
+	var w:=.0425*.89
+	var h:=.033*.89
+	for i in n:
+		var a0:=TAU*i/n
+		var a1:=TAU*(i+1)/n
+		var tear:=func(a: float) -> float: return length*(1.0-.22*absf(sin(a*3.0+.6))-.12*absf(sin(a*7.0)))
+		var p:=func(a: float, z: float) -> Vector3: return Vector3(cos(a)*w,sin(a)*h,z)
+		var b0:=p.call(a0,0.0) as Vector3
+		var b1:=p.call(a1,0.0) as Vector3
+		var t0:=p.call(a0,-tear.call(a0)) as Vector3
+		var t1:=p.call(a1,-tear.call(a1)) as Vector3
+		st.add_vertex(b0)
+		st.add_vertex(t1)
+		st.add_vertex(t0)
+		st.add_vertex(b0)
+		st.add_vertex(b1)
+		st.add_vertex(t1)
+	st.generate_normals()
+	var sleeve:=MeshInstance3D.new()
+	sleeve.name="Sleeve"
+	sleeve.mesh=st.commit()
+	var cloth:=HorrorKit._cloth(Color("2a3445")).duplicate() as ShaderMaterial
+	cloth.set_shader_parameter("ambient_lift",.9)  # a little self-light, like the hand: a navy sleeve must not drop out in the dark
+	sleeve.material_override=cloth
+	sleeve.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var basis_z:=arm_dir.normalized()
+	var x_axis:=Vector3.UP.cross(basis_z).normalized()
+	sleeve.transform=Transform3D(Basis(x_axis,basis_z.cross(x_axis),basis_z),wrist+arm_dir*(minf(reach,.46)+.0))
+	holder.add_child(sleeve)
+
+
+## A dark wet patch on the tiles under the hand (a disc about .35 m across, about 60% of the floor's brightness), so the
+## pale hand has something dark to stand on when seen from above.
+func _hand_stain(holder: Node3D, floor_y: float) -> void:
+	var st:=SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var radius:=.175/HAND_SCALE
+	var n:=24
+	st.set_color(Color(.01,.008,.006,.42))
+	st.add_vertex(Vector3.ZERO)
+	for ring in 2:
+		for i in n:
+			var a:=TAU*i/n
+			var rag:=1.0+.08*sin(a*5.0)+.05*sin(a*9.0+1.0)
+			st.set_color(Color(.01,.008,.006,.42) if ring==0 else Color(.01,.008,.006,0))
+			st.add_vertex(Vector3(cos(a),0,sin(a))*radius*rag*(.72 if ring==0 else 1.0))
+	for i in n:
+		var j:=(i+1)%n
+		st.add_index(0); st.add_index(1+j); st.add_index(1+i)
+		st.add_index(1+i); st.add_index(1+j); st.add_index(1+n+j)
+		st.add_index(1+i); st.add_index(1+n+j); st.add_index(1+n+i)
+	var stain:=MeshInstance3D.new()
+	stain.name="WetStain"
+	stain.mesh=st.commit()
+	stain.material_override=_split_material()
+	stain.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	stain.position=Vector3(0,floor_y+.008/HAND_SCALE,.05)
+	holder.add_child(stain)
 
 
 ## A split in the floor around the arm: an irregular, ragged black hole longer along the arm than across it,
@@ -409,7 +526,7 @@ func _pose_hand() -> void:
 	# tips point at the tiles. The fingers lift and tap in turn, index first: slow, uneven, never still.
 	var wave:=func(lag: float) -> float: return maxf(0.0,sin(slow-lag))
 	var claw:=func(mid: float, lag: float) -> Array: return [-.25,mid-.55*wave.call(lag),.7]
-	HorrorKit.pose_hand(hand,.25,.3,[
+	HorrorKit.pose_hand(hand,.25,1.1,[
 		[.2,.5+.05*sin(slow*.7)+.04*sin(time*2.3),.4],
 		claw.call(1.05,.0),
 		claw.call(.85,.45),

@@ -146,6 +146,31 @@ func _kit(q: int) -> void:
 	key.light_energy = 1.2
 	key.spot_angle = 30
 	await _shot("heads-profile")
+	# The anomaly figures in a plain lit room (the neck one is 4 m tall, so it cannot stand in a corridor): whole, then the heads.
+	_stage(.3)
+	var twin := AnomalyProps.new()
+	var necker := AnomalyProps.new()
+	world.add_child(twin)
+	world.add_child(necker)
+	twin.build("twin", {}, null, Vector3(-1.3, 0, 0), Vector2.RIGHT, q)
+	necker.build("necker", {}, null, Vector3(1.3, 0, 0), Vector2.RIGHT, q)
+	for props: AnomalyProps in [twin, necker]:
+		props.position = Vector3.ZERO
+		props.items[0].rotation = Vector3.ZERO
+	twin.items[0].position = Vector3(-1.3, 0, 0)
+	necker.items[0].position = Vector3(1.3, 0, 0)
+	_aim(key, Vector3(-3, 4.5, 9), Vector3(0, 1.8, 0))
+	key.light_energy = 14.0
+	key.spot_angle = 60
+	key.spot_range = 30
+	_aim(cam, Vector3(0, 2.0, 9.5), Vector3(0, 1.9, 0))
+	cam.fov = 52
+	await _shot("figure-necker")
+	_aim(cam, Vector3(-1.3, 2.35, 2.3), Vector3(-1.3, 2.25, 0))
+	cam.fov = 36
+	await _shot("figs-heads")
+	_aim(cam, Vector3(1.3, 3.6, 3.0), Vector3(1.3, 3.2, 0))
+	await _shot("figs-necker-head")
 	world.free()
 	world = null
 
@@ -206,17 +231,15 @@ func _world() -> void:
 		app.ui.show_prompt("")
 		await _shot_n("smile-%s-%.1f" % spec, 2)
 		cw2.phantoms.clear_smile()
-	# The anomaly figures up close (twin, repeat, necker), 3.2 m ahead in the dark corridor, torch on them.
-	for kind in ["twin", "repeat", "necker"]:
+	# The anomaly figures up close (twin, repeat), 3.2 m ahead in the dark corridor, torch on them.
+	for kind in ["twin", "repeat"]:
 		var props := AnomalyProps.new()
 		cw2.add_child(props)
 		var ahead := Vector3(cos(0.0), 0, sin(0.0))
 		var here := app.player.camera.global_position
 		var at := Vector3(here.x + ahead.x * 3.2, 0, here.z + ahead.z * 3.2)
 		props.build(kind, {}, null, at, Vector2.RIGHT, 4)
-		if kind == "necker": props.items[0].position.z = here.z
 		props.items[0].rotation.y = atan2(here.x - props.items[0].position.x, here.z - props.items[0].position.z)
-		if kind == "necker": props.items[0].position.x = here.x + 8.5
 		app.ui.show_prompt("")
 		await _shot_n("figure-%s" % kind, 3)
 		props.queue_free()
