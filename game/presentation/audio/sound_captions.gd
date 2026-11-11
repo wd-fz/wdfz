@@ -5,10 +5,10 @@ extends RefCounted
 ## publishes one caption before it plays, whatever the volume, so a player without sound still
 ## gets the warning (CLAUDE.md horror rules 1 and 3). Direction words come from the place: left /
 ## right past 0.25 pan, behind / ahead, near under 5 m, through a wall when muffled. Heart and
-## breath at most once in 20 s, patrol steps once in 15 s without extending the caption.
+## breath at most once in 20 s. Patrol steps only appear within 5 m, without place words.
 ## At most eight queued, two shown, highest priority first.
 
-const PATROL_GAP := 15.0
+const PATROL_RANGE := 5.0
 
 const WORDS := {
 	"dread.hum": "灯管的嗡声没有停", "threat.breath": "呼吸声近了些", "dread.knock": "轻轻的敲门声", "dread.door": "门轴拖着长音", "dread.steps": "缓慢的脚步声", "dread.run": "一阵急促脚步",
@@ -27,14 +27,12 @@ var clock := 0.0
 var _list: Array = []
 var _seq := 0
 var _body_at := -100.0
-var _patrol_at := -100.0
 
 
 func reset() -> void:
 	_list = []
 	clock = 0.0
 	_body_at = -100.0
-	_patrol_at = -100.0
 
 
 func tick(dt: float) -> void:
@@ -53,8 +51,10 @@ func publish(id: String, opts: Dictionary, busy: bool = false) -> Dictionary:
 	var text := String(opts.get("caption", WORDS.get(id, "")))
 	var body := id.begins_with("threat.heart") or id.begins_with("threat.breath")
 	var patrol := bool(opts.get("patrol", false))
+	var p: Dictionary = opts.get("place", {})
 	if patrol:
-		if clock - _patrol_at < PATROL_GAP:
+		var distance := float(p.get("m", INF))
+		if not is_finite(distance) or distance < 0 or distance > PATROL_RANGE:
 			return {}
 		text = "脚步声"
 	if text == "":
@@ -64,8 +64,7 @@ func publish(id: String, opts: Dictionary, busy: bool = false) -> Dictionary:
 	if body:
 		_body_at = clock
 	var dir: PackedStringArray = []
-	var p: Dictionary = opts.get("place", {})
-	if not p.is_empty():
+	if not patrol and not p.is_empty():
 		if absf(float(p.get("pan", 0.0))) > 0.25:
 			dir.append("左" if float(p["pan"]) < 0.0 else "右")
 		if p.has("behind"):
@@ -77,10 +76,8 @@ func publish(id: String, opts: Dictionary, busy: bool = false) -> Dictionary:
 	var priority := 3 if patrol or id.begins_with("event.") or id in ["foley.cupFall", "foley.colaRattle"] or id.begins_with("threat.smile") else (1 if body else 0)
 	if busy and priority < 3:
 		return {}
-	if patrol:
-		_patrol_at = clock
 	var at := clock + maxf(0.0, float(opts.get("at", 0.0)))
-	var e := {"source": String(opts.get("source", id)), "text": (" · ".join(dir) + " · " if dir.size() > 0 else "") + text,
+	var e := {"source": "patrol.steps" if patrol else String(opts.get("source", id)), "text": (" · ".join(dir) + " · " if dir.size() > 0 else "") + text,
 		"at": at, "end": at + maxf(1.8, minf(5.0, 2.5 * sub_mult)), "priority": priority}
 	return _push(e)
 
