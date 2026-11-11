@@ -17,7 +17,7 @@ func test_menus() -> void:
 	ui.map_requested.connect(func(_q: String) -> void: hits.map_requested += 1)
 	var main := {"NewGame":"new_requested","HardGame":"new_hard_requested","LoadGame":"load_requested","SettingsMenu":"settings_requested","Achievements":"achievements_requested","Archive":"archive_requested","RecordsMenu":"records_requested","Speedrun":"speedrun_requested","DlcMenu":"dlc_requested","FullscreenMenu":"fullscreen_requested","DebugTools":"debug_requested"}
 	var pause := {"Resume":"resume_requested","Save":"save_requested","Reload":"load_requested","BackToMenu":"menu_requested","SettingsPause":"settings_requested","NotesPause":"notes_requested","MapPause":"map_requested","DlcMenu":"dlc_requested","FullscreenPause":"fullscreen_requested","DebugTools":"debug_requested"}
-	for resolution: Vector2i in [Vector2i(960,540),Vector2i(1280,800),Vector2i(2340,1080)]:
+	for resolution: Vector2i in [Vector2i(960,540),Vector2i(1280,800),Vector2i(2340,1080),Vector2i(2520,1080)]:
 		root.size = resolution
 		for scale: int in [100,150]:
 			ui.apply_text_scale(scale)
@@ -25,30 +25,43 @@ func test_menus() -> void:
 				ui.set_mode(mode)
 				ui.set_save_available(true)
 				await _frames(6)
-				var screen := ui.menu_screen if mode == "menu" else ui.pause_screen
+				var side: SideMenu = ui.menu_screen
+				var pause_screen: MenuScreen = ui.pause_screen
 				var specs: Dictionary = main if mode == "menu" else pause
 				var bounds := root.get_visible_rect()
-				check(bounds.encloses(screen._card.get_global_rect()), "%s menu fits %s at %d%% text" % [mode,resolution,scale])
+				if mode == "menu":
+					check(side.state == "folded" and bounds.encloses(side.tag_button.get_global_rect()) and side.tag_button.size.y >= 44, "side menu tag is reachable at %s %d%%" % [resolution,scale])
+					side.open_now()
+					await _frames(3)
+					check(bounds.encloses(side.content.get_global_rect()) and side.panel_rect().size.x <= bounds.size.x * 0.63 + 1.0, "side menu panel fits %s at %d%% text and leaves the campus visible" % [resolution,scale])
+				else:
+					check(bounds.encloses(pause_screen._card.get_global_rect()), "pause menu fits %s at %d%% text" % [resolution,scale])
+				var screen: Control = side if mode == "menu" else pause_screen
+				var scroll: ScrollContainer = side.scroll if mode == "menu" else pause_screen.scroll
 				for id: String in specs:
 					var button := screen.find_child(id,true,false) as Button
+					if mode == "menu" and button != null: side.reveal(button)
+					await _frames(3)
 					check(button != null and button.is_visible_in_tree(), "menu retains %s" % id)
 					if button == null: continue
-					if screen.scroll.is_ancestor_of(button): screen.scroll.ensure_control_visible(button)
+					if scroll.is_ancestor_of(button): scroll.ensure_control_visible(button)
 					await _frames(3)
 					check(bounds.encloses(button.get_global_rect()) and button.size.y >= 44, "%s stays reachable with a touch target" % id)
 					if resolution == Vector2i(960,540):
 						var before := int(hits[specs[id]])
 						await _tap(button)
 						check(int(hits[specs[id]]) == before+1, "real touch invokes %s exactly once" % id)
-				var sticky := screen.find_child("Resume" if mode == "pause" else "LoadGame",true,false) as Control
-				check(not screen.scroll.is_ancestor_of(sticky), "primary action stays outside menu scroll")
+				if mode == "pause":
+					var sticky := pause_screen.find_child("Resume",true,false) as Control
+					check(not pause_screen.scroll.is_ancestor_of(sticky), "primary action stays outside menu scroll")
 	ui.set_mode("menu")
 	ui.set_save_available(false)
 	check(ui.get_node("%LoadGame").disabled and ui.get_node("%NewGame").theme_type_variation == "PrimaryButton", "empty profile highlights New Game and disables Continue")
 	ui.set_fullscreen(true)
 	check(ui.menu_screen.find_child("FullscreenMenu",true,false).text == "退出全屏", "menu describes the available fullscreen action")
 	ui.apply_text_scale(100)
-	ui.menu_screen.scroll.ensure_control_visible(ui.menu_screen.find_child("ImportMenu",true,false))
+	ui.menu_screen.reveal(ui.menu_screen.find_child("ImportMenu",true,false))
+	await _frames(3)
 	await _tap(ui.menu_screen.find_child("ImportMenu",true,false))
 	check(ui._import_panel.visible, "old-save import is reachable from the reorganized menu")
 	ui._import_panel.hide()
@@ -98,7 +111,7 @@ func test_android_fullscreen_ui() -> void:
 		ui.set_mode(mode)
 		ui.set_fullscreen(true)
 		await _frames(2)
-		var screen := ui.menu_screen if mode == "menu" else ui.pause_screen
+		var screen: Control = ui.menu_screen if mode == "menu" else ui.pause_screen
 		var button := screen.find_child("Fullscreen*",true,false) as Button
 		check(not button.is_visible_in_tree() and button.disabled, "Android %s hides and disables fullscreen action" % mode)
 		ui.show_settings(GameSettings.new("user://unused","Android").values)

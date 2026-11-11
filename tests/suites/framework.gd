@@ -115,6 +115,11 @@ func _test_app() -> void:
 	root.add_child(app)
 	await _frames()
 	check(app.ui.menu.visible and app.session == null, "app boots to menu")
+	check(app.ui.menu_screen.state == "folded" and app.ui.menu_screen.tag_button.is_visible_in_tree(), "the side menu starts folded into its tag")
+	await _tap(app.ui.menu_screen.tag_button)
+	check(app.ui.menu_screen.state in ["opening", "open"], "tapping the tag opens the side menu")
+	app.ui.menu_screen.reveal(app.ui.get_node("%NewGame"))
+	await _frames(3)
 	await _tap(app.ui.get_node("%NewGame"))
 	await _frames()
 	check(app.session == null and app.ui.choice_open(), "real touch tap on menu opens the talent pick")
@@ -192,6 +197,8 @@ func _test_app() -> void:
 	for viewport_size: Vector2i in [Vector2i(1280, 720), Vector2i(390, 844), Vector2i(844, 390)]:
 		root.size = viewport_size
 		await _frames()
+		app.ui.menu_screen.reveal(app.ui.get_node("%NewGame"))
+		await _frames(3)
 		var content: ScrollContainer = app.ui.menu_screen.scroll
 		check(root.get_visible_rect().encloses(content.get_global_rect()), "scrollable menu fits viewport %s" % viewport_size)
 		await _tap(app.ui.get_node("%NewGame"))
