@@ -8,10 +8,12 @@ func _ui() -> GameUI:
 	return ui
 
 
-func _run_for(seconds: float) -> void:
-	var end := Time.get_ticks_msec() + int(seconds * 1000.0)
-	while Time.get_ticks_msec() < end:
-		await process_frame
+## Advance a node's own animation by fixed 1/60 s steps, independent of the real frame rate.
+func _step(node: Node, seconds: float) -> void:
+	var n := ceili(seconds * 60.0)
+	for i in n:
+		if not is_instance_valid(node): return
+		node._process(1.0 / 60.0)
 
 
 func test_side_menu() -> void:
@@ -22,6 +24,7 @@ func test_side_menu() -> void:
 	ui.set_mode("menu")
 	await _frames(2)
 	var side: SideMenu = ui.menu_screen
+	side.set_process(false)
 	check(side.state == "folded" and side.tag_button.is_visible_in_tree() and not side.content.visible, "the menu starts folded into the rune tag")
 	var labels: Array = side.items.map(func(b: Button) -> String: return b.text)
 	check(labels == Array(side.item_labels) and labels == ["继续入梦", "新的轮回", "画廊与遗物", "感官设置", "逃离现实"], "five items take their copy from the exported labels")
@@ -41,14 +44,16 @@ func test_side_menu() -> void:
 	side.open_amount = side.tear_time / (side.tear_time + side.stretch_time)
 	var torn := side.body_rect()
 	check(absf(torn.size.y - side.layout_rects()["strip"].size.y) < 1.0 and torn.size.x < side.panel_rect().size.x * 0.3, "the tag first tears along the spine")
-	await _run_for(side.tear_time + side.stretch_time + 0.2)
+	_step(side, side.tear_time + side.stretch_time + 0.2)
 	check(side.state == "open" and absf(side.body_rect().size.x - side.panel_rect().size.x) < 1.0, "then it stretches into the panel")
-	await _run_for(side.reveal_step * 10.0 + side.reveal_time + 0.2)
+	_step(side, side.reveal_step * 10.0 + side.reveal_time + 0.2)
 	var title_mat := (side.find_child("Title", true, false) as Control).material as ShaderMaterial
 	check(float(title_mat.get_shader_parameter("u_reveal")) >= 0.999, "the title has surfaced out of blur and noise")
 	# The peephole follows the focused item.
+	await _frames(2)     # opening ends by focusing the first usable item (deferred)
 	side.items[2].grab_focus()
-	await _frames(20)
+	await _frames(2)
+	_step(side, 0.6)
 	var g := side.items[2].get_global_rect()
 	check(side._hole_target.position.distance_to(side.get_global_transform().affine_inverse() * g.position) < 1.0 and side._hole_on > 0.5, "the wiped peephole slides to the active item")
 	# A group opens in place; its first child surfaces.
@@ -64,11 +69,11 @@ func test_side_menu() -> void:
 	ui.achievements_requested.connect(func() -> void: hits[0] += 1)
 	achievements.pressed.emit()
 	check(hits[0] == 1 and side.state == "closing" and side._pulse_t >= 0.0, "an action still fires once, then the menu folds with a pulse")
-	await _run_for(0.25)
+	_step(side, 0.25)
 	check(side._shift > 0.8, "the menu turns ghost green while the pulse spreads")
-	await _run_for(side.fold_time + 0.1)
+	_step(side, side.fold_time + 0.1)
 	check(side.state == "folded" and side.tag_button.is_visible_in_tree(), "the panel collapses back into the tag")
-	await _run_for(side.pulse_time + side.fade_back_time)
+	_step(side, side.pulse_time + side.fade_back_time)
 	check(side._shift < 0.02, "the colours fade back to the blood-scab palette")
 	# Toggles stay in the open menu.
 	side.open_now()
@@ -122,26 +127,31 @@ func test_boot_and_preview() -> void:
 	await _frames(3)
 	ui.set_mode("menu")
 	ui.play_boot(false)
+	ui.boot_splash.set_process(false)
 	await _frames(2)
 	check(ui.boot_playing() and ui.boot_splash.mouse_filter == Control.MOUSE_FILTER_STOP, "the boot animation covers the menu and takes the first input")
 	var finished := [false, false]
 	ui.boot_splash.finished.connect(func(skipped: bool) -> void:
 		finished[0] = true
 		finished[1] = skipped)
-	await _run_for(0.4)
-	check(not finished[0], "it keeps playing on its own timeline")
+	var splash := ui.boot_splash
+	_step(splash, 0.4)
+	check(not finished[0] and splash.elapsed() > 0.39, "it keeps playing on its own timeline")
 	var key := InputEventKey.new()
 	key.keycode = KEY_A
 	key.pressed = true
 	Input.parse_input_event(key)
 	await _frames(2)
-	await _run_for(ui.boot_splash.skip_time + 0.15 if ui.boot_playing() else 0.0)
+	_step(splash, splash.skip_time + 0.05)
+	await _frames(2)
 	check(finished[0] and finished[1] and not ui.boot_playing(), "any key skips it quickly")
 	check(ui.menu_screen.state == "folded" and ui.menu.visible, "the menu waits folded behind it")
 	ui.play_boot(true)
+	ui.boot_splash.set_process(false)
 	await _frames(2)
 	check(is_equal_approx(ui.boot_splash.total(), ui.boot_splash.reduced_total), "reduced flashing plays only the short calm fade")
-	await _run_for(ui.boot_splash.reduced_total + 0.3)
+	_step(ui.boot_splash, ui.boot_splash.reduced_total + 0.1)
+	await _frames(2)
 	check(not ui.boot_playing(), "the calm version ends by itself")
 	# The live campus preview: never in headless runs, released outside the menu.
 	var preview := ui.menu_preview
@@ -171,8 +181,11 @@ func test_app_boot() -> void:
 	root.add_child(shown)
 	await _frames(3)
 	check(shown.ui.boot_playing() and shown.ui.menu.visible and shown.session == null, "the launched app opens on the boot animation over the menu")
-	shown.ui.boot_splash.skip()
-	await _run_for(0.5)
+	var shown_splash := shown.ui.boot_splash
+	shown_splash.set_process(false)
+	shown_splash.skip()
+	_step(shown_splash, 0.4)
+	await _frames(2)
 	check(not shown.ui.boot_playing() and shown.ui.menu_screen.tag_button.is_visible_in_tree(), "after it the folded menu tag is ready")
 	shown.queue_free()
 	await _frames(2)
