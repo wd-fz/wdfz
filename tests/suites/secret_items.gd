@@ -137,6 +137,8 @@ func test_app() -> void:
 	root.add_child(app)
 	await _frames(2)
 	# Real touch dispatch, including the emulated-mouse guard: two taps are insufficient.
+	app.ui.menu_screen.open_now()
+	await _frames(3)
 	_school_touch(app)
 	_school_touch(app)
 	check(not app.settings.wuda_armed,"two menu touches do not unlock the additive gift")

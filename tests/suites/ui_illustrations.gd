@@ -137,7 +137,9 @@ func test_expanded_interface() -> void:
 		await _frames(5)
 		var bounds := root.get_visible_rect()
 		var menu := app.ui.menu_screen
-		check(menu.find_child("NewGame", true, false).icon == UIArt.nav("new_game") and bounds.encloses(menu._card.get_global_rect()), "illustrated menu preserves landscape bounds: " + str(extent))
+		menu.reveal(menu.find_child("NewGame", true, false))
+		await _frames(3)
+		check(bounds.encloses(menu.content.get_global_rect()) and menu.find_child("NewGame", true, false).is_visible_in_tree(), "the side menu keeps its content inside landscape bounds: " + str(extent))
 		app.archive_flow.open("死亡")
 		await _frames(5)
 		check(bounds.encloses(app.ui.ach_panel.get_global_rect()), "archive art stays scrollable in landscape: " + str(extent))

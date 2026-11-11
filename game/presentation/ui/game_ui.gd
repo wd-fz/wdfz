@@ -50,6 +50,7 @@ signal debug_requested
 signal dlc_requested
 signal school_tapped
 signal ending_wake_requested
+signal quit_requested
 
 @onready var menu: Control = %Menu
 @onready var pause_panel: Control = %PausePanel
@@ -216,7 +217,7 @@ func _ready() -> void:
 			anchor.add_sibling(dev)
 	load_button.owner = self
 	touch_toggle.owner = self
-	menu_screen = _build_menu_screen(menu,false)
+	menu_screen = _build_side_menu()
 	pause_screen = _build_menu_screen(pause_panel,true)
 	set_touch_enabled(DisplayServer.is_touchscreen_available())
 	get_tree().root.size_changed.connect(_resize)
@@ -244,7 +245,7 @@ func _process(delta: float) -> void:
 		_hurt_rect.color.a = _hurt_level
 	if _toast_seconds > 0.0:
 		_toast_seconds -= delta
-		%Toast.visible = _toast_seconds > 0.0
+		%Toast.visible = _toast_seconds > 0.0 and not %Toast.text.is_empty()     # an empty pill is a stray box
 		%Toast.modulate.a = clampf(_toast_seconds / 0.6, 0.0, 1.0)
 
 
@@ -275,8 +276,31 @@ func _resize() -> void:
 	_fit_documents.call_deferred()
 
 
-var menu_screen: MenuScreen
+var menu_screen: SideMenu
 var pause_screen: MenuScreen
+
+
+var menu_preview: MenuPreview
+var boot_splash: BootSplash
+signal boot_cue(id: String)
+
+
+## The main menu: the side menu (side_menu.gd) over the live orbiting campus; the pause menu keeps MenuScreen.
+func _build_side_menu() -> SideMenu:
+	var content: VBoxContainer = menu.get_node("Margin/Center/Content")
+	menu_preview = MenuPreview.new()
+	menu.add_child(menu_preview)
+	# Above the static photo and its vignette (the side menu shader veils the live view itself).
+	var under: Node = menu.get_node_or_null("MenuPhotoShade")
+	if under == null: under = menu.get_node_or_null("MenuPhoto")
+	menu.move_child(menu_preview, under.get_index() + 1 if under != null else 1)
+	var side := SideMenu.new()
+	menu.add_child(side)
+	side.setup(content)
+	side.quit_requested.connect(func() -> void: quit_requested.emit())
+	menu.get_node("Margin").hide()
+	menu.get_node("Margin").queue_free()
+	return side
 
 
 func _build_menu_screen(panel: Control, is_pause: bool) -> MenuScreen:
@@ -289,9 +313,29 @@ func _build_menu_screen(panel: Control, is_pause: bool) -> MenuScreen:
 	return screen
 
 
+## The opening animation before the menu (boot_splash.gd); the live campus starts loading underneath.
+func play_boot(reduce_motion: bool) -> void:
+	if is_instance_valid(boot_splash):
+		return
+	boot_splash = BootSplash.new()
+	boot_splash.reduce_motion = reduce_motion
+	boot_splash.spine_x = menu_screen.layout_rects()["spine"].size.x if is_instance_valid(menu_screen) else 14.0
+	boot_splash.cue.connect(func(id: String) -> void: boot_cue.emit(id))
+	boot_splash.finished.connect(func(_skipped: bool) -> void:
+		boot_splash = null
+		if menu.visible: menu_screen.enter())
+	$Root.add_child(boot_splash)
+	if is_instance_valid(menu_preview):
+		menu_preview.begin_load()
+
+
+func boot_playing() -> bool:
+	return is_instance_valid(boot_splash)
+
+
 func _fit_menu_scrolls() -> void:
-	for screen: MenuScreen in [menu_screen,pause_screen]:
-		if is_instance_valid(screen): screen.refit()
+	if is_instance_valid(menu_screen): menu_screen.refit()
+	if is_instance_valid(pause_screen): pause_screen.refit()
 
 
 func show_pause_detail(text: String) -> void:
@@ -300,7 +344,7 @@ func show_pause_detail(text: String) -> void:
 
 
 func set_fullscreen(value: bool) -> void:
-	for screen: MenuScreen in [menu_screen,pause_screen]:
+	for screen: Control in [menu_screen,pause_screen]:
 		var button := screen.find_child("Fullscreen*",true,false) as Button
 		button.text = "退出全屏" if value else "进入全屏"
 
@@ -2384,7 +2428,7 @@ func _restore_menu_focus() -> void:
 	if _mode != "menu" or choice_open(): return
 	var focused := get_viewport().gui_get_focus_owner()
 	if focused == null or not focused.is_visible_in_tree():
-		%NewGame.grab_focus()
+		menu_screen.focus_default()
 
 
 func set_lift_close(visible_now: bool) -> void:
@@ -2528,8 +2572,13 @@ func set_mode(mode: String) -> void:
 	touch_controls.visible = mode == "play" and _touch_enabled and not _paper_flying
 	_refresh_paper_pad()
 	clear_touch()
+	if is_instance_valid(menu_preview):
+		if mode == "menu":
+			menu_preview.begin_load()
+		else:
+			menu_preview.release()
 	if mode == "menu":
-		%NewGame.grab_focus()
+		menu_screen.enter()
 	elif mode == "pause":
 		%Resume.grab_focus()
 	else:

@@ -40,6 +40,9 @@ var knife_flow: KnifeFlow
 var inception_flow: InceptionFlow
 var rules_dlc_flow: RulesDlcFlow
 var archive_flow: ArchiveFlow
+## The opening animation plays when the app is the running main scene (not under tests or capture scripts,
+## which may set it explicitly before adding the app).
+var play_boot := false
 var wuda_roll: Callable = func() -> float: return randf()
 var _school_taps: Array = []
 var _graphics_applied: Dictionary = {}
@@ -68,7 +71,9 @@ func _ready() -> void:
 	archive_flow = ArchiveFlow.new()
 	add_child(archive_flow)
 	archive_flow.setup(self)
-	add_child(ApplicationExit.new())
+	var exit_flow := ApplicationExit.new()
+	add_child(exit_flow)
+	ui.quit_requested.connect(exit_flow.request)
 	settings.load_file(DisplayServer.is_touchscreen_available())
 	settings.apply_bindings()
 	ui.interact_key = settings.key_text("interact").get_slice(" / ", 0)
@@ -146,7 +151,10 @@ func _ready() -> void:
 	ui.item_use_requested.connect(_use_item)
 	ui.item_hot_requested.connect(_set_hot)
 	ui.item_drop_requested.connect(_drop_item)
+	ui.boot_cue.connect(func(id: String) -> void: audio.play(id))
 	return_to_menu()
+	if play_boot or get_tree().current_scene == self:
+		ui.play_boot(settings.get_int("reduce_flash") == 1)
 
 
 func _make_session() -> GameSession:
@@ -2400,6 +2408,9 @@ func _apply_settings() -> void:
 	ui.apply_text_scale(settings.get_int("text"))
 	ui.apply_touch_scale(settings.get_int("touch_size"), settings.touch_layout)
 	ui.set_grain(settings.get_int("grain") == 1)
+	ui.menu_screen.set_reduce_motion(settings.get_int("reduce_flash") == 1)
+	ui.menu_preview.still = settings.get_int("reduce_flash") == 1
+	ui.menu_preview.render_options = settings.graphics()
 	ui.scene_post().quality=settings.get_int("lighting_detail")
 	ui.scene_post().render_options=settings.graphics()
 	ui.scene_post().tick(0)
