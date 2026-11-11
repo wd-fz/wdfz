@@ -211,6 +211,7 @@ func setup(source: VBoxContainer) -> void:
 			child.material = m
 	set_touch(false)
 	get_viewport().size_changed.connect(refit)
+	content.minimum_size_changed.connect(func() -> void: refit.call_deferred())
 	theme_changed.connect(func() -> void: refit.call_deferred())
 	resized.connect(refit)
 	refit()
@@ -267,7 +268,11 @@ func refit() -> void:
 	var p: Rect2 = r["panel"]
 	var font_k := get_theme_default_font_size() / 16.0
 	content.position = Vector2(p.position.x + h * 0.055, p.position.y + h * 0.045)
-	content.size = Vector2(p.size.x - h * 0.055 - h * 0.04, p.size.y - h * 0.045 - h * 0.025)
+	var inner := Vector2(p.size.x - h * 0.055 - h * 0.04, p.size.y - h * 0.045 - h * 0.025)
+	# Wrapped labels measured at zero width ask for one line per glyph and stretch the column for good;
+	# give them the real width up front and re-apply the size whenever a minimum changes.
+	description.custom_minimum_size.x = inner.x
+	content.size = inner
 	_title.add_theme_font_size_override("font_size", roundi(h * 0.085 * font_k))
 	for item: Button in items:
 		item.add_theme_font_size_override("font_size", roundi(h * 0.04 * font_k))
@@ -369,6 +374,7 @@ func reveal(button: Control) -> void:
 
 
 func _toggle_group(id: String) -> void:
+	refit.call_deferred()
 	_open_group = "" if _open_group == id else id
 	for gid: String in groups:
 		var box := groups[gid] as VBoxContainer

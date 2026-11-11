@@ -139,7 +139,8 @@ func test_expanded_interface() -> void:
 		var menu := app.ui.menu_screen
 		menu.reveal(menu.find_child("NewGame", true, false))
 		await _frames(3)
-		check(bounds.encloses(menu.content.get_global_rect()) and menu.find_child("NewGame", true, false).is_visible_in_tree(), "the side menu keeps its content inside landscape bounds: " + str(extent))
+		var panel := menu.panel_rect()
+		check(bounds.encloses(menu.content.get_global_rect()) and menu.content.get_rect().end.y <= panel.end.y + 0.5 and menu.find_child("NewGame", true, false).is_visible_in_tree(), "the side menu keeps its content inside the glass panel and the window: " + str(extent))
 		app.archive_flow.open("死亡")
 		await _frames(5)
 		check(bounds.encloses(app.ui.ach_panel.get_global_rect()), "archive art stays scrollable in landscape: " + str(extent))
