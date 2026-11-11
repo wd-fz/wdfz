@@ -13,6 +13,13 @@ const SEARCH_SECONDS := 0.8
 const SEARCH_REACH := 5.0
 const ITEM_READ := ["card", "notebook", "hw", "usb", "key", "roomkey", "metronome", "goggles", "coat", "battery", "chalk", "pen"]
 const NOT_PORTED: Array = []
+## Dropped items lie where they were put down (user change 2026-11-11; the Web version let them vanish).
+const GROUND_MAX := 64
+## Pick-up reach in metres (horizontal) and the most a floor may differ (stairs, platforms).
+const PICK_REACH := 1.4
+const PICK_RISE := 1.1
+## Largest angle (radians) between the view and an item that still counts as looking at it.
+const PICK_AIM := 0.62
 const EMPTY_LINES := ["我：空的。只有一层灰。", "我：空的。抽屉底下用圆珠笔写着一个名字，被涂黑了。", "我：空的。最里面有一小撮头发。"]
 
 var _rooms: Dictionary = {}
@@ -27,6 +34,8 @@ var desk_used: Dictionary = {}
 var pending_loot: Dictionary = {}
 var key_miss := 0
 var hw_taken := false
+## [{id, world, x, y, z}] in scene coordinates (metres); only rooms the app allows (not moving or rebuilt spaces).
+var ground: Array = []
 var _job: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 var _notices: PackedStringArray = []
@@ -56,6 +65,7 @@ func reset() -> void:
 	pending_loot = {}
 	key_miss = 0
 	hw_taken = false
+	ground = []
 	_job = {}
 	_rng.randomize()
 	_notices = PackedStringArray()
@@ -68,7 +78,7 @@ func set_seed(value: int) -> void:
 func capture() -> Dictionary:
 	return {"bag": bag.duplicate(), "hot": hot.duplicate(), "torch": torch_on, "brolly": brolly_up, "pill_t": pill_t, "snack_t": snack_t,
 		"desk_used": desk_used.duplicate(), "pending_loot": pending_loot.duplicate(), "key_miss": key_miss,
-		"hw_taken": hw_taken, "rng_seed": str(_rng.seed), "rng_state": str(_rng.state)}
+		"hw_taken": hw_taken, "ground": ground.duplicate(true), "rng_seed": str(_rng.seed), "rng_state": str(_rng.state)}
 
 
 func validate(data: Dictionary) -> String:
@@ -91,6 +101,19 @@ func validate(data: Dictionary) -> String:
 		return "翻找记录无效"
 	if not String(data.get("rng_state", "")).is_valid_int():
 		return "物品随机状态无效"
+	return _validate_ground(data.get("ground", []), items)
+
+
+## Older saves have no ground list; a present one must name known items in finite places.
+static func _validate_ground(list: Variant, items: Dictionary) -> String:
+	if not list is Array or (list as Array).size() > GROUND_MAX:
+		return "地上的物品无效"
+	for entry: Variant in list:
+		if not entry is Dictionary or not items.has(entry.get("id")) or not entry.get("world") is String or String(entry["world"]).is_empty():
+			return "地上的物品无效"
+		for axis: String in ["x", "y", "z"]:
+			if not SaveSchema.number_in(entry.get(axis), -100000, 100000):
+				return "地上的物品位置无效"
 	return ""
 
 
@@ -105,6 +128,9 @@ func restore(data: Dictionary) -> void:
 	pending_loot = data["pending_loot"].duplicate()
 	key_miss = int(data.get("key_miss", 0))
 	hw_taken = bool(data.get("hw_taken", false))
+	ground = []
+	for entry: Dictionary in data.get("ground", []):
+		ground.append({"id": String(entry["id"]), "world": String(entry["world"]), "x": float(entry["x"]), "y": float(entry["y"]), "z": float(entry["z"])})
 	_rng.seed = int(String(data.get("rng_seed", "0")))
 	_rng.state = int(String(data["rng_state"]))
 	_job = {}
@@ -167,13 +193,69 @@ func remove(id: String) -> bool:
 	return true
 
 
-## items.js dropSelected: the item is put down (gone). The unique portal materials can be taken again
-## from where they were found, so a wrong drop cannot cut a route (the app clears the facility flag).
+## items.js dropSelected: the item is put down. The app then leaves it on the ground (place_on_ground) where
+## that is allowed; the unique portal materials can also be taken again from where they were found, so a
+## wrong drop cannot cut a route (the app clears the facility flag).
 func drop(id: String) -> bool:
 	if not remove(id):
 		return false
 	_say("我：我把「%s」放下了。" % item_name(id))
 	return true
+
+
+## Leave a dropped item at a scene position. The oldest one is lost when the ground list is full.
+func place_on_ground(id: String, world: String, at: Vector3) -> void:
+	if not _items().has(id) or world.is_empty():
+		return
+	ground.append({"id": id, "world": world, "x": at.x, "y": at.y, "z": at.z})
+	while ground.size() > GROUND_MAX:
+		ground.remove_at(0)
+
+
+func ground_in(world: String) -> Array:
+	var out: Array = []
+	for entry: Dictionary in ground:
+		if String(entry["world"]) == world:
+			out.append(entry)
+	return out
+
+
+## The ground item to pick up: within reach of the feet, at about the same floor, and close to where the
+## camera looks (the crosshair), so with several on the floor the one looked at is taken. -1 when none.
+func ground_target(world: String, feet: Vector3, eye: Vector3, look: Vector3) -> int:
+	var best := -1
+	var best_angle := PICK_AIM
+	var dir := look.normalized()
+	for i in ground.size():
+		var entry: Dictionary = ground[i]
+		if String(entry["world"]) != world or absf(float(entry["y"]) - feet.y) > PICK_RISE:
+			continue
+		var spot := Vector3(float(entry["x"]), float(entry["y"]), float(entry["z"]))
+		if Vector2(spot.x - feet.x, spot.z - feet.z).length() > PICK_REACH:
+			continue
+		var angle := dir.angle_to(spot - eye)
+		if angle < best_angle:
+			best_angle = angle
+			best = i
+	return best
+
+
+func ground_name(index: int) -> String:
+	return item_name(String(ground[index]["id"])) if index >= 0 and index < ground.size() else ""
+
+
+## Pick a ground item up through the ordinary bag rules: a full bag or a second copy leaves it where it lies.
+func pick_up(index: int) -> String:
+	if index < 0 or index >= ground.size():
+		return ""
+	var id := String(ground[index]["id"])
+	if has(id):
+		_say("我：我已经带着一份「%s」了，这个先留在地上。" % item_name(id))
+		return ""
+	if not add(id):
+		return ""
+	ground.remove_at(index)
+	return id
 
 
 func set_hot(index: int, id: Variant) -> bool:
