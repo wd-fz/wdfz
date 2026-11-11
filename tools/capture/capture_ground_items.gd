@@ -89,6 +89,11 @@ func _run() -> void:
 		if first != null:
 			first.pressed.emit()
 			await shot("bag-selected-phone")
+		var drop := app.ui.bag_panel.find_child("Drop_phone", true, false) as Button
+		if drop != null:
+			drop.pressed.emit()
+			await shot("bag-drop-confirm")
+			app.ui._cancel_drop()
 		app._close_bag()
 		root.size = Vector2i(960, 540)
 		app._open_bag()
