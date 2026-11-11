@@ -122,6 +122,7 @@ func test_live() -> void:
 		if DisplayServer.get_name()!="headless":
 			check(app._death_cg!=null and app._death_cg.fx==scene,"live source chooses the correct scene: "+pair[0])
 			var cg:=app._death_cg
+			check(cg.shots is DeathInPlace and app._campus_world().visible,"ordinary live deaths use their actual campus surroundings: "+pair[0])
 			check(cg._skip_button!=null and not cg._skip_button.visible,"touch skip waits for the initial beat")
 			app._death_step(.61)
 			check(cg._skip_button.visible and cg._skip_button.size.y>=44,"live touch skip is visible and large enough")

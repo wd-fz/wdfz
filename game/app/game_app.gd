@@ -1836,7 +1836,7 @@ func _start_death_cg(fx: String) -> void:
 	_death_cg.name = "DeathCG"
 	add_child(_death_cg)
 	_death_cg.audio = audio
-	_death_cg.begin(fx, player, world, ui, DeathCG.duration(fx, StoryModule.duration(fx)), settings.get_int("reduce_flash") == 1)
+	_death_cg.begin_live(fx, player, world, ui, DeathCG.duration(fx, StoryModule.duration(fx)), settings.get_int("reduce_flash") == 1)
 	if _death_phase == "fade":
 		_death_cg.offer_skip(_finish_death)
 
