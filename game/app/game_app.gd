@@ -154,6 +154,7 @@ func _ready() -> void:
 	ui.boot_cue.connect(func(id: String) -> void: audio.play(id))
 	return_to_menu()
 	if play_boot or get_tree().current_scene == self:
+		ui.menu_preview.enabled = true
 		ui.play_boot(settings.get_int("reduce_flash") == 1)
 
 
@@ -2426,6 +2427,9 @@ func _apply_settings() -> void:
 
 
 func _configure_world_rendering(world: Node3D) -> void:
+	# A world is about to load its model synchronously: finish (or drop) the menu preview's background
+	# load of the same scene first, so the worker pool never waits on a request nobody collects.
+	ui.menu_preview.release()
 	if world is CampusWorld: world.render_options=settings.graphics()
 
 

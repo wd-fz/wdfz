@@ -17,9 +17,12 @@ var viewport: SubViewport
 var world: CampusWorld
 var camera: Camera3D
 var still := false                      # reduced motion: hold one angle
+## Only the launched app turns the live view on (GameApp, together with the boot animation); embedded apps in
+## tests and tools keep the static photo, so no background load ever races their own scene loads.
+var enabled := false
 var angle := -0.6
 var _path := ""
-var _requested := false
+var _requested := false                # a threaded load is outstanding (not yet taken with load_threaded_get)
 var _center := Vector3.ZERO
 var _fade := 0.0
 var render_options: Dictionary = {}
@@ -40,7 +43,7 @@ static func supported() -> bool:
 
 ## Start loading the outdoor model in the background (safe to call more than once).
 func begin_load() -> void:
-	if _requested or not supported():
+	if _requested or not enabled or not supported() or is_instance_valid(world):
 		return
 	_path = CampusData.scene_path("out")
 	_requested = ResourceLoader.load_threaded_request(_path, "PackedScene", true) == OK
@@ -68,7 +71,7 @@ func _process(delta: float) -> void:
 
 
 func _build() -> void:
-	ResourceLoader.load_threaded_get(_path)    # now cached; CampusWorld loads it from the cache
+	_finish_load()    # take the result: the scene is cached and CampusWorld loads it from the cache
 	viewport = SubViewport.new()
 	viewport.name = "PreviewViewport"
 	viewport.own_world_3d = true
@@ -103,8 +106,18 @@ func _place_camera() -> void:
 	camera.look_at(across + Vector3(0.0, look_height, 0.0), Vector3.UP)
 
 
-## Leaving the menu: drop the whole world so play never pays for the preview.
+## Every threaded request is collected exactly once; a request left open while the game loads the same
+## scene synchronously makes the worker pool wait on a finished task ("Invalid Task ID").
+func _finish_load() -> void:
+	if _requested:
+		ResourceLoader.load_threaded_get(_path)
+		_requested = false
+
+
+## Leaving the menu: drop the whole world so play never pays for the preview. An outstanding background
+## load is collected first (it usually finished during the boot animation; otherwise this waits for it).
 func release() -> void:
+	_finish_load()
 	if is_instance_valid(viewport):
 		remove_child(viewport)
 		viewport.queue_free()

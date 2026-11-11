@@ -172,6 +172,7 @@ func test_app_boot() -> void:
 	root.add_child(app)
 	await _frames(3)
 	check(not app.ui.boot_playing(), "embedded apps (tests, capture scripts) skip the boot animation")
+	check(not app.ui.menu_preview.enabled and not app.ui.menu_preview._requested, "embedded apps never start the live preview's background load")
 	app.queue_free()
 	await _frames(2)
 	var shown: GameApp = APP.instantiate()
@@ -181,6 +182,7 @@ func test_app_boot() -> void:
 	root.add_child(shown)
 	await _frames(3)
 	check(shown.ui.boot_playing() and shown.ui.menu.visible and shown.session == null, "the launched app opens on the boot animation over the menu")
+	check(shown.ui.menu_preview.enabled, "the launched app turns the live preview on")
 	var shown_splash := shown.ui.boot_splash
 	shown_splash.set_process(false)
 	shown_splash.skip()
