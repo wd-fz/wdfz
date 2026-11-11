@@ -4,6 +4,8 @@ extends RefCounted
 const D := 1.05
 const DIGITS := {6:"afedcg",7:"abc",8:"abcdefg",9:"abcdfg"}
 const SPOTS := [[.27,-.26,.06],[-.27,-.24,.04],[.32,-.12,.14],[-.33,-.1,.16],[.2,-.34,.2],[-.18,-.36,.22]]
+## The HorrorKit hand inside each old hand frame: fingers to the frame's +z, sized like the old fx hand.
+const HAND_FIT := 1.75
 
 
 static func build(c: DeathStage) -> void:
@@ -39,11 +41,15 @@ static func build(c: DeathStage) -> void:
 	c.d["photo"].rotation.y=.5
 	c.d["hands"]=[]
 	for i in SPOTS.size():
-		var h := c.fxm("hand",.8,0,-5,0)
-		for mesh: Node in h.find_children("*","MeshInstance3D",true,false):
-			var mat := (mesh as MeshInstance3D).material_override.duplicate() as StandardMaterial3D
-			mat.albedo_color=Color(.03,.03,.03).linear_to_srgb()
-			(mesh as MeshInstance3D).material_override=mat
+		# Same frame (transform, scale .8, timing) as the old fx hand; inside it a jointed, rim-lit shadow hand.
+		var h := Node3D.new()
+		h.rotation_order = EULER_ORDER_YXZ
+		h.scale = Vector3.ONE*.8
+		c.put(h,0,-5,0)
+		var hand := HorrorKit.hand({"tone":"shadow","arm":.34,"long":1.2,"thin":.3,"side":1 if i%2 else -1})
+		hand.rotation = Vector3(0,PI,PI*.5*(1 if i%2 else -1))
+		hand.scale = Vector3.ONE*HAND_FIT
+		h.add_child(hand)
 		h.hide()
 		c.d["hands"].append(h)
 	c.d["edges"]=[]
@@ -115,3 +121,6 @@ static func update(c: DeathStage, t: float) -> void:
 		var g := c.ss(t,at,at+.35)
 		h.position=base+lf*(.24+float(s[2])*.5)+lr*(-float(s[0])*(1.3-.3*g))+lu*(float(s[1])*(1.25-.25*g))
 		h.look_at(c.F.to_global(base+lf*1.2+lu*float(s[1])),Vector3.UP,true)
+		# Fingers open as the hand arrives, then close on what they reach (pure function of t).
+		var grab := c.ss(t,at+.45,at+1.3)
+		HorrorKit.pose_hand(h.get_child(0),lerpf(-.1,.75,grab)+.06*sin(t*3.1+i),lerpf(.9,.25,grab))

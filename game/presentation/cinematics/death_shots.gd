@@ -10,6 +10,11 @@ const JADE := Color("476964")
 const PAPER := Color("d8d0b8")
 const RUST := Color("b56243")
 const LIGHT := Color("e8dcb4")
+const DARK := Color("06090b")       # the stage's fog and sky: distance falls into this
+const KEY := Color("b4c6d0")        # the cold key light from just behind the eye
+const TUBE := Color("d6ded4")       # a fluorescent tube's pool
+## Fog density of the stage dark; long or open sets keep their far subject (an exit, a road, a facade) readable.
+const FOG := {"corridor":.035,"crash":.02,"fall":.012,"assembly":.04,"banquet":.04,"garage":.055,"fence":.06}
 var c: DeathStage
 var root: Node3D
 var layout := ""
@@ -30,9 +35,11 @@ func build() -> void:
 	base_camera = c.F.to_local(c.cam.global_position)
 	root.position = base_camera
 	c.cam.near = minf(c._camera_near,.025)
-	c.hide_world(Color("111b22"))
+	c.hide_world(DARK)
 	c.veil(Color("03070a"))
+	c.stage_dark(DARK,float(FOG.get(layout,.085)))
 	call("_build_"+layout)
+	_light_set()
 	c.d["scene"] = root
 	c.d["focus"] = focus
 	c.d["layout"] = layout
@@ -54,10 +61,20 @@ func _pose(t: float, pitch: float = 0, yaw: float = 0, lift: float = 0, roll: fl
 	c.cam.rotation.z = roll*c.shk
 	c.cam.fov = c._camera_fov + zoom*c.shk
 
+## The default rig: a cold key from just above and behind the eye that lights what comes close, the
+## distance left to the stage dark. Sets may add motivated lights (tubes, headlights) of their own.
+func _light_set() -> void:
+	c.key_light(Vector3(.3,.45,-.7),Vector3(0,-.85,4.5),KEY,8.0,12,52,root)
+
+## Light fixtures glow (unshaded); everything else takes the stage lights and its fog.
+func _surface(color: Color, alpha: float = -1, double: bool = false) -> StandardMaterial3D:
+	if color==LIGHT: return c._mat(color,alpha,double,false,true)
+	return c._mat_lit(color,alpha,double)
+
 func _box(size: Vector3, at: Vector3, color: Color, parent: Node3D = null, alpha: float = -1) -> MeshInstance3D:
 	var shape := BoxMesh.new()
 	shape.size = size
-	return c.mesh(shape,c._mat(color,alpha,false,false,false),at.x,at.y,at.z,parent if parent != null else root)
+	return c.mesh(shape,_surface(color,alpha),at.x,at.y,at.z,parent if parent != null else root)
 
 func _rod(a: Vector3, b: Vector3, width: float, color: Color, parent: Node3D = null) -> MeshInstance3D:
 	var result := _box(Vector3(width,a.distance_to(b),width),(a+b)*.5,color,parent)
@@ -70,7 +87,7 @@ func _sphere(at: Vector3, radius: float, color: Color, parent: Node3D = null) ->
 	shape.height=radius*2
 	shape.radial_segments=16
 	shape.rings=8
-	return c.mesh(shape,c._mat(color,-1,false,false,false),at.x,at.y,at.z,parent if parent != null else root)
+	return c.mesh(shape,_surface(color),at.x,at.y,at.z,parent if parent != null else root)
 
 func _text(words: String, at: Vector3, height: float, color: Color = PAPER, parent: Node3D = null) -> Label3D:
 	var label := Label3D.new()
@@ -87,10 +104,10 @@ func _text(words: String, at: Vector3, height: float, color: Color = PAPER, pare
 	return label
 
 func _ring(at: Vector3, radius: float, width: float, color: Color, parent: Node3D = null) -> Node3D:
-	return c.torus(radius,width,c._mat(color,-1,true,false,false),at.x,at.y,at.z,parent if parent != null else root,6,40)
+	return c.torus(radius,width,_surface(color,-1,true),at.x,at.y,at.z,parent if parent != null else root,6,40)
 
 func _person(at: Vector3, scale: float = 1, color: Color = INK, kind: String = "person") -> Node3D:
-	var actor := c.fig(kind,color,scale,0,0)
+	var actor := c.fig(kind,color,scale,0,0,false,true)
 	actor.reparent(root,false)
 	actor.position=at
 	actors.append(actor)
@@ -102,7 +119,7 @@ func _anchor(at: Vector3) -> Node3D:
 	return node
 
 func _room(width: float = 7, depth: float = 16, tone: Color = COAL) -> void:
-	_box(Vector3(width,.08,depth),Vector3(0,-1.6,depth*.5-1),Color("263738"))
+	_box(Vector3(width,.08,depth),Vector3(0,-1.6,depth*.5-1),Color("3d5253"))
 	_box(Vector3(width,.08,depth),Vector3(0,1.9,depth*.5-1),Color("4c5550"))
 	_box(Vector3(.08,3.5,depth),Vector3(-width*.5,.15,depth*.5-1),tone)
 	_box(Vector3(.08,3.5,depth),Vector3(width*.5,.15,depth*.5-1),tone)
@@ -113,6 +130,8 @@ func _room(width: float = 7, depth: float = 16, tone: Color = COAL) -> void:
 	for z in range(1,int(depth),3):
 		_box(Vector3(1.1,.03,.2),Vector3(0,1.82,z),LIGHT)
 		_box(Vector3(width,.01,.018),Vector3(0,-1.55,z),Color("4c5853"))
+	# One tube actually lights its stretch of floor: a pool to cross on the way in, darkness beyond it.
+	c.motive_light(Vector3(0,.7,clampf(depth*.42,3,7)),TUBE,2.6,4.6,root)
 
 func _window(at: Vector3, size: Vector2 = Vector2(2.3,2)) -> Node3D:
 	var group := _anchor(at)
@@ -177,6 +196,8 @@ func _build_garage() -> void:
 	p["lights"]=[]
 	for x in [-.8,.8]:
 		p["lights"].append(_box(Vector3(.55,.18,.06),Vector3(x,-.4,3),LIGHT))
+		# The headlight really throws its beam down the bay, and dies with its lamp.
+		c.key_light(Vector3(0,0,.05),Vector3(-x*.25,-1.25,11),Color("e6dcc0"),30.0,18,22,p["lights"][-1])
 		for i in 3:
 			_box(Vector3(.7+i*.5,.006,2),Vector3(x,-1.53,1+i*1.8),Color("69736b"))
 	p["man"]=_person(Vector3(0,-1.6,14),.78,Color("080e12"),"roam")
@@ -206,6 +227,9 @@ func _build_backseat() -> void:
 	p["man"]=_person(Vector3(.85,-1.62,4.2),1,INK)
 	focus=p["mirror"]
 	for x in [-1.7,1.7]: _box(Vector3(.12,2.7,.15),Vector3(x,-.1,2.8),PAPER)
+	# The weight on the shoulder: a long, cold hand from the back seat, over the right shoulder (set -x is screen right).
+	p["hand"]=HorrorKit.hand({"long":1.25,"thin":.4,"arm":.3,"tone":Color(.42,.43,.4),"quality":maxi(CampusData.tier,3)})
+	root.add_child(p["hand"])
 
 func _show_backseat(t: float) -> void:
 	var turn := c.ss(t,.35,.8)
@@ -214,6 +238,12 @@ func _show_backseat(t: float) -> void:
 	p["reflection"].scale=Vector3.ONE*(1+.45*turn)
 	p["man"].position=Vector3(lerpf(.85,0,turn),-1.62,lerpf(4.2,.8,turn))
 	p["mirror"].rotation.z=.12*turn
+	var reach:=c.ss(t,.4,.6)
+	var hand: Node3D=p["hand"]
+	hand.visible=t>.4
+	hand.position=Vector3(lerpf(-.42,-.3,reach),lerpf(-.2,-.11,reach),lerpf(.05,.27,reach))
+	hand.rotation=Vector3(-.05-.2*reach,PI+.75,.35)
+	HorrorKit.pose_hand(hand,lerpf(.05,.45,c.ss(t,.55,.75)),.35,[.1],Vector2(.35*reach,0))
 	_pose(t,.08*(1-turn),0,0,-.03*turn,-4*turn)
 
 func _build_crash() -> void:
@@ -535,6 +565,7 @@ func _build_corridor() -> void:
 	_box(Vector3(1.8,2.8,.08),Vector3(0,-.2,0),INK,p["exit"])
 	_box(Vector3(1.55,2.6,.1),Vector3(0,-.2,-.02),Color("9aa790"),p["exit"])
 	_text("出口",Vector3(0,1.4,-.08),.18,LIGHT,p["exit"])
+	c.motive_light(Vector3(0,1.1,-.6),TUBE,3.0,4.0,p["exit"])
 	p["left"]=_box(Vector3(.1,3.4,26),Vector3(-2.1,.1,12),JADE)
 	p["right"]=_box(Vector3(.1,3.4,26),Vector3(2.1,.1,12),JADE)
 	focus=p["exit"]
@@ -708,8 +739,9 @@ func _build_swarm() -> void:
 	_rod(Vector3(0,.8,3.8),Vector3(0,1.9,3.8),.02,COAL)
 	var body:=BoxMesh.new()
 	body.size=Vector3(.016,.016,.06)
-	p["bodies"]=c.inst(body,c._mat(Color("050708"),-1,true,false,false),64)
-	p["wings"]=c.inst(MothShape.wing(),c._mat(Color("090d10"),-1,true,false,false),128)
+	# Dusty, pale moths: lit by the key as they come close, after the lamp has gone.
+	p["bodies"]=c.inst(body,c._mat_lit(Color("3a352c"),-1,true),64)
+	p["wings"]=c.inst(MothShape.wing(),c._mat_lit(Color("7a7262"),-1,true),128)
 	p["bodies"].reparent(root,false)
 	p["wings"].reparent(root,false)
 	p["moths"]=[]

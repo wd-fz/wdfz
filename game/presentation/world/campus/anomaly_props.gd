@@ -103,10 +103,7 @@ func build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vect
 			for i in 6:
 				var f:=_figure("1b2226",p+Vector3(-5+i*2,0,.3 if i%2 else -.3))
 				f.rotation=Vector3(-.25,PI,0)
-		"hand":
-			_box("6a5a52",1,Vector3(.34,.05,.26),Vector3(0,.16,0))
-			for i in 4: _box("6a5a52",1,Vector3(.055,.05,.22),Vector3(-.12+i*.08,.16,.22))
-			position=p
+		"hand": _hand(tier,p,feet)
 		"leak":
 			var pts: Array=d.get("pts",[])
 			if pts.is_empty(): pts=[{"x":CampusGeometry.to_world(room,feet.x,feet.z).x,"y":CampusGeometry.to_world(room,feet.x,feet.z).y}]
@@ -194,6 +191,37 @@ func build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vect
 			var shade:=_plane("05070a",.72,Vector2(.9,1.6),p+Vector3(0,.02,0))
 			shade.rotation.x=-PI/2
 			items.append(shade)
+
+
+## The hand from under the stall partition: palm up, the palm centred where the old block lay
+## (0, .16, 0); fingers reach towards where the player stood when it appeared (+z if on the spot), the
+## forearm running back and down under the gap. A little waxen self-light keeps it readable in a dark
+## toilet. Its fingers move with advance(); nothing else does.
+const HAND_SCALE:=2.1
+const HAND_PALM:=Vector3(0,.16,0)
+
+func _hand(tier: int, p: Vector3, feet: Vector3) -> void:
+	var holder:=Node3D.new()
+	holder.name="Hand"
+	holder.position=HAND_PALM
+	var toward:=Vector2(feet.x-p.x,feet.z-p.z)
+	if toward.length()>.05: holder.rotation.y=atan2(toward.x,toward.y)
+	holder.scale=Vector3.ONE*HAND_SCALE
+	var hand:=HorrorKit.hand({"quality":tier,"long":1.2,"thin":.35,"arm":.34,"glow":.3})
+	# Palm up (roll), fingers to +z (turn), the arm sloping down behind the wrist (pitch).
+	hand.rotation=Vector3(-.22,PI,PI)
+	hand.position=-(hand.basis*Vector3(0,0,-.045))
+	holder.add_child(hand)
+	add_child(holder)
+	items.append(holder)
+	position=p
+	_pose_hand()
+
+func _pose_hand() -> void:
+	var hand: Node3D=items[0].get_child(0)
+	var slow:=time*.9
+	# Fingers curl in turn and open again: slow, uneven, never still.
+	HorrorKit.pose_hand(hand,.2,.35,[.1+.06*sin(slow),.18+.2*maxf(0,sin(slow)),.22+.16*maxf(0,sin(slow-.5)),.26+.1*maxf(0,sin(slow-1)),.3+.08*sin(slow-1.4)],Vector2(-.25,0))
 
 
 func _feast(p: Vector3, room: Variant) -> void:
@@ -304,6 +332,7 @@ func advance(dt: float, d: Dictionary, room: Variant, feet: Vector3, acc: float 
 				eye.scale=Vector3(data["w"]*pulse,data["w"]*.6875*lid*aperture*pulse,1)
 				eye.material_override.albedo_color.a=aperture*(.75+.25*maxf(hold,hit))
 		"shadow": position=Vector3(feet.x+.35,0,feet.z+.5)
+		"hand": _pose_hand()
 		"twin":
 			if d.has("x"):
 				items[0].position=_point(room,d)

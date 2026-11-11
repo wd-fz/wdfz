@@ -35,6 +35,9 @@ var _ui: GameUI
 var _restored := true
 var sound_output: Callable
 var audio: AudioFx  ## set by the caller; the beat sounds of the scenes (SFX.door, sting, ...) go through it
+var stage_lights: Array[Light3D] = []  ## key and motivated lights of the stage; freed by _restore wherever they hang
+var _env_owned := false
+var _env_previous: Environment
 
 
 static func seg(kk: float, a: float, b: float) -> float:
@@ -111,6 +114,15 @@ func _restore() -> void:
 		_sky.hide()
 		_sky.queue_free()
 	_sky = null
+	for light in stage_lights:
+		if is_instance_valid(light):
+			light.hide()
+			light.queue_free()
+	stage_lights.clear()
+	if _env_owned:
+		if cam != null and is_instance_valid(cam): cam.environment = _env_previous
+		_env_owned = false
+	_env_previous = null
 
 
 func tick(delta: float) -> void:
@@ -146,6 +158,89 @@ func _mat(col: Color, op: float = -1.0, double: bool = false, over: bool = false
 	return m
 
 
+## Lit counterpart of _mat for the newer sets: per-pixel shading, matte, fogged into the stage dark.
+## The stage lights (key_light / motive_light) and stage_dark's ambient decide what is seen.
+func _mat_lit(col: Color, op: float = -1.0, double: bool = false, rough: float = .9, fog_enabled: bool = true) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = col if op < 0.0 else Color(col.r, col.g, col.b, op)
+	m.roughness = rough
+	m.metallic_specular = .3
+	m.disable_fog = not fog_enabled
+	if op >= 0.0:
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	if double:
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return m
+
+
+## The stage's own darkness: overrides the camera's environment (restored by _restore) with a dim
+## ambient and an exponential fog of the background colour, so distance falls into black. Post effects
+## of the current environment (glow, SSAO, tonemap) are kept; GI that would read the hidden world is off.
+func stage_dark(fog: Color = Color(.012, .016, .02), density: float = .085, ambient: Color = Color(.3, .37, .4), ambient_energy: float = .38) -> Environment:
+	if not _env_owned:
+		_env_previous = cam.environment
+		_env_owned = true
+	var base := _env_previous
+	if base == null and cam.get_world_3d() != null:
+		base = cam.get_world_3d().environment if cam.get_world_3d().environment != null else cam.get_world_3d().fallback_environment
+	var e: Environment = base.duplicate() if base != null else Environment.new()
+	e.background_mode = Environment.BG_COLOR
+	e.background_color = fog
+	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	e.ambient_light_color = ambient
+	e.ambient_light_energy = ambient_energy
+	e.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
+	e.fog_enabled = true
+	e.fog_mode = Environment.FOG_MODE_EXPONENTIAL
+	e.fog_light_color = fog
+	e.fog_light_energy = 1.0
+	e.fog_density = density
+	e.fog_sun_scatter = 0.0
+	e.fog_aerial_perspective = 0.0
+	e.fog_sky_affect = 1.0
+	e.fog_height_density = 0.0
+	e.volumetric_fog_enabled = false
+	e.sdfgi_enabled = false
+	e.ssil_enabled = false
+	cam.environment = e
+	return e
+
+
+## The stage's key light: a cold spot from at towards aim (stage-local, or parent-local). No shadows.
+func key_light(at: Vector3, aim: Vector3, col: Color = Color(.72, .82, .9), energy: float = 2.4, reach: float = 9.0, angle: float = 46.0, parent: Node3D = null) -> SpotLight3D:
+	var l := SpotLight3D.new()
+	l.name = "StageKey"
+	l.light_color = col
+	l.light_energy = energy
+	l.light_specular = .35
+	l.spot_range = reach
+	l.spot_angle = angle
+	l.spot_attenuation = 1.2
+	l.spot_angle_attenuation = .5  # a soft, centre-weighted beam: no hard torch circle on the walls
+	l.shadow_enabled = false
+	put(l, at.x, at.y, at.z, parent)
+	var dir := aim - at
+	if dir.length_squared() > 1e-6:
+		l.basis = Basis.looking_at(dir, Vector3.UP if absf(dir.normalized().y) < .99 else Vector3.BACK)
+	stage_lights.append(l)
+	return l
+
+
+## A motivated light (a tube, a lamp, a window, a screen): an omni pool at at.
+func motive_light(at: Vector3, col: Color = Color(.85, .9, .86), energy: float = 1.2, reach: float = 4.0, parent: Node3D = null) -> OmniLight3D:
+	var l := OmniLight3D.new()
+	l.name = "StageMotive"
+	l.light_color = col
+	l.light_energy = energy
+	l.light_specular = .25
+	l.omni_range = reach
+	l.omni_attenuation = 1.4
+	l.shadow_enabled = false
+	put(l, at.x, at.y, at.z, parent)
+	stage_lights.append(l)
+	return l
+
+
 func put(n: Node3D, x: float, y: float, z: float, parent: Node3D = null) -> Node3D:
 	n.position = Vector3(x, y, z)
 	(parent if parent != null else F).add_child(n)
@@ -177,11 +272,13 @@ func torus(radius: float, tube: float, mat: Material, x: float, y: float, z: flo
 	return mesh(_turned_mesh(tm,Basis(Vector3.RIGHT,PI/2)),mat,x,y,z,parent)
 
 
-## A figure of the old build (front +z, the old rotations apply).
-func fig(kind: String, col: Color, scale: float, x: float, z: float, over: bool = false) -> Node3D:
+## A figure of the old build (front +z, the old rotations apply). lit: shaded by the stage lights
+## with HorrorKit's figure skin (a dark tint becomes a rim-lit shadow); drawn over everything, it stays unlit.
+func fig(kind: String, col: Color, scale: float, x: float, z: float, over: bool = false, lit: bool = false) -> Node3D:
 	var g := Node3D.new()
 	g.rotation_order = EULER_ORDER_YXZ
-	var fm := FigureModel.make(kind, col, true, scale)
+	var fm := FigureModel.make(kind, col, not lit or over, scale)
+	if lit and not over: HorrorKit.dress(fm, HorrorKit.figure_skin(col))
 	fm.rotation.y = PI
 	g.add_child(fm)
 	if over:
