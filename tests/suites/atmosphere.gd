@@ -18,6 +18,55 @@ func _test_caption_rules() -> void:
 	check(not c.enabled(0.7, false) and c.enabled(0.03, false) and c.enabled(0.7, true), "auto mode captions only when the sound is off or nearly")
 
 
+func _test_patrol_caption_rate() -> void:
+	var c := SoundCaptions.new()
+	var first := c.publish("step.tile", {"patrol":true,"place":{"behind":true,"m":3.0}})
+	var first_end: float = first["end"]
+	# A full minute of chase footsteps, including material and direction changes.
+	# Rejected repetitions must neither update the text nor keep a line alive.
+	var shown := 1
+	for frame in range(1,240):
+		c.tick(.25)
+		var step := c.publish("step.stair" if frame%2 else "step.garage", {"patrol":true,"place":{"behind":false,"m":7.0}})
+		if not step.is_empty(): shown += 1
+		if frame==1:
+			check(step.is_empty() and first["end"]==first_end and first["text"]=="后方 · 近处 · 脚步声", "footsteps changing surface and direction do not refresh the active patrol caption")
+		if frame==12:
+			check(c.visible().is_empty(), "continuous footsteps allow the caption to expire after its ordinary display time")
+		if frame==59:
+			check(step.is_empty(), "patrol captions remain quiet just before fifteen seconds")
+		if frame==60:
+			check(not step.is_empty() and step["text"]=="前方 · 远处 · 脚步声", "the next patrol caption is allowed at fifteen seconds and uses the latest position")
+	check(shown==4, "a continuous chase produces only four patrol captions in its first minute")
+	check(not c.publish("event.bellStart",{},true).is_empty() and not c.publish("foley.cupFall",{},true).is_empty(), "suppressing footsteps does not suppress other urgent warnings")
+	c.reset()
+	check(not c.publish("step.tile",{"patrol":true},true).is_empty(), "a reset allows the first patrol warning immediately, including while busy")
+	check(c.publish("step.tile",{"patrol":true}).is_empty(), "the new session's second step is suppressed")
+
+
+func _test_patrol_caption_audio() -> void:
+	var previous_camera := root.get_camera_3d()
+	var camera := Camera3D.new()
+	root.add_child(camera)
+	camera.make_current()
+	var audio := AudioFx.new()
+	root.add_child(audio)
+	await _frames(2)
+	audio.captions_live = true
+	for i in 16:
+		audio.captions.tick(.25)
+		var position := Vector3(2+i*.2,0,2)
+		audio.step_on("tile",1.5,{"patrol":true,"pos":position})
+		check(audio._pool3.any(func(voice: AudioStreamPlayer3D) -> bool: return voice.playing and voice.global_position.is_equal_approx(position)), "each moving footstep still gets a spatial voice while repeated captions are suppressed")
+	check(audio.captions.visible().is_empty(), "the real audio path does not keep the patrol caption alive")
+	audio.stop_all()
+	check(not audio.captions.publish("step.tile",{"patrol":true}).is_empty(), "stopping audio also clears the patrol caption cooldown")
+	audio.queue_free()
+	camera.queue_free()
+	await _frames(2)
+	if is_instance_valid(previous_camera): previous_camera.make_current()
+
+
 func _test_dread_rules() -> void:
 	var scaled := DreadModule.new({}, 2.0)
 	scaled.set_context({"scene": "out", "x": 450.0, "y": -10.0})
