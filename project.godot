@@ -4,7 +4,7 @@ config_version=5
 [application]
 config/name="武大附中 · 里世界 — Godot 移植版"
 config/description="探索校园、遵守规则，寻找里世界的出口。"
-config/version="0.2.1"
+config/version="0.3.0"
 config/icon="res://assets/branding/icon.svg"
 run/main_scene="res://game/app/app.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")

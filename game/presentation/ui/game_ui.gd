@@ -225,7 +225,12 @@ func _ready() -> void:
 	set_mode("menu")
 
 
+var _last_input_ms := 0
+
+
 func _input(event: InputEvent) -> void:
+	if not event is InputEventJoypadMotion:
+		_last_input_ms = Time.get_ticks_msec()
 	if event is InputEventScreenTouch and event.pressed and not _touch_enabled:
 		set_touch_enabled(true)
 
@@ -297,6 +302,8 @@ func _build_side_menu() -> SideMenu:
 	var side := SideMenu.new()
 	menu.add_child(side)
 	side.setup(content)
+	if menu.has_node("MenuPhoto"):
+		side.set_frost((menu.get_node("MenuPhoto") as TextureRect).texture)
 	side.quit_requested.connect(func() -> void: quit_requested.emit())
 	menu.get_node("Margin").hide()
 	menu.get_node("Margin").queue_free()
@@ -331,6 +338,17 @@ func play_boot(reduce_motion: bool) -> void:
 
 func boot_playing() -> bool:
 	return is_instance_valid(boot_splash)
+
+
+## The main menu with nothing to animate and nobody touching it for a moment: the app may lower the frame
+## rate there (the background crawl is slow), which is most of the time a menu stays open.
+func menu_idle() -> bool:
+	if not menu.visible or boot_playing() or not menu_screen.idle(): return false
+	if Time.get_ticks_msec() - _last_input_ms < 1500: return false
+	for panel: Variant in [settings_panel, ach_panel, records_panel, results_panel, _import_panel, selection_panel, choice_panel, map_panel, notes_panel]:
+		if is_instance_valid(panel) and (panel as CanvasItem).visible: return false
+	if is_instance_valid(_layout_editor): return false
+	return true
 
 
 func _fit_menu_scrolls() -> void:
