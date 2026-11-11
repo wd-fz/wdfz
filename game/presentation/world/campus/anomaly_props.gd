@@ -286,8 +286,8 @@ func build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vect
 ## self-light keeps it readable in a dark toilet. Its fingers tap in turn with advance(); nothing else moves.
 const HAND_SCALE:=1.6
 const HAND_PALM:=Vector3(0,.16,0)
-const HAND_RISE:=.42      # the forearm's angle out of the floor, rad
-const HAND_BEND:=.7      # the wrist bent down so the fingertips reach the tiles
+const HAND_RISE:=.95      # the forearm's angle out of the floor, rad
+const HAND_BEND:=1.2      # the wrist bent down so the fingertips reach the tiles
 
 func _hand(tier: int, p: Vector3, feet: Vector3) -> void:
 	var holder:=Node3D.new()
@@ -296,7 +296,7 @@ func _hand(tier: int, p: Vector3, feet: Vector3) -> void:
 	var toward:=Vector2(feet.x-p.x,feet.z-p.z)
 	if toward.length()>.05: holder.rotation.y=atan2(toward.x,toward.y)
 	holder.scale=Vector3.ONE*HAND_SCALE
-	var hand:=HorrorKit.hand({"quality":tier,"long":1.32,"thin":.55,"arm":.42,"glow":.9,"tone":Color(.55,.49,.44),"fade":Vector2(.9,1.0)})
+	var hand:=HorrorKit.hand({"quality":tier,"long":1.32,"thin":.45,"arm":.42,"glow":.3,"tone":Color(.5,.46,.42),"fade":Vector2(.9,1.0)})
 	# Back up (no roll), fingers to +z (turn), the forearm sloping down into the floor behind (pitch).
 	hand.rotation=Vector3(HAND_RISE,PI,0)
 	hand.position=-(hand.basis*Vector3(0,0,-.045))
@@ -318,8 +318,8 @@ func _hand(tier: int, p: Vector3, feet: Vector3) -> void:
 	split.position=Vector3(enter.x,floor_y+.004/HAND_SCALE,enter.z)
 	holder.add_child(split)
 	_split_chips(split)
-	_hand_sleeve(holder,wrist,arm_dir,(floor_y-wrist.y)/arm_dir.y)
-	_hand_stain(holder,floor_y)
+	# Seen from standing height the arm must not lie along the tiles: it drops steeply into a hole wide enough to read as one.
+	split.scale=Vector3(2.6,1,2.0)
 	add_child(holder)
 	items.append(holder)
 	position=p

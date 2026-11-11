@@ -7,6 +7,9 @@ func original_data() -> Dictionary:
 ## backdrop is a dimmer, lit panel now so the door gap no longer glows pure white. Position, size, visibility,
 ## alpha and timing are still checked against the reference.
 const RESTYLED := [[Color("#b9b6a8"), Color("#8a877c")]]
+## Deliberate re-lighting of the lift crowd's walls and floor (reference base colour -> current base colour): brushed steel
+## walls and a lighter floor. The colour is still the reference's dimming curve, only scaled by new/old per channel.
+const RELIT := [[Color("#5e6766"), Color("#8a8a84")], [Color("#545c5b"), Color("#8a8a84")], [Color("#15191a"), Color("#64615a")]]
 
 func near(value: Vector3, expected: Array, tolerance: float = .0002) -> bool:
 	return value.distance_to(Vector3(expected[0],expected[1],expected[2]))<tolerance
@@ -40,7 +43,12 @@ func compare(actual: Variant, expected: Variant, label: String, errors: Array) -
 		if material!=null and expected.has("color"):
 			var color := material.albedo_color.srgb_to_linear()
 			var restyled := RESTYLED.any(func(pair: Array) -> bool: return near(Vector3(color.r,color.g,color.b),[pair[1].srgb_to_linear().r,pair[1].srgb_to_linear().g,pair[1].srgb_to_linear().b],.00001) and near(Vector3(pair[0].srgb_to_linear().r,pair[0].srgb_to_linear().g,pair[0].srgb_to_linear().b),expected["color"],.00001))
-			if not restyled and not near(Vector3(color.r,color.g,color.b),expected["color"],.00001): errors.append(label+" color")
+			var relit := RELIT.any(func(pair: Array) -> bool:
+				var old: Color = pair[0].srgb_to_linear()
+				var now: Color = pair[1].srgb_to_linear()
+				var e: Array = expected["color"]
+				return near(Vector3(color.r,color.g,color.b),[e[0]*now.r/maxf(old.r,.000001),e[1]*now.g/maxf(old.g,.000001),e[2]*now.b/maxf(old.b,.000001)],.0003))
+			if not restyled and not relit and not near(Vector3(color.r,color.g,color.b),expected["color"],.00001): errors.append(label+" color")
 	if expected.has("instances") and DisplayServer.get_name()!="headless":
 		var mesh: MultiMesh = actual.multimesh
 		if mesh.instance_count!=expected["instances"].size(): errors.append(label+" instance count")

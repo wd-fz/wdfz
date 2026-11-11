@@ -144,11 +144,12 @@ func show_smile(mode: String, cam: Vector3, ang: float) -> void:
 	# A schoolmate in uniform with the wrong face: a real head, the mouth too wide, the sockets too deep, lit from under the chin.
 	var jump := mode == "jump"
 	var uniform := Color("2a3445")
-	var bust := HorrorKit.bust({"mouth": "wide", "open": .08 if jump else 0.0, "skew": .3, "eyes": "dull", "tone": Color(.38, .36, .33), "glow": .0, "body": .7, "cloth": uniform, "collar": Color("b9b6aa"), "hair": true})
+	# Hollow sockets and a shut, too-wide mouth: no hair, no collar, dark clothes. Brighter or busier reads as a mask.
+	var bust := HorrorKit.bust({"mouth": "wide", "open": 0.0, "skew": .2, "eyes": "hollow", "tone": Color(.2, .19, .18), "glow": .0, "body": .7, "cloth": Color("14161a")})
 	bust.rotation.y = PI
 	bust.position = Vector3(0, 1.68, .58) if jump else Vector3(0, 1.66, 0)
 	bust.scale = Vector3.ONE * (1.8 if jump else 1.0)
-	HorrorKit.dress(bust.get_meta("horror_bust")["torso"], HorrorKit._cloth(uniform))
+	HorrorKit.dress(bust.get_meta("horror_bust")["torso"], HorrorKit._cloth(Color("14161a")))
 	(bust.get_meta("horror_bust")["torso"] as Node3D).scale.x = 1.2  # broader shoulders: a person in a blazer, not a bell
 	_smile_head = bust.get_meta("horror_bust")["head"]
 	_smile_head.rotation.z = .22 if jump else .12
@@ -189,13 +190,13 @@ func tick_smile(delta: float, cam: Vector3) -> void:
 		_smile.scale = Vector3.ONE * (0.3 + 0.62 * s)
 		_smile.position.y = cam.y - 1.72 * _smile.scale.y + (_rng.randf() - 0.5) * 0.03
 		if _smile_head != null:
-			HorrorKit.pose_head(_smile_head, 0.08 + clampf(_smile_t / 0.25, 0.0, 1.0) * .22)
+			HorrorKit.pose_head(_smile_head, clampf((_smile_t - .35) / 0.6, 0.0, 1.0) * .1)
 			_smile_head.rotation.z = .22 + .08 * minf(1.0, _smile_t / 0.6)
 	else:
 		_smile.scale = Vector3.ONE
 		_smile_face.rotation.x = sin(minf(1.0, _smile_t / 0.9) * PI) * 0.12
 		if _smile_head != null:
-			HorrorKit.pose_head(_smile_head, .06 + .16 * minf(1.0, _smile_t / 1.2))
+			HorrorKit.pose_head(_smile_head, .05 * minf(1.0, _smile_t / 1.2))
 		# It stutters out in two short gaps before it is gone; with reduce-flash it simply stays, then vanishes.
 		if reduce_flash:
 			_smile_face.visible = k < 0.86
