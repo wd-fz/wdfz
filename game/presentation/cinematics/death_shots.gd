@@ -941,8 +941,7 @@ func _build_assembly() -> void:
 				continue
 			var opts:={"tone":SKIN,"mouth":"none" if (row+col)%3==0 else "closed","skew":.3 if (row*4+col)%5==0 else 0.0,"hair":true,"socket":.8,"size":1.2 if (row==0 and col==2) else 1.12}
 			var student:=_fig(Vector3((col-1.5)*1.3,-1.6,4+row*2.0),"person",.95,Color("262d3a"),opts,.2)
-			# A badge on the chest (the front is +z) and a red armband on the left upper arm.
-			_box(Vector3(.08,.03,.02),Vector3(.1,1.25,.14),Color("c9c0a4"),student)
+			# A red armband on the left upper arm.
 			_box(Vector3(.07,.1,.1),Vector3(.2,1.35,0),Color("8a2f2a"),student)
 			p["kids"].append(student)
 	focus=_anchor(Vector3(0,0,4))
@@ -2225,7 +2224,7 @@ func _build_trash() -> void:
 	# The hand over the free edge of the lid, fingers curled round it; it arrives as the lid starts to come down.
 	p["lidhand"]=_fig_hand({"long":1.15,"thin":.6,"arm":.25,"tone":Color(.36,.33,.3)},p["lid"])
 	p["lidhand"].position=Vector3(.05,.05,1.2)
-	p["lidhand"].scale=Vector3.ONE*5.8
+	p["lidhand"].scale=Vector3.ONE*2.8   # any larger and the fingers read as sausages
 	p["lidhand"].rotation=Vector3(0,0,0)
 	HorrorKit.pose_hand(p["lidhand"],.9,.15)
 	p["lidhand"].visible=false
@@ -2255,7 +2254,7 @@ func _show_trash(t: float) -> void:
 	open = lerpf(open,6.0,c.ss(t,.8,.88))
 	p["lid"].rotation.x=-deg_to_rad(open)
 	var arrive:=c.ss(t,.6,.68)
-	p["lidhand"].visible=t>=.6
+	p["lidhand"].visible=false   # a hand hooked over the lid floats in the middle of the frame; the closing lid tells this death
 	p["lidhand"].position=Vector3(.05,.05+.5*(1-arrive),1.2)
 	var lamp: SpotLight3D = p["lamp"]
 	lamp.light_energy=lerpf(3.0,1.6,c.ss(t,.25,.88))
