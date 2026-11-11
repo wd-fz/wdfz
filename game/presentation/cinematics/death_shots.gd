@@ -16,7 +16,7 @@ const TUBE := Color("d6ded4")       # a fluorescent tube's pool
 const WALL := Color("8b8a82")       # school plaster; the green dado below it is _room's
 const FOG_TONE := Color("0d1113")   # fog and sky floor: never pure black
 const GRADE_SKIP := ["flood"]       # sets whose water/dark is their own light logic
-const UNIFORM := {"person":Color("3e5174"),"sit":Color("3e5174"),"teacher":Color("4c4f55"),"roam":Color("4c4f55")}   # doc: 2a3445 / 34363a, lifted: those albedos render black under the stage lights
+const UNIFORM := {"person":Color("262d3a"),"sit":Color("262d3a"),"teacher":Color("2b2c30"),"roam":Color("2b2c30")}   # dark, matte clothes: a tinted figure mesh reads as a painted mannequin when it is any brighter
 const SKIN := Color(.40,.38,.35)
 ## Fog density of the stage dark; long or open sets keep their far subject (an exit, a road, a facade) readable.
 const FOG := {"corridor":.035,"crash":.02,"flood":.05,"fall":.012,"assembly":.04,"banquet":.04,"garage":.035,"fence":.06,"classroom":.05}
@@ -263,15 +263,6 @@ func _fig(at: Vector3, kind: String, scale: float, tone: Variant, head: Dictiona
 	skull.name="Head"
 	skull.rotation.y=PI
 	actor.set_meta("head",skull)
-	# A shirt collar at the neck root (and the red piping of a school uniform) so the cloth reads as clothes.
-	var root_at := Vector3((_FIG_NECK[kind][1] as Vector3).x,float(_FIG_NECK[kind][0]),(_FIG_NECK[kind][1] as Vector3).z)*scale   # the cut of the body: where the neck starts
-	var collar := c.torus(.085*scale,.018*scale,c._mat_lit(Color("b9b6aa")),root_at.x,root_at.y-.06,root_at.z,actor)
-	collar.rotation.x=PI/2   # c.torus stands a ring upright; a collar lies flat
-	collar.name="Collar"
-	if kind=="person" or kind=="sit":
-		var trim := c.torus(.09*scale,.015*scale,c._mat_lit(Color("8a2f2a")),root_at.x,root_at.y-.09,root_at.z,actor)
-		trim.rotation.x=PI/2
-		trim.name="CollarTrim"
 	return actor
 
 ## A HorrorKit hand with the matte skin (nails keep theirs).
