@@ -194,9 +194,8 @@ func test_app() -> void:
 	await _frames(3)
 	var bounds:=app.ui.get_viewport().get_visible_rect()
 	check(bounds.encloses(app.ui.ending_panel.get_global_rect()),"portrait ending card stays within the viewport and scrolls its longer text")
-	app.ui._ending_scroll.ensure_control_visible(app.ui._ending_wake)
 	await _frames(2)
-	check(app.ui._ending_scroll.get_global_rect().encloses(app.ui._ending_wake.get_global_rect()),"portrait wake button is reachable inside the scroll area")
+	check(bounds.encloses(app.ui._ending_wake.get_global_rect()) and not app.ui._ending_scroll.is_ancestor_of(app.ui._ending_wake),"wake button remains reachable outside the scrolling ending text")
 	root.size=original_size
 	await _frames(2)
 	app.ui._ending_wake.pressed.emit()

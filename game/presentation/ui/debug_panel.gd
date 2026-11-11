@@ -306,6 +306,7 @@ func selected(key: String) -> String:
 	return String(option.get_item_metadata(option.selected)) if option.selected>=0 and option.item_count>0 else ""
 
 func select_page(title: String) -> void:
+	_scroll.stop_motion()
 	_active_page=title
 	for key: String in _pages:
 		_pages[key].visible=key==title

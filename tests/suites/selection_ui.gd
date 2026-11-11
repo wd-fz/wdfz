@@ -273,3 +273,129 @@ func test_app() -> void:
 	app.queue_free()
 	await _frames(3)
 	CampusData.clear_caches()
+
+
+func test_scaled_tools() -> void:
+	var old_size := root.size
+	var old_scale := root.content_scale_size
+	root.size = Vector2i(960,540)
+	root.content_scale_size = Vector2i(960,540)
+	var panel := FloatingPanel.new()
+	panel.theme = GameUI.BASE_THEME
+	var body := VBoxContainer.new()
+	var clicks: Array[int] = []
+	for i in 18:
+		var button := Button.new()
+		button.text = "测试操作 %d" % i
+		button.custom_minimum_size.y = 64
+		button.pressed.connect(func() -> void: clicks.append(i))
+		body.add_child(button)
+	panel.set_body(body)
+	root.add_child(panel)
+	await _frames(5)
+	var window_before := panel.position
+	var at := (body.get_child(0) as Control).get_global_rect().get_center()
+	await _finger(at,true)
+	var drag := InputEventScreenDrag.new()
+	drag.position = root.get_final_transform() * (at - Vector2(0,86))
+	drag.relative = root.get_final_transform().basis_xform(Vector2(0,-86))
+	Input.parse_input_event(drag)
+	await _frames(1)
+	check(absf(panel._scroll.scroll_vertical - 86/panel.scale.y) <= 2, "a finger drag in a scaled tool window moves its content by the matching local distance")
+	await _finger(at-Vector2(0,86),false)
+	check(clicks.is_empty() and panel.position == window_before, "tool content swipes neither run an action nor drag the window")
+	var dropdown := OptionButton.new()
+	dropdown.add_item("第一项")
+	dropdown.add_item("第二项")
+	dropdown.custom_minimum_size.y = 48
+	body.add_child(dropdown)
+	await _frames(3)
+	panel._scroll.stop_motion()
+	panel._scroll.ensure_control_visible(dropdown)
+	await _frames(4)
+	await _tap(dropdown)
+	check(dropdown.get_popup().visible, "a dropdown inside a scrollable tool keeps its native popup interaction")
+	dropdown.get_popup().hide()
+	panel.set_collapsed(true)
+	await _frames(2)
+	panel.set_collapsed(false)
+	await _frames(3)
+	check(panel._scroll.get_v_scroll_bar().value == panel._scroll.scroll_vertical, "collapsing and restoring a scrolled tool keeps a valid scrollbar")
+	panel.queue_free()
+	await _frames(3)
+	var dev := DebugPanel.new()
+	dev.theme = GameUI.BASE_THEME
+	root.add_child(dev)
+	dev.show()
+	dev.select_page("工具")
+	await _frames(5)
+	await _swipe((dev._pages["工具"].get_child(0) as Control).get_global_rect().get_center(), Vector2(0,-86))
+	check(dev._scroll.scroll_vertical > 0, "the developer tools page scrolls from its text as well as its controls")
+	await _tap(dev._tabs["状态"])
+	await _frames(3)
+	check(dev._active_page == "状态" and dev._scroll.scroll_vertical == 0, "switching developer pages stops the previous page's touch inertia")
+	dev.queue_free()
+	await _frames(3)
+	root.size = old_size
+	root.content_scale_size = old_scale
+
+
+func test_ending_navigation() -> void:
+	var old_size := root.size
+	var old_scale := root.content_scale_size
+	var ui: GameUI = preload("res://game/presentation/ui/game_ui.tscn").instantiate()
+	root.add_child(ui)
+	await _frames(3)
+	var actions := {"menu":0,"results":0,"wake":0}
+	ui.death_menu_requested.connect(func() -> void: actions.menu += 1)
+	ui.results_requested.connect(func() -> void: actions.results += 1)
+	ui.ending_wake_requested.connect(func() -> void: actions.wake += 1)
+	for screen: Vector2i in [Vector2i(960,540),Vector2i(844,390)]:
+		root.size = screen
+		await _frames(3)
+		for scale: int in [100,150]:
+			ui.apply_text_scale(scale)
+			ui.show_ending("闸门","真结局",["车窗外的道路终于有了颜色。".repeat(70)],"第 1 天",PackedStringArray(),"rated","car")
+			ui.set_ending_wake(true)
+			await _frames(8)
+			var back: Button
+			for child in ui.ending_panel.find_children("*","Button",true,false):
+				if child.text == "回到主菜单": back = child
+			var bounds := root.get_visible_rect()
+			check(bounds.encloses(ui.ending_panel.get_global_rect()), "long ending text fits the landscape panel at %s / %d" % [screen,scale])
+			for button: Button in [back,ui._ending_results,ui._ending_wake]:
+				check(bounds.encloses(button.get_global_rect()) and not ui._ending_scroll.is_ancestor_of(button), "ending navigation stays outside long scrolling text: %s / %s / %d" % [button.text,screen,scale])
+			var footer_before := back.get_global_rect()
+			ui._ending_scroll.scroll_vertical = 100000
+			await _frames(3)
+			check(ui._ending_scroll.scroll_vertical > 0 and back.get_global_rect() == footer_before, "scrolling an ending never moves its navigation")
+			var before: Dictionary = actions.duplicate()
+			for button: Button in [back,ui._ending_results,ui._ending_wake]:
+				await _tap(button)
+			check(actions.menu == before.menu+1 and actions.results == before.results+1 and actions.wake == before.wake+1, "every fixed ending action responds to a real touch")
+			ui.hide_ending()
+	ui.queue_free()
+	await _frames(3)
+	root.size = old_size
+	root.content_scale_size = old_scale
+
+
+func test_cancel_focus() -> void:
+	var app := APP.instantiate() as GameApp
+	app.initial_world = "migration_lab"
+	app.saves = SaveStore.new(_test_path.get_base_dir()+"/selection-focus/slot.json")
+	app.settings = GameSettings.new(app.saves.side_path("settings.json"))
+	root.add_child(app)
+	await _frames(4)
+	app._speedrun_menu()
+	await _frames(4)
+	await _tap(app.ui._choice_box.get_child(0))
+	await _frames(3)
+	await _tap(app.ui.selection_panel.back_button)
+	await _frames(3)
+	var focus := root.gui_get_focus_owner()
+	check(focus != null and focus.is_visible_in_tree() and app.ui.menu.is_ancestor_of(focus), "canceling a nested speedrun talent picker restores a visible menu focus")
+	check(app.session == null and not app.speedrun.active() and not app.ui.choice_open(), "canceling the nested picker does not arm or start a run")
+	app.queue_free()
+	await _frames(3)
+	CampusData.clear_caches()

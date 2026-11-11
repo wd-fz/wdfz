@@ -19,11 +19,12 @@ func _ready() -> void:
 	follow_focus = true
 	_watch(self)
 	set_process(false)
+	get_viewport().size_changed.connect(stop_motion)
 
 
 func _watch(node: Node) -> void:
 	if node != self:
-		if node is Range or node is LineEdit or node is TextEdit or node is TouchScroll:
+		if node is Range or node is LineEdit or node is TextEdit or node is OptionButton or node is MenuButton or node is TouchScroll:
 			return
 		if node is BaseButton or node is Container:
 			node.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -36,7 +37,7 @@ func _watch(node: Node) -> void:
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch and event.pressed and _finger == -1:
 		_finger = event.index
-		_start = get_global_transform() * event.position
+		_start = get_global_transform_with_canvas() * event.position
 		_last = _start
 		_origin = Vector2(scroll_horizontal, scroll_vertical)
 		_mouse_release = null
@@ -64,16 +65,18 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventScreenDrag and event.index == _finger:
-		var delta: Vector2 = event.position - _start
+		var screen_delta: Vector2 = event.position - _start
+		var inverse := get_global_transform_with_canvas().affine_inverse()
+		var delta := inverse.basis_xform(screen_delta)
 		var axes := Vector2(1 if _horizontal() else 0, 1 if _vertical() else 0)
-		if not _dragging and delta.length() >= DRAG_THRESHOLD:
+		if not _dragging and screen_delta.length() >= DRAG_THRESHOLD:
 			_dragging = true
 			propagate_notification(Control.NOTIFICATION_SCROLL_BEGIN)
 			scroll_started.emit()
 		if _dragging:
 			var now := Time.get_ticks_usec()
 			var dt := maxf(.008, float(now - _last_time) / 1000000.0)
-			_velocity = ((event.position - _last) * -axes / dt).limit_length(2400)
+			_velocity = (inverse.basis_xform(event.position - _last) * -axes / dt).limit_length(2400)
 			_set_scroll(_origin - delta * axes)
 			get_viewport().set_input_as_handled()
 		_last = event.position
