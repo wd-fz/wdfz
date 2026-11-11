@@ -2412,6 +2412,8 @@ func _apply_settings() -> void:
 	ui.menu_screen.set_reduce_motion(settings.get_int("reduce_flash") == 1)
 	ui.menu_preview.still = settings.get_int("reduce_flash") == 1
 	ui.menu_preview.render_options = settings.graphics()
+	ui.menu_preview.set_orbit(settings.get_int("menu_orbit") == 1)
+	_menu_fps_capped = false
 	ui.scene_post().quality=settings.get_int("lighting_detail")
 	ui.scene_post().render_options=settings.graphics()
 	ui.scene_post().tick(0)
@@ -5134,7 +5136,25 @@ func _interact(id: StringName) -> void:
 var _hands: HandsView
 
 
+## While the launched app sits idle on the main menu the frame rate drops to 30 (or the player's lower limit);
+## any input, animation or open panel restores the normal limit at once. Embedded apps (tests) are untouched.
+const MENU_IDLE_FPS := 30
+var _menu_fps_capped := false
+
+
+func _menu_frame_cap() -> void:
+	var cap := ui.menu_preview.enabled and session == null and ui.menu_idle()
+	if cap == _menu_fps_capped: return
+	_menu_fps_capped = cap
+	var limit := settings.get_int("fps_limit")
+	if cap:
+		Engine.max_fps = MENU_IDLE_FPS if limit == 0 or limit > MENU_IDLE_FPS else limit
+	else:
+		RenderQuality.apply_frame_limit(limit, settings.get_int("vsync") == 1)
+
+
 func _process(delta: float) -> void:
+	_menu_frame_cap()
 	if is_instance_valid(archive_flow) and archive_flow.active(): return
 	if session != null and player != null and player.camera != null:
 		if patrol()!=null and patrol().nav.maze!=null: patrol().nav.maze.warm_step()

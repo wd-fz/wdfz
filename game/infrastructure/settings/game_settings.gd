@@ -8,7 +8,8 @@ extends RefCounted
 ## sub 0/1/2 caption size · distortion 0 off / 1 reduced / 2 full · reduce_flash 1/0 · bright 50–150 ·
 ## grain 1/0 · mouse, touch 25–250 look sensitivity % · text 85–150 % · touch_size 85–125 % ·
 ## quality 0–4 presets / 5 custom; GraphicsProfile expands independent parameters.
-## fps_limit 0 unlimited / 20–360; VSync is independent. auto_land rotates between landscape sides only.
+## fps_limit 0 unlimited / 20–360; VSync is independent. menu_orbit 1/0 (default off): live orbiting campus behind
+## the main menu instead of the still picture (costs power). auto_land rotates between landscape sides only.
 ## Desktop defaults to windowed; Android always uses immersive fullscreen.
 ## The Web "graphics mode" (WebGL / WebGPU) is replaced by Godot's renderer. Touch layout is
 ## stored separately from numeric settings and from gameplay saves.
@@ -20,14 +21,14 @@ const DEFAULTS := {"vol": 70, "amb": 1, "captions": 1, "sub": 1, "distortion": 2
 	"particle_detail":2, "upscaler":0, "msaa":0, "fxaa":1, "lod_detail":2,
 	"sun_shadows":1, "sun_shadow_detail":1, "shadow_resolution":2, "shadow_filter":2,
 	"lamp_shadows":1, "window_shadows":1, "torch_shadows":1, "window_light":1,
-	"ssao":1, "ssao_half":1, "glow":1, "volumetric_fog":0, "post_detail":1, "bloom":0, "grain_strength":100}
+	"ssao":1, "ssao_half":1, "glow":1, "volumetric_fog":0, "post_detail":1, "bloom":0, "grain_strength":100, "menu_orbit":0}
 const LIMITS := {"vol": [0,100], "bright": [50,150], "mouse": [25,250], "touch": [25,250], "text": [85,150], "touch_size": [85,125],
 	"fps_limit":[0,360], "render_scale":[50,150], "lamp_shadows":[0,4], "window_shadows":[0,4], "bloom":[0,100], "grain_strength":[0,100]}
 const CHOICES := {"amb":2, "captions":3, "sub":3, "distortion":3, "reduce_flash":2, "grain":2, "quality":6, "auto_land":2, "full_screen":2, "shake":2,
 	"vsync":2, "model_detail":5, "lighting_detail":5, "particle_detail":5, "upscaler":2,
 	"msaa":4, "fxaa":2, "lod_detail":4, "sun_shadows":2, "sun_shadow_detail":3,
 	"shadow_resolution":4, "shadow_filter":6, "torch_shadows":2, "window_light":2,
-	"ssao":5, "ssao_half":2, "glow":2, "volumetric_fog":2, "post_detail":2}
+	"ssao":5, "ssao_half":2, "glow":2, "volumetric_fog":2, "post_detail":2, "menu_orbit":2}
 const QUALITY_LABELS := ["流畅", "均衡", "精细", "超精细", "真实", "自定义"]
 ## Rendering scale, MSAA (Viewport enum: 0 off, 2 = 4x, 3 = 8x) and sun shadows per quality (quality.js: scale, samples,
 ## shadow). As in the reference, 精细 and above cast sun shadows.

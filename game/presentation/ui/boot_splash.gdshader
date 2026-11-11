@@ -3,6 +3,7 @@ shader_type canvas_item;
 // menu spine will be); a heartbeat glow behind the title; at the end the black bleeds away from the crack
 // to show the menu. Timeline driven by u_t (seconds) from boot_splash.gd.
 
+uniform sampler2D u_noise : repeat_enable, filter_linear;
 uniform vec2 u_size = vec2(960.0, 540.0);
 uniform float u_t = 0.0;
 uniform float u_crack = 0.0;      // 0…1 crack length (grows from the middle outwards)
@@ -19,22 +20,9 @@ float hash(vec2 p) {
 	return fract(p.x * p.y);
 }
 
-float vnoise(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	vec2 u = f * f * (3.0 - 2.0 * f);
-	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-}
-
+// One fetch of the baked tileable FBM shared with the menu (SideMenu.noise_texture()).
 float fbm(vec2 p) {
-	float v = 0.0;
-	float a = 0.5;
-	for (int i = 0; i < 5; i++) {
-		v += a * vnoise(p);
-		p = p * 2.03 + 7.1;
-		a *= 0.5;
-	}
-	return v;
+	return texture(u_noise, p * 0.25).r;
 }
 
 void fragment() {

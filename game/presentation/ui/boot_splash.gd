@@ -49,6 +49,7 @@ func _ready() -> void:
 	_back.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_mat = ShaderMaterial.new()
 	_mat.shader = SHADER
+	_mat.set_shader_parameter("u_noise", SideMenu.noise_texture())
 	_back.material = _mat
 	add_child(_back)
 	var column := VBoxContainer.new()

@@ -1,15 +1,17 @@
 class_name SideMenu
 extends Control
-## The main menu, fixed to the left edge of the window: a black-iron spine with a torn rune tag. Clicking the
-## tag tears it open along the spine, then stretches it sideways into a cracked frosted-glass panel joined to
-## the spine by a concave seam; the title, five items and the version surface one by one out of blur and noise.
-## The active item is a wiped peephole in the glass that the pointer drags along; choosing an action sends a
-## green shadow pulse out from the item while the panel folds back into the tag and the colours seep back.
+## The main menu, fixed to the left edge of the window: a black-iron spine from which, on entering the menu,
+## a cracked frosted-glass panel tears open along the spine and stretches sideways, joined to the spine by a
+## concave seam; the title, five items and the version surface one by one out of blur and noise. The active
+## item is a wiped peephole in the glass that the pointer drags along; choosing an action sends a green
+## shadow pulse out from the item and the colours seep back to the blood scab.
 ##
-## Drawing is one CanvasItem fragment shader (side_menu.gdshader: FBM noise + SDF) under ordinary Control text.
-## Sizes follow the window height, so it holds from 16:9 to 21:9. With reduced flashing the menu shows
-## statically expanded and nothing distorts. The original buttons keep their names and signals; they sit
-## under the five items (继续入梦 is LoadGame itself).
+## 2026-11-11 revision (user request): no folded tag to click first — the menu opens by itself; actions no
+## longer fold it. Cost: one alpha-composited CanvasItem shader (side_menu.gdshader: SDF shapes, one baked
+## tileable FBM texture, a tiny pre-blurred background for the frost) under ordinary Control text; the reveal
+## shader is attached only while text surfaces. idle() tells the app when nothing animates, so the menu can
+## run at a lower frame rate. Sizes follow the window height (16:9 to 21:9). Reduced flashing shows the menu
+## statically expanded. The original buttons keep their names and signals (继续入梦 is LoadGame itself).
 
 signal quit_requested
 
@@ -20,19 +22,18 @@ signal quit_requested
 @export var abyss_color := Color(0.012, 0.008, 0.012)
 @export var corpse_color := Color(0.36, 0.40, 0.38)
 @export var ghost_color := Color(0.18, 0.78, 0.48)
-## Glass soiling: refraction strength, cracks / water stains, and how much shadow covers the campus.
+## Glass soiling: refraction strength, cracks / water stains, and how much shadow covers the background.
 @export_range(0.0, 2.0) var glass_refraction := 1.0
 @export_range(0.0, 2.0) var glass_stain := 1.0
 @export_range(0.0, 1.0) var background_dim := 0.5
 ## Timeline (seconds).
-@export var tear_time := 0.36
-@export var stretch_time := 0.42
-@export var reveal_step := 0.085
-@export var reveal_time := 0.5
-@export var fold_time := 0.4
+@export var tear_time := 0.3
+@export var stretch_time := 0.36
+@export var reveal_step := 0.06
+@export var reveal_time := 0.4
 @export var pulse_time := 1.15
 @export var fade_back_time := 2.6
-## Reduced flashing / motion: open statically, no distortion, no folding.
+## Reduced flashing / motion: open statically, no distortion.
 @export var reduce_motion := false
 
 const SHADER := preload("res://game/presentation/ui/side_menu.gdshader")
@@ -42,20 +43,21 @@ const GROUPS := {
 	"Rebirth": ["NewGame", "HardGame", "Speedrun", "DlcMenu", "ImportMenu"],
 	"Gallery": ["Achievements", "Archive", "RecordsMenu"],
 	"Senses": ["SettingsMenu", "FullscreenMenu", "TouchToggle", "SoundToggle", "DebugTools"]}
-## Buttons that stay in the menu (toggles); every other leaf is an action that folds the panel.
+## Buttons that are switches; every other leaf is an action that sends the pulse.
 const STAY := ["FullscreenMenu", "TouchToggle", "SoundToggle"]
+
+static var _noise_texture: Texture2D
 
 var shell: ColorRect
 var content: VBoxContainer
 var scroll: TouchScroll
-var tag_button: Button
 var items: Array[Button] = []
 var groups: Dictionary = {}          # item id -> VBoxContainer of its child buttons
 var description: Label
 var version_label: Label
 var hint_label: Label
-var state := "folded"                # folded / opening / open / closing
-var open_amount := 0.0               # 0 tag … 1 panel (timeline position while opening)
+var state := "opening"               # opening / open
+var open_amount := 0.0               # 0 torn sliver … 1 panel (timeline position while opening)
 var _title: Label
 var _school: Button
 var _new_game: Button
@@ -63,10 +65,9 @@ var _load: Button
 var _mat: ShaderMaterial
 var _reveal: Array[Control] = []     # in order of appearance
 var _reveal_t := 0.0
+var _revealing := false
 var _t := 0.0
-var _phase := 0.0                    # opening / closing clock
-var _hover := 0.0
-var _beat := 0.0
+var _phase := 0.0
 var _hole := Rect2()
 var _hole_target := Rect2()
 var _hole_on := 0.0
@@ -90,24 +91,10 @@ func setup(source: VBoxContainer) -> void:
 	shell.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_mat = ShaderMaterial.new()
 	_mat.shader = SHADER
+	_mat.set_shader_parameter("u_noise", noise_texture())
+	_mat.set_shader_parameter("u_frost", _plain_frost())
 	shell.material = _mat
 	add_child(shell)
-	tag_button = Button.new()
-	tag_button.name = "MenuTag"
-	tag_button.flat = true
-	tag_button.tooltip_text = "打开菜单"
-	tag_button.focus_mode = Control.FOCUS_ALL
-	tag_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	for style: String in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
-		tag_button.add_theme_stylebox_override(style, StyleBoxEmpty.new())
-	var ring := StyleBoxFlat.new()
-	ring.draw_center = false
-	ring.border_color = Color(0.85, 0.2, 0.18, 0.7)
-	ring.set_border_width_all(2)
-	ring.set_corner_radius_all(8)
-	tag_button.add_theme_stylebox_override("focus", ring)
-	tag_button.pressed.connect(open)
-	add_child(tag_button)
 	content = VBoxContainer.new()
 	content.name = "MenuContent"
 	content.add_theme_constant_override("separation", 6)
@@ -201,14 +188,6 @@ func setup(source: VBoxContainer) -> void:
 	foot.add_child(hint_label)
 	for control: Control in [_title, _school, description] + items + [version_label, hint_label]:
 		_reveal.append(control)
-		var m := ShaderMaterial.new()
-		m.shader = REVEAL
-		control.material = m
-	for box: VBoxContainer in groups.values():
-		for child: Control in box.get_children():
-			var m := ShaderMaterial.new()
-			m.shader = REVEAL
-			child.material = m
 	set_touch(false)
 	get_viewport().size_changed.connect(refit)
 	content.minimum_size_changed.connect(func() -> void: refit.call_deferred())
@@ -248,12 +227,12 @@ func layout_rects() -> Dictionary:
 	var font_k := get_theme_default_font_size() / 16.0
 	var spine_w := roundf(h * 0.026)
 	var panel_w := clampf(h * 0.8 * sqrt(font_k), 320.0, maxf(320.0, minf(view.x * 0.62, view.x - spine_w - 12.0)))
-	var tag_w := roundf(h * 0.062)
-	var tag_h := roundf(h * 0.17)
+	var sliver_w := roundf(h * 0.03)
+	var sliver_h := roundf(h * 0.12)
 	var cy := h * 0.5
 	return {"h": h, "spine": Rect2(0, 0, spine_w, h),
-		"tag": Rect2(spine_w - 2.0, cy - tag_h * 0.5, tag_w, tag_h),
-		"strip": Rect2(spine_w - 2.0, h * 0.05, tag_w, h * 0.9),
+		"sliver": Rect2(spine_w - 2.0, cy - sliver_h * 0.5, sliver_w, sliver_h),
+		"strip": Rect2(spine_w - 2.0, h * 0.05, sliver_w * 2.0, h * 0.9),
 		"panel": Rect2(spine_w - 2.0, h * 0.05, panel_w, h * 0.9)}
 
 
@@ -279,9 +258,6 @@ func refit() -> void:
 	for box: VBoxContainer in groups.values():
 		for child: Control in box.get_children():
 			child.add_theme_font_size_override("font_size", roundi(h * 0.03 * font_k))
-	var tag: Rect2 = r["tag"]
-	tag_button.position = tag.position - Vector2(6, 6)
-	tag_button.size = tag.size + Vector2(12, 12)
 	_mat.set_shader_parameter("u_size", size)
 
 
@@ -304,73 +280,104 @@ func set_save_available(value: bool) -> void:
 
 func set_reduce_motion(value: bool) -> void:
 	reduce_motion = value
-	if value and state != "open":
+	if value:
 		open_now()
 
 
-## Back on the menu: folded tag (or the static open menu with reduced motion), keyboard focus on it.
+## One tileable FBM texture shared by the menu and the boot animation (baked once, 256², single channel).
+static func noise_texture() -> Texture2D:
+	if _noise_texture == null:
+		var noise := FastNoiseLite.new()
+		noise.noise_type = FastNoiseLite.TYPE_VALUE_CUBIC
+		noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+		noise.fractal_octaves = 5
+		noise.frequency = 1.0 / 32.0
+		noise.seed = 1338
+		var image := noise.get_seamless_image(256, 256, false, false, 0.1, true)
+		image.convert(Image.FORMAT_L8)
+		_noise_texture = ImageTexture.create_from_image(image)
+	return _noise_texture
+
+
+static func _plain_frost() -> Texture2D:
+	var image := Image.create(4, 4, false, Image.FORMAT_RGB8)
+	image.fill(Color(0.05, 0.05, 0.06))
+	return ImageTexture.create_from_image(image)
+
+
+## The frosted glass shows a tiny, pre-blurred copy of what is behind the menu (the menu photo).
+func set_frost(texture: Texture2D) -> void:
+	if texture == null or _mat == null: return
+	var image := texture.get_image()
+	if image == null or image.is_empty(): return
+	image = image.duplicate()
+	if image.is_compressed(): image.decompress()
+	image.convert(Image.FORMAT_RGB8)
+	image.resize(48, 27, Image.INTERPOLATE_BILINEAR)
+	_mat.set_shader_parameter("u_frost", ImageTexture.create_from_image(image))
+
+
+## Entering the menu: the panel tears open by itself (statically open with reduced motion).
 func enter() -> void:
 	_pulse_t = -1.0
 	_fade_t = -1.0
 	_shift = 0.0
 	if reduce_motion:
 		open_now()
-		focus_default()
-		return
-	state = "folded"
-	open_amount = 0.0
-	_apply_state()
+	else:
+		state = "opening"
+		open_amount = 0.0
+		_phase = 0.0
+		_reveal_t = 0.0
+		_apply_state()
 	focus_default()
 
 
 func focus_default() -> void:
-	if state == "closing":
-		return     # the fold ends by focusing the tag
-	if state == "folded":
-		tag_button.grab_focus.call_deferred()
-	else:
-		var first: Button = _load if _load != null and not _load.disabled else items[1]
-		first.grab_focus.call_deferred()
+	var first: Button = _load if _load != null and not _load.disabled else items[1]
+	first.grab_focus.call_deferred()
 
 
 func is_open() -> bool:
-	return state == "open" or state == "opening"
+	return true
+
+
+## True when nothing moves except the slow background crawl: the app may lower the menu frame rate.
+func idle() -> bool:
+	return state == "open" and not _revealing and _pulse_t < 0.0 and _fade_t < 0.0 \
+		and _hole.position.distance_to(_hole_target.position) < 0.5
 
 
 func open() -> void:
-	if state == "open" or state == "opening": return
-	if reduce_motion:
-		open_now()
-		return
-	state = "opening"
-	_phase = 0.0
-	_reveal_t = 0.0
-	_apply_state()
+	if state != "open":
+		enter()
 
 
-## Fully open at once (reduced motion, tests, returning focus after a dialog).
+## Fully open at once (reduced motion, tests).
 func open_now() -> void:
 	state = "open"
 	open_amount = 1.0
 	_phase = tear_time + stretch_time
-	_reveal_t = 999.0
+	_reveal_t = 0.0
+	_revealing = false
 	_apply_state()
 
 
-func fold() -> void:
-	if reduce_motion or state == "folded" or state == "closing": return
-	state = "closing"
-	_phase = 0.0
-	_apply_state()
-
-
-## Open the group an original button lives in (and the menu), so callers can reach any action.
+## Open the group an original button lives in, so callers can reach any action.
 func reveal(button: Control) -> void:
 	open_now()
 	for id: String in groups:
 		if (groups[id] as Control).is_ancestor_of(button) and _open_group != id:
 			_toggle_group(id)
 	scroll.ensure_control_visible(button)
+	_scroll_into_view(button)
+
+
+## A group that has just opened is laid out on the next frame; scroll to the button once it has its place.
+func _scroll_into_view(button: Control) -> void:
+	await get_tree().process_frame
+	if is_instance_valid(button) and button.is_visible_in_tree():
+		scroll.ensure_control_visible(button)
 
 
 func _toggle_group(id: String) -> void:
@@ -380,13 +387,13 @@ func _toggle_group(id: String) -> void:
 		var box := groups[gid] as VBoxContainer
 		var on := gid == _open_group
 		box.visible = on
-		if on:
+		if on and not reduce_motion and state == "open":
+			# The children surface one by one too.
 			for i in box.get_child_count():
 				var child := box.get_child(i) as Control
-				var m := child.material as ShaderMaterial
-				if m != null:
-					m.set_shader_parameter("u_reveal", 1.0 if reduce_motion else 0.0)
-				child.set_meta("reveal_at", _reveal_clock() + float(i) * reveal_step * 0.6)
+				_attach_reveal(child, 0.0)
+				child.set_meta("reveal_at", _reveal_t + float(i) * reveal_step)
+			_revealing = true
 
 
 func _acted(from: Control) -> void:
@@ -395,41 +402,43 @@ func _acted(from: Control) -> void:
 	_pulse_origin = get_global_transform().affine_inverse() * c
 	_pulse_t = 0.0
 	_fade_t = -1.0
-	fold()
 
 
 func _aim(control: Control) -> void:
 	_hot = control
 
 
+func _attach_reveal(control: Control, k: float) -> void:
+	var m := control.material as ShaderMaterial
+	if m == null:
+		m = ShaderMaterial.new()
+		m.shader = REVEAL
+		control.material = m
+	m.set_shader_parameter("u_reveal", k)
+	m.set_shader_parameter("u_time", _t)
+
+
+## The reveal shader is dropped once text is sharp: plain text batches and costs nothing extra.
+func _set_reveal(control: Control, k: float) -> void:
+	if k >= 1.0:
+		control.material = null
+	else:
+		_attach_reveal(control, k)
+
+
 func _apply_state() -> void:
-	var folded := state == "folded" or state == "closing"
-	content.visible = not folded or state == "closing"
-	tag_button.visible = state == "folded"
+	content.visible = true
+	var hidden := state == "opening" and not reduce_motion
 	for control: Control in _reveal:
-		var m := control.material as ShaderMaterial
-		if m != null:
-			m.set_shader_parameter("u_reveal", 1.0 if state == "open" and _reveal_t >= 999.0 else 0.0)
-	if state == "open" and _reveal_t >= 999.0:
-		for box: VBoxContainer in groups.values():
-			for child: Control in box.get_children():
-				var m := child.material as ShaderMaterial
-				if m != null: m.set_shader_parameter("u_reveal", 1.0)
-	_set_input(state == "open")
-	_draw_params(0.0)
+		_set_reveal(control, 0.0 if hidden else 1.0)
+	for box: VBoxContainer in groups.values():
+		for child: Control in box.get_children():
+			_set_reveal(child, 1.0)
+			child.remove_meta("reveal_at")
+	_draw_params()
 
 
-func _set_input(on: bool) -> void:
-	for b: Control in content.find_children("*", "BaseButton", true, false):
-		(b as BaseButton).mouse_filter = Control.MOUSE_FILTER_STOP if on else Control.MOUSE_FILTER_IGNORE
-		(b as BaseButton).focus_mode = Control.FOCUS_ALL if on else Control.FOCUS_NONE
-
-
-func _reveal_clock() -> float:
-	return _reveal_t
-
-
-## Heartbeat: two swells per beat (lub-dub), period about 1.1 s.
+## Heartbeat: two swells per beat (lub-dub), period about 1.1 s (used by the boot animation).
 static func heartbeat(t: float) -> float:
 	var x := fposmod(t, 1.1)
 	return exp(-pow((x - 0.08) / 0.05, 2.0)) + 0.65 * exp(-pow((x - 0.32) / 0.06, 2.0))
@@ -438,99 +447,58 @@ static func heartbeat(t: float) -> float:
 func _process(delta: float) -> void:
 	if not is_visible_in_tree(): return
 	_t += delta
-	var r := layout_rects()
 	var opening := tear_time + stretch_time
-	match state:
-		"opening":
-			_phase += delta
-			open_amount = clampf(_phase / opening, 0.0, 1.0)
-			if _phase >= opening:
-				state = "open"
-				_reveal_t = 0.0
-				_set_input(true)
-				focus_default()
-		"open":
-			if _reveal_t < 999.0:
-				_reveal_t += delta
-		"closing":
-			_phase += delta
-			open_amount = clampf(1.0 - _phase / fold_time, 0.0, 1.0)
-			if _phase >= fold_time:
-				state = "folded"
-				open_amount = 0.0
-				_fade_t = 0.0
-				_apply_state()
-				if not get_viewport().gui_get_focus_owner() is LineEdit:
-					focus_default()
-	# Text surfacing one by one once the glass is out.
-	if state == "open" and _reveal_t < 999.0:
+	if state == "opening":
+		_phase += delta
+		open_amount = clampf(_phase / opening, 0.0, 1.0)
+		if _phase >= opening:
+			state = "open"
+			_reveal_t = 0.0
+			_revealing = true
+	elif _revealing:
+		_reveal_t += delta
 		var done := true
 		for i in _reveal.size():
+			if _reveal[i].material == null and _reveal_t > 0.0 and i * reveal_step + reveal_time < _reveal_t: continue
 			var k := clampf((_reveal_t - float(i) * reveal_step) / reveal_time, 0.0, 1.0)
 			done = done and k >= 1.0
 			_set_reveal(_reveal[i], k)
-		if done:
-			_reveal_t = 999.0
-	elif state == "closing":
-		for control: Control in _reveal:
-			_set_reveal(control, clampf(1.0 - _phase / (fold_time * 0.4), 0.0, 1.0))
-	for box: VBoxContainer in groups.values():
-		if not box.visible: continue
-		for child: Control in box.get_children():
-			if child.has_meta("reveal_at") and state == "open":
-				var start := float(child.get_meta("reveal_at"))
-				var clock := _reveal_t if _reveal_t < 999.0 else start + reveal_time
-				var k := 1.0 if reduce_motion else clampf((clock - start) / (reveal_time * 0.7), 0.0, 1.0)
-				if _reveal_t >= 999.0 and k < 1.0:
-					child.set_meta("reveal_at", start - delta)
+		for box: VBoxContainer in groups.values():
+			if not box.visible: continue
+			for child: Control in box.get_children():
+				if not child.has_meta("reveal_at"): continue
+				var k := clampf((_reveal_t - float(child.get_meta("reveal_at"))) / (reveal_time * 0.7), 0.0, 1.0)
 				_set_reveal(child, k)
 				if k >= 1.0: child.remove_meta("reveal_at")
-			elif state == "closing":
-				_set_reveal(child, clampf(1.0 - _phase / (fold_time * 0.4), 0.0, 1.0))
-	# Pointer near the folded tag: heartbeat swell.
-	var mouse := get_local_mouse_position()
-	var tag: Rect2 = r["tag"]
-	var near := 0.0
-	if state == "folded":
-		var d := maxf(0.0, maxf(absf(mouse.x - tag.get_center().x) - tag.size.x * 0.5, absf(mouse.y - tag.get_center().y) - tag.size.y * 0.5))
-		near = clampf(1.0 - d / (r["h"] * 0.22), 0.0, 1.0)
-		if tag_button.has_focus(): near = maxf(near, 0.6)
-	_hover = move_toward(_hover, near, delta * 3.0)
-	_beat = 0.0 if reduce_motion else heartbeat(_t * (1.0 + 0.5 * _hover)) * (0.25 + 0.75 * _hover)
+				else: done = false
+		_revealing = not done
 	# The peephole follows the hovered / focused item, sticky like something wet.
 	var target_on := 0.0
 	if state == "open" and is_instance_valid(_hot) and _hot.is_visible_in_tree() and content.is_ancestor_of(_hot):
 		var g := _hot.get_global_rect()
-		var inv := get_global_transform().affine_inverse()
-		_hole_target = Rect2(inv * g.position, g.size)
+		_hole_target = Rect2(get_global_transform().affine_inverse() * g.position, g.size)
 		target_on = 1.0
 	if _hole.size == Vector2.ZERO: _hole = _hole_target
 	var k_follow := 1.0 if reduce_motion else 1.0 - exp(-delta * 9.0)
 	_hole = Rect2(_hole.position.lerp(_hole_target.position, k_follow), _hole.size.lerp(_hole_target.size, k_follow))
 	_hole_on = move_toward(_hole_on, target_on, delta * 5.0)
-	# Pulse and the slow fade back to the scab palette.
 	if _pulse_t >= 0.0:
 		_pulse_t += delta
 		_shift = minf(1.0, _shift + delta * 6.0)
-		if _pulse_t >= pulse_time: _pulse_t = -1.0
+		if _pulse_t >= pulse_time:
+			_pulse_t = -1.0
+			_fade_t = 0.0
 	elif _fade_t >= 0.0:
 		_fade_t += delta
 		_shift = maxf(0.0, 1.0 - _fade_t / fade_back_time)
 		if _fade_t >= fade_back_time: _fade_t = -1.0
-	_draw_params(delta)
+	_draw_params()
 
 
-func _set_reveal(control: Control, k: float) -> void:
-	var m := control.material as ShaderMaterial
-	if m == null: return
-	m.set_shader_parameter("u_reveal", k)
-	m.set_shader_parameter("u_time", _t)
-
-
-## The body rect along the timeline: tag → tall torn strip (tear) → panel (stretch).
+## The body rect along the timeline: torn sliver → tall strip (tear) → panel (stretch).
 func body_rect() -> Rect2:
 	var r := layout_rects()
-	var tag: Rect2 = r["tag"]
+	var sliver: Rect2 = r["sliver"]
 	var strip: Rect2 = r["strip"]
 	var panel: Rect2 = r["panel"]
 	var opening := tear_time + stretch_time
@@ -539,38 +507,24 @@ func body_rect() -> Rect2:
 	var b := clampf((tt - tear_time) / stretch_time, 0.0, 1.0)
 	a = a * a * (3.0 - 2.0 * a)
 	b = 1.0 - pow(1.0 - b, 3.0)
-	var body := Rect2(tag.position.lerp(strip.position, a), tag.size.lerp(strip.size, a))
-	body = Rect2(body.position, Vector2(lerpf(body.size.x, panel.size.x, b), body.size.y))
-	if state == "folded":
-		var swell := 1.0 + 0.1 * _beat
-		var jitter := Vector2(sin(_t * 7.3) + 0.5 * sin(_t * 13.1), cos(_t * 6.1)) * 1.2 * _hover * (0.0 if reduce_motion else 1.0)
-		var c := body.get_center() + jitter
-		body = Rect2(Vector2(body.position.x, c.y - body.size.y * swell * 0.5), Vector2(body.size.x * swell, body.size.y * swell))
-	return body
+	var body := Rect2(sliver.position.lerp(strip.position, a), sliver.size.lerp(strip.size, a))
+	return Rect2(body.position, Vector2(lerpf(body.size.x, panel.size.x, b), body.size.y))
 
 
-func _draw_params(_delta: float) -> void:
+func _draw_params() -> void:
 	if _mat == null: return
 	var r := layout_rects()
 	var h: float = r["h"]
 	var spine: Rect2 = r["spine"]
 	var body := body_rect()
-	var moving := state == "opening" or state == "closing"
-	var tear := 0.0
-	if moving and not reduce_motion:
-		tear = sin(open_amount * PI) * 1.4
-	elif state == "folded":
-		tear = 0.35
 	_mat.set_shader_parameter("u_size", size)
 	_mat.set_shader_parameter("u_time", _t)
 	_mat.set_shader_parameter("u_spine", Vector4(spine.position.x, spine.position.y, spine.end.x, spine.end.y))
 	_mat.set_shader_parameter("u_body", Vector4(body.position.x, body.position.y, body.end.x, body.end.y))
-	_mat.set_shader_parameter("u_radius", h * (0.012 if state == "folded" else 0.022))
+	_mat.set_shader_parameter("u_radius", h * 0.022)
 	_mat.set_shader_parameter("u_seam", h * 0.035)
 	_mat.set_shader_parameter("u_open", open_amount)
-	_mat.set_shader_parameter("u_tear", tear)
-	_mat.set_shader_parameter("u_hover", _hover)
-	_mat.set_shader_parameter("u_beat", _beat)
+	_mat.set_shader_parameter("u_tear", sin(open_amount * PI) * 1.4 if state == "opening" and not reduce_motion else 0.0)
 	_mat.set_shader_parameter("u_hole", Vector4(_hole.position.x - h * 0.012, _hole.position.y + 2.0, _hole.end.x + h * 0.012, _hole.end.y - 2.0))
 	_mat.set_shader_parameter("u_hole_on", _hole_on * open_amount)
 	_mat.set_shader_parameter("u_a0", scab_color)
@@ -579,19 +533,10 @@ func _draw_params(_delta: float) -> void:
 	_mat.set_shader_parameter("u_b1", ghost_color)
 	_mat.set_shader_parameter("u_shift", _shift)
 	_mat.set_shader_parameter("u_pulse_origin", _pulse_origin)
-	var diag := size.length()
 	var pk := clampf(_pulse_t / pulse_time, 0.0, 1.0) if _pulse_t >= 0.0 else 1.0
-	_mat.set_shader_parameter("u_pulse_r", (1.0 - pow(1.0 - pk, 2.2)) * diag)
+	_mat.set_shader_parameter("u_pulse_r", (1.0 - pow(1.0 - pk, 2.2)) * size.length())
 	_mat.set_shader_parameter("u_pulse_a", (1.0 - pk) if _pulse_t >= 0.0 else 0.0)
 	_mat.set_shader_parameter("u_refraction", glass_refraction)
 	_mat.set_shader_parameter("u_stain", glass_stain)
 	_mat.set_shader_parameter("u_bg_dim", background_dim)
 	_mat.set_shader_parameter("u_motion", 0.0 if reduce_motion else 1.0)
-
-
-## Keyboard: with the menu folded, Enter / Space / arrows open it.
-func _unhandled_key_input(event: InputEvent) -> void:
-	if not is_visible_in_tree() or state != "folded": return
-	if event is InputEventKey and event.pressed and not event.echo and (event as InputEventKey).keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_DOWN, KEY_UP, KEY_RIGHT]:
-		open()
-		get_viewport().set_input_as_handled()
