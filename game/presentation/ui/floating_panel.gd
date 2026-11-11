@@ -10,7 +10,7 @@ var collapsed := false
 var compact := false
 var heading: Label
 var _frame: VBoxContainer
-var _scroll: ScrollContainer
+var _scroll: TouchScroll
 var _body: Control
 var _dot: Control
 var _pointer := -2
@@ -53,7 +53,7 @@ func _init() -> void:
 	close.pressed.connect(dismiss)
 	bar.add_child(close)
 	_frame.add_child(bar)
-	_scroll = ScrollContainer.new()
+	_scroll = TouchScroll.new()
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED

@@ -1824,7 +1824,9 @@ func set_wuda_armed(armed: bool, tell: bool = false) -> void:
 
 
 func set_ending_wake(shown: bool) -> void:
-	if is_instance_valid(_ending_wake): _ending_wake.visible=shown
+	if is_instance_valid(_ending_wake):
+		_ending_wake.visible=shown
+		_fit_ending.call_deferred()
 
 
 func show_ending(title: String, tag: String, lines: Array, meta: String, achieved: PackedStringArray = PackedStringArray(), result_note: String = "", ending_id: String = "") -> void:
@@ -1835,9 +1837,13 @@ func show_ending(title: String, tag: String, lines: Array, meta: String, achieve
 		ending_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		ending_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 		ending_panel.custom_minimum_size = Vector2(520, 0)
+		ending_panel.minimum_size_changed.connect(func() -> void: _fit_ending.call_deferred())
+		var outer := VBoxContainer.new()
+		outer.add_theme_constant_override("separation",12)
+		ending_panel.add_child(outer)
 		_ending_scroll=TouchScroll.new()
 		_ending_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
-		ending_panel.add_child(_ending_scroll)
+		outer.add_child(_ending_scroll)
 		var box := VBoxContainer.new()
 		box.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		box.add_theme_constant_override("separation", 14)
@@ -1849,26 +1855,35 @@ func show_ending(title: String, tag: String, lines: Array, meta: String, achieve
 		_ending_text.custom_minimum_size = Vector2.ZERO
 		_ending_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(_ending_text)
+		_ending_scroll.add_child(box)
+		_ending_note = Label.new()
+		_ending_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_ending_note.modulate = Color(1, 1, 1, 0.6)
+		outer.add_child(_ending_note)
+		var actions := HFlowContainer.new()
+		actions.add_theme_constant_override("h_separation",8)
+		outer.add_child(actions)
 		_ending_results = Button.new()
 		_ending_results.name = "EndingResults"
 		_ending_results.text = "结算"
+		_ending_results.custom_minimum_size = Vector2(144,60)
+		_ending_results.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_ending_results.pressed.connect(func() -> void: results_requested.emit())
-		box.add_child(_ending_results)
-		_ending_note = Label.new()
-		_ending_note.modulate = Color(1, 1, 1, 0.6)
-		box.add_child(_ending_note)
+		actions.add_child(_ending_results)
 		_ending_wake=Button.new()
 		_ending_wake.name="EndingWake"
 		_ending_wake.text="……再睁开眼"
-		_ending_wake.custom_minimum_size.y=44
+		_ending_wake.custom_minimum_size=Vector2(144,60)
+		_ending_wake.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_ending_wake.pressed.connect(func() -> void: ending_wake_requested.emit())
-		box.add_child(_ending_wake)
+		actions.add_child(_ending_wake)
 		var back := Button.new()
+		back.name = "EndingMenu"
 		back.text = "回到主菜单"
-		back.custom_minimum_size.y=44
+		back.custom_minimum_size=Vector2(144,60)
+		back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		back.pressed.connect(func() -> void: death_menu_requested.emit())
-		box.add_child(back)
-		_ending_scroll.add_child(box)
+		actions.add_child(back)
 		$Root.add_child(ending_panel)
 	_ending_art.texture = UIArt.memory("end:" + ending_id)
 	_ending_art.visible = _ending_art.texture != null
@@ -1880,18 +1895,14 @@ func show_ending(title: String, tag: String, lines: Array, meta: String, achieve
 	_ending_note.text = "调试局 · 不评级，不进通关记录" if result_note == "debug" else ""
 	_ending_note.visible = result_note == "debug"
 	_ending_wake.hide()
+	_ending_scroll.stop_motion()
+	_ending_scroll.scroll_vertical = 0
 	ending_panel.visible = true
 	_fit_ending.call_deferred()
 
 
 func _fit_ending() -> void:
-	if not is_instance_valid(ending_panel) or not ending_panel.visible: return
-	var view:=get_viewport().get_visible_rect().size
-	var width:=minf(520,view.x-24)
-	ending_panel.custom_minimum_size.x=width
-	_ending_scroll.custom_minimum_size.y=minf(440,view.y-64)
-	ending_panel.size=Vector2(width,0)
-	ending_panel.position=(view-ending_panel.size)*.5
+	PanelLayout.fit(ending_panel,_ending_scroll,620,440)
 
 
 var _ending_results: Button
@@ -2092,8 +2103,20 @@ func show_selection(title: String, mode: String, entries: Array) -> void:
 		selection_panel = SelectionPanel.new()
 		$Root.add_child(selection_panel)
 		selection_panel.confirmed.connect(choice_selected.emit)
-		selection_panel.canceled.connect(choice_selected.emit.bind(-1))
+		selection_panel.canceled.connect(_selection_canceled)
 	selection_panel.open(title, mode, entries)
+
+
+func _selection_canceled() -> void:
+	choice_selected.emit(-1)
+	_restore_menu_focus.call_deferred()
+
+
+func _restore_menu_focus() -> void:
+	if _mode != "menu" or choice_open(): return
+	var focused := get_viewport().gui_get_focus_owner()
+	if focused == null or not focused.is_visible_in_tree():
+		%NewGame.grab_focus()
 
 
 func set_lift_close(visible_now: bool) -> void:
