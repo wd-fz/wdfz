@@ -237,8 +237,13 @@ func test_lists() -> void:
 	await _frames(5)
 	var pages: Array[String] = []
 	phone.app_selected.connect(func(id: String) -> void: pages.append(id))
+	# How far the list can scroll depends on the platform's font metrics (9 px with Linux fallback fonts,
+	# more elsewhere): require a real overflow, then a swipe that goes as far as it can (at most 30 px).
+	var nav_bar := phone._nav_scroll.get_v_scroll_bar()
+	var nav_range := nav_bar.max_value - nav_bar.page
+	check(nav_range >= 1.0, "the phone app list overflows at 150% text, so it must scroll")
 	await _swipe((phone.app_buttons.home as Button).get_global_rect().get_center(),Vector2(0,-120))
-	check(phone._nav_scroll.scroll_vertical > 30 and pages.is_empty(), "the phone app list scrolls from its buttons without opening another app")
+	check(phone._nav_scroll.scroll_vertical >= minf(30.0, nav_range) - 0.5 and pages.is_empty(), "the phone app list scrolls from its buttons without opening another app")
 	ui.queue_free()
 	await _frames(3)
 	root.size = previous_size
