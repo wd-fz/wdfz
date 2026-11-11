@@ -10,9 +10,14 @@ const JADE := Color("476964")
 const PAPER := Color("d8d0b8")
 const RUST := Color("b56243")
 const LIGHT := Color("e8dcb4")
-const DARK := Color("06090b")       # the stage's fog and sky: distance falls into this
-const KEY := Color("b4c6d0")        # the cold key light from just behind the eye
+const DARK := Color("0b0e10")       # the stage's fog and sky: distance falls into this
+const KEY := Color("d8d8cf")        # the neutral key light from just behind the eye
 const TUBE := Color("d6ded4")       # a fluorescent tube's pool
+const WALL := Color("8b8a82")       # school plaster; the green dado below it is _room's
+const FOG_TONE := Color("0d1113")   # fog and sky floor: never pure black
+const GRADE_SKIP := ["flood"]       # sets whose water/dark is their own light logic
+const UNIFORM := {"person":Color("3e5174"),"sit":Color("3e5174"),"teacher":Color("4c4f55"),"roam":Color("4c4f55")}   # doc: 2a3445 / 34363a, lifted: those albedos render black under the stage lights
+const SKIN := Color(.40,.38,.35)
 ## Fog density of the stage dark; long or open sets keep their far subject (an exit, a road, a facade) readable.
 const FOG := {"corridor":.035,"crash":.02,"flood":.05,"fall":.012,"assembly":.04,"banquet":.04,"garage":.035,"fence":.06,"classroom":.05}
 var c: DeathStage
@@ -39,10 +44,23 @@ func build() -> void:
 	c.veil(Color("03070a"))
 	c.stage_dark(DARK,float(FOG.get(layout,.085)))
 	call("_build_"+layout)
+	_grade()
 	_light_set()
 	c.d["scene"] = root
 	c.d["focus"] = focus
 	c.d["layout"] = layout
+
+## A floor under every set's ambient light and fog (never lowers a brighter value): the shots stay
+## readable and neutral without each one re-tuning its own stage_dark.
+func _grade() -> void:
+	if layout in GRADE_SKIP: return
+	var env := c.cam.environment
+	if env == null: return
+	env.ambient_light_energy = maxf(env.ambient_light_energy,.55)
+	env.ambient_light_color = env.ambient_light_color.lerp(Color(.27,.26,.24),.7)
+	if env.background_color.is_equal_approx(DARK): env.background_color = FOG_TONE
+	if env.fog_light_color.is_equal_approx(DARK): env.fog_light_color = FOG_TONE
+	env.fog_density = clampf(env.fog_density,.02,.05)
 
 func present(t: float) -> void:
 	# Start each frame from the captured transform: no additive camera drift.
@@ -64,7 +82,7 @@ func _pose(t: float, pitch: float = 0, yaw: float = 0, lift: float = 0, roll: fl
 ## The default rig: a cold key from just above and behind the eye that lights what comes close, the
 ## distance left to the stage dark. Sets may add motivated lights (tubes, headlights) of their own.
 func _light_set() -> void:
-	c.key_light(Vector3(.3,.45,-.7),Vector3(0,-.85,4.5),KEY,8.0,12,52,root)
+	c.key_light(Vector3(.3,.45,-.7),Vector3(0,-.85,4.5),KEY,6.5,12,52,root)
 
 ## Light fixtures glow (unshaded); everything else takes the stage lights and its fog.
 func _surface(color: Color, alpha: float = -1, double: bool = false) -> StandardMaterial3D:
@@ -118,14 +136,15 @@ func _anchor(at: Vector3) -> Node3D:
 	c.put(node,at.x,at.y,at.z,root)
 	return node
 
-func _room(width: float = 7, depth: float = 16, tone: Color = COAL) -> void:
-	_box(Vector3(width,.08,depth),Vector3(0,-1.6,depth*.5-1),Color("3d5253"))
-	_box(Vector3(width,.08,depth),Vector3(0,1.9,depth*.5-1),Color("4c5550"))
+func _room(width: float = 7, depth: float = 16, tone: Color = WALL) -> void:
+	_box(Vector3(width,.08,depth),Vector3(0,-1.6,depth*.5-1),Color("57554e"))
+	_box(Vector3(width,.08,depth),Vector3(0,1.9,depth*.5-1),Color("6f6d66"))
 	_box(Vector3(.08,3.5,depth),Vector3(-width*.5,.15,depth*.5-1),tone)
 	_box(Vector3(.08,3.5,depth),Vector3(width*.5,.15,depth*.5-1),tone)
 	_box(Vector3(width,3.5,.08),Vector3(0,.15,depth-1),tone)
 	for side in [-1,1]:
-		_box(Vector3(.1,.04,depth),Vector3(side*(width*.5-.04),-.55,depth*.5-1),JADE)
+		_box(Vector3(.03,1.15,depth),Vector3(side*(width*.5-.055),-1.025,depth*.5-1),Color("3f5b4d"))
+		_box(Vector3(.1,.04,depth),Vector3(side*(width*.5-.04),-.45,depth*.5-1),Color("2e4438"))
 		_box(Vector3(.1,.12,depth),Vector3(side*(width*.5-.04),-1.5,depth*.5-1),INK)
 	for z in range(1,int(depth),3):
 		_box(Vector3(1.1,.03,.2),Vector3(0,1.82,z),LIGHT)
@@ -190,14 +209,26 @@ static func _fig_skin(tone: Variant, rim: float = .3, shaded: bool = false) -> S
 	var key := "skin|%s|%.2f|%s" % [str(tone),rim,shaded]
 	if _fig_cache.has(key): return _fig_cache[key]
 	var m := HorrorKit.skin(tone,0.0,shaded).duplicate() as ShaderMaterial
-	m.set_shader_parameter("rim_strength",rim)
+	m.set_shader_parameter("rim_color",Color(.55,.55,.52))
+	m.set_shader_parameter("rim_strength",minf(rim,.25))
+	if not shaded:
+		m.set_shader_parameter("vein_amount",0.0)
+		m.set_shader_parameter("mottle",.12)
+		m.set_shader_parameter("pores",0.0)
 	m.set_shader_parameter("rim_emit",0.0)
 	m.set_shader_parameter("gloss",0.0)
 	_fig_cache[key]=m
 	return m
 
+## Skin that is a Color is held at a mid grey (SKIN); named tones ("wax") are left alone.
+static func _skin_tone(tone: Variant) -> Variant:
+	if tone is Color and (tone as Color).get_luminance()>.42: return SKIN
+	return tone
+
 ## A HorrorKit head (it faces -z, towards the eye), matte, at a point of parent.
 func _fig_head(opts: Dictionary, at: Vector3, size: float = 1.0, parent: Node3D = null) -> Node3D:
+	opts = opts.duplicate()
+	opts["tone"]=_skin_tone(opts.get("tone","wax"))
 	var head := HorrorKit.head(opts)
 	var face := head.get_node_or_null("Skull/Face") as MeshInstance3D
 	if face != null: face.material_override=_fig_skin(opts.get("tone","wax"),float(opts.get("rim",.25)),true)
@@ -214,25 +245,39 @@ func _fig_head(opts: Dictionary, at: Vector3, size: float = 1.0, parent: Node3D 
 func _fig(at: Vector3, kind: String, scale: float, tone: Variant, head: Dictionary = {}, rim: float = .3, parent: Node3D = null) -> Node3D:
 	var actor := Node3D.new()
 	actor.rotation_order=EULER_ORDER_YXZ
+	var dressed: Variant = tone
+	var swapped := tone is Color and (tone as Color).get_luminance()<.18
+	if swapped: dressed=UNIFORM.get(kind,UNIFORM["person"])
 	var body := MeshInstance3D.new()
 	body.name="Body"
 	body.mesh=_fig_body(kind)
-	body.material_override=_fig_skin(tone,rim)
+	body.material_override=_fig_skin(dressed,rim)
 	body.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	body.scale=Vector3.ONE*scale
 	actor.add_child(body)
 	(parent if parent != null else root).add_child(actor)
 	actor.position=at
 	var opts := head.duplicate()
-	if not opts.has("tone"): opts["tone"]=tone
+	if not opts.has("tone"): opts["tone"]=SKIN if swapped else tone
 	var skull := _fig_head(opts,(_FIG_NECK[kind][1] as Vector3)*scale,scale*float(head.get("size",1.12)),actor)
 	skull.name="Head"
 	skull.rotation.y=PI
 	actor.set_meta("head",skull)
+	# A shirt collar at the neck root (and the red piping of a school uniform) so the cloth reads as clothes.
+	var root_at := Vector3((_FIG_NECK[kind][1] as Vector3).x,float(_FIG_NECK[kind][0]),(_FIG_NECK[kind][1] as Vector3).z)*scale   # the cut of the body: where the neck starts
+	var collar := c.torus(.085*scale,.018*scale,c._mat_lit(Color("b9b6aa")),root_at.x,root_at.y-.06,root_at.z,actor)
+	collar.rotation.x=PI/2   # c.torus stands a ring upright; a collar lies flat
+	collar.name="Collar"
+	if kind=="person" or kind=="sit":
+		var trim := c.torus(.09*scale,.015*scale,c._mat_lit(Color("8a2f2a")),root_at.x,root_at.y-.09,root_at.z,actor)
+		trim.rotation.x=PI/2
+		trim.name="CollarTrim"
 	return actor
 
 ## A HorrorKit hand with the matte skin (nails keep theirs).
 func _fig_hand(opts: Dictionary, parent: Node3D = null) -> Node3D:
+	opts = opts.duplicate()
+	opts["tone"]=_skin_tone(opts.get("tone","wax"))
 	var hand := HorrorKit.hand(opts)
 	var mat := _fig_skin(opts.get("tone","wax"),float(opts.get("rim",.3)),true)
 	for mi: Node in hand.find_children("*","MeshInstance3D",true,false):

@@ -176,7 +176,7 @@ func _mat_lit(col: Color, op: float = -1.0, double: bool = false, rough: float =
 ## The stage's own darkness: overrides the camera's environment (restored by _restore) with a dim
 ## ambient and an exponential fog of the background colour, so distance falls into black. Post effects
 ## of the current environment (glow, SSAO, tonemap) are kept; GI that would read the hidden world is off.
-func stage_dark(fog: Color = Color(.012, .016, .02), density: float = .085, ambient: Color = Color(.3, .37, .4), ambient_energy: float = .38) -> Environment:
+func stage_dark(fog: Color = Color(.012, .016, .02), density: float = .085, ambient: Color = Color(.27, .26, .24), ambient_energy: float = .6) -> Environment:
 	if not _env_owned:
 		_env_previous = cam.environment
 		_env_owned = true
