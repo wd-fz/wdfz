@@ -76,8 +76,9 @@ func test_head() -> void:
 	var eye_l := (wide.find_child("EyeL", true, false) as Node3D).position
 	var eye_r := (wide.find_child("EyeR", true, false) as Node3D).position
 	check(eye_l.y > eye_r.y + .005, "the skewed variant sets one eye higher")
-	check(HorrorKit.head({"quality": 2}).find_child("Face", true, false).mesh == face.mesh, "head meshes are cached")
-	for n: Node in [head, blank, wide]: n.free()
+	var second := HorrorKit.head({"quality": 2})
+	check(second.find_child("Face", true, false).mesh == face.mesh, "head meshes are cached")
+	for n: Node in [head, blank, wide, second]: n.free()
 
 
 func test_stage_lights() -> void:
