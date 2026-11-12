@@ -6,7 +6,7 @@ func _test_caption_rules() -> void:
 	var e := c.publish("dread.knock", {"place": {"pan": -0.6, "muffled": true}})
 	check(e["text"] == "左 · 隔着墙 · 轻轻的敲门声", "a caption says where: left, through a wall")
 	check(c.publish("music.box", {}).is_empty() and c.publish("step.tile", {"self_step": true}).is_empty(), "uncaptioned sounds and your own steps say nothing")
-	check(String(c.publish("step.tile", {"patrol": true, "place": {"behind": true, "m": 3.0}})["text"]) == "后方 · 近处 · 脚步声", "the patroller's steps: behind, near")
+	check(String(c.publish("step.tile", {"patrol": true, "place": {"behind": true, "m": 3.0}})["text"]) == "脚步声", "nearby patrol captions do not disclose position")
 	c.publish("threat.heartLow", {})
 	check(c.publish("threat.heartLow", {}).is_empty(), "the heart is captioned at most once in 20 s")
 	check(c.publish("dread.door", {}, true).is_empty() and not c.publish("event.bellEnd", {}, true).is_empty(), "with the phone or a lesson open only urgent captions get through")
@@ -16,6 +16,52 @@ func _test_caption_rules() -> void:
 	check(c.visible().is_empty(), "captions expire (the clock steps at most 0.25 s a frame)")
 	c.mode = 0
 	check(not c.enabled(0.7, false) and c.enabled(0.03, false) and c.enabled(0.7, true), "auto mode captions only when the sound is off or nearly")
+
+
+func _test_patrol_caption_range() -> void:
+	var c := SoundCaptions.new()
+	check(c.publish("step.tile",{"patrol":true}).is_empty(), "patrol captions require a known nearby sound position")
+	for distance: float in [5.01,15.0,80.0,INF,NAN,-1.0]:
+		check(c.publish("step.tile",{"patrol":true,"place":{"m":distance}}).is_empty(), "distant or invalid patrol distances do not produce captions: "+str(distance))
+	for place: Dictionary in [{"pan":-.9,"behind":true,"m":5.0,"muffled":true},{"pan":.9,"behind":false,"m":1.0}]:
+		var step := c.publish("step.tile",{"patrol":true,"place":place},true)
+		check(not step.is_empty() and step["text"]=="脚步声", "patrol captions within five metres omit direction, distance and wall information")
+		c.tick(.25)
+	check(not c.publish("step.stair",{"patrol":true,"place":{"m":3.0}}).is_empty(), "nearby footsteps have no artificial time cooldown")
+	check(c.visible().size()==1 and c.lines()==PackedStringArray(["〔脚步声〕"]), "changing floor materials keeps a single plain patrol caption")
+	for _i in 30: c.tick(.25)
+	check(c.visible().is_empty(), "the nearby footstep caption expires normally when steps stop")
+	check(not c.publish("event.bellStart",{"place":{"m":80.0}},true).is_empty() and not c.publish("foley.cupFall",{},true).is_empty(), "the patrol distance limit does not suppress other urgent warnings")
+	c.reset()
+	check(not c.publish("step.tile",{"patrol":true,"place":{"m":0.0}},true).is_empty(), "the first nearby step is immediate after reset, including while busy")
+
+
+func _test_patrol_caption_audio() -> void:
+	var previous_camera := root.get_camera_3d()
+	var camera := Camera3D.new()
+	root.add_child(camera)
+	camera.make_current()
+	var audio := AudioFx.new()
+	root.add_child(audio)
+	await _frames(2)
+	audio.captions_live = true
+	var far := Vector3(12,0,0)
+	audio.step_on("tile",1.5,{"patrol":true,"pos":far})
+	check(audio.captions.visible().is_empty() and audio._pool3.any(func(voice: AudioStreamPlayer3D) -> bool: return voice.playing and voice.global_position.is_equal_approx(far)), "distant patrol footsteps remain audible without publishing a caption")
+	for i in 16:
+		audio.captions.tick(.25)
+		var position := Vector3(2+i*.2,0,2)
+		audio.step_on("tile",1.5,{"patrol":true,"pos":position})
+		check(audio._pool3.any(func(voice: AudioStreamPlayer3D) -> bool: return voice.playing and voice.global_position.is_equal_approx(position)), "each moving footstep retains its spatial voice regardless of caption range")
+	check(audio.captions.lines()==PackedStringArray(["〔脚步声〕"]), "the real audio path produces a plain nearby caption without spatial descriptions")
+	for _i in 16: audio.captions.tick(.25)
+	check(audio.captions.visible().is_empty(), "the nearby caption expires normally after footsteps stop")
+	audio.stop_all()
+	check(not audio.captions.publish("step.tile",{"patrol":true,"place":{"m":3.0}}).is_empty(), "nearby captions work immediately after audio is reset")
+	audio.queue_free()
+	camera.queue_free()
+	await _frames(2)
+	if is_instance_valid(previous_camera): previous_camera.make_current()
 
 
 func _test_dread_rules() -> void:

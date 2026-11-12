@@ -32,6 +32,9 @@ var base_camera: Vector3
 func _init(stage: DeathStage) -> void:
 	c = stage
 
+func restore() -> void:
+	pass
+
 func build() -> void:
 	layout = DeathSceneCatalog.layout(c.fx)
 	root = Node3D.new()

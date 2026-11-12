@@ -9,6 +9,8 @@ const LIFT_DIGIT := {1: "bc", 2: "abged", 3: "abgcd", 4: "fgbc", 5: "afgcd"}
 
 
 var on := false
+## Live deaths keep their surroundings; archives and previews author their own sets.
+var live_scene := false
 var fx := ""
 var k := 0.0
 var dur := 3.0
@@ -49,9 +51,10 @@ static func ss(kk: float, a: float, b: float) -> float:
 	return x * x * (3.0 - 2.0 * x)
 
 
-func begin(cause: String, player: PlayerController, world: Node3D, ui: GameUI, duration: float, reduce_shake: bool = false, camera_override: Camera3D = null) -> void:
+func begin(cause: String, player: PlayerController, world: Node3D, ui: GameUI, duration: float, reduce_shake: bool = false, camera_override: Camera3D = null, live: bool = false) -> void:
 	_restore()
 	_restored = false
+	live_scene = live
 	d.clear()
 	_cued.clear()
 	_flashed.clear()

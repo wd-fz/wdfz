@@ -1,8 +1,8 @@
 extends SceneTree
-## 开机动画与侧边主菜单: boot animation frames, the folded tag, tearing open, the open panel with the peephole,
-## an expanded group, the green pulse while folding, reduced motion, and 21:9.
+## 开机动画与侧边主菜单: boot animation frames, the panel tearing open on entry, the open panel with the peephole,
+## an expanded group, the green pulse, reduced motion, 21:9, and the optional live orbit (setting 主菜单实景环绕).
 ## xvfb-run -a godot --windowed --path . --rendering-driver vulkan --script res://tools/capture/capture_side_menu.gd
-## Output: build/previews/side_menu/. SHOTS=boot,menu,wide,reduced (default: all).
+## Output: build/previews/side_menu/. SHOTS=boot,menu,wide,reduced,orbit (default: all).
 const APP := preload("res://game/app/app.tscn")
 var _want: PackedStringArray = []
 var _app: GameApp
@@ -45,45 +45,31 @@ func _run() -> void:
 		while is_instance_valid(ui.boot_splash):
 			await process_frame
 	var side := ui.menu_screen
-	if want("debug"):
-		for c: Control in ui.find_children("*", "Control", true, false):
-			if c.is_visible_in_tree() and c.get_global_rect().has_point(Vector2(480, 159)) and c.get_global_rect().size.x < 200:
-				print("AT POINT: ", c.get_path(), " ", c.get_global_rect())
 	if want("orbit"):
+		_app._setting_changed("menu_orbit", 1)
 		var pv := ui.menu_preview
-		for _i in 200:
+		for _i in 400:
+			await process_frame
+			if pv.world != null: break
+		for _i in 60:
 			await process_frame
 		pv.still = true
 		for a: float in [0.0, 1.6, 3.2, 4.8]:
 			pv.angle = a
 			await shot("orbit-%.1f" % a, 20)
 		pv.still = false
-	if want("raw"):
-		var pv2 := ui.menu_preview
-		side.visible = false
-		pv2.still = true
-		pv2.angle = 1.6
-		for c: float in [1110.0, 1150.0, 1338.0]:
-			pv2.clock = c
-			await shot("raw-%d" % int(c), 40)
-		side.visible = true
+		_app._setting_changed("menu_orbit", 0)
 	if want("menu"):
-		# Let the orbiting campus come in.
-		for _i in 120:
-			await process_frame
-		Input.warp_mouse(Vector2(28, 360) * 1280.0 / 960.0)
-		await shot("menu-folded-hover", 30)
 		# The timeline is fixed by hand for the in-between frames (the software renderer is too slow for real time).
 		side.set_process(false)
-		for spec: Array in [["menu-tearing", 0.5], ["menu-stretching", 0.82]]:
+		for spec: Array in [["menu-entry-tearing", 0.35], ["menu-entry-stretching", 0.75]]:
 			side.state = "opening"
 			side.open_amount = float(spec[1])
 			side._apply_state()
-			side._draw_params(0.0)
+			side._draw_params()
 			await shot(String(spec[0]), 3)
 		side.set_process(true)
-		side.state = "folded"
-		side.open()
+		side.enter()
 		for _i in 90:
 			await process_frame
 		var rebirth := side.find_child("Rebirth", true, false) as Button
@@ -99,7 +85,7 @@ func _run() -> void:
 		side._acted(ach)
 		for _i in 10:
 			await process_frame
-		await shot("menu-pulse-folding", 0)
+		await shot("menu-pulse", 0)
 		for _i in 50:
 			await process_frame
 		await shot("menu-pulse-absorbed", 0)

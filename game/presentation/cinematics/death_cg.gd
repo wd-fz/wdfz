@@ -23,7 +23,14 @@ static func resolve(source: String, effect: String) -> String:
 static func title(cause: String) -> String:
 	return DeathSceneCatalog.title(cause)
 
+func begin_live(cause: String, player: PlayerController, world: Node3D, ui: GameUI, duration: float, reduced: bool = false) -> void:
+	begin(cause,player,world,ui,duration,reduced,null,true)
+
 func _build_scene() -> void:
+	if live_scene and DeathSceneCatalog.uses_live_world(fx):
+		shots = DeathInPlace.new(self)
+		shots.build()
+		return
 	match fx:
 		"crowd": CrowdDeath.build(self)
 		"void": MazeDeath.build_lost(self)
@@ -63,6 +70,7 @@ func offer_skip(callback: Callable) -> void:
 	_skip_layer.add_child(_skip_button)
 
 func _restore() -> void:
+	if shots != null: shots.restore()
 	super._restore()
 	if _owns_mouse:
 		Input.mouse_mode = _skip_mouse_mode

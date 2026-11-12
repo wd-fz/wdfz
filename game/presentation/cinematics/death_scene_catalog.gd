@@ -59,6 +59,12 @@ const SOURCE_SCENES := {
 	"void_lost":"void", "void_fall":"abyss", "x.rules.knock":"rules_knock",
 }
 
+## These deaths explicitly enter an impossible space. Ordinary causes stay on site.
+const SPACE_TRANSITIONS := ["crowd", "void", "abyss"]
+
+static func uses_live_world(id: String) -> bool:
+	return SCENES.has(id) and not SPACE_TRANSITIONS.has(id)
+
 static func resolve(source: String, effect: String) -> String:
 	if SCENES.has(source): return source
 	if SOURCE_SCENES.has(source): return String(SOURCE_SCENES[source])

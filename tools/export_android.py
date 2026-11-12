@@ -17,8 +17,8 @@ from ci.common import ENGINE, ROOT, check_version, run
 BUILD_TOOLS = "36.0.0"
 PACKAGE = "org.wdfz.godot.debug"
 RELEASE_PACKAGE = "org.wdfz.godot"
-RELEASE_VERSION = "0.2.1"
-RELEASE_VERSION_CODE = 3
+RELEASE_VERSION = "0.3.0"
+RELEASE_VERSION_CODE = 4
 
 
 def verify_fullscreen_launch(raw):

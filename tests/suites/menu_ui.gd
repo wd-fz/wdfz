@@ -30,7 +30,7 @@ func test_menus() -> void:
 				var specs: Dictionary = main if mode == "menu" else pause
 				var bounds := root.get_visible_rect()
 				if mode == "menu":
-					check(side.state == "folded" and bounds.encloses(side.tag_button.get_global_rect()) and side.tag_button.size.y >= 44, "side menu tag is reachable at %s %d%%" % [resolution,scale])
+					check(side.state in ["opening", "open"], "the side menu opens by itself at %s %d%%" % [resolution,scale])
 					side.open_now()
 					await _frames(3)
 					check(bounds.encloses(side.content.get_global_rect()) and side.panel_rect().size.x <= bounds.size.x * 0.63 + 1.0, "side menu panel fits %s at %d%% text and leaves the campus visible" % [resolution,scale])

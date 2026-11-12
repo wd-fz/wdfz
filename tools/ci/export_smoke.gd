@@ -95,6 +95,19 @@ func _run() -> void:
 		death.finish()
 		death.queue_free()
 		await process_frame
+	for scene: String in ["patrol","garage","san","floor","swarm","window_gaze"]:
+		var death := DeathCG.new()
+		app.add_child(death)
+		var camera_before := app.player.camera.transform
+		death.begin_live(scene,app.player,app._campus_world(),app.ui,DeathCG.duration(scene,0),true)
+		death.update(death.dur*.58)
+		await RenderingServer.frame_post_draw
+		_check(death.shots is DeathInPlace and app._campus_world().visible and death._sky==null,"exported live death replaces its actual surroundings: "+scene)
+		_check(not root.get_texture().get_image().is_empty(),"exported live death did not render: "+scene)
+		death.finish()
+		_check(app.player.camera.transform.is_equal_approx(camera_before),"exported live death did not restore its camera: "+scene)
+		death.queue_free()
+		await process_frame
 	app._toggle_debug()
 	_check(app.debug_panel!=null and app.debug_panel._pages.has("诊断") and app.debug_panel._pages.has("日志"),"exported developer pages missing")
 	app.debug_panel.select_page("诊断")
