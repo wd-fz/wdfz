@@ -2,7 +2,7 @@ name: LAN cooperation
 
 on:
   push:
-    branches: [main, 'plan/lan-*']
+    branches: [main, 'plan/lan-*', 'feat/remote-*']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -28,6 +28,9 @@ jobs:
       - uses: ./.github/actions/setup-godot
       - run: python tools/lan_manifest.py --check
       - run: godot --headless --path . --editor --import
+      - run: python tools/test_remote.py --unit
+      - name: Official Terracotta, EasyTier and ENet integration
+        run: python tools/test_remote.py
       - run: python tools/test_lan.py --rules
       - run: python tools/test_lan.py --players 2
       - run: python tools/test_lan.py --players 2 --slow-load
@@ -43,6 +46,10 @@ jobs:
             build/reports/lan/**/summary.json
             build/reports/lan/**/impairment.json
             build/reports/lan/**/*.png
+            build/reports/remote/unit.log
+            build/reports/remote/host.log
+            build/reports/remote/guest.log
+            build/reports/remote/summary.json
           retention-days: 14
 
   interface:

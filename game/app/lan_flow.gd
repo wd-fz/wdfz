@@ -34,6 +34,9 @@ var _ending_prompt := ""
 var _board_prompt := ""
 var _recorded := false
 var _pointer_inside := false
+var remote := TerracottaSession.new()
+var _remote_mode := false
+var _remote_token := ""
 
 
 func _ready() -> void:
@@ -42,19 +45,18 @@ func _ready() -> void:
 	get_window().mouse_exited.connect(func() -> void: _pointer_inside = false)
 	network.name = "Network"
 	add_child(network)
+	remote.name = "Terracotta"
+	add_child(remote)
 	panel = LanPanel.new()
 	panel.name = "LanPanel"
 	panel.visible = false
 	panel.theme = GameUI.BASE_THEME
 	app.ui.get_node("Root").add_child(panel)
-	panel.host_requested.connect(func(name: String, nick: String, port: int, resume: bool) -> void:
-		var error := network.host(name, nick, port, resume)
-		if error != "": panel.status.text = error)
-	panel.join_requested.connect(func(target: String, nick: String) -> void:
-		var error := network.join(target, nick)
-		panel.status.text = error if error != "" else "正在连接，可随时离开取消。")
+	panel.host_requested.connect(_host)
+	panel.join_requested.connect(_join)
 	panel.ready_requested.connect(network.ready)
 	panel.start_requested.connect(func() -> void:
+		if _remote_mode and not remote.available: return
 		var error := network.start()
 		if error != "": panel.status.text = error)
 	panel.close_requested.connect(func() -> void:
@@ -86,6 +88,7 @@ func _ready() -> void:
 		app.ui.show_notice(text)
 		if panel.visible: panel.status.text = text)
 	network.closed.connect(func(reason: String) -> void:
+		if _remote_mode: remote.stop()
 		_lost = true
 		app.player.enabled = false
 		app.player.clear_input()
@@ -99,8 +102,29 @@ func _ready() -> void:
 		button.name = "LanCoop"
 		button.text = "局域网合作 · 2–4 人"
 		button.custom_minimum_size.y = 48
-		button.pressed.connect(open)
+		button.pressed.connect(func() -> void: _open_mode(false))
 		new_game.get_parent().add_child(button)
+		var remote_button := Button.new()
+		remote_button.name = "RemoteCoop"
+		remote_button.text = "远程合作 · Terracotta"
+		remote_button.custom_minimum_size.y = 48
+		remote_button.pressed.connect(func() -> void: _open_mode(true))
+		new_game.get_parent().add_child(remote_button)
+	remote.status_changed.connect(func(text: String) -> void:
+		panel.remote_status(text, remote.code if remote.available else "", remote.available))
+	remote.connected.connect(func(target: String, code: String) -> void:
+		panel.remote_status("远程通道已连接。", code, true)
+		if target != "":
+			var error := network.join(target, panel.nickname.text, _remote_token)
+			if error != "":
+				remote.stop()
+				panel.status.text = error)
+	remote.stopped.connect(func() -> void: panel.set_busy(false))
+	remote.failed.connect(func(reason: String) -> void:
+		if network.active(): network._lost(reason)
+		else:
+			panel.show_room({}, "", "")
+			panel.status.text = reason)
 	_team = Button.new()
 	_team.text = "队伍"
 	_team.position = Vector2(16, 64)
@@ -127,12 +151,52 @@ func _ready() -> void:
 		var data: Variant = JSON.parse_string(file.get_as_text())
 		if data is Dictionary:
 			_last_connection = data
-			panel.address.text = String(data.get("address", ""))
+			if data.get("mode", "lan") == "lan": panel.address.text = String(data.get("address", ""))
 			panel.nickname.text = String(data.get("name", "同学"))
 
 
 func active() -> bool:
-	return network.active() or _installed
+	return network.active() or _installed or remote.phase != "idle"
+
+
+func _open_mode(value: bool) -> void:
+	if active() and value != _remote_mode:
+		panel.status.text = "请先离开当前房间。"
+		open()
+		return
+	_remote_mode = value
+	panel.set_remote(value)
+	if _last_connection.get("mode", "lan") == ("remote" if value else "lan"):
+		panel.address.text = String(_last_connection.get("code" if value else "address", ""))
+	open()
+
+
+func _host(room_name: String, nick: String, port: int, restore: bool) -> void:
+	if remote.phase != "idle":
+		panel.status.text = "请等待远程连接关闭。"
+		return
+	var error := network.host(room_name, nick, port, restore)
+	if error == "" and _remote_mode:
+		panel.set_busy(true)
+		error = remote.begin(true, nick, "", port)
+		if error != "": network.stop()
+	if error != "":
+		panel.set_busy(false)
+		panel.show_room({}, "", "")
+		panel.status.text = error
+
+
+func _join(target: String, nick: String) -> void:
+	if _remote_mode:
+		_remote_token = String(_last_connection.get("token", "")) if _last_connection.get("mode") == "remote" else ""
+		panel.set_busy(true)
+		var error := remote.begin(false, nick, target)
+		if error != "":
+			panel.set_busy(false)
+			panel.status.text = error
+	else:
+		var error := network.join(target, nick)
+		panel.status.text = error if error != "" else "正在连接，可随时离开取消。"
 
 
 func playing() -> bool:
@@ -153,6 +217,15 @@ func reconnect() -> void:
 	_epoch = ""
 	_installed = false
 	_lost = false
+	if _last_connection.get("mode") == "remote":
+		_remote_mode = true
+		panel.set_remote(true)
+		panel.nickname.text = String(_last_connection["name"])
+		panel.address.text = String(_last_connection["code"])
+		_join(String(_last_connection["code"]), String(_last_connection["name"]))
+		return
+	_remote_mode = false
+	panel.set_remote(false)
 	var error := network.join(String(_last_connection["address"]), String(_last_connection["name"]), String(_last_connection["token"]))
 	panel.status.text = error if error != "" else "正在恢复原角色……"
 
@@ -169,6 +242,10 @@ func _room_changed(state: Dictionary) -> void:
 	panel.show_room(state, network.local_id, _addresses() if network.transport.serving else network.address)
 	if not network.transport.serving and network.reconnect_token != "" and network.address != "":
 		_last_connection = {"address": network.address, "name": network.nickname, "token": network.reconnect_token}
+		if _remote_mode:
+			_last_connection["mode"] = "remote"
+			_last_connection["code"] = remote.code
+			_last_connection.erase("address")
 		DirAccess.make_dir_recursive_absolute("user://cooperative")
 		var file := FileAccess.open("user://cooperative/connection.json", FileAccess.WRITE)
 		if file != null: file.store_string(JSON.stringify(_last_connection))
@@ -208,7 +285,7 @@ func pause() -> void:
 	app.player.clear_input()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	app.ui.set_mode("pause")
-	app.ui.pause_screen.description.text = "局域网合作 · 世界继续运行\n个人菜单不会暂停队友；需要停下时，在「队伍」中发起全队暂停。"
+	app.ui.pause_screen.description.text = ("远程合作" if _remote_mode else "局域网合作") + " · 世界继续运行\n个人菜单不会暂停队友；需要停下时，在「队伍」中发起全队暂停。"
 
 
 func resume() -> void:
@@ -228,6 +305,7 @@ func resume() -> void:
 
 
 func stop() -> void:
+	remote.stop()
 	network.stop()
 	if is_instance_valid(avatars): avatars.queue_free()
 	avatars = null

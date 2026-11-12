@@ -13,6 +13,8 @@ import sys
 import zipfile
 from ci import quality
 from ci.common import ENGINE, ROOT, check_version, run
+from ci import terracotta_android
+import terracotta
 
 BUILD_TOOLS = "36.0.0"
 PACKAGE = "org.wdfz.godot.debug"
@@ -200,8 +202,11 @@ def main():
         expected = (ROOT / ".godot-version").read_text().strip() + ".stable"
         if installed.exists() and installed.read_text().strip() != expected:
             shutil.rmtree(template)
-        install_args = [] if (template / "build/build.gradle").exists() else ["--install-android-build-template"]
-        run("export-android", [ENGINE, "--headless", "--path", str(ROOT), *install_args, "--export-release" if args.release else "--export-debug",
+        if not (template / "build/build.gradle").exists():
+            run("android-template", [ENGINE, "--headless", "--path", str(ROOT), "--install-android-build-template", "--quit"], reports, timeout=180, env=env)
+        terracotta_android.install(ROOT, template, terracotta.prepare('android'))
+        summary['terracotta'] = terracotta.VERSION
+        run("export-android", [ENGINE, "--headless", "--path", str(ROOT), "--export-release" if args.release else "--export-debug",
                               "Android Release" if args.release else "Android Debug", str(unsigned)],
             reports, timeout=900, env=env)
         signer = build_tools / ("apksigner.bat" if os.name == "nt" else "apksigner")
@@ -228,6 +233,7 @@ def main():
         with zipfile.ZipFile(apk) as archive:
             summary['fullscreen_forced'] = verify_fullscreen_launch(archive.read('assets/_cl_'))
             names = archive.namelist()
+            terracotta_android.verify(manifest_tree, names)
             entries = set(names)
             if archive.testzip() is not None:
                 raise RuntimeError("APK contains a corrupt ZIP entry")

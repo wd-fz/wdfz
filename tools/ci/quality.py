@@ -81,6 +81,10 @@ def check(root: Path):
         resources += [p for p in (root / base).rglob("*") if p.suffix in (".gd", ".tscn", ".tres")]
     for path in resources:
         for ref in re.findall(r'["\x27]res://([^"\x27\n]+)["\x27]', path.read_text(encoding="utf-8")):
+            # The editor-only Terracotta launcher uses a verified build cache; exports
+            # use the executable alongside the package. This is not a packed resource.
+            if path.name == 'terracotta_gateway.gd' and ref == 'build/deps/terracotta/%s/%s':
+                continue
             if not ref.startswith(("game/", "content/", "assets/")):
                 errors.append(f"{path.relative_to(root)}: runtime references a development path: {ref}")
             elif "%" not in ref and Path(ref).suffix and not (root / ref).exists():

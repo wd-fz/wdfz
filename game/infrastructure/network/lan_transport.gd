@@ -43,6 +43,9 @@ func host(port: int) -> String:
 		peer = null
 		return "无法创建房间，端口可能被占用（%d）。" % error
 	serving = true
+	# Compressed ENet datagrams leave space for EasyTier's tunnel headers.
+	# Raw fragmented snapshot RPCs otherwise stall across its UDP forwarding path.
+	peer.host.compress(ENetConnection.COMPRESS_RANGE_CODER)
 	api.multiplayer_peer = peer
 	return ""
 
@@ -54,6 +57,7 @@ func join(ip: String, port: int) -> String:
 	if error != OK:
 		peer = null
 		return "无法连接房间（%d）。" % error
+	peer.host.compress(ENetConnection.COMPRESS_RANGE_CODER)
 	api.multiplayer_peer = peer
 	return ""
 

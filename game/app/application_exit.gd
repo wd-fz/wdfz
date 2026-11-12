@@ -34,6 +34,11 @@ func request() -> void:
 	var app := get_parent() as GameApp
 	app._cancel_cinematics()
 	app.audio.stop_all()
+	if is_instance_valid(app.lan):
+		app.lan.stop()
+		var deadline := Time.get_ticks_msec() + 18000
+		while app.lan.remote.phase != "idle" and Time.get_ticks_msec() < deadline:
+			await tree.process_frame
 	app.process_mode = Node.PROCESS_MODE_DISABLED
 	# stop() fades the playback on the mixer thread; freeing the tree immediately can
 	# strand an Ogg playback in Godot's audio server. Keep real frames running to drain it.

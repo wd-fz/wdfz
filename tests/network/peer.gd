@@ -85,6 +85,15 @@ func run() -> void:
 		network = app.lan.network
 		if role != "host": app.ui.set_touch_enabled(true)
 		check(app.ui.find_child("LanCoop", true, false) != null, "real main menu contains cooperation entry")
+		check(app.ui.find_child("RemoteCoop", true, false) != null, "real main menu contains Terracotta entry")
+		app.lan._open_mode(true)
+		await process_frame
+		await process_frame
+		check(app.lan.panel.remote_mode and not app.lan.panel.port.visible and not app.lan.panel._search.visible, "invitation flow hides LAN addresses and discovery")
+		check(app.lan.panel._remote_info.is_visible_in_tree() and app.lan.panel._copy_code.disabled, "attribution visible; no invitation is copied before success")
+		app.lan._join("bad-code", "guest")
+		check(app.lan.remote.phase == "idle" and not app.lan.panel._search.disabled, "invalid invitation leaves retry controls available")
+		app.lan._open_mode(false)
 		app.lan.open()
 		check(app.lan.panel.visible, "cooperation panel can be opened from menu")
 		app.lan.panel.hide()

@@ -2,7 +2,7 @@ name: Android Debug
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feat/remote-*']
   workflow_dispatch:
 
 permissions:

@@ -40,6 +40,14 @@ var _addresses := ""
 var _member_key := ""
 var _member_labels: Dictionary = {}
 var address_options: OptionButton
+var remote_mode := false
+var _heading: Label
+var _search: Button
+var _copy_address: Button
+var _remote_info: VBoxContainer
+var _invitation: LineEdit
+var _copy_code: Button
+var _remote_status := ""
 
 
 func _ready() -> void:
@@ -55,6 +63,7 @@ func _ready() -> void:
 	column.add_theme_constant_override("separation", 10)
 	_panel.add_child(column)
 	var heading := Label.new()
+	_heading = heading
 	heading.text = "一起离开校园 · 局域网合作"
 	heading.add_theme_font_size_override("font_size", 26)
 	column.add_child(heading)
@@ -62,6 +71,19 @@ func _ready() -> void:
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	status.text = "2–4 人局域网合作 · 一人建房，其他人输入房主的局域网地址。"
 	column.add_child(status)
+	_remote_info = VBoxContainer.new()
+	column.add_child(_remote_info)
+	var hint := Label.new()
+	hint.text = "通过邀请码异地联机，无需租服务器。房主须保持在线；网络限制可能导致无法直连。Android 使用仅限本游戏的系统 VPN。"
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_remote_info.add_child(hint)
+	var invitation_row := HBoxContainer.new()
+	_remote_info.add_child(invitation_row)
+	_invitation = _line(invitation_row, "建房成功后显示邀请码", "")
+	_invitation.editable = false
+	_invitation.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_copy_code = _button(invitation_row, "复制邀请码", func() -> void: DisplayServer.clipboard_set(_invitation.text))
+	_button(_remote_info, "Terracotta © Burning_TNT · 开源项目与许可", func() -> void: OS.shell_open("https://github.com/burningtnt/Terracotta/tree/v0.4.2"))
 	_scroll = TouchScroll.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -70,6 +92,8 @@ func _ready() -> void:
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.add_theme_constant_override("separation", 12)
 	_scroll.add_child(content)
+	# Help, attribution and invitation must also scroll on short landscape screens.
+	_remote_info.reparent(content)
 	host_form = VBoxContainer.new()
 	host_form.add_theme_constant_override("separation", 10)
 	content.add_child(host_form)
@@ -112,7 +136,7 @@ func _ready() -> void:
 	_button(commands, "加入", func() -> void: join_requested.emit(address.text, nickname.text))
 	var search := HBoxContainer.new()
 	host_form.add_child(search)
-	_button(search, "查找附近房间", func() -> void: discover_requested.emit())
+	_search = _button(search, "查找附近房间", func() -> void: discover_requested.emit())
 	_button(search, "重连上次房间", func() -> void: reconnect_requested.emit())
 	discovered = VBoxContainer.new()
 	host_form.add_child(discovered)
@@ -124,7 +148,7 @@ func _ready() -> void:
 	address_options = OptionButton.new()
 	address_options.custom_minimum_size.y = 44
 	lobby.add_child(address_options)
-	_button(lobby, "复制选中地址", func() -> void:
+	_copy_address = _button(lobby, "复制选中地址", func() -> void:
 		if address_options.selected >= 0: DisplayServer.clipboard_set(address_options.get_item_text(address_options.selected)))
 	transfer = OptionButton.new()
 	transfer.custom_minimum_size.y = 44
@@ -171,7 +195,42 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(refit)
 	visibility_changed.connect(refit)
 	show_room({}, "", "")
+	set_remote(false)
 	refit.call_deferred()
+
+
+func set_remote(value: bool) -> void:
+	remote_mode = value
+	_heading.text = "一起离开校园 · " + ("远程合作" if value else "局域网合作")
+	_remote_info.visible = value
+	_search.visible = not value
+	discovered.visible = not value
+	port.visible = not value
+	address_options.visible = not value
+	_copy_address.visible = not value
+	address.placeholder_text = "粘贴完整邀请码 U/XXXX-XXXX-XXXX-XXXX" if value else "房主 IPv4:端口"
+	address.text = ""
+	_invitation.text = ""
+	_copy_code.disabled = true
+	_remote_status = ""
+	status.text = "一人创建远程房间，把邀请码发给好友。" if value else "2–4 人局域网合作 · 一人建房，其他人输入房主的局域网地址。"
+	refit.call_deferred()
+
+
+func remote_status(text: String, invitation: String = "", connected: bool = false) -> void:
+	_remote_status = text
+	status.text = text
+	_invitation.text = invitation
+	_copy_code.disabled = invitation == ""
+	start_button.disabled = not connected
+	ready_button.disabled = not connected
+
+
+func set_busy(value: bool) -> void:
+	for node in host_form.find_children("*", "Button", true, false): node.disabled = value
+	if not value:
+		start_button.disabled = false
+		ready_button.disabled = false
 
 
 func _line(parent: Node, placeholder: String, value: String) -> LineEdit:
@@ -212,6 +271,7 @@ func show_room(state: Dictionary, local_id: String, addresses: String) -> void:
 	var hosting: bool = state.get("host") == local_id
 	var playing: bool = state.get("phase") in ["playing", "ended"]
 	status.text = ("房主地址：" + addresses + "\n" if hosting else "已加入好友的校园\n") + ("联机中个人菜单不暂停世界。" if playing else "各自选择天赋并准备，房主即可开始。")
+	if remote_mode: status.text = _remote_status + "\n" + ("个人菜单不暂停世界。" if playing else "各自选择天赋并准备，房主即可开始。")
 	var structural := [str(playing), local_id, String(state.get("host", ""))]
 	for id: String in state["members"]: structural.append(id + String(state["members"][id]["state"]))
 	var member_key := "|".join(PackedStringArray(structural))

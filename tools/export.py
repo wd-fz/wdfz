@@ -13,6 +13,7 @@ import zipfile
 from ci.common import ENGINE, ROOT, check_version, run
 from ci import quality
 from export_android import RELEASE_VERSION
+import terracotta
 
 
 def main():
@@ -65,8 +66,9 @@ def main():
                         if 'EXPORT SMOKE: passed' not in output or 'EXPORT RENDERER: vulkan / forward_plus' not in output:
                             raise RuntimeError(f'Exported Linux runtime did not complete the {display} smoke test')
             shutil.copy2(ROOT / 'LICENSE', directory / 'LICENSE')
+            terracotta.bundle(target, directory / 'terracotta')
             info = {'revision': revision, 'engine': summary['engine'], 'platform': target,
-                    'version': RELEASE_VERSION, 'release': args.release, 'working_tree_dirty': dirty,
+                    'version': RELEASE_VERSION, 'release': args.release, 'working_tree_dirty': dirty, 'terracotta': terracotta.VERSION,
                     'source': 'https://github.com/wd-fz/wdfz', 'runtime_verified': target == 'linux',
                     'rendering_driver': 'vulkan', 'rendering_method': 'forward_plus',
                     'rendering_verified': target == 'linux', 'window_default': 'windowed',
@@ -75,6 +77,7 @@ def main():
             (directory / 'README.txt').write_text(
                 f'武大附中 · 里世界 — v{RELEASE_VERSION}\n\n'
                 '解压整个目录后启动 wdfz；可执行文件与 .pck 必须放在一起。\n'
+                '远程合作使用随包附带的 Terracotta；请保留 terracotta 子目录。双方使用相同游戏版本，以邀请码加入。\n'
                 '桌面首次启动为窗口模式，菜单与设置内可切换全屏，之后记住您的选择。\n'
                 '使用 Vulkan Forward+，需要支持 Vulkan 的显卡和驱动，不提供 OpenGL 回退。\n'
                 'Linux 默认原生 Wayland，连接失败时回退 X11；也可传入 --display-driver x11。\n'
@@ -84,8 +87,8 @@ def main():
             name = f'wdfz-{RELEASE_VERSION}-{target}-x86_64' if args.release else f'wdfz-{target}-x86_64'
             archive = packages / (name + '.zip')
             with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as bundle:
-                for path in sorted(directory.iterdir()):
-                    bundle.write(path, arcname=f'wdfz-{target}/{path.name}')
+                for path in sorted(directory.rglob('*')):
+                    if path.is_file(): bundle.write(path, arcname=f'wdfz-{target}/{path.relative_to(directory).as_posix()}')
             sha = hashlib.sha256()
             with archive.open('rb') as source:
                 for block in iter(lambda: source.read(1024 * 1024), b''):
