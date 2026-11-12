@@ -364,6 +364,8 @@ func _run() -> void:
 	var remodel := preload("res://tests/suites/remodel.gd").new(self)
 	print("CASE: remodel.test_figures")
 	remodel.test_figures()
+	print("CASE: remodel.test_dressed")
+	remodel.test_dressed()
 	print("CASE: touch_ui.test_layout")
 	touch_ui.test_layout()
 	print("CASE: touch_ui.test_controls")

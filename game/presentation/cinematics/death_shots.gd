@@ -16,7 +16,7 @@ const TUBE := Color("d6ded4")       # a fluorescent tube's pool
 const WALL := Color("8b8a82")       # school plaster; the green dado below it is _room's
 const FOG_TONE := Color("0d1113")   # fog and sky floor: never pure black
 const GRADE_SKIP := ["flood"]       # sets whose water/dark is their own light logic
-const UNIFORM := {"person":Color("11141a"),"sit":Color("11141a"),"teacher":Color("131416"),"roam":Color("131416")}   # near-black matte clothes: a tinted figure mesh reads as a painted mannequin when it is any brighter
+const UNIFORM := {"person":Color("181e2b"),"sit":Color("181e2b"),"teacher":Color("131416"),"roam":Color("131416")}   # dark matte clothes on the dressed figures (tools/remodel/dress.py): a dark navy school uniform, the adults near black. The plain mesh had no clothes and read as a painted mannequin when lit; the garments carry hems, collar and zip now, but stay dark
 const SKIN := Color(.17,.16,.15)   # far darker than a living face: under the stage lights anything lighter reads as a white mask
 ## Fog density of the stage dark; long or open sets keep their far subject (an exit, a road, a facade) readable.
 const FOG := {"corridor":.035,"crash":.02,"flood":.05,"fall":.012,"assembly":.04,"banquet":.04,"garage":.035,"fence":.06,"classroom":.05}
@@ -190,27 +190,57 @@ static func clear_cache() -> void:
 	_env_textures.clear()
 
 ## The imported figure without its egg head: triangles above the neck are dropped (cached per kind).
+## The dressed variant is used when present: one surface per garment, each surface named after it
+## (skin, jacket, trim, zip, trousers, shoes, shirt). Otherwise the plain body, one surface named "body".
 static func _fig_body(kind: String) -> Mesh:
 	if _fig_cache.has(kind): return _fig_cache[kind]
-	var source := FigureModel.make(kind,Color.BLACK)
-	var found := source.find_children("*","MeshInstance3D",true,false)
-	var result: Mesh = null
-	if not found.is_empty():
-		var arrays := (found[0] as MeshInstance3D).mesh.surface_get_arrays(0)
-		var v: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-		var index: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
-		var cut: float = _FIG_NECK[kind][0]
-		var kept := PackedInt32Array()
-		for i in range(0,index.size()-2,3):
-			if v[index[i]].y<=cut and v[index[i+1]].y<=cut and v[index[i+2]].y<=cut:
-				kept.append_array([index[i],index[i+1],index[i+2]])
-		if not kept.is_empty(): arrays[Mesh.ARRAY_INDEX]=kept
-		var shape := ArrayMesh.new()
-		shape.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
-		result=shape
+	var cut: float = _FIG_NECK[kind][0]
+	var shape := ArrayMesh.new()
+	var scene := FigureModel.dressed(kind)
+	var source: Node3D = scene.instantiate() if scene != null else FigureModel.make(kind,Color.BLACK)
+	for found: Node in source.find_children("*","MeshInstance3D",true,false):
+		var mesh := (found as MeshInstance3D).mesh
+		for s in mesh.get_surface_count():
+			var arrays := mesh.surface_get_arrays(s)
+			var v: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var index: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+			var kept := PackedInt32Array()
+			for i in range(0,index.size()-2,3):
+				if v[index[i]].y<=cut and v[index[i+1]].y<=cut and v[index[i+2]].y<=cut:
+					kept.append_array([index[i],index[i+1],index[i+2]])
+			if kept.is_empty(): continue
+			arrays[Mesh.ARRAY_INDEX]=kept
+			shape.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+			shape.surface_set_name(shape.get_surface_count()-1,String(found.name).get_slice("_",2) if scene != null else "body")
 	source.free()
+	var result: Mesh = shape if shape.get_surface_count()>0 else null
 	_fig_cache[kind]=result
 	return result
+
+## Clothes: the kit's matte shader with a coarse weave instead of veins, the baked crease shade kept
+## (folds, hems and the collar read from it), and only a faint edge. Garments are shades of the figure's
+## tone: the jacket is the tone, trousers and shoes darker, the stripes and the zip a dull grey, a shirt a
+## dirty white held well below the light, so a lit uniform never turns into a bright costume.
+static func _fig_cloth(tone: Color, garment: String, rim: float) -> ShaderMaterial:
+	var key := "cloth|%s|%s|%.2f" % [tone.to_html(),garment,rim]
+	if _fig_cache.has(key): return _fig_cache[key]
+	var col := tone
+	match garment:
+		"trousers": col = tone.darkened(.3)
+		"shoes": col = tone.darkened(.55)
+		"trim": col = tone.lerp(Color(.42,.42,.4),.45)
+		"zip": col = tone.lerp(Color(.3,.31,.32),.25)
+		"shirt": col = tone.lerp(Color(.42,.41,.38),.4)
+	var m := HorrorKit._cloth(col).duplicate() as ShaderMaterial
+	m.set_shader_parameter("noise_scale",420.0)
+	m.set_shader_parameter("vein_stretch",Vector3(1.0,.35,1.0))
+	m.set_shader_parameter("vein_color",col.darkened(.45))
+	m.set_shader_parameter("mottle",.35)
+	m.set_shader_parameter("smudge",.6)
+	m.set_shader_parameter("rim_strength",minf(rim,.22))
+	m.set_shader_parameter("gloss",0.0)
+	_fig_cache[key]=m
+	return m
 
 ## A matte skin: the kit's shader without self-glow or gloss and with only a faint rim, so a body stays
 ## in the dark and a light picks out an edge (a shoulder, a cheek, knuckles) instead of a plastic sheen.
@@ -263,7 +293,14 @@ func _fig(at: Vector3, kind: String, scale: float, tone: Variant, head: Dictiona
 	var body := MeshInstance3D.new()
 	body.name="Body"
 	body.mesh=_fig_body(kind)
-	body.material_override=_fig_skin(dressed,rim)
+	var skin_tone: Variant = SKIN if swapped else tone
+	for i in (body.mesh.get_surface_count() if body.mesh != null else 0):
+		var garment := (body.mesh as ArrayMesh).surface_get_name(i)
+		var mat: Material
+		if garment=="body": mat=_fig_skin(dressed,rim)
+		elif garment=="skin": mat=_fig_skin(_skin_tone(skin_tone),rim,true)
+		else: mat=_fig_cloth(dressed if dressed is Color else UNIFORM["person"],garment,rim)
+		body.set_surface_override_material(i,mat)
 	body.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	body.scale=Vector3.ONE*scale
 	actor.add_child(body)

@@ -6,6 +6,7 @@
 pip install numpy scikit-image fast-simplification playwright
 python3 tools/remodel/capture_primitives.py --old <旧仓库检出目录>   # 生成 primitives/figure_*.json（已入库，一般不用重跑）
 python3 tools/remodel/remodel.py                                    # 写 assets/campus/figures/*.glb 与 patrol/patrol_figure.glb
+python3 tools/remodel/dress.py                                      # 写 assets/campus/figures/dressed/*.glb（死亡演出用的穿衣人形）
 godot --headless --path . --import
 ```
 
@@ -21,3 +22,15 @@ godot --headless --path . --import
 运行时不依赖这些 Python 包；只有重新生成模型的人需要。
 
 平面窗户剪影单独保留 `assets/campus/figures/window_shadow.glb`：它是 `59ea7bb` 的原 `person.glb`，用于保持投影轮廓与原参考样本一致。重建脚本不会覆盖该文件；普通与怪异立体人物仍使用六种新网格。第一人称手经用户确认保留现有模型，不属于本工具输出。
+
+## 穿衣人形（`dress.py`）
+
+死亡演出与档案布景的近景人物用的「穿衣」版本：身体仍是上面同一批基本体的平滑并集，衣服是叠在外面的距离场——每件衣服取它覆盖的那几块身体基本体，向外加一层布料厚度，再在衣服结束的地方切开。切口（下摆、袖口、立领离开脖子的一圈、拉链）就是让衣服读起来像衣服的东西，所以保持干净。
+
+- person、sit：校服运动服——立领拉链外套、袖子外侧一道条纹、长裤（站姿裤子外侧也有条纹）、球鞋。
+- teacher：敞开成 V 字的外套、里面的衬衫和领带、长裤、皮鞋。
+- roam：盖过膝盖的长外套（从胯部垂下的裙摆罩住两腿）、翻起的高领、长裤、鞋。
+
+每件衣服是 GLB 里单独的网格，名字是 `dressed_<kind>_<衣物>`（skin、jacket、trim、zip、trousers、shoes、shirt），游戏按衣物分别给材质（`DeathShots._fig_cloth`）。各衣物之间的分界沿距离场的交界线把三角形切开（不是整块三角形归类），所以边缘不呈锯齿。2 毫米体素、每种约 2 万三角面；无脸的头作为 skin 保留（死亡演出在脖子上换成 `HorrorKit` 的头）。身高、站位与原人形相同（`tests/suites/remodel.gd` 的 `test_dressed` 对照包围盒）。
+
+**只给死亡演出用**：校园里的同学、老师、路人、巡察者仍用上面的无衣服人形（用户先前选定的「圆润无脸人形」）。
