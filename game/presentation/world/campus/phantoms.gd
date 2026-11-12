@@ -20,6 +20,8 @@ var _appar_next := 40.0
 var _appar_stare := 0.0
 var _smile: Node3D
 var _smile_face: Node3D
+var _smile_head: Node3D
+var reduce_flash := false  ## the reduce-flash setting: the turn-back face is then shown steadily, never blinking
 var _smile_t := 0.0
 var _smile_dur := 0.0
 var _smile_mode := ""
@@ -138,17 +140,29 @@ func show_smile(mode: String, cam: Vector3, ang: float) -> void:
 	_smile = Node3D.new()
 	_smile.name = "Smile"
 	add_child(_smile)
-	var path := "res://assets/campus/fx/smile.glb"
 	_smile_face = Node3D.new()
-	if ResourceLoader.exists(path):
-		var inst := (load(path) as PackedScene).instantiate() as Node3D
-		var mat := StandardMaterial3D.new()
-		mat.vertex_color_use_as_albedo = true
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-		for mi: Node in inst.find_children("*", "MeshInstance3D", true, false):
-			(mi as MeshInstance3D).material_override = mat
-		_smile_face.add_child(inst)
+	# A schoolmate in uniform with the wrong face: a real head, the mouth too wide, the sockets too deep, lit from under the chin.
+	var jump := mode == "jump"
+	var uniform := Color("2a3445")
+	# Hollow sockets and a shut, too-wide mouth: no hair, no collar, dark clothes. Brighter or busier reads as a mask.
+	var bust := HorrorKit.bust({"mouth": "wide", "open": 0.0, "skew": .2, "eyes": "hollow", "tone": Color(.2, .19, .18), "glow": .0, "body": .7, "cloth": Color("14161a")})
+	bust.rotation.y = PI
+	bust.position = Vector3(0, 1.68, .58) if jump else Vector3(0, 1.66, 0)
+	bust.scale = Vector3.ONE * (1.8 if jump else 1.0)
+	HorrorKit.dress(bust.get_meta("horror_bust")["torso"], HorrorKit._cloth(Color("14161a")))
+	(bust.get_meta("horror_bust")["torso"] as Node3D).scale.x = 1.2  # broader shoulders: a person in a blazer, not a bell
+	_smile_head = bust.get_meta("horror_bust")["head"]
+	_smile_head.rotation.z = .22 if jump else .12
+	# A soft fill from in front and below, well away from the face, so the torch does not bleach it.
+	var under := OmniLight3D.new()
+	under.name = "UnderLight"
+	under.light_color = Color("d8d0c0")
+	under.light_energy = .22 if jump else .15
+	under.omni_range = 1.8
+	under.shadow_enabled = false
+	under.position = Vector3(0, -.45, -.65)
+	bust.add_child(under)
+	_smile_face.add_child(bust)
 	_smile.add_child(_smile_face)
 	_smile.position = Vector3(cam.x + cos(ang) * dist, cam.y - 1.72, cam.z + sin(ang) * dist)
 	# The face's front is +z (the old build); turn it to the camera.
@@ -162,6 +176,7 @@ func clear_smile() -> void:
 	if _smile != null and is_instance_valid(_smile):
 		_smile.queue_free()
 	_smile = null
+	_smile_head = null
 	_smile_mode = ""
 
 
@@ -174,9 +189,18 @@ func tick_smile(delta: float, cam: Vector3) -> void:
 		var s := minf(1.0, _smile_t / 0.18)
 		_smile.scale = Vector3.ONE * (0.3 + 0.62 * s)
 		_smile.position.y = cam.y - 1.72 * _smile.scale.y + (_rng.randf() - 0.5) * 0.03
+		if _smile_head != null:
+			HorrorKit.pose_head(_smile_head, clampf((_smile_t - .35) / 0.6, 0.0, 1.0) * .1)
+			_smile_head.rotation.z = .22 + .08 * minf(1.0, _smile_t / 0.6)
 	else:
 		_smile.scale = Vector3.ONE
 		_smile_face.rotation.x = sin(minf(1.0, _smile_t / 0.9) * PI) * 0.12
-		_smile_face.visible = k < 0.55 or sin(_smile_t * 60.0) > 0.0
+		if _smile_head != null:
+			HorrorKit.pose_head(_smile_head, .05 * minf(1.0, _smile_t / 1.2))
+		# It stutters out in two short gaps before it is gone; with reduce-flash it simply stays, then vanishes.
+		if reduce_flash:
+			_smile_face.visible = k < 0.86
+		else:
+			_smile_face.visible = not ((k >= .62 and k < .66) or (k >= .74 and k < .78) or k >= .86)
 	if k >= 1.0:
 		clear_smile()

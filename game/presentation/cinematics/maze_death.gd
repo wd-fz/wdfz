@@ -7,11 +7,13 @@ const GEOMETRY := "res://assets/campus/maze_death_geometry.json"
 const DOORS := [["f",0,-1,1.05,.95],["b",0,-1,-1,3.12],["r",-1.6,1.22,-1,2.2],["r",-5.3,1.4,-1,2.35],
 	["r",3.3,1.3,-1,2.5],["l",-3.1,1.55,-1,2.65],["l",-6.7,1.65,-1,2.8],["l",2.4,1.75,-1,2.95]]
 const PARTS := [[1.26,2.26,.06,1.13,.03],[1.12,2.16,.02,1.08,.07],[.96,2.06,.04,1.08,.10]]
+const SLABS := 14
 const PASSES := [[.88,1.32,1.1,9.0,1.9,.25,false],[1.33,1.77,1.55,9.0,1.9,.25,false],[2.05,2.42,2.45,9.0,0,.95,true]]
 
 
-static func original_mesh(c: DeathStage, key: String, parent: Node3D = null) -> MeshInstance3D:
-	var material := c._mat(Color.WHITE)
+## lit: the baked vertex colours take light and shade (the exported meshes carry normals); false keeps them flat.
+static func original_mesh(c: DeathStage, key: String, parent: Node3D = null, lit: bool = true) -> MeshInstance3D:
+	var material := c._mat_lit(Color.WHITE) if lit else c._mat(Color.WHITE)
 	material.vertex_color_use_as_albedo = true
 	return c.mesh(DeathGeometry.mesh(key,GEOMETRY),material,0,0,0,parent)
 
@@ -19,6 +21,9 @@ static func original_mesh(c: DeathStage, key: String, parent: Node3D = null) -> 
 static func build_lost(c: DeathStage) -> void:
 	c.hide_world(Color.BLACK)
 	c.d["hall"] = original_mesh(c,"hall")
+	# Darkness with a cold light that walks with the camera: the corridor has near and far, its end sinks into black.
+	c.stage_dark(Color.BLACK,.09,Color(.18,.18,.19),.2)
+	c.d["lamp"] = c.motive_light(Vector3.ZERO,Color("cfd8dc"),1.2,7.0)
 	c.d["doors"] = []
 	for j in 3:
 		var part: Array = PARTS[j]
@@ -52,6 +57,8 @@ static func update_lost(c: DeathStage, t: float) -> void:
 	var look := .25*sin(maxf(0,t-1.95)*2.4)*c.ss(t,1.95,2.3)*(1-c.ss(t,2.85,3.2))
 	c.view(t,PI*c.ss(t,1.1,1.85)+look,-.04+.16*c.ss(t,2.1,2.8),-.8*c.ss(t,1.95,2.7)+.015*sin(t*3.1)*c.shk)
 	c.shade(.12+.3*c.ss(t,2,3)+.55*c.ss(t,3.1,3.45))
+	# The camera's light, placed after the view is set so it is a pure function of t.
+	(c.d["lamp"] as Node3D).global_position = c.cam.global_position + c.cam.global_basis * Vector3(0,.2,-.6)
 
 
 static func fall_distance(t: float) -> float:
@@ -71,15 +78,22 @@ static func build_fall(c: DeathStage) -> void:
 	c.d["ledge"] = original_mesh(c,"ledge")
 	var bm := BoxMesh.new()
 	bm.size = Vector3.ONE
-	c.d["rubble"] = c.inst(bm,c._mat(Color("#cfcdc6")),36)
+	c.stage_dark(Color.BLACK,.02,Color(.22,.22,.23),.45)
+	# A cold white lamp straight above you (it falls with you): the fragments of tile round you have a lit face and a dark one.
+	c.d["lamp"] = c.motive_light(Vector3.ZERO,Color("d6ded4"),3.0,10.0)
+	c.d["rubble"] = c.inst(bm,c._mat_lit(Color("#cfcdc6")),36)
+	# Loose slabs of floor tile that always hang in front of you, 3-7 m away, lit from above (no random draws: they are a
+	# pure function of the time and the view); they pass upwards as you fall.
+	c.d["slabs"] = c.inst(bm,c._mat_lit(Color("#cfcdc6")),SLABS)
 	c.d["bits"] = []
 	for i in 36:
 		c.d["bits"].append([c._original_random()*6.283,2+c._original_random()*5.5,.15+c._original_random()*.5,c._original_random()*36,.65+c._original_random()*.35,(c._original_random()-.5)*3,c._original_random()*6.283])
-	c.d["mark"] = original_mesh(c,"mark")
+	c.d["mark"] = original_mesh(c,"mark",null,false)
 	c.d["mark"].hide()
 	var pad := Node3D.new()
 	c.put(pad,0,0,1.2)
 	var slab := c.box(4.8,.3,4.8,Color("#8f9294"),-1,0,-.15,0,false)
+	slab.material_override = c._mat_lit(Color("#8f9294"),-1,false,.9,false)
 	slab.reparent(pad,false)
 	var hatch := original_mesh(c,"hatch",pad)
 	var man := c.fig("person",Color("#0b0d10"),1,.2,.1)
@@ -88,6 +102,8 @@ static func build_fall(c: DeathStage) -> void:
 	c.put(beam,.45,1.12,.2,pad)
 	var cone := c.mesh(DeathGeometry.mesh("cone",GEOMETRY),c._mat(Color("#f4f8fa"),.22,false,false,false),0,0,0,beam)
 	var lens := c.mesh(DeathGeometry.mesh("lens",GEOMETRY),c._mat(Color.WHITE,-1,false,false,false),0,0,.01,beam)
+	# A cold light from above on the pad: the tile has a lit face and a dark one.
+	c.motive_light(Vector3(.2,2.6,0),Color("cfd8dc"),1.6,6.0,pad)
 	c.d.merge({"pad":pad,"man":man,"beam":beam,"slab":slab,"hatch":hatch,"cone":cone,"lens":lens})
 	c.veil(Color.BLACK)
 
@@ -113,6 +129,16 @@ static func update_fall(c: DeathStage, t: float) -> void:
 		mark.position = Vector3(-sin(a)*p[4]+cos(a)*p[5],eye+(t-p[2])*p[3],cos(a)*p[4]+sin(a)*p[5]) if not p[6] else Vector3(-sin(a)*cos(pitch)*u+cos(a)*p[5],eye+sin(pitch)*u,cos(a)*cos(pitch)*u+sin(a)*p[5])
 		mark.look_at(c.cam.global_position,Vector3.UP,true)
 		mark.rotate_object_local(Vector3.BACK,.12*sin(t*2.1))
+	(c.d["lamp"] as Node3D).global_position = c.cam.global_position+Vector3(0,2.2,0)
+	var basis := c.cam.global_basis
+	for i in SLABS:
+		var u := fposmod(t*.5+float(i)/SLABS,1.0)
+		var lateral := (fposmod(float(i)*.381966,1.0)-.5)*1.5
+		var rise := lerpf(-.6,.6,u)
+		var dist := 3.0+fposmod(float(i)*1.618,1.0)*4.0
+		var dir := basis.x*sin(lateral)*cos(rise)+basis.y*sin(rise)-basis.z*cos(lateral)*cos(rise)
+		var size := (1.2+fposmod(float(i)*.7311,1.0)*1.1)*c.ss(u,0,.12)*(1-c.ss(u,.88,1))*(1-c.ss(t,2.2,2.6))
+		c.set_i(c.d["slabs"],i,c.F.to_local(c.cam.global_position+dir*dist),Vector3(t*(.8+.1*i)+i,i*.7,t*.5),Vector3(size,size*.18,size*.8))
 	c.d["pad"].position.y = eye-1.35-(fall_distance(3.05)-distance)
 	c.d["man"].rotation.y = PI+.4*sin(t*.9)
 	var beam: Node3D = c.d["beam"]

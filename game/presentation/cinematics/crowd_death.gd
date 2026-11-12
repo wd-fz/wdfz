@@ -4,23 +4,56 @@ extends RefCounted
 const D := 1.05
 const DIGITS := {6:"afedcg",7:"abc",8:"abcdefg",9:"abcdfg"}
 const SPOTS := [[.27,-.26,.06],[-.27,-.24,.04],[.32,-.12,.14],[-.33,-.1,.16],[.2,-.34,.2],[-.18,-.36,.22]]
+## The HorrorKit hand inside each old hand frame: fingers to the frame's +z, sized like the old fx hand.
+const HAND_FIT := 1.75
+const STEEL := Color("#8a8a84")
+const UNIFORM := Color("#2a3445")
+
+
+## Fine vertical lines of brushed steel: columns of slightly different brightness (the same every run).
+static func _steel_grain() -> ImageTexture:
+	var img := Image.create(128,4,false,Image.FORMAT_RGB8)
+	for x in 128:
+		var v := .86+.1*sin(x*12.9898)*sin(x*78.233)+.04*sin(x*.7)
+		for y in 4: img.set_pixel(x,y,Color(v,v,v))
+	return ImageTexture.create_from_image(img)
 
 
 static func build(c: DeathStage) -> void:
 	c.hide_world()
 	var floor_shape := QuadMesh.new()
 	floor_shape.size = Vector2(1.6,1.6)
-	c.d["floor"] = c.mesh(floor_shape,c._mat(Color("#15191a")),0,.002,D-.8)
+	c.d["floor"] = c.mesh(floor_shape,c._mat_lit(Color("#64615a"),-1,false,.8,true),0,.002,D-.8)
 	c.d["floor"].rotation.x = -PI/2
 	c.d["walls"]=[
-		c.box(.04,2.3,1.6,Color("#5e6766"),-1,-.8,1.15,D-.8),c.box(.04,2.3,1.6,Color("#5e6766"),-1,.8,1.15,D-.8),
-		c.box(1.6,2.3,.04,Color("#545c5b"),-1,0,1.15,D-1.6),c.box(1.6,.04,1.6,Color("#2c3231"),-1,0,2.32,D-.8),
-		c.box(.35,2.3,.05,Color("#5e6766"),-1,-.625,1.15,D+.02),c.box(.35,2.3,.05,Color("#5e6766"),-1,.625,1.15,D+.02),
-		c.box(.9,.2,.05,Color("#5e6766"),-1,0,2.2,D+.02)]
+		c.box(.04,2.3,1.6,STEEL,-1,-.8,1.15,D-.8),c.box(.04,2.3,1.6,STEEL,-1,.8,1.15,D-.8),
+		c.box(1.6,2.3,.04,STEEL,-1,0,1.15,D-1.6),c.box(1.6,.04,1.6,Color("#2c3231"),-1,0,2.32,D-.8),
+		c.box(.35,2.3,.05,STEEL,-1,-.625,1.15,D+.02),c.box(.35,2.3,.05,STEEL,-1,.625,1.15,D+.02),
+		c.box(.9,.2,.05,STEEL,-1,0,2.2,D+.02)]
+	var grain := _steel_grain()
 	for wall: MeshInstance3D in c.d["walls"]:
+		# Lit, so the lift's four walls and ceiling take the strip light's fall-off instead of one flat grey.
+		var steel := c._mat_lit(wall.material_override.albedo_color,-1,false,.55)
+		steel.metallic_specular = .5
+		if wall.material_override.albedo_color.is_equal_approx(STEEL):
+			# Brushed stainless: fine vertical lines.
+			steel.albedo_texture = grain
+			steel.uv1_scale = Vector3(14,1,1)
+			steel.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		wall.material_override=steel
 		wall.set_meta("base_color",wall.material_override.albedo_color.srgb_to_linear())
 	c.d["lamp"]=c.box(.6,.012,.4,Color("#d8ddd6"),-1,0,2.29,D-.8,false)
+	c.stage_dark(Color(.01,.012,.014),.04,Color(.2,.2,.19),.45)
+	# The ceiling's warm light panel, over the middle of the car (the floor and the card under it are lit by it).
+	c.d["panel_light"]=c.motive_light(Vector3(0,2.15,D-.55),Color("e8dcb4"),2.5,3.0)
 	c.box(.04,.82,.19,Color("#262c2e"),-1,-.77,1.42,D-.4)
+	# The button panel by the door: two columns of floor buttons, one lit, and a small glowing floor number.
+	for row in 5:
+		for col in 2:
+			var lit_button := row == 3 and col == 0
+			c.box(.012,.034,.034,Color("#ffb347") if lit_button else Color("#56595a"),-1,-.745,1.16+row*.09,D-.4-.04+col*.08,false)
+	c.box(.012,.05,.1,Color("#1b0a05"),-1,-.745,1.7,D-.36,false)
+	c.box(.008,.03,.07,Color("#ff4a2a"),-1,-.738,1.7,D-.36,false)
 	c.box(.2,.12,.008,Color("#070808"),-1,0,2.2,D-.008)
 	var text := LiftCrowdFx.display_face(.19,.07)
 	text.rotation.y=PI
@@ -33,17 +66,34 @@ static func build(c: DeathStage) -> void:
 	c.d["leaf_l"]=c.box(.45,2.1,.03,Color("#737b7a"),-1,.225,1.05,D)
 	c.d["leaf_r"]=c.box(.45,2.1,.03,Color("#737b7a"),-1,-.225,1.05,D)
 	c.d["out"]=c.box(1.6,2.3,.01,Color("#b9b6a8"),-1,0,1.15,D+.9,false)
+	c.d["out"].material_override=c._mat_lit(Color("8a877c"),-1,false,.9,false)
 	c.d["card"]=c.box(.12,.004,.078,Color("#e9e4d6"),-1,.04,.004,D-.42)
 	c.d["photo"]=c.box(.03,.005,.04,Color("#47515a"),-1,.058,.005,D-.43)
 	c.d["card"].rotation.y=.5
 	c.d["photo"].rotation.y=.5
+	# The others in the car (students in uniform) crowd in from both sides: their shoulders come to rest .4 m from you.
+	c.d["people"]=[]
+	for side in [-1.0,1.0]:
+		var person := FigureModel.make("person",UNIFORM,false,1.0)
+		HorrorKit.dress(person,HorrorKit.figure_skin(UNIFORM,1.0))
+		var g := Node3D.new()
+		g.add_child(person)
+		person.rotation.y=PI
+		g.rotation.y=-side*.5*PI
+		c.put(g,side*.78,0,.18)
+		g.visible=false   # a tinted figure mesh at half a metre is a bare mannequin; the hands carry this scene
+		c.d["people"].append(g)
 	c.d["hands"]=[]
 	for i in SPOTS.size():
-		var h := c.fxm("hand",.8,0,-5,0)
-		for mesh: Node in h.find_children("*","MeshInstance3D",true,false):
-			var mat := (mesh as MeshInstance3D).material_override.duplicate() as StandardMaterial3D
-			mat.albedo_color=Color(.03,.03,.03).linear_to_srgb()
-			(mesh as MeshInstance3D).material_override=mat
+		# Same frame (transform, scale .8, timing) as the old fx hand; inside it a jointed, rim-lit shadow hand.
+		var h := Node3D.new()
+		h.rotation_order = EULER_ORDER_YXZ
+		h.scale = Vector3.ONE*.8
+		c.put(h,0,-5,0)
+		var hand := HorrorKit.hand({"tone":"shadow","arm":.34,"long":1.2,"thin":.3,"side":1 if i%2 else -1})
+		hand.rotation = Vector3(0,PI,PI*.5*(1 if i%2 else -1))
+		hand.scale = Vector3.ONE*HAND_FIT
+		h.add_child(hand)
 		h.hide()
 		c.d["hands"].append(h)
 	c.d["edges"]=[]
@@ -85,6 +135,13 @@ static func update(c: DeathStage, t: float) -> void:
 	c.d["full"].visible=f["full"]
 	for key: String in c.d["segs"]:
 		c.d["segs"][key].visible=String(f["segments"]).contains(key)
+	for k in 2:
+		var who: Node3D=c.d["people"][k]
+		var side := -1.0 if k == 0 else 1.0
+		var squeeze := 1.0 if f["end"] else c.ss(t,.6,2.9)
+		who.position.x=side*lerpf(.78,.5,squeeze)
+	# After the strike the panel flares up over the floor and the card (the veil is still heavy at first).
+	(c.d["panel_light"] as OmniLight3D).light_energy=2.5+17.0*float(f["end"])
 	c.d["card"].visible=f["end"]
 	c.d["photo"].visible=f["end"]
 	var base := c.F.to_local(c.cam.global_position)
@@ -115,3 +172,6 @@ static func update(c: DeathStage, t: float) -> void:
 		var g := c.ss(t,at,at+.35)
 		h.position=base+lf*(.24+float(s[2])*.5)+lr*(-float(s[0])*(1.3-.3*g))+lu*(float(s[1])*(1.25-.25*g))
 		h.look_at(c.F.to_global(base+lf*1.2+lu*float(s[1])),Vector3.UP,true)
+		# Fingers open as the hand arrives, then close on what they reach (pure function of t).
+		var grab := c.ss(t,at+.45,at+1.3)
+		HorrorKit.pose_hand(h.get_child(0),lerpf(-.1,.75,grab)+.06*sin(t*3.1+i),lerpf(.9,.25,grab))

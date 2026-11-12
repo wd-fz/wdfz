@@ -1,7 +1,7 @@
 extends SceneTree
 ## Real Vulkan screenshots: godot --path . --script res://tools/capture/capture_death.gd -- patrol garage ...
 ## No progression/save changes: isolated hard-mode game, simulation frozen, presentation-only stages.
-## Output: build/previews/deathcg/<scene>-<1..3>.png at 25 / 58 / 81 percent.
+## Output: build/previews/deathcg/<scene>-<1..4>.png at 25 / 58 / 81 / 87 percent (87: the closest moment before the veil).
 const APP := preload("res://game/app/app.tscn")
 
 func _initialize() -> void:
@@ -44,7 +44,7 @@ func _run() -> void:
 			quit(1)
 			return
 		var n:=0
-		for fraction: float in [.25,.58,.81]:
+		for fraction: float in [.25,.58,.81,.87]:
 			n+=1
 			cg.k=cg.dur*fraction
 			cg.update(cg.k)

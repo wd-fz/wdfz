@@ -37,15 +37,15 @@ func test_frames() -> void:
 			var errors := []
 			for key: String in frame["props"]:
 				comparison.compare(cg.d["segs"].values() if key=="segs" else cg.d.get(key),frame["props"][key],key,errors)
+			# The old fx hand frames keep their transforms and timing (compared above); inside each, the
+			# low-poly fx mesh became a jointed HorrorKit shadow hand, still near-black and fogged.
 			for i in cg.d["hands"].size():
-				var meshes: Array[Node] = cg.d["hands"][i].find_children("*","MeshInstance3D",true,false)
-				var expected: Array = frame["props"]["hands"][i]["meshMaterials"]
-				if meshes.size()!=expected.size(): errors.append("hand mesh count")
-				for j in mini(meshes.size(),expected.size()):
-					var material: BaseMaterial3D = meshes[j].material_override
-					var color := material.albedo_color.srgb_to_linear()
-					if not comparison.near(Vector3(color.r,color.g,color.b),expected[j]["color"],.00001) or material.vertex_color_use_as_albedo!=expected[j]["vertexColors"] or material.disable_fog==expected[j]["fog"]:
-						errors.append("hand material")
+				var frame_node: Node3D = cg.d["hands"][i]
+				if frame_node.get_child_count()!=1 or not frame_node.get_child(0).has_meta("horror_hand"): errors.append("hand model")
+				else:
+					for mesh: MeshInstance3D in frame_node.get_child(0).find_children("*","MeshInstance3D",true,false):
+						var material := mesh.material_override as ShaderMaterial
+						if material==null or (material.get_shader_parameter("base_color") as Color).get_luminance()>.05: errors.append("hand material")
 			check(errors.is_empty(),label+" original props/materials: "+str(errors.slice(0,8)))
 			check(absf(cg.cam.rotation.x-float(frame["view"]["pitch"]))<.0001 and absf(cg.cam.rotation.y+float(frame["view"]["ang"])-float(original["baseAng"]))<.0001 and absf(cg.cam.position.y-cg._base_y-float(frame["view"]["eyeLift"]))<.0001,label+" original camera")
 			check(absf(cg.veil_mesh.material_override.albedo_color.a-float(frame["shade"]))<.00001,label+" original closing shade")

@@ -39,6 +39,30 @@ func _differences(props: AnomalyProps, state: Dictionary) -> Array:
 	return errors
 
 
+## The stall hand keeps the old prop's root and palm centre (the old 0.34 x 0.26 palm block at
+## (0, .16, 0), fingers beyond it) and its timing; the five boxes became one jointed HorrorKit hand.
+func _hand_differences(props: AnomalyProps, state: Dictionary, feet: Vector3) -> Array:
+	var errors:=[]
+	if props.position.distance_to(_v(state["p"]))>.0001: errors.append("root")
+	var palm: Dictionary=state["children"][0]
+	if props.get_child_count()!=1 or props.items.size()!=1: return errors+["one hand node, %d" % props.get_child_count()]
+	var holder: Node3D=props.get_child(0)
+	if holder.position.distance_to(_v(palm["p"]))>.0001: errors.append("palm centre %s" % holder.position)
+	if holder.visible!=palm["v"]: errors.append("visible")
+	var hand: Node3D=holder.get_child(0)
+	if not hand.has_meta("horror_hand"): return errors+["not a HorrorKit hand"]
+	# The palm centre of the kit hand sits on the holder origin; the fingers reach out of the old block's span.
+	var centre:=holder.global_transform*hand.transform*Vector3(0,0,-.045)
+	if centre.distance_to(holder.global_position)>.001: errors.append("palm offset %s" % centre)
+	var tip: Node3D=HorrorKit.hand_joints(hand)[2][-1]
+	var reach:=Vector2(tip.global_position.x-props.global_position.x,tip.global_position.z-props.global_position.z).length()
+	if reach<.15 or reach>.6: errors.append("finger reach %.3f" % reach)
+	var toward:=Vector2(feet.x-props.position.x,feet.z-props.position.z)
+	var fingers:=Vector2(tip.global_position.x-holder.global_position.x,tip.global_position.z-holder.global_position.z)
+	if toward.length()>.05 and fingers.normalized().dot(toward.normalized())<.8: errors.append("fingers do not reach towards the player")
+	return errors
+
+
 func test_reference() -> void:
 	var scenarios: Array=_reference()["scenarios"]
 	check(scenarios.size()==21,"reference covers 17 original effects and all five gaze qualities")
@@ -51,6 +75,24 @@ func test_reference() -> void:
 		var props:=AnomalyProps.new()
 		root.add_child(props)
 		props.build(spec["kind"],data,room,Vector3(p.x,0,p.y),Vector2.from_angle(spec["ang"]),int(spec["tier"]))
+		if spec["kind"]=="hand":
+			var feet:=Vector3(p.x,0,p.y)
+			check(_hand_differences(props,spec["before"],feet).is_empty(),"stall hand keeps the original spot: %s" % [_hand_differences(props,spec["before"],feet)])
+			var poses:=[]
+			for frame: Dictionary in spec["frames"]:
+				props.advance(frame["dt"],data,room,_v(frame["feet"]),frame["acc"])
+				var wrong_hand:=_hand_differences(props,frame["state"],feet)
+				check(wrong_hand.is_empty(),"stall hand stays put while its fingers move t%.3f: %s" % [props.time,wrong_hand])
+				poses.append((HorrorKit.hand_joints(props.items[0].get_child(0))[0][1] as Node3D).rotation)
+			check(poses.size()>1 and not poses[0].is_equal_approx(poses[-1]),"the stall hand's fingers move over time")
+			var again:=AnomalyProps.new()
+			root.add_child(again)
+			again.build("hand",data,room,feet,Vector2.from_angle(spec["ang"]),int(spec["tier"]))
+			again.advance(props.time,data,room,feet)
+			check((HorrorKit.hand_joints(again.items[0].get_child(0))[0][1] as Node3D).rotation.is_equal_approx(poses[-1]),"finger pose is a function of elapsed time only")
+			again.free()
+			props.free()
+			continue
 		var wrong:=_differences(props,spec["before"])
 		check(wrong.is_empty(),"original model layout %s q%s: %s" % [spec["kind"],spec["tier"],wrong.slice(0,3)])
 		for frame: Dictionary in spec["frames"]:

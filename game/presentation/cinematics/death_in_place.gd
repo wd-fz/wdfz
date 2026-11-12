@@ -123,16 +123,21 @@ func _approach(t: float) -> void:
 
 
 func _silhouette(kind: String = "person", x: float = 0, z: float = 2) -> Node3D:
-	var actor := _person(Vector3(x,-1.6,z),1.85/FigureModel.height(kind),INK,kind)
+	# The staged figure: near-black matte clothes, dark skin, deep hollow sockets (see DeathShots._fig).
+	var actor := _fig(Vector3(x,-1.6,z),kind,1.85/FigureModel.height(kind),Color("11141a"),{"tone":SKIN,"mouth":"closed","skew":.2,"hair":true},.2)
 	actor.rotation.y = PI
+	actors.append(actor)
 	return actor
 
 
 func _face_at(x: float = 0, z: float = 1.8) -> Node3D:
+	# Head, neck and shoulders of the jump scare: hollow sockets and a shut, too-wide mouth. The anchor keeps
+	# the old ball's size (.22 m radius, twice a real head) so the callers' scales and distances still hold.
 	var head := _anchor(Vector3(x,0,z))
-	_sphere(Vector3.ZERO,.22,Color("a9b6a4"),head)
-	for side in [-1,1]: _sphere(Vector3(side*.072,.04,-.205),.024,INK,head)
-	_ring(Vector3(0,-.055,-.21),.076,.01,INK,head)
+	var bust := HorrorKit.bust({"mouth":"wide","open":0.0,"skew":.2,"eyes":"hollow","tone":Color(.2,.19,.18),"glow":.0,"body":.5,"cloth":Color("14161a")})
+	HorrorKit.dress(bust.get_meta("horror_bust")["torso"],HorrorKit._cloth(Color("14161a")))
+	bust.scale = Vector3.ONE*1.9
+	head.add_child(bust)
 	return head
 
 
@@ -190,8 +195,12 @@ func _build_backseat_here() -> void:
 	_box(Vector3(.46,.18,.025),Vector3.ZERO,COAL,p["mirror"])
 	_box(Vector3(.41,.14,.01),Vector3(0,0,-.02),Color("667f82"),p["mirror"])
 	p["passenger"] = _face_at(.24,.86)
-	p["grip"] = c.fxm("hand",.35,0,0,0)
-	p["grip"].reparent(root,false)
+	# The hand on the shoulder comes in from the side, fingers first, back of the hand up.
+	p["grip"] = _anchor(Vector3.ZERO)
+	var hand := _fig_hand({"long":1.2,"thin":.4,"arm":.35,"tone":SKIN},p["grip"])
+	hand.rotation = Vector3(0,-PI/2,0)
+	hand.scale = Vector3.ONE*1.3
+	HorrorKit.pose_hand(hand,.3,.4)
 	focus = p["mirror"]
 
 
