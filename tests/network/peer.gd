@@ -238,6 +238,8 @@ func _host_scenario() -> void:
 			panel.show_room(network.room.public_state(), network.local_id, "127.0.0.1:%d" % port)
 			check(panel.members.get_children() == rows, "snapshot refresh keeps touch buttons and keyboard focus alive")
 			app.lan.resume()
+			if DisplayServer.get_name().to_lower() == "wayland" and (not app.get_window().has_focus() or not app.lan._pointer_inside):
+				check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "Wayland background resume defers capture until pointer focus")
 			var before_command := sim.actor(network.local_id).command_sequence
 			var think := InputEventKey.new()
 			think.physical_keycode = KEY_H

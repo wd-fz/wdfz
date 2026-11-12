@@ -33,10 +33,13 @@ var _time_prompt := ""
 var _ending_prompt := ""
 var _board_prompt := ""
 var _recorded := false
+var _pointer_inside := false
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	get_window().mouse_entered.connect(func() -> void: _pointer_inside = true)
+	get_window().mouse_exited.connect(func() -> void: _pointer_inside = false)
 	network.name = "Network"
 	add_child(network)
 	panel = LanPanel.new()
@@ -215,7 +218,13 @@ func resume() -> void:
 	app.ui.set_mode("play")
 	_sync_input()
 	app.player.clear_input()
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if app.ui.touch_enabled() or not app.player.enabled else Input.MOUSE_MODE_CAPTURED
+	var capture := not app.ui.touch_enabled() and app.player.enabled
+	# Wayland locks a pointer only after it has entered a focused surface.
+	# Loading/reconnect can resume a background window; leave the cursor visible
+	# until its next real click, which PlayerController already handles.
+	if DisplayServer.get_name().to_lower() == "wayland":
+		capture = capture and get_window().has_focus() and _pointer_inside
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if capture else Input.MOUSE_MODE_VISIBLE
 
 
 func stop() -> void:
