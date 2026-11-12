@@ -1,0 +1,92 @@
+{
+  "source_revision": "f002551fd741b487ab2e2a16fd1bf0c1139a0af1",
+  "date": "2026-11-12",
+  "engine": "4.6.3.stable.official",
+  "environment": "Linux headless, four separate Godot processes, independent user directories, loopback UDP impairment proxy",
+  "command": "python tools/test_lan.py --players 4 --faults --soak --seconds 1800",
+  "scenario": "Controlled stability fixture: protected player values, scene rotation every 20 seconds; not natural gameplay or GPU performance. Later commits add receipt-time correction, render loading barrier, UI/restore fixes and participation/remote-footstep features; those changes are covered separately.",
+  "result": "passed; no ERROR or FAIL in any peer log",
+  "peers": [
+    {
+      "bytes_received": 21651455,
+      "bytes_sent": 176754805,
+      "elapsed_seconds": 1802.00270799871,
+      "failures": 0,
+      "memory_baseline": 251615931,
+      "memory_end": 272983464,
+      "memory_peak": 273616036,
+      "motions": 35928,
+      "nodes_peak": 5169,
+      "regions_peak": 5,
+      "role": "host",
+      "snapshots": 8337,
+      "soak": true,
+      "tick_p95_ms": 7.52
+    },
+    {
+      "bytes_received": 56996203,
+      "bytes_sent": 7471944,
+      "elapsed_seconds": 1800.00180399878,
+      "failures": 0,
+      "memory_baseline": 0,
+      "memory_end": 194475258,
+      "memory_peak": 0,
+      "motions": 34300,
+      "nodes_peak": 0,
+      "regions_peak": 0,
+      "role": "guest-1",
+      "snapshots": 6984,
+      "soak": true,
+      "tick_p95_ms": 0
+    },
+    {
+      "bytes_received": 57184356,
+      "bytes_sent": 7472551,
+      "elapsed_seconds": 1800.00375133212,
+      "failures": 0,
+      "memory_baseline": 0,
+      "memory_end": 194684774,
+      "memory_peak": 0,
+      "motions": 34210,
+      "nodes_peak": 0,
+      "regions_peak": 0,
+      "role": "guest-2",
+      "snapshots": 7023,
+      "soak": true,
+      "tick_p95_ms": 0
+    },
+    {
+      "bytes_received": 61059591,
+      "bytes_sent": 7477657,
+      "elapsed_seconds": 1800.00192999861,
+      "failures": 0,
+      "memory_baseline": 0,
+      "memory_end": 194678858,
+      "memory_peak": 0,
+      "motions": 34248,
+      "nodes_peak": 0,
+      "regions_peak": 0,
+      "role": "guest-3",
+      "snapshots": 7008,
+      "soak": true,
+      "tick_p95_ms": 0
+    }
+  ],
+  "udp_proxies": [
+    {
+      "forwarded": 159274,
+      "dropped": 4892,
+      "duplicated": 1567
+    },
+    {
+      "forwarded": 159781,
+      "dropped": 4923,
+      "duplicated": 1595
+    },
+    {
+      "forwarded": 162439,
+      "dropped": 4956,
+      "duplicated": 1593
+    }
+  ]
+}
