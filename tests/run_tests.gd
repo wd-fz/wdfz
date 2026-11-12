@@ -403,6 +403,8 @@ func _run() -> void:
 	campus._test_elevator_rules()
 	print("CASE: school._test_school_rules")
 	school._test_school_rules()
+	print("CASE: school._test_night_dorm_rules")
+	school._test_night_dorm_rules()
 	print("CASE: campus._test_inventory_rules")
 	campus._test_inventory_rules()
 	print("CASE: story._test_story_rules")

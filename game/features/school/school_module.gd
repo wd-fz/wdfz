@@ -648,7 +648,7 @@ func _viol_tick(dt: float, nw: String, world_id: String, w: Vector2, ctx: Dictio
 	if evening or leave:
 		is_wrong = false
 	wrong = is_wrong
-	if not evening and not leave and (is_wrong or nw == "宿舍"):
+	if is_wrong:
 		_add_violation(dt * 0.85 * mul, evening or leave)
 	else:
 		viol = maxf(0.0, viol - dt * 3.2)

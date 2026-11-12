@@ -100,6 +100,42 @@ func _test_school_rules() -> void:
 	check(absent.viol > 20.0 + 16.0 + 10.0 - 1.0, "moving during the check adds 2 violation per second on top of the absence (%.2f)" % absent.viol)
 
 
+func _test_night_dorm_rules() -> void:
+	var school := SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
+	var ctx := {"world_id": "out", "w": Vector2(1000, 1000), "calendar": false}
+	# Both dorm buildings include all floors and their shared stairwells.
+	for world_id: String in ["dorm1", "dorm2", "dorm3", "dorm4", "dorm5", "dorm6", "stair_dormN", "stair_dormS"]:
+		for time: float in [1340.0, 1499.9]:
+			for initial: float in [0.0, 20.0]:
+				school.reset()
+				school.tsec = time
+				school.viol = initial
+				ctx["world_id"] = world_id
+				school.step(1.0, ctx)
+				check(not school.wrong and is_equal_approx(school.viol, maxf(0.0, initial - 3.2)),
+					"night dorm compliance: %s at %.1f, violation %.1f -> %.1f" % [world_id, time, initial, school.viol])
+	# The same run can enter, use the stairs, leave, and restore inside the dorm.
+	school.reset()
+	school.tsec = 1360.0
+	school.viol = 20.0
+	for stop: Array in [["out", 20.425, true], ["dorm1", 17.225, false], ["stair_dormN", 14.025, false],
+			["dorm2", 10.825, false], ["out", 11.25, true], ["teach1", 12.1, true], ["dorm4", 8.9, false]]:
+		ctx["world_id"] = stop[0]
+		school.step(1.0, ctx)
+		check(is_equal_approx(school.viol, stop[1]) and school.wrong == stop[2],
+			"night movement to %s updates compliance and violation (%.3f)" % [stop[0], school.viol])
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(school.capture()))
+	check(school.validate(saved).is_empty(), "night dorm state remains valid for existing saves")
+	var restored := SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
+	restored.reset()
+	restored.restore(saved)
+	restored.step(1.0, ctx)
+	check(not restored.wrong and is_equal_approx(restored.viol, 5.7), "returning from a save keeps the dorm compliant")
+	# Being in a dorm exempts its location, not penalties from separate events.
+	restored.add_violation(8.0)
+	check(is_equal_approx(restored.viol, 13.7), "night event penalties still apply inside a dorm")
+
+
 func _test_body_rules() -> void:
 	var rooms := CampusData.rooms()
 	var b := BodyModule.new(rooms)
