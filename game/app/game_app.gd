@@ -5276,6 +5276,8 @@ func _exit_tree() -> void:
 		_unwire(session)
 		session.stop()
 	CampusData.clear_caches()
+	HorrorKit.clear_cache()
+	DeathShots.clear_cache()
 	if get_tree() != null:
 		get_tree().paused = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

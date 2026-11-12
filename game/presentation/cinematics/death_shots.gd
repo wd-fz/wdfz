@@ -180,6 +180,12 @@ func _desk(at: Vector3) -> Node3D:
 const _FIG_NECK := {"person":[1.645,Vector3(0,1.75,.005)],"teacher":[2.245,Vector3(0,2.37,.005)],"roam":[2.32,Vector3(0,2.47,.005)],"sit":[1.205,Vector3(0,1.3,.13)]}
 static var _fig_cache := {}
 
+## Drop the cached figure bodies, shaders and textures (the app and the test runner call it on exit).
+static func clear_cache() -> void:
+	_fig_cache.clear()
+	_env_shaders.clear()
+	_env_textures.clear()
+
 ## The imported figure without its egg head: triangles above the neck are dropped (cached per kind).
 static func _fig_body(kind: String) -> Mesh:
 	if _fig_cache.has(kind): return _fig_cache[kind]

@@ -547,4 +547,6 @@ func _run() -> void:
 	DirAccess.remove_absolute(_test_path.get_base_dir())
 	CampusData.clear_caches()
 	print("FRAMEWORK TESTS: %d checks, %d failures" % [_checks, _failures.size()])
+	HorrorKit.clear_cache()
+	DeathShots.clear_cache()
 	quit(0 if _failures.is_empty() else 1)
