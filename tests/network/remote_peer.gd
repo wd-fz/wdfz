@@ -81,6 +81,8 @@ func run() -> void:
 		if not finishing and not reconnecting:
 			check(false, reason)
 			finish())
+	network.transport.connected.connect(func() -> void: print("ENET CONNECTED"))
+	network.notice.connect(func(text: String) -> void: print("NOTICE: ", text))
 	network.room_changed.connect(func(_data: Dictionary) -> void:
 		if network.room.phase == "lobby" and network.room.members.has(network.local_id) and not network.room.members[network.local_id].ready:
 			network.ready(true, "watch")
@@ -108,6 +110,14 @@ func _process(dt: float) -> bool:
 	if elapsed >= next_report:
 		next_report += 10.0
 		print("REMOTE PROGRESS: ", "host" if host else "guest", " tunnel=", tunnel.phase, " game=", network.room.phase if network.room != null else "none", " snapshots=", snapshots, " step=", step)
+		var ages: Array = []
+		for id: int in network._peer_heard:
+			if id != 1: ages.append(snappedf(network._clock - float(network._peer_heard[id]), 0.1))
+		print("ENET PROGRESS: connections=", network.connections.size(), " peer_ages=", ages, " transport=", network.transport.peer.get_connection_status() if network.transport.peer != null else -1, " retry=", network._hello_again_at > 0.0)
+		if host and network.transport.peer != null:
+			var states: Array = []
+			for socket: ENetPacketPeer in network.transport.peer.host.get_peers(): states.append(socket.get_state())
+			print("ENET SOCKETS: ", states, " pending=", network._peers_waiting.size())
 	if elapsed > 180:
 		check(false, "real tunnel connection/gameplay timeout")
 		finish()
@@ -124,7 +134,8 @@ func _process(dt: float) -> bool:
 			token = network.reconnect_token
 			step = 1
 			reconnecting = true
-			network.stop()
+			# Break the tunnel first, so the old ENet disconnect cannot reach the
+			# host. This is a real stale-socket reconnect, not a graceful LAN leave.
 			tunnel.stop()
 			loaded_epoch = ""
 			state.clear()
@@ -138,6 +149,7 @@ func _process(dt: float) -> bool:
 			check(snapshots >= 5, "host keeps shared world running")
 			finish()
 	if reconnecting and step == 1 and tunnel.phase == "idle":
+		network.stop()
 		step = 2
 		check(tunnel.begin(false, nickname, room_code) == "", "rebuild tunnel using invitation rather than stale local port")
 	return false

@@ -41,6 +41,8 @@ class TerracottaBuildTests(unittest.TestCase):
             for variant in ('debug', 'release'):
                 self.assertEqual((template / f'build/libs/{variant}/arm64-v8a/libterracotta.so').read_bytes(), library.read_bytes())
             self.assertEqual((template / '.build_version').read_text(), '4.6.3.stable\n')
+            self.assertEqual((template / 'build/build.gradle').read_text().count('android.sourceSets.main.assets.srcDirs'), 1)
+            self.assertTrue((template / 'build/terracotta_assets/terracotta/LICENSE').is_file())
 
     def test_template_rejects_traversal(self):
         with tempfile.TemporaryDirectory() as temporary:

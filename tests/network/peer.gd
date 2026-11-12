@@ -91,6 +91,7 @@ func run() -> void:
 		await process_frame
 		check(app.lan.panel.remote_mode and not app.lan.panel.port.visible and not app.lan.panel._search.visible, "invitation flow hides LAN addresses and discovery")
 		check(app.lan.panel._remote_info.is_visible_in_tree() and app.lan.panel._copy_code.disabled, "attribution visible; no invitation is copied before success")
+		await _capture("remote-entry")
 		app.lan._join("bad-code", "guest")
 		check(app.lan.remote.phase == "idle" and not app.lan.panel._search.disabled, "invalid invitation leaves retry controls available")
 		app.lan._open_mode(false)

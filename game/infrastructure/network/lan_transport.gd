@@ -38,7 +38,9 @@ func _ready() -> void:
 func host(port: int) -> String:
 	close()
 	peer = ENetMultiplayerPeer.new()
-	var error := peer.create_server(port, 3, LanProtocol.CHANNELS)
+	# Allow each guest one replacement handshake while its lost tunnel expires.
+	# CooperativeRoom still caps the actual game at four authenticated students.
+	var error := peer.create_server(port, 6, LanProtocol.CHANNELS)
 	if error != OK:
 		peer = null
 		return "无法创建房间，端口可能被占用（%d）。" % error

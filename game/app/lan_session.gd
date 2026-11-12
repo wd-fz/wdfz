@@ -35,6 +35,9 @@ var _queued_save := false
 var _resume: Dictionary = {}
 var _fingerprint := ""
 var _peers_waiting: Dictionary = {}
+var _peer_heard: Dictionary = {}
+var _hello_again_at := 0.0
+var _transport_retry_at := 0.0
 var rtt_ms := 0.0
 var jitter_ms := 0.0
 
@@ -47,7 +50,7 @@ func _ready() -> void:
 	add_child(transport)
 	add_child(discovery)
 	transport.connected.connect(_hello)
-	transport.disconnected.connect(_lost)
+	transport.disconnected.connect(_transport_closed)
 	transport.peer_left.connect(_peer_left)
 	transport.control_received.connect(_control)
 	transport.input_received.connect(_receive_input)
@@ -56,7 +59,7 @@ func _ready() -> void:
 		if room != null and data.get("epoch") == room.epoch: motion_received.emit(data))
 	transport.chunk_received.connect(_chunk)
 	transport.api.peer_connected.connect(func(id: int) -> void:
-		if transport.serving: _peers_waiting[id] = _clock + 10.0)
+		if transport.serving: _peers_waiting[id] = _clock + 20.0)
 	var manifest: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/lan_manifest.json"))
 	_fingerprint = String(manifest["digest"])
 
@@ -122,9 +125,19 @@ func join(target: String, who: String, token: String = "") -> String:
 	reconnect_token = token
 	var error := transport.join(parsed["ip"], int(parsed["port"]))
 	if error.is_empty():
-		_hello_deadline = _clock + 12.0
+		_hello_deadline = _clock + 20.0
+		_transport_retry_at = _clock + 4.0 if token != "" else 0.0
 		_last_heard = _clock
 	return error
+
+
+func _transport_closed(reason: String) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if not transport.serving and reconnect_token != "" and _hello_deadline > now:
+		transport.close()
+		_transport_retry_at = now + 1.0
+		return
+	_lost(reason)
 
 
 func _hello() -> void:
@@ -207,6 +220,12 @@ func _control(peer_id: int, data: Dictionary) -> void:
 				local_id = String(data.get("id", ""))
 				reconnect_token = String(data.get("token", ""))
 				_hello_deadline = 0.0
+				_hello_again_at = 0.0
+				_transport_retry_at = 0.0
+			"reconnect_wait":
+				if _hello_deadline > 0.0 and reconnect_token != "":
+					_hello_again_at = _last_heard + 1.0
+					notice.emit("正在等待原连接释放，随后恢复角色……")
 			"room": _receive_room(data.get("room", {}))
 			"reject": _lost(String(data.get("text", "连接被拒绝。")))
 			"result":
@@ -222,6 +241,7 @@ func _control(peer_id: int, data: Dictionary) -> void:
 		_accept(peer_id, data)
 		return
 	if not connections.has(peer_id) or room == null: return
+	_peer_heard[peer_id] = Time.get_ticks_msec() / 1000.0
 	var id := String(connections[peer_id])
 	match data["kind"]:
 		"ready":
@@ -266,6 +286,11 @@ func _accept(peer_id: int, data: Dictionary) -> void:
 	var token := String(data.get("token", "")).left(128)
 	var id := String(credentials.get(token.sha256_text(), "")) if token != "" else ""
 	if error.is_empty() and not id.is_empty():
+		if room.members.has(id) and room.members[id]["connected"] and room.members[id]["state"] != "departed":
+			# A tunnel can disappear before ENet's disconnect packet arrives. A
+			# credential holder waits for heartbeat expiry; it cannot evict a live player.
+			transport.send_control(peer_id, {"kind": "reconnect_wait"})
+			return
 		if room.phase == "lobby" and room.members.has(id) and room.members[id]["state"] != "departed" and not room.members[id]["connected"]:
 			room.members[id]["connected"] = true
 		elif not room.reconnect(id): error = "原角色已离队或已经连接。"
@@ -282,13 +307,16 @@ func _accept(peer_id: int, data: Dictionary) -> void:
 		return
 	_peers_waiting.erase(peer_id)
 	connections[peer_id] = id
+	_peer_heard[peer_id] = Time.get_ticks_msec() / 1000.0
 	transport.send_control(peer_id, {"kind": "welcome", "id": id, "token": token})
 	_publish_room()
 	if simulation != null: _send_state(peer_id, id)
 
 
 func _receive_input(peer_id: int, data: Dictionary) -> void:
-	if simulation != null and connections.has(peer_id): simulation.input(connections[peer_id], data)
+	if simulation != null and connections.has(peer_id):
+		_peer_heard[peer_id] = Time.get_ticks_msec() / 1000.0
+		simulation.input(connections[peer_id], data)
 
 
 func _publish_room() -> void:
@@ -375,6 +403,7 @@ func _chunk(_peer_id: int, packet: Dictionary) -> void:
 
 func _peer_left(peer_id: int) -> void:
 	_peers_waiting.erase(peer_id)
+	_peer_heard.erase(peer_id)
 	if not transport.serving or room == null or not connections.has(peer_id): return
 	var id := String(connections[peer_id])
 	connections.erase(peer_id)
@@ -392,21 +421,40 @@ func _process(dt: float) -> void:
 	var now := Time.get_ticks_msec() / 1000.0
 	var wall_dt := maxf(0.0, now - _clock)
 	_clock = now
+	if not transport.serving and _hello_deadline > 0.0:
+		if _clock > _hello_deadline:
+			_lost("重连尚未完成；请确认原角色已断线，稍后重试。" if reconnect_token != "" else "房主没有响应。检查网络后可重连原角色。")
+			return
+		# A full four-player host can still have three dead ENet slots while
+		# their heartbeats expire. Retry the socket too, not only the hello RPC.
+		if _transport_retry_at > 0.0 and _clock >= _transport_retry_at and (transport.peer == null or transport.peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED):
+			_transport_retry_at = _clock + 4.0
+			var target := LanProtocol.address(address)
+			transport.join(String(target["ip"]), int(target["port"]))
 	if transport.peer == null: return
 	if not transport.serving:
 		var timeout := 60.0 if room != null and room.phase == "loading" else 12.0
 		if (_hello_deadline > 0.0 and _clock > _hello_deadline) or (_hello_deadline == 0.0 and _clock - _last_heard > timeout):
 			_lost("房主没有响应。检查网络后可重连原角色。")
 			return
+		if _hello_again_at > 0.0 and _clock >= _hello_again_at:
+			_hello_again_at = 0.0
+			_hello()
 		_heartbeat += wall_dt
 		if _heartbeat >= 2.0:
 			_heartbeat = 0.0
 			transport.send_control(1, {"kind": "ping", "time": _clock})
 		return
 	if room == null: return
+	for peer_id: int in _peer_heard.keys():
+		if peer_id == 1: continue
+		var timeout := 60.0 if room.phase == "loading" else 12.0
+		if _clock - float(_peer_heard[peer_id]) > timeout:
+			transport.peer.disconnect_peer(peer_id, true)
+			_peer_left(peer_id)
 	for peer_id: int in _peers_waiting.keys():
 		if _clock >= float(_peers_waiting[peer_id]):
-			transport.peer.disconnect_peer(peer_id)
+			transport.peer.disconnect_peer(peer_id, true)
 			_peers_waiting.erase(peer_id)
 	var paused := room.paused_left > 0.0
 	for id: String in room.elapsed(wall_dt):
@@ -435,6 +483,9 @@ func _process(dt: float) -> void:
 
 
 func _lost(reason: String) -> void:
+	_hello_deadline = 0.0
+	_hello_again_at = 0.0
+	_transport_retry_at = 0.0
 	transport.close()
 	closed.emit(reason)
 
@@ -458,6 +509,9 @@ func stop() -> void:
 	_hello_deadline = 0.0
 	_queued_save = false
 	_peers_waiting.clear()
+	_peer_heard.clear()
+	_hello_again_at = 0.0
+	_transport_retry_at = 0.0
 	_heartbeat = 0.0
 
 

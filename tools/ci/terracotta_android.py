@@ -34,7 +34,13 @@ def install(root: Path, template: Path, library: Path):
         destination = project / 'libs' / variant / 'arm64-v8a'
         destination.mkdir(parents=True, exist_ok=True)
         shutil.copy2(library, destination / 'libterracotta.so')
-    notices = project / 'src/main/assets/terracotta'
+    # Godot clears src/main/assets while exporting project resources. Keep
+    # third-party notices in an additional Gradle asset source that it preserves.
+    gradle = project / 'build.gradle'
+    assets_line = "android.sourceSets.main.assets.srcDirs += ['terracotta_assets']"
+    contents = gradle.read_text()
+    if assets_line not in contents: gradle.write_text(contents + '\n' + assets_line + '\n')
+    notices = project / 'terracotta_assets/terracotta'
     notices.mkdir(parents=True, exist_ok=True)
     for name in ('LICENSE', 'NOTICE.md'):
         shutil.copy2(root / 'third_party/terracotta' / name, notices / name)
