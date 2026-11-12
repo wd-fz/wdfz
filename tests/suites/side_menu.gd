@@ -147,7 +147,20 @@ func test_boot_and_preview() -> void:
 	check(not ui.boot_playing(), "the calm version ends by itself")
 	# The campus panorama behind the menu: off by default, a baked picture panned round, released outside the menu.
 	var preview := ui.menu_preview
-	check(GameSettings.DEFAULTS["menu_orbit"] == 0 and not preview.orbit, "the orbit is off by default (still picture)")
+	check(GameSettings.DEFAULTS["menu_orbit"] == 1, "the panorama orbit is on by default (user request 2026-11-12)")
+	var old_path := _test_path.get_base_dir() + "/side-menu-orbit/settings.json"
+	DirAccess.make_dir_recursive_absolute(old_path.get_base_dir())
+	FileAccess.open(old_path, FileAccess.WRITE).store_string(JSON.stringify({"version": 2, "values": {"menu_orbit": 0, "mouse": 130}}))
+	var old := GameSettings.new(old_path)
+	old.load_file()
+	check(old.get_int("menu_orbit") == 1 and old.get_int("mouse") == 130, "older settings files take the new default; other values stay")
+	old.set_value("menu_orbit", 0)
+	old.save_file()
+	var again := GameSettings.new(old_path)
+	again.load_file()
+	check(again.get_int("menu_orbit") == 0, "turning it off after that is kept")
+	DirAccess.remove_absolute(old_path)
+	preview.set_orbit(false)
 	preview.enabled = true
 	preview.begin_load()
 	check(preview.texture == null and preview.material == null, "with the orbit off no panorama is loaded")
