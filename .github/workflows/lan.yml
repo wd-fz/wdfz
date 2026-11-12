@@ -86,6 +86,40 @@ jobs:
             build/reports/lan/**/*.png
           retention-days: 14
 
+  desktop-build:
+    name: LAN desktop packages
+    needs: authority
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      LP_NUM_THREADS: '4'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-godot
+        with:
+          templates: 'true'
+      - uses: ./.github/actions/setup-vulkan
+      - name: Export Windows and Linux; check packaged Linux Vulkan on X11 and Wayland
+        run: xvfb-run -a python tools/ci/with_wayland.py python tools/export.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lan-desktop-${{ github.sha }}
+          path: |
+            build/packages/*.zip
+            build/packages/*.sha256
+            build/packages/*.build.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lan-desktop-reports
+          path: |
+            build/reports/export/
+            build/reports/wayland/
+          retention-days: 14
+
   soak:
     name: LAN 30-minute diagnostic soak
     if: github.event_name == 'workflow_dispatch' && inputs.soak
