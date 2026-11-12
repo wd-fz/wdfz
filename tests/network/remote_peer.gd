@@ -10,6 +10,8 @@ class LocalRendezvous extends TerracottaGateway:
 var tunnel := TerracottaSession.new()
 var network := LanSession.new()
 var host := false
+var players := 2
+var nickname := "guest-1"
 var directory := ""
 var port := 24560
 var relay := 0
@@ -35,6 +37,8 @@ var next_report := 5.0
 func _initialize() -> void:
 	for arg: String in OS.get_cmdline_user_args():
 		if arg == "--host": host = true
+		if arg.begins_with("--players="): players = int(arg.trim_prefix("--players="))
+		if arg.begins_with("--name="): nickname = arg.trim_prefix("--name=")
 		if arg.begins_with("--directory="): directory = arg.trim_prefix("--directory=")
 		if arg.begins_with("--port="): port = int(arg.trim_prefix("--port="))
 		if arg.begins_with("--relay="): relay = int(arg.trim_prefix("--relay="))
@@ -71,7 +75,7 @@ func run() -> void:
 			check(tunnel.available, "host port verified against Scaffolding")
 		else:
 			check(target != "127.0.0.1:%d" % port, "guest uses independently forwarded UDP port")
-			check(network.join(target, "guest", token) == "", "ENet joins through Terracotta")
+			check(network.join(target, nickname, token) == "", "ENet joins through Terracotta")
 			reconnecting = false)
 	network.closed.connect(func(reason: String) -> void:
 		if not finishing and not reconnecting:
@@ -80,7 +84,7 @@ func run() -> void:
 	network.room_changed.connect(func(_data: Dictionary) -> void:
 		if network.room.phase == "lobby" and network.room.members.has(network.local_id) and not network.room.members[network.local_id].ready:
 			network.ready(true, "watch")
-		if host and network.room.members.size() == 2 and network.room.can_start():
+		if host and network.room.members.size() == players and network.room.can_start():
 			check(network.start() == "", "remote players start shared authority"))
 	network.snapshot_received.connect(func(data: Dictionary) -> void:
 		state = data
@@ -95,7 +99,7 @@ func run() -> void:
 	else:
 		var file := FileAccess.open(directory.path_join("invitation.json"), FileAccess.READ)
 		room_code = String(JSON.parse_string(file.get_as_text())["code"])
-		check(tunnel.begin(false, "guest", room_code) == "", "real Terracotta guest boot")
+		check(tunnel.begin(false, nickname, room_code) == "", "real Terracotta guest boot")
 
 
 func _process(dt: float) -> bool:
@@ -127,16 +131,22 @@ func _process(dt: float) -> bool:
 		elif not host and step == 2 and played > 8:
 			check(identity == network.local_id, "original role survives a rebuilt tunnel")
 			check(snapshots >= 5 and motions >= 10, "reliable snapshots and UDP movement cross the tunnel")
-			write("guest-done.json", {"checks": checks, "failures": failures})
+			write(nickname + "-done.json", {"checks": checks, "failures": failures})
 			finish()
-		elif host and FileAccess.file_exists(directory.path_join("guest-done.json")):
-			check(network.room.members.size() == 2, "reconnect does not create another student")
+		elif host and guests_done():
+			check(network.room.members.size() == players, "reconnect does not create another student")
 			check(snapshots >= 5, "host keeps shared world running")
 			finish()
 	if reconnecting and step == 1 and tunnel.phase == "idle":
 		step = 2
-		check(tunnel.begin(false, "guest", room_code) == "", "rebuild tunnel using invitation rather than stale local port")
+		check(tunnel.begin(false, nickname, room_code) == "", "rebuild tunnel using invitation rather than stale local port")
 	return false
+
+
+func guests_done() -> bool:
+	for i in range(1, players):
+		if not FileAccess.file_exists(directory.path_join("guest-%d-done.json" % i)): return false
+	return true
 
 
 func finish() -> void:
@@ -147,6 +157,6 @@ func finish() -> void:
 	var until := Time.get_ticks_msec() + 15000
 	while tunnel.phase != "idle" and Time.get_ticks_msec() < until: await process_frame
 	check(tunnel.phase == "idle", "remote room cleanly released")
-	write("host-summary.json" if host else "guest-summary.json", {"checks": checks, "failures": failures, "snapshots": snapshots, "motions": motions})
+	write("host-summary.json" if host else nickname + "-summary.json", {"checks": checks, "failures": failures, "snapshots": snapshots, "motions": motions})
 	print("TERRACOTTA PEER: %d checks, %d failures" % [checks, failures])
 	quit(0 if failures == 0 else 1)

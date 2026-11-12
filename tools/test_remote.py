@@ -22,6 +22,7 @@ def free_port():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--unit', action='store_true')
+    parser.add_argument('--players', type=int, choices=(2, 4), default=2)
     args = parser.parse_args()
     reports = ROOT / 'build/reports/remote'
     reports.mkdir(parents=True, exist_ok=True)
@@ -55,30 +56,32 @@ def main():
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             executables = list((scratch / 'bootstrap').rglob('easytier-core'))
-            if executables: break
+            if executables and (scratch / 'bootstrap.json').exists() and os.access(executables[0], os.X_OK): break
             time.sleep(.1)
         if not executables: raise RuntimeError('Official launcher did not unpack EasyTier')
         easytier = scratch / 'easytier-core'
         shutil.copy2(executables[0], easytier)
+        easytier.chmod(0o755)
         bootstrap.terminate()
         bootstrap.wait(timeout=5)
         relay_port, game_port = free_port(), free_port()
         launch([str(easytier), '--network-name', 'wdfz-test-rendezvous', '--listeners', f'tcp://127.0.0.1:{relay_port}',
                 '--rpc-portal', '0', '--no-tun'], 'rendezvous', os.environ.copy())
         command = [ENGINE, '--headless', '--path', str(ROOT), '--script', 'res://tests/network/remote_peer.gd', '--',
-                   f'--directory={scratch}', f'--port={game_port}', f'--relay={relay_port}']
+                   f'--directory={scratch}', f'--port={game_port}', f'--relay={relay_port}', f'--players={args.players}']
         host = launch(command + ['--host'], 'host', environment('host'))
         deadline = time.monotonic() + 130
         while not (scratch / 'invitation.json').exists():
             if host.poll() is not None or time.monotonic() > deadline: raise RuntimeError('Remote host failed; inspect host.log')
             time.sleep(.1)
-        guest = launch(command, 'guest', environment('guest'))
+        guests = [launch(command + [f'--name=guest-{index}'], f'guest-{index}', environment(f'guest-{index}')) for index in range(1, args.players)]
+        peers = [host, *guests]
         deadline = time.monotonic() + 180
-        while host.poll() is None or guest.poll() is None:
-            if any(p.poll() not in (None, 0) for p in (host, guest)) or time.monotonic() > deadline:
+        while any(peer.poll() is None for peer in peers):
+            if any(p.poll() not in (None, 0) for p in peers) or time.monotonic() > deadline:
                 raise RuntimeError('Remote peer failed or timed out; inspect host/guest.log')
             time.sleep(.2)
-        summaries = [json.loads((scratch / (name + '-summary.json')).read_text()) for name in ('host', 'guest')]
+        summaries = [json.loads((scratch / (name + '-summary.json')).read_text()) for name in ['host', *[f'guest-{i}' for i in range(1, args.players)]]]
         if any(s['failures'] or s['checks'] < 3 for s in summaries): raise RuntimeError('Remote assertions failed')
         (reports / 'summary.json').write_text(json.dumps({'passed': True, 'transport': 'official Terracotta 0.4.2 / EasyTier / ENet',
             'rendezvous': 'local fixture; does not verify internet NAT traversal', 'peers': summaries}, indent=2) + '\n')

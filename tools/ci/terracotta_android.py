@@ -2,6 +2,25 @@
 from pathlib import Path
 import shutil
 import xml.etree.ElementTree as ET
+import zipfile
+
+
+def install_template(template: Path, archive: Path, version: str):
+    # Godot's CLI installation flag only runs together with an export. Install
+    # the same official source ZIP first so the plugin exists before Gradle runs.
+    project = template / 'build'
+    project.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive) as source:
+        if 'build.gradle' not in source.namelist():
+            raise RuntimeError('Not an official Godot Android source template')
+        for member in source.infolist():
+            relative = Path(member.filename)
+            if relative.is_absolute() or '..' in relative.parts:
+                raise RuntimeError('Invalid Android template path')
+        source.extractall(project)
+    (project / 'gradlew').chmod(0o755)
+    (project / '.gdignore').touch()
+    (template / '.build_version').write_text(version + '\n')
 
 
 def install(root: Path, template: Path, library: Path):

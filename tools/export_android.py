@@ -203,7 +203,9 @@ def main():
         if installed.exists() and installed.read_text().strip() != expected:
             shutil.rmtree(template)
         if not (template / "build/build.gradle").exists():
-            run("android-template", [ENGINE, "--headless", "--path", str(ROOT), "--install-android-build-template", "--quit"], reports, timeout=180, env=env)
+            data_home = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share'))
+            source_zip = data_home / 'godot/export_templates' / expected / 'android_source.zip'
+            terracotta_android.install_template(template, source_zip, expected)
         terracotta_android.install(ROOT, template, terracotta.prepare('android'))
         summary['terracotta'] = terracotta.VERSION
         run("export-android", [ENGINE, "--headless", "--path", str(ROOT), "--export-release" if args.release else "--export-debug",
