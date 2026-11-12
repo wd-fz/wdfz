@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 from publish_release import validate_android as validate_bundle
 from publish_release import validate_bundle as validate_all
 from export_android import RELEASE_VERSION, RELEASE_VERSION_CODE
+import terracotta
 
 
 class PublicReleaseTests(unittest.TestCase):
@@ -26,7 +27,7 @@ class PublicReleaseTests(unittest.TestCase):
                      "abi": "arm64-v8a", "min_sdk": 24, "target_sdk": 36, "page_alignment": 16384,
                      "launch_orientation": "userLandscape", "file": self.apk.name,
                      "rendering_driver": "vulkan", "rendering_method": "mobile", "vulkan_required": True,
-                     "fullscreen_forced": True, "build_system": "gradle",
+                     "fullscreen_forced": True, "build_system": "gradle", "terracotta": terracotta.VERSION,
                      "signing_certificate_sha256": "2"*64, "sha256": digest, "bytes": self.apk.stat().st_size}
         self.meta = self.apk.with_suffix(".build.json")
         self.meta.write_text(json.dumps(self.info))
@@ -50,11 +51,11 @@ class PublicReleaseTests(unittest.TestCase):
         self.apk.with_suffix(".apk.sha256").write_text("not the original checksum")
         with self.assertRaises(ValueError): validate_bundle(self.folder,self.sha)
 
-    def add_desktop(self, platform):
+    def add_desktop(self, platform, omit="", dependency_version=None):
         name = f"wdfz-{RELEASE_VERSION}-{platform}-x86_64"
         archive = self.folder / (name + ".zip")
         info = {"revision": self.sha, "version": RELEASE_VERSION, "platform": platform,
-                "release": True, "working_tree_dirty": False, "window_default": "windowed",
+                "release": True, "working_tree_dirty": False, "window_default": "windowed", "terracotta": terracotta.VERSION,
                 "rendering_driver": "vulkan", "rendering_method": "forward_plus",
                 "runtime_verified": platform == "linux", "rendering_verified": platform == "linux",
                 "display_drivers_verified": ["x11", "wayland"] if platform == "linux" else []}
@@ -66,6 +67,14 @@ class PublicReleaseTests(unittest.TestCase):
             for path in ("wdfz.pck", "LICENSE", "README.txt"):
                 bundle.writestr(prefix + path, b"fixture")
             bundle.writestr(prefix + "BUILD.json", json.dumps(info))
+            component = "terracotta" if platform == "linux" else "terracotta.exe"
+            dependencies = [component, "LICENSE", "NOTICE.md"]
+            if platform == "windows": dependencies.append("VCRUNTIME140.DLL")
+            for path in dependencies:
+                if path != omit: bundle.writestr(prefix + "terracotta/" + path, b"dependency fixture")
+            dependency = {"version": dependency_version or terracotta.VERSION, "source": terracotta.SOURCE,
+                          "archive_sha256": terracotta.ASSETS[platform][1]}
+            bundle.writestr(prefix + "terracotta/dependency.json", json.dumps(dependency))
         digest = hashlib.sha256(archive.read_bytes()).hexdigest()
         info.update(passed=True, file=archive.name, bytes=archive.stat().st_size, sha256=digest)
         archive.with_suffix(".build.json").write_text(json.dumps(info))
@@ -87,6 +96,18 @@ class PublicReleaseTests(unittest.TestCase):
             with self.subTest(key=key):
                 archive.with_suffix(".build.json").write_text(json.dumps({**info, key: value}))
                 with self.assertRaises(ValueError): validate_all(self.folder, self.sha)
+
+    def test_missing_remote_component_or_runtime_blocks_publication(self):
+        self.add_desktop("linux")
+        for missing in ("terracotta.exe", "VCRUNTIME140.DLL", "LICENSE", "NOTICE.md"):
+            with self.subTest(missing=missing):
+                self.add_desktop("windows", omit=missing)
+                with self.assertRaises(ValueError): validate_all(self.folder, self.sha)
+
+    def test_wrong_remote_dependency_version_blocks_publication(self):
+        self.add_desktop("linux")
+        self.add_desktop("windows", dependency_version="0.0.0")
+        with self.assertRaises(ValueError): validate_all(self.folder, self.sha)
 
     def test_desktop_tampering_and_unexpected_assets_block_publication(self):
         archive, _ = self.add_desktop("windows")

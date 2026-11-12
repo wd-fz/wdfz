@@ -37,7 +37,7 @@ jobs:
           if os.environ['RELEASE_TAG'] != 'v' + RELEASE_VERSION:
               raise SystemExit('Tag must match the release version')
           PYCODE
-      - name: Wait for full headless and Vulkan CI on the exact commit
+      - name: Wait for single-player, cooperation and Vulkan CI on the exact commit
         env:
           GH_TOKEN: ${{ github.token }}
         run: python tools/ci/wait_for_ci.py

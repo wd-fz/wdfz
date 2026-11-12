@@ -9,6 +9,7 @@ import re
 import subprocess
 import zipfile
 from export_android import RELEASE_PACKAGE, RELEASE_VERSION, RELEASE_VERSION_CODE
+import terracotta
 
 
 def validate_android(folder, revision):
@@ -24,7 +25,7 @@ def validate_android(folder, revision):
                 "abi": "arm64-v8a", "min_sdk": 24, "target_sdk": 36, "page_alignment": 16384,
                 "launch_orientation": "userLandscape", "file": apk.name,
                 "rendering_driver": "vulkan", "rendering_method": "mobile", "vulkan_required": True,
-                "fullscreen_forced": True, "build_system": "gradle"}
+                "fullscreen_forced": True, "build_system": "gradle", "terracotta": terracotta.VERSION}
     if any(info.get(key) != value for key, value in expected.items()):
         raise ValueError("Release bundle does not match the verified release build and source")
     if not re.fullmatch(r"[0-9a-f]{64}", info.get("signing_certificate_sha256", "")):
@@ -44,7 +45,7 @@ def validate_desktop(folder, revision, platform):
     metadata = folder / (name + ".build.json")
     info = json.loads(metadata.read_text())
     expected = {"passed": True, "release": True, "working_tree_dirty": False, "revision": revision,
-                "version": RELEASE_VERSION, "platform": platform, "rendering_driver": "vulkan",
+                "version": RELEASE_VERSION, "platform": platform, "terracotta": terracotta.VERSION, "rendering_driver": "vulkan",
                 "rendering_method": "forward_plus", "window_default": "windowed", "file": archive.name,
                 "runtime_verified": platform == "linux", "rendering_verified": platform == "linux",
                 "display_drivers_verified": ["x11", "wayland"] if platform == "linux" else []}
@@ -58,12 +59,19 @@ def validate_desktop(folder, revision, platform):
         prefix = f"wdfz-{platform}/"
         binary = "wdfz.x86_64" if platform == "linux" else "wdfz.exe"
         required = {prefix + item for item in (binary, "wdfz.pck", "BUILD.json", "LICENSE", "README.txt")}
+        component = "terracotta" if platform == "linux" else "terracotta.exe"
+        required.update(prefix + "terracotta/" + item for item in (component, "LICENSE", "NOTICE.md", "dependency.json"))
+        if platform == "windows": required.add(prefix + "terracotta/VCRUNTIME140.DLL")
         if set(bundle.namelist()) != required or bundle.testzip() is not None:
             raise ValueError(f"{platform} archive content is incomplete or corrupt")
+        dependency = json.loads(bundle.read(prefix + "terracotta/dependency.json"))
+        if dependency != {"version": terracotta.VERSION, "source": terracotta.SOURCE,
+                          "archive_sha256": terracotta.ASSETS[platform][1]}:
+            raise ValueError(f"{platform} Terracotta dependency does not match the pinned official release")
         inside = json.loads(bundle.read(prefix + "BUILD.json"))
         if not inside or any(info.get(key) != value for key, value in inside.items()):
             raise ValueError(f"{platform} archive provenance differs from its sidecar")
-        for key in ("revision", "version", "platform", "release", "working_tree_dirty", "window_default", "display_drivers_verified"):
+        for key in ("revision", "version", "platform", "release", "working_tree_dirty", "window_default", "display_drivers_verified", "terracotta"):
             if inside.get(key) != expected[key]: raise ValueError(f"{platform} archive missing {key}")
         if platform == "linux" and not (bundle.getinfo(prefix + binary).external_attr >> 16) & 0o111:
             raise ValueError("Linux executable permission missing from ZIP")
