@@ -46,6 +46,19 @@ static func make(kind: String, color: Color, unlit: bool = false, scale: float =
 	return root
 
 
+## The dressed variant of a kind (tools/remodel/dress.py): the same body with clothes laid over it, one
+## mesh per garment named "dressed_<kind>_<garment>" (skin, jacket, trim, zip, trousers, shoes, shirt). Only the
+## death stages use it, for close shots; people in the campus keep the plain figure. null when missing.
+const DRESSED := ["person", "sit", "teacher", "roam"]
+
+static func dressed(kind: String) -> PackedScene:
+	var path := "res://assets/campus/figures/dressed/%s.glb" % kind
+	if not DRESSED.has(kind) or not ResourceLoader.exists(path): return null
+	var key := "dressed|" + kind
+	if not _cache.has(key): _cache[key] = load(path)
+	return _cache[key]
+
+
 ## The standing height of a kind in metres (hip + torso + neck + head, from FIG_SPEC).
 static func height(kind: String) -> float:
 	return {"tall": 2.55, "roam": 2.63, "person": 1.85, "teacher": 2.49, "neck": 2.96, "sit": 1.35}.get(kind, 1.8)

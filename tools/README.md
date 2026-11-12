@@ -10,7 +10,7 @@
 | `python tools/ci/install_godot.py --android-debug` | 安装同版本 Android Gradle 模板与预编译引擎库 |
 | `godot --windowed --path . --script res://tools/capture/capture_campus.gd` | 实际渲染校园截图，需要显示服务 |
 | [export_scenes](export_scenes/README.md) | 从旧 Web 版导出建筑、贴图、布局与世界登记 |
-| [remodel](remodel/README.md) | 用旧版人形的基本体重新生成连续曲面的人形与巡察者模型；需 numpy、scikit-image、fast-simplification |
+| [remodel](remodel/README.md) | 用旧版人形的基本体重新生成连续曲面的人形与巡察者模型，以及死亡演出用的穿衣人形（`dress.py`）；需 numpy、scikit-image、fast-simplification |
 | `audio_bake/bake.cjs` | 按旧版配方烘焙音频；需 Node、ffmpeg 与旧版源码 |
 
 截图脚本集中在 `capture/`。CI 内部模块在 `ci/`，对开发者保留两个短入口 `check.py`、`export.py`。详细命令、日志位置与 Actions 下载方式见[项目结构与持续集成](../docs/项目结构与持续集成.md)。

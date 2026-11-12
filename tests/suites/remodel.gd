@@ -51,3 +51,48 @@ func test_figures() -> void:
 	var body_mat := (parts[0] as MeshInstance3D).mesh.surface_get_material(0) as BaseMaterial3D
 	check(body_mat.albedo_color.r < 0.05 and body_mat.albedo_color.g < 0.05, "its body stays near black")
 	patrol.free()
+
+
+## The dressed figures of the death stages (tools/remodel/dress.py): the same person with clothes over it.
+func test_dressed() -> void:
+	var garments := {"person": ["skin", "jacket", "trim", "zip", "trousers", "shoes"], "sit": ["skin", "jacket", "trim", "zip", "trousers", "shoes"],
+		"teacher": ["skin", "jacket", "trim", "trousers", "shoes", "shirt"], "roam": ["skin", "jacket", "trousers", "shoes"]}
+	for kind: String in FigureModel.DRESSED:
+		var packed := FigureModel.dressed(kind)
+		check(packed != null, "%s has a dressed variant" % kind)
+		if packed == null: continue
+		var node := packed.instantiate() as Node3D
+		var names: Array[String] = []
+		for mi: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false): names.append(String(mi.name).get_slice("_", 2))
+		var box := _box(node)
+		var plain_node := (load("res://assets/campus/figures/%s.glb" % kind) as PackedScene).instantiate() as Node3D
+		var plain := _box(plain_node)
+		plain_node.free()
+		check(names.size() == garments[kind].size() and names.all(func(n: String) -> bool: return garments[kind].has(n)),
+			"%s is split into its garments %s (got %s)" % [kind, garments[kind], names])
+		# Clothes cover the body: no taller (the head is uncovered), a few centimetres wider at most, same footing.
+		check(absf(box.end.y - plain.end.y) <= 0.02 and absf(box.position.y - plain.position.y) <= 0.02,
+			"%s keeps the plain figure's height and footing (%.3f, plain %.3f)" % [kind, box.end.y, plain.end.y])
+		check(box.size.x - plain.size.x <= 0.08 and box.size.x >= plain.size.x - 0.005 and box.size.z - plain.size.z <= 0.09 and absf(box.get_center().x) < 0.01,
+			"%s is covered, not reshaped: %.3f × %.3f against %.3f × %.3f" % [kind, box.size.x, box.size.z, plain.size.x, plain.size.z])
+		node.free()
+	# The death stages build their people from it: one surface per garment below the neck, each with its own material.
+	var shots := DeathShots.new(null)
+	shots.root = Node3D.new()
+	var actor := shots._fig(Vector3.ZERO, "person", 1.0, Color("11141a"), {"tone": DeathShots.SKIN})
+	var body := actor.get_node("Body") as MeshInstance3D
+	var labels: Array[String] = []
+	var distinct := {}
+	for i in body.mesh.get_surface_count():
+		labels.append((body.mesh as ArrayMesh).surface_get_name(i))
+		distinct[body.get_surface_override_material(i)] = true
+	check(labels.has("jacket") and labels.has("trousers") and labels.has("skin") and distinct.size() == labels.size() and body.material_override == null,
+		"a staged person wears the dressed mesh with a material per garment (%s)" % [labels])
+	var top := 0.0
+	for i in body.mesh.get_surface_count():
+		var arrays := body.mesh.surface_get_arrays(i)
+		var v: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		for index: int in (arrays[Mesh.ARRAY_INDEX] as PackedInt32Array): top = maxf(top, v[index].y)
+	check(top <= 1.646 and actor.get_meta("head") is Node3D, "its own head is cut off at the neck (%.3f) and the kit's head sits on it" % top)
+	shots.root.free()
+	DeathShots.clear_cache()
