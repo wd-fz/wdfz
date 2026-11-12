@@ -88,6 +88,7 @@ func tick(dt: float) -> void:
 	var started := Time.get_ticks_usec()
 	_seconds += dt
 	room.tick += 1
+	room.record_participation(dt)
 	var minutes := calendar.advance(dt)
 	var contexts := {}
 	var active: Array = []
@@ -239,6 +240,7 @@ func restore(data: Dictionary) -> void:
 	calendar.restore(data["calendar"])
 	for id: String in actors:
 		actors[id].restore(data["actors"][id])
+		room.members[id]["seat"] = actors[id].own_seat
 		physics.place(actors[id])
 	inventory.restore(data["items"])
 	patrol.restore(data["patrol"])
@@ -246,6 +248,7 @@ func restore(data: Dictionary) -> void:
 	leases = data["leases"].duplicate()
 	gameplay.restore(data["gameplay"])
 	_seconds = float(data.get("seconds", 0))
+	room.tick = int(data["room"]["tick"])
 	room.debug_run = bool(data["room"].get("debug", false))
 	for a: CooperativeActor in actors.values(): inventory.reconcile(a)
 

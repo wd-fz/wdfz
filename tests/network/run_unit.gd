@@ -76,7 +76,38 @@ func run() -> void:
 	room.disconnect_member("b")
 	check(room.reconnect("b"), "original member reconnects")
 	check(not room.reconnect("b"), "duplicate live member rejected")
+	room.record_participation(2.0)
+	var seconds: float = room.members["b"]["participation"]["seconds"]
+	room.disconnect_member("b")
+	room.record_participation(4.0)
+	check(room.members["b"]["participation"]["seconds"] == seconds, "offline reservation cannot add participation credit")
+	room.reconnect("b")
+	room.death("b")
+	room.record_participation(3.0)
+	var record: Dictionary = room.members["b"]["participation"]
+	check(is_equal_approx(record["seconds"] - record["alive_seconds"], 3.0), "spectator time is distinguished from living participation")
+	check(CooperativeValidation.validate(sim.capture()).is_empty(), "participation persists in validated cooperative checkpoints")
 	sim.queue_free()
+	await process_frame
+	var figures := RemoteStudents.new()
+	root.add_child(figures)
+	figures.set_process(false)
+	var steps := {"count": 0}
+	figures.stepped.connect(func(_at: Vector3, _running: bool) -> void: steps["count"] += 1)
+	var remote := {"world": "teach1", "scene": 1, "dead": false, "hiding": false, "seated": false, "running": false, "moving": true, "pose": {"position": [1.0, 0.0, 2.0], "yaw": 0.0}}
+	figures.receive({"players": {"b": remote}}, "a", "teach1", {"b": {"name": "队友"}})
+	figures._process(0.1)
+	check(figures.peers.size() == 1 and steps["count"] == 1, "same-room teammate gets a model and movement sound")
+	figures._process(0.6)
+	check(steps["count"] == 1, "stale motion cannot generate endless teammate footsteps")
+	remote["world"] = "lab3"
+	figures.receive({"players": {"b": remote}}, "a", "teach1", {})
+	check(figures.peers.is_empty(), "different floors cannot leak remote avatars or sounds")
+	remote["world"] = "teach1"
+	remote["hiding"] = true
+	figures.receive({"players": {"b": remote}}, "a", "teach1", {})
+	check(figures.peers.is_empty(), "hidden teammate has no visible remote avatar")
+	figures.queue_free()
 	await process_frame
 	print("LAN UNIT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)

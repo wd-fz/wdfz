@@ -12,6 +12,7 @@ static func validate(data: Dictionary) -> String:
 	if not room.get("members") is Dictionary or actors.size() < 2 or actors.size() > 4 or actors.size() != room["members"].size() or not actors.has(room.get("host")): return "合作成员表无效。"
 	if room.get("difficulty") not in StoryModule.DIFFICULTIES or not room.get("epoch") is String: return "合作规则无效。"
 	if room.get("phase") not in ["loading", "playing", "ended"] or not SaveSchema.is_integer(room.get("capacity"), 2, 4): return "合作房间阶段无效。"
+	if not SaveSchema.is_integer(room.get("tick"), 0, 2147483647): return "合作模拟时钟无效。"
 	var calendar: Dictionary = data["calendar"]
 	if not SaveSchema.number_in(calendar.get("tsec"), 0, 1500) or not SaveSchema.is_integer(calendar.get("day"), 1, 100000) or not SaveSchema.number_in(calendar.get("seconds"), 0, SaveSchema.MAX_SECONDS): return "合作日历无效。"
 	var seats := {}
@@ -25,6 +26,10 @@ static func validate(data: Dictionary) -> String:
 		if not actor_data is Dictionary or not member is Dictionary or not member.get("name") is String or not member.get("connected") is bool or (member.get("talent") != "none" and not TalentModule.DEF.has(member.get("talent"))): return "合作成员资料无效。"
 		if not actor_data.get("session") is Dictionary or not actor_data.get("life") is Dictionary or not actor_data.get("seat") is String: return "合作角色状态无效。"
 		if member.get("state") not in ["loading", "alive", "dead", "departed"] or not SaveSchema.number_in(member.get("remaining"), 0, CooperativeRoom.RESERVATION_SECONDS): return "合作成员阶段无效。"
+		if member.has("participation"):
+			var record: Variant = member["participation"]
+			if not record is Dictionary or not SaveSchema.is_integer(record.get("first_tick"), 0, 2147483647) or not SaveSchema.is_integer(record.get("last_tick"), int(record["first_tick"]), 2147483647): return "合作参与时段无效。"
+			if not SaveSchema.number_in(record.get("seconds"), 0, SaveSchema.MAX_SECONDS) or not SaveSchema.number_in(record.get("alive_seconds"), 0, float(record["seconds"])): return "合作参与时长无效。"
 		for key: String in ["choice", "search", "runtime"]:
 			if not actor_data.get(key) is Dictionary: return "合作角色缺少 " + key
 		if not actor_data.get("events") is Array or actor_data["events"].size() > 64 or not actor_data.get("pending") is Array or actor_data["pending"].size() > 32 or not actor_data.get("terminal") is bool or not actor_data.get("vehicle") is bool: return "合作操作状态无效。"

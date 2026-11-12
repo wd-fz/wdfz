@@ -167,10 +167,17 @@ func persistence() -> void:
 	check(why.is_empty(), "active terminal/quiz/report save validates: " + why)
 	if not why.is_empty(): return
 	var id := int(b.choice["id"])
+	state["room"]["tick"] = 424
 	var restored := CooperativeSimulation.new()
 	root.add_child(restored)
-	restored.setup(sim.room, 99)
+	var reordered := CooperativeRoom.new()
+	reordered.host_id = "a"
+	reordered.phase = "playing"
+	reordered.members = {"b": sim.room.members["b"].duplicate(true), "a": sim.room.members["a"].duplicate(true)}
+	restored.setup(reordered, 99)
 	restored.restore(state)
+	check(restored.room.members["a"]["seat"] == a.own_seat and restored.room.members["b"]["seat"] == b.own_seat, "checkpoint seats belong to stable members regardless of dictionary order")
+	check(restored.room.tick == 424, "saved participation keeps a continuous simulation timeline across new epochs")
 	check(restored.actor("a").terminal and (restored.actor("a").feature(&"phone.network") as PhoneModule).connection != null, "terminal connection restores")
 	check(restored.actor("b").choice["id"] == id and not (restored.shared[&"story.routes"] as RoutesModule)._pending.is_empty(), "pending quiz answer handler restores")
 	check(restored.patrol.reports.size() == 1 and restored.gameplay.termination_owner == "a", "pending report and global countdown owner restore")

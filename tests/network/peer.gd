@@ -32,6 +32,7 @@ var peers_verified := false
 var restore_test := false
 var old_epoch := ""
 var saved_key := ""
+var saved_guest := ""
 var saved_calendar := 0.0
 var screenshot_dir := ""
 var ending_test := false
@@ -171,7 +172,7 @@ func _process(dt: float) -> bool:
 		if input_timer > 0.033 and not ui_mode:
 			input_timer = 0.0
 			seq += 1
-			network.input({"seq": seq, "scene": state["scene"], "x": 0.0, "y": -1.0 if elapsed < 5.0 and not ending_test else 0.0, "yaw": state["session"]["player"]["yaw"] if ending_test else 0.0, "pitch": 0.0, "run": true})
+			network.input({"seq": seq, "scene": state["scene"], "x": 0.0, "y": -1.0 if elapsed < 5.0 and not ending_test and not restore_test else 0.0, "yaw": state["session"]["player"]["yaw"] if ending_test else 0.0, "pitch": 0.0, "run": true})
 		if role == "host":
 			if soak: _soak_scenario()
 			elif restore_test: _restore_host()
@@ -268,7 +269,11 @@ func _touch_panel() -> void:
 
 func _restore_host() -> void:
 	var sim := network.simulation
-	var guest := sim.actor(String(sim.actors.keys()[1]))
+	# JSON sorts dictionary keys; an original member is never an array slot.
+	if saved_guest.is_empty():
+		for id: String in sim.actors:
+			if id != network.local_id: saved_guest = id; break
+	var guest := sim.actor(saved_guest)
 	if stage == 0 and elapsed > 3.0:
 		guest.bag().add("key")
 		sim.inventory.reconcile(guest)
@@ -285,7 +290,7 @@ func _restore_host() -> void:
 		stage = 2
 	elif stage == 3 and elapsed > 11.0:
 		check(network.room.epoch != old_epoch, "restored room discards the old session epoch")
-		check(guest.location() == "lab3" and sim.inventory.owners[guest.id].get("key") == saved_key, "saved world and unique item ownership survive host restart")
+		check(guest.location() == "lab3" and sim.inventory.owners[guest.id].get("key") == saved_key, "saved world and unique item ownership survive host restart: %s / %s" % [guest.location(), sim.inventory.owners[guest.id].get("key")])
 		check((sim.shared[&"story.routes"] as RoutesModule).hacked and sim.calendar.seconds >= saved_calendar, "restored room keeps shared progress and time")
 		check(network.connections.size() == count, "all original members authenticate after host restart")
 		stage = 4

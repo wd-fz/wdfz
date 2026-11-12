@@ -1,8 +1,10 @@
 class_name RemoteStudents
 extends Node3D
 ## Remote avatars interpolate only within their replicated scene; no physical pushing.
+signal stepped(at: Vector3, running: bool)
 var peers: Dictionary = {}
 var samples: Dictionary = {}
+var _steps: Dictionary = {}
 var _time := 0.0
 
 
@@ -28,6 +30,7 @@ func receive(data: Dictionary, local_id: String, world: String, names: Dictionar
 			add_child(body)
 			peers[id] = body
 			samples[id] = []
+			_steps[id] = 0.0
 		var sample := state.duplicate(true)
 		sample["at"] = _time
 		var history: Array = samples[id]
@@ -39,6 +42,7 @@ func receive(data: Dictionary, local_id: String, world: String, names: Dictionar
 			peers[id].queue_free()
 			peers.erase(id)
 			samples.erase(id)
+			_steps.erase(id)
 
 
 func _process(dt: float) -> void:
@@ -59,3 +63,9 @@ func _process(dt: float) -> void:
 		body.position = Vector3(p[0], p[1], p[2]).lerp(Vector3(q[0], q[1], q[2]), t)
 		body.rotation.y = lerp_angle(float(a["pose"]["yaw"]), float(b["pose"]["yaw"]), t)
 		body.get_child(0).position.y = -0.35 if b["seated"] else (sin(_time * (14 if b["running"] else 9)) * 0.035 if b["moving"] else 0.0)
+		if b["moving"] and not b["seated"] and _time - float(history.back()["at"]) < 0.35:
+			_steps[id] = float(_steps[id]) - dt
+			if _steps[id] <= 0.0:
+				_steps[id] = 0.33 if b["running"] else 0.52
+				stepped.emit(body.global_position, bool(b["running"]))
+		else: _steps[id] = 0.0

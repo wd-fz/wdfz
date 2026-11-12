@@ -109,6 +109,20 @@ func alive_ids() -> Array:
 	return ids
 
 
+## Simulation time spent connected, retained across reconnects and checkpoints.
+## Offline reservation and menus after the result are not participation time.
+func record_participation(dt: float) -> void:
+	if phase != "playing" or paused_left > 0.0: return
+	for m: Dictionary in members.values():
+		if not m["connected"] or m["state"] not in ["alive", "dead"]: continue
+		if not m.has("participation"):
+			m["participation"] = {"first_tick": tick, "last_tick": tick, "seconds": 0.0, "alive_seconds": 0.0}
+		var record: Dictionary = m["participation"]
+		record["last_tick"] = tick
+		record["seconds"] += dt
+		if m["state"] == "alive": record["alive_seconds"] += dt
+
+
 func elapsed(dt: float) -> Array:
 	var departed: Array = []
 	if not is_finite(dt) or dt <= 0.0: return departed

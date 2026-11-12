@@ -99,6 +99,7 @@ func host(name: String, who: String, requested_port: int, resume: bool = false) 
 		room.minimum_loaded = 1
 		room.members = prior["members"].duplicate(true)
 		room.difficulty = String(prior["difficulty"])
+		room.capacity = int(prior["capacity"])
 		for id: String in room.members:
 			if room.members[id]["state"] == "departed": continue
 			room.members[id].merge({"ready": id == local_id, "connected": id == local_id, "state": "lobby"}, true)

@@ -275,6 +275,7 @@ func _snapshot(data: Dictionary) -> void:
 		avatars = RemoteStudents.new()
 		avatars.name = "RemoteStudents"
 		app.get_node("World").add_child(avatars)
+		avatars.stepped.connect(_remote_step)
 		_team.show()
 		_seen_event = int(data.get("event_seq", 0))
 		_shown_choice = -1
@@ -436,6 +437,17 @@ func _motion(data: Dictionary) -> void:
 	var p: Array = own["pose"]["position"]
 	var position := Vector3(p[0], p[1], p[2])
 	prediction.reconcile(app.player, position, int(own["ack"]), app.player.enabled and not app.player.seated and not app.player.hiding)
+
+
+func _remote_step(at: Vector3, running: bool) -> void:
+	if not playing() or _lost or app.story().over() or network.room.paused_left > 0.0: return
+	if at.distance_to(app.player.global_position) > 12.0: return
+	var world := app.session.world_id
+	var location := CampusGeometry.to_world(CampusData.rooms().get(world), at.x, at.z)
+	var outdoor := CampusData.layout("out")
+	var surface := AudioFx.surface(world, world == "bell1" and at.y > 0.4, location, outdoor.get("objects", []), float(outdoor.get("SC", 1.0)))
+	# Player footsteps must not produce the patrol's threat captions.
+	app.audio.step_on(surface, 0.8 if running else 0.55, {"pos": at, "self_step": true})
 
 
 func _physics_process(dt: float) -> void:
