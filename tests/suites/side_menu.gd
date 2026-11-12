@@ -145,22 +145,51 @@ func test_boot_and_preview() -> void:
 	_step(ui.boot_splash, ui.boot_splash.reduced_total + 0.1)
 	await _frames(2)
 	check(not ui.boot_playing(), "the calm version ends by itself")
-	# The live campus preview: off by default, never in headless runs, released outside the menu.
+	# The campus panorama behind the menu: off by default, a baked picture panned round, released outside the menu.
 	var preview := ui.menu_preview
-	check(GameSettings.DEFAULTS["menu_orbit"] == 0 and not preview.orbit, "the live orbit is off by default (still picture, saves power)")
+	check(GameSettings.DEFAULTS["menu_orbit"] == 1, "the panorama orbit is on by default (user request 2026-11-12)")
+	var old_path := _test_path.get_base_dir() + "/side-menu-orbit/settings.json"
+	DirAccess.make_dir_recursive_absolute(old_path.get_base_dir())
+	FileAccess.open(old_path, FileAccess.WRITE).store_string(JSON.stringify({"version": 2, "values": {"menu_orbit": 0, "mouse": 130}}))
+	var old := GameSettings.new(old_path)
+	old.load_file()
+	check(old.get_int("menu_orbit") == 1 and old.get_int("mouse") == 130, "older settings files take the new default; other values stay")
+	old.set_value("menu_orbit", 0)
+	old.save_file()
+	var again := GameSettings.new(old_path)
+	again.load_file()
+	check(again.get_int("menu_orbit") == 0, "turning it off after that is kept")
+	DirAccess.remove_absolute(old_path)
+	preview.set_orbit(false)
 	preview.enabled = true
 	preview.begin_load()
-	check(not preview._requested, "with the orbit off nothing 3D is loaded")
+	check(preview.texture == null and preview.material == null, "with the orbit off no panorama is loaded")
+	check(MenuPreview.supported(), "the baked panorama ships with the game")
 	preview.set_orbit(true)
-	check(preview.orbit and (preview._requested == MenuPreview.supported()), "switching it on starts the load where a display exists")
+	check(preview.orbit and preview.ready_to_show() and preview.material is ShaderMaterial, "switching it on loads the panorama picture")
+	var pano := preview.texture
+	check(pano.get_width() >= 4 * pano.get_height() and pano.get_width() >= 2048, "it is a full-circle strip (%dx%d)" % [pano.get_width(), pano.get_height()])
+	check(preview.find_children("*", "SubViewport", true, false).is_empty() and preview.get_child_count() == 0, "nothing 3D: no viewport, no campus, no camera behind the menu")
+	preview.size = Vector2(1280, 720)
+	preview._layout()
+	var span := float((preview.material as ShaderMaterial).get_shader_parameter("span"))
+	check(is_equal_approx(span, preview.tall * pano.get_height() * 1280.0 / (720.0 * pano.get_width())), "the visible arc follows the screen's aspect without stretching")
+	var start := preview.angle
+	preview._process(15.0)
+	check(is_equal_approx(fposmod(preview.angle - start, 1.0), 15.0 / preview.orbit_seconds) and is_equal_approx(float((preview.material as ShaderMaterial).get_shader_parameter("yaw")), preview.angle), "it pans one turn per orbit period")
+	preview.still = true
+	var held := preview.angle
+	preview._process(5.0)
+	check(preview.angle == held, "reduced motion holds one angle")
+	preview.still = false
 	preview.set_orbit(false)
-	check(not preview._requested and not is_instance_valid(preview.world), "switching it off releases everything")
+	check(preview.texture == null and preview.material == null and preview.modulate.a == 0.0, "switching it off releases the picture")
 	check(preview != null and preview.get_parent() == ui.menu, "the preview lives in the menu layer")
-	check(MenuPreview.supported() == (DisplayServer.get_name() != "headless"), "headless runs keep the static menu photo")
 	var c := MenuPreview.orbit_center(CampusData.layout("out"))
-	check(is_finite(c.x) and is_finite(c.z) and c != Vector3.ZERO, "the orbit centres on the lawn in front of the teaching building")
+	check(is_finite(c.x) and is_finite(c.z) and c != Vector3.ZERO, "the panorama's eye point is the lawn in front of the teaching building")
+	preview.set_orbit(true)
 	ui.set_mode("play")
-	check(not is_instance_valid(preview.world) and preview.modulate.a == 0.0, "leaving the menu frees the preview world")
+	check(preview.texture == null and preview.modulate.a == 0.0, "leaving the menu drops the panorama")
 	ui.queue_free()
 	await _frames(2)
 
@@ -172,7 +201,7 @@ func test_app_boot() -> void:
 	root.add_child(app)
 	await _frames(3)
 	check(not app.ui.boot_playing(), "embedded apps (tests, capture scripts) skip the boot animation")
-	check(not app.ui.menu_preview.enabled and not app.ui.menu_preview._requested, "embedded apps never start the live preview's background load")
+	check(not app.ui.menu_preview.enabled and app.ui.menu_preview.texture == null, "embedded apps keep the static photo (no panorama)")
 	app.ui._last_input_ms = -100000
 	app._menu_frame_cap()
 	check(not app._menu_fps_capped, "embedded apps are never frame-capped on the menu")
@@ -185,7 +214,7 @@ func test_app_boot() -> void:
 	root.add_child(shown)
 	await _frames(3)
 	check(shown.ui.boot_playing() and shown.ui.menu.visible and shown.session == null, "the launched app opens on the boot animation over the menu")
-	check(shown.ui.menu_preview.enabled, "the launched app turns the live preview on")
+	check(shown.ui.menu_preview.enabled, "the launched app turns the panorama on (shown when the setting allows)")
 	var shown_splash := shown.ui.boot_splash
 	shown_splash.set_process(false)
 	shown_splash.skip()

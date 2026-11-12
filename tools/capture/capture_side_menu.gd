@@ -1,6 +1,6 @@
 extends SceneTree
 ## 开机动画与侧边主菜单: boot animation frames, the panel tearing open on entry, the open panel with the peephole,
-## an expanded group, the green pulse, reduced motion, 21:9, and the optional live orbit (setting 主菜单实景环绕).
+## an expanded group, the green pulse, reduced motion, 21:9, and the optional panorama orbit (setting 主菜单实景环绕).
 ## xvfb-run -a godot --windowed --path . --rendering-driver vulkan --script res://tools/capture/capture_side_menu.gd
 ## Output: build/previews/side_menu/. SHOTS=boot,menu,wide,reduced,orbit (default: all).
 const APP := preload("res://game/app/app.tscn")
@@ -48,15 +48,15 @@ func _run() -> void:
 	if want("orbit"):
 		_app._setting_changed("menu_orbit", 1)
 		var pv := ui.menu_preview
-		for _i in 400:
-			await process_frame
-			if pv.world != null: break
-		for _i in 60:
+		pv.enabled = true
+		pv.set_orbit(true)
+		for _i in 120:
 			await process_frame
 		pv.still = true
-		for a: float in [0.0, 1.6, 3.2, 4.8]:
+		for a: float in [0.0, 0.25, 0.5, 0.75]:
 			pv.angle = a
-			await shot("orbit-%.1f" % a, 20)
+			pv._process(0.0)
+			await shot("orbit-%.2f" % a, 6)
 		pv.still = false
 		_app._setting_changed("menu_orbit", 0)
 	if want("menu"):

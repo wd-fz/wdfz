@@ -35,7 +35,8 @@ jobs:
     name: Regression (${{ matrix.name }})
     needs: structure
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    # The windowed suites take 38-60 min on shared runners (software Vulkan); their own budget is 90 min.
+    timeout-minutes: 105
     strategy:
       fail-fast: false
       matrix:

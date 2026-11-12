@@ -8,20 +8,20 @@ extends RefCounted
 ## sub 0/1/2 caption size · distortion 0 off / 1 reduced / 2 full · reduce_flash 1/0 · bright 50–150 ·
 ## grain 1/0 · mouse, touch 25–250 look sensitivity % · text 85–150 % · touch_size 85–125 % ·
 ## quality 0–4 presets / 5 custom; GraphicsProfile expands independent parameters.
-## fps_limit 0 unlimited / 20–360; VSync is independent. menu_orbit 1/0 (default off): live orbiting campus behind
-## the main menu instead of the still picture (costs power). auto_land rotates between landscape sides only.
+## fps_limit 0 unlimited / 20–360; VSync is independent. menu_orbit 1/0 (default on since 2026-11-12, file version 3):
+## a baked campus panorama panned round behind the main menu instead of the still picture (no live rendering). auto_land rotates between landscape sides only.
 ## Desktop defaults to windowed; Android always uses immersive fullscreen.
 ## The Web "graphics mode" (WebGL / WebGPU) is replaced by Godot's renderer. Touch layout is
 ## stored separately from numeric settings and from gameplay saves.
 
-const VERSION := 2
+const VERSION := 3
 const DEFAULTS := {"vol": 70, "amb": 1, "captions": 1, "sub": 1, "distortion": 2, "reduce_flash": 0, "bright": 100, "grain": 1,
 	"mouse": 100, "touch": 100, "text": 100, "touch_size": 100, "quality": 2, "auto_land": 1, "full_screen": 0, "shake": 1,
 	"fps_limit":0, "vsync":1, "render_scale":100, "model_detail":2, "lighting_detail":2,
 	"particle_detail":2, "upscaler":0, "msaa":0, "fxaa":1, "lod_detail":2,
 	"sun_shadows":1, "sun_shadow_detail":1, "shadow_resolution":2, "shadow_filter":2,
 	"lamp_shadows":1, "window_shadows":1, "torch_shadows":1, "window_light":1,
-	"ssao":1, "ssao_half":1, "glow":1, "volumetric_fog":0, "post_detail":1, "bloom":0, "grain_strength":100, "menu_orbit":0}
+	"ssao":1, "ssao_half":1, "glow":1, "volumetric_fog":0, "post_detail":1, "bloom":0, "grain_strength":100, "menu_orbit":1}
 const LIMITS := {"vol": [0,100], "bright": [50,150], "mouse": [25,250], "touch": [25,250], "text": [85,150], "touch_size": [85,125],
 	"fps_limit":[0,360], "render_scale":[50,150], "lamp_shadows":[0,4], "window_shadows":[0,4], "bloom":[0,100], "grain_strength":[0,100]}
 const CHOICES := {"amb":2, "captions":3, "sub":3, "distortion":3, "reduce_flash":2, "grain":2, "quality":6, "auto_land":2, "full_screen":2, "shake":2,
@@ -103,6 +103,10 @@ func load_file(touch_device: bool = false) -> bool:
 	wuda_armed = parsed is Dictionary and parsed.get("wuda_armed") is bool and parsed["wuda_armed"]
 	rules_armed = parsed is Dictionary and parsed.get("rules_armed") is bool and parsed["rules_armed"]
 	values = normalize(parsed.get("values", {}) if parsed is Dictionary else {})
+	# Files before version 3 stored the menu orbit's old default (off, chosen for the cost of the live render).
+	# The orbit is a panned picture now and on by default (user request 2026-11-12): older files take the new default.
+	if parsed is Dictionary and float(parsed.get("version", 0) if (parsed.get("version", 0) is int or parsed.get("version", 0) is float) else 0) < 3:
+		values["menu_orbit"] = DEFAULTS["menu_orbit"]
 	_enforce_platform()
 	touch_layout = TouchLayout.normalize(parsed.get("touch_layout", {}) if parsed is Dictionary else {})
 	bindings = KeyBindings.normalize(parsed.get("bindings", {}) if parsed is Dictionary else {})

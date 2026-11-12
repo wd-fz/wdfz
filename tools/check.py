@@ -33,7 +33,7 @@ def main():
                                                                       "--rendering-driver", "vulkan", "--display-driver", options.display_driver]
                 output = run(display, [ENGINE, *args, "--path", str(ROOT), "--audio-driver", "Dummy",
                                       "--fixed-fps", "60", "--script", "res://tests/run_tests.gd"], reports,
-                             timeout=3600 if display == "windowed" else 900)
+                             timeout=5400 if display == "windowed" else 900)
                 result = re.search(r"FRAMEWORK TESTS: (\d+) checks, 0 failures", output)
                 if not result or int(result[1]) == 0:
                     raise RuntimeError(f"{display}: test runner did not confirm a completed, nonempty suite")
