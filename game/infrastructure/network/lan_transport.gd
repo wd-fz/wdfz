@@ -72,6 +72,17 @@ func close() -> void:
 	_budgets.clear()
 
 
+func expire_peer(id: int) -> void:
+	if not serving or peer == null or not api.get_peers().has(id): return
+	var socket := peer.get_peer(id)
+	# SceneMultiplayer, ENetMultiplayerPeer and ENet each keep peer state.
+	# disconnect_peer(force=true) only removes the Godot map; it still waits
+	# for a network ACK. Expired tunnels cannot ACK, so reset the socket too.
+	api.disconnect_peer(id)
+	peer.disconnect_peer(id, true)
+	if socket != null: socket.peer_disconnect_now()
+
+
 func send_control(id: int, data: Dictionary) -> void:
 	if not can_send(id): return
 	var packet := LanProtocol.encode(data)

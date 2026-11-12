@@ -54,7 +54,6 @@ jobs:
 
   interface:
     name: LAN interface (${{ matrix.renderer }}, ${{ matrix.display }})
-    needs: authority
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:

@@ -19,6 +19,22 @@ def free_port():
         return sock.getsockname()[1]
 
 
+def stop_fixture_instances(scratch):
+    # The official launcher detaches into another process group and intentionally
+    # stays idle after the game exits. Only stop instances carrying our private
+    # fixture environment; never terminate a player's shared Terracotta process.
+    for entry in Path('/proc').iterdir():
+        if not entry.name.isdigit(): continue
+        try:
+            environment = dict(part.split(b'=', 1) for part in (entry / 'environ').read_bytes().split(b'\0') if b'=' in part)
+            temporary = Path(os.fsdecode(environment.get(b'TMPDIR', b'')))
+            if temporary.parent != scratch or environment.get(b'ET_BIND_DEVICE') != b'false': continue
+            executable = os.readlink(entry / 'exe').removesuffix(' (deleted)')
+            if Path(executable).name not in ('terracotta', 'easytier-core', 'easytier-cli'): continue
+            os.kill(int(entry.name), signal.SIGTERM)
+        except (OSError, ProcessLookupError): pass
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--unit', action='store_true')
@@ -33,6 +49,7 @@ def main():
         return
     binary = terracotta.prepare('linux')
     scratch = reports / 'private-fixture'
+    stop_fixture_instances(scratch)
     if scratch.exists(): shutil.rmtree(scratch)
     scratch.mkdir()
     processes, logs = [], []
@@ -83,6 +100,9 @@ def main():
             time.sleep(.2)
         summaries = [json.loads((scratch / (name + '-summary.json')).read_text()) for name in ['host', *[f'guest-{i}' for i in range(1, args.players)]]]
         if any(s['failures'] or s['checks'] < 3 for s in summaries): raise RuntimeError('Remote assertions failed')
+        for name in ['host', *[f'guest-{i}' for i in range(1, args.players)]]:
+            output = (reports / (name + '.log')).read_text()
+            if 'ERROR:' in output: raise RuntimeError('Godot error in remote fixture: ' + name)
         (reports / 'summary.json').write_text(json.dumps({'passed': True, 'transport': 'official Terracotta 0.4.2 / EasyTier / ENet',
             'rendezvous': 'local fixture; does not verify internet NAT traversal', 'peers': summaries}, indent=2) + '\n')
         print('TERRACOTTA INTEGRATION: real tunnel, UDP gameplay, reconnect and cleanup passed', flush=True)
@@ -95,6 +115,7 @@ def main():
                 try: process.wait(timeout=5)
                 except subprocess.TimeoutExpired: process.kill(); process.wait()
         # Do not publish room codes, addresses or upstream logs from this private directory.
+        stop_fixture_instances(scratch)
         for log in logs: log.close()
 
 

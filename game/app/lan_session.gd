@@ -142,6 +142,7 @@ func _transport_closed(reason: String) -> void:
 
 func _hello() -> void:
 	transport.send_control(1, {"kind": "hello", "protocol": LanProtocol.VERSION, "rules": LanProtocol.RULES, "content": _fingerprint, "name": nickname, "token": reconnect_token})
+	if _hello_deadline > 0.0: _hello_again_at = Time.get_ticks_msec() / 1000.0 + 1.0
 
 
 func ready(value: bool, gift: String) -> void:
@@ -425,9 +426,10 @@ func _process(dt: float) -> void:
 		if _clock > _hello_deadline:
 			_lost("重连尚未完成；请确认原角色已断线，稍后重试。" if reconnect_token != "" else "房主没有响应。检查网络后可重连原角色。")
 			return
-		# A full four-player host can still have three dead ENet slots while
-		# their heartbeats expire. Retry the socket too, not only the hello RPC.
-		if _transport_retry_at > 0.0 and _clock >= _transport_retry_at and (transport.peer == null or transport.peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED):
+		# Rebuilding a tunnel can leave a nominally connected UDP path silent.
+		# Refresh its socket if no handshake replies arrive, without resetting the
+		# overall deadline or evicting an authenticated member on the host.
+		if _transport_retry_at > 0.0 and _clock >= _transport_retry_at and (transport.peer == null or transport.peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED or _clock - _last_heard > 4.0):
 			_transport_retry_at = _clock + 4.0
 			var target := LanProtocol.address(address)
 			transport.join(String(target["ip"]), int(target["port"]))
@@ -450,11 +452,11 @@ func _process(dt: float) -> void:
 		if peer_id == 1: continue
 		var timeout := 60.0 if room.phase == "loading" else 12.0
 		if _clock - float(_peer_heard[peer_id]) > timeout:
-			transport.peer.disconnect_peer(peer_id, true)
+			transport.expire_peer(peer_id)
 			_peer_left(peer_id)
 	for peer_id: int in _peers_waiting.keys():
 		if _clock >= float(_peers_waiting[peer_id]):
-			transport.peer.disconnect_peer(peer_id, true)
+			transport.expire_peer(peer_id)
 			_peers_waiting.erase(peer_id)
 	var paused := room.paused_left > 0.0
 	for id: String in room.elapsed(wall_dt):
