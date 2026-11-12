@@ -38,16 +38,20 @@ def prepare(platform):
     if platform == 'android':
         shutil.copy2(archive, target)
     else:
-        # Extract just the expected regular executable. No archive paths/symlinks are trusted.
+        # Extract only the pinned executable and its official Windows runtime.
+        # No archive paths or symlinks are trusted.
         member_name = f'terracotta-{VERSION}-{platform}-x86_64' + ('.exe' if platform == 'windows' else '')
-        temporary = target.with_suffix('.verified-part')
+        members = {member_name: target}
+        if platform == 'windows': members['VCRUNTIME140.DLL'] = directory / 'VCRUNTIME140.DLL'
         with tarfile.open(archive) as package:
-            member = package.getmember(member_name)
-            if not member.isfile():
-                raise RuntimeError('Terracotta asset is not a regular file')
-            with package.extractfile(member) as source, temporary.open('wb') as output:
-                shutil.copyfileobj(source, output)
-        temporary.replace(target)
+            for member_name, destination in members.items():
+                member = package.getmember(member_name)
+                if not member.isfile():
+                    raise RuntimeError('Terracotta asset is not a regular file')
+                temporary = destination.with_suffix('.verified-part')
+                with package.extractfile(member) as source, temporary.open('wb') as output:
+                    shutil.copyfileobj(source, output)
+                temporary.replace(destination)
         target.chmod(0o755)
     return target
 
@@ -56,6 +60,7 @@ def bundle(platform, directory):
     source = prepare(platform)
     directory.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, directory / source.name)
+    if platform == 'windows': shutil.copy2(source.parent / 'VCRUNTIME140.DLL', directory / 'VCRUNTIME140.DLL')
     for name in ('LICENSE', 'NOTICE.md'):
         shutil.copy2(ROOT / 'third_party/terracotta' / name, directory / name)
     (directory / 'dependency.json').write_text(json.dumps({'version': VERSION, 'source': SOURCE,

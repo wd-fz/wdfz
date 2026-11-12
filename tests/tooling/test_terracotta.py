@@ -1,16 +1,43 @@
+import hashlib
+import io
+import shutil
 import sys
+import tarfile
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools'))
 from ci import terracotta_android
+import terracotta
 
 
 class TerracottaBuildTests(unittest.TestCase):
+    def test_windows_archive_bundles_its_required_runtime(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cache = root / 'build/deps/terracotta'
+            cache.mkdir(parents=True)
+            suffix = 'windows-x86_64-pkg.tar.gz'
+            archive = cache / f'terracotta-{terracotta.VERSION}-{suffix}'
+            with tarfile.open(archive, 'w:gz') as package:
+                for name, content in ((f'terracotta-{terracotta.VERSION}-windows-x86_64.exe', b'exe fixture'), ('VCRUNTIME140.DLL', b'runtime fixture')):
+                    entry = tarfile.TarInfo(name)
+                    entry.size = len(content)
+                    package.addfile(entry, io.BytesIO(content))
+            shutil.copytree(ROOT / 'third_party/terracotta', root / 'third_party/terracotta')
+            digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+            output = root / 'package/terracotta'
+            with patch.object(terracotta, 'ROOT', root), patch.dict(terracotta.ASSETS, {'windows': (suffix, digest)}):
+                terracotta.bundle('windows', output)
+            self.assertEqual((output / 'terracotta.exe').read_bytes(), b'exe fixture')
+            self.assertEqual((output / 'VCRUNTIME140.DLL').read_bytes(), b'runtime fixture')
+            self.assertTrue((output / 'LICENSE').is_file())
+
     def test_injection_preserves_launcher_and_is_idempotent(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
