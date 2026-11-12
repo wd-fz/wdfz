@@ -34,7 +34,7 @@ func _run() -> void:
 	app.ui.cut_mode(true)
 	app.player.set_pitch(0)
 	var which: Array=OS.get_cmdline_user_args()
-	var archive:=not which.is_empty() and which[0]=="archive"
+	var archive: bool = not which.is_empty() and which[0]=="archive"
 	if archive: which=which.slice(1)
 	if which.is_empty(): which=DeathCG.CAUSES
 	for cause: String in which:
