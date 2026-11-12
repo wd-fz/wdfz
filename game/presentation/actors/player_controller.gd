@@ -73,20 +73,11 @@ func _physics_process(delta: float) -> void:
 		_update_focus()
 		return
 	var direction := Vector2.ZERO if typing else (Input.get_vector("move_left", "move_right", "move_forward", "move_back") + _touch_move).limit_length()
-	var world_direction := global_basis * Vector3(direction.x, 0.0, direction.y)
 	# The stick sets direction/strength; only the explicit run control selects speed.
 	var want_run := (Input.is_action_pressed("sprint") or _touch_sprint) and direction.length() > 0.08
 	sprinting = want_run and can_sprint
-	var speed := (sprint_speed if sprinting else walk_speed) * speed_multiplier
-	velocity.x = world_direction.x * speed
-	velocity.z = world_direction.z * speed
-	if not is_on_floor():
-		velocity += (Vector3.DOWN * gravity_override if gravity_override > 0.0 else get_gravity()) * delta
-		velocity.y = maxf(velocity.y, -max_fall_speed)
-	else:
-		velocity.y = 0.0
 	var before := global_position
-	move_and_slide()
+	CharacterMotor.advance(self, direction, global_rotation.y, sprinting, speed_multiplier, delta, gravity_override if gravity_override > 0.0 else -get_gravity().y, max_fall_speed, walk_speed, sprint_speed)
 	moving = Vector2(global_position.x - before.x, global_position.z - before.z).length() > 0.0001 / 9.0
 	if not moving:
 		sprinting = false

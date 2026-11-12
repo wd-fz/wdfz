@@ -261,6 +261,32 @@ func _seat(id: String) -> Dictionary:
 	return {}
 
 
+## Room composition assigns a different existing seat without changing single-player data.
+func assign_own_seat(id: String) -> bool:
+	var seat := _seat(id)
+	if seat.is_empty():
+		var parts := id.split(":")
+		if parts.size() != 3 or parts[0] != "teach1" or not parts[1].is_valid_int() or not parts[2].is_valid_int(): return false
+		var c := int(parts[1])
+		if c < 49 or c > 51 or int(parts[2]) != 11: return false
+		var anchor := _seat("teach1:48:11")
+		if anchor.is_empty(): return false
+		seat = anchor.duplicate(true)
+		seat["c"] = c
+		seat["seat_id"] = id
+		var dx := (c - 48) * float(_rooms["teach1"]["tw"])
+		for kind: String in ["seated", "stand"]:
+			seat[kind]["x"] = float(seat[kind]["x"]) + dx
+			seat[kind]["scene_x"] = float(seat[kind]["scene_x"]) + dx * CampusGeometry.U2M
+		_rooms = _rooms.duplicate()
+		_rooms["teach1"] = _rooms["teach1"].duplicate()
+		_rooms["teach1"]["seats"] = _rooms["teach1"]["seats"].duplicate()
+		_rooms["teach1"]["seats"].append(seat)
+	_campus = _campus.duplicate()
+	_campus["own_seat"] = {"room": id.get_slice(":", 0), "seatId": id}
+	return true
+
+
 func in_classroom_here(world_id: String, w: Vector2) -> bool:
 	var r: Variant = _room(world_id)
 	if r == null or r["host"] != "teach" or r.get("floor") == null or int(r["floor"]) < 1 or int(r["floor"]) > 5 or r["flags"].get("stairwell", false):

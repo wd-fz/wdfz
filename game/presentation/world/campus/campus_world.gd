@@ -40,10 +40,15 @@ var duty: DutyRoster
 var visual_tier := -1
 var render_options: Dictionary = {}
 var visual_ground:=VisualGround.new()
+## Authority worlds use exactly the same collision geometry, without loading any meshes.
+var collision_only := false
 
 
 func _ready() -> void:
 	layout = CampusData.layout(scene_id)
+	if collision_only:
+		_build_collision()
+		return
 	_build_model()
 	_build_collision()
 	_build_lighting()

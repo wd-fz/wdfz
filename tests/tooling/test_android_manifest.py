@@ -62,9 +62,9 @@ class AndroidManifestTests(unittest.TestCase):
                 verify_launcher_orientation(bad)
 
     def test_public_release_must_not_be_debuggable(self):
-        manifest = "package: name='org.wdfz.godot' versionCode='4' versionName='0.3.0'\nsdkVersion:'24'\ntargetSdkVersion:'36'\nnative-code: 'arm64-v8a'\n"
+        manifest = "package: name='org.wdfz.godot' versionCode='4' versionName='0.3.0'\nsdkVersion:'24'\ntargetSdkVersion:'36'\nnative-code: 'arm64-v8a'\nuses-permission: name='android.permission.INTERNET'\n"
         verify_manifest(manifest,True)
-        for bad in [manifest+"application-debuggable", manifest.replace("0.3.0","0.1-debug"), manifest.replace("org.wdfz.godot'","org.wdfz.godot.debug'"), manifest.replace("arm64-v8a","x86")]:
+        for bad in [manifest.replace("uses-permission: name='android.permission.INTERNET'", ""), manifest+"application-debuggable", manifest.replace("0.3.0","0.1-debug"), manifest.replace("org.wdfz.godot'","org.wdfz.godot.debug'"), manifest.replace("arm64-v8a","x86")]:
             with self.subTest(bad=bad), self.assertRaises(RuntimeError):
                 verify_manifest(bad,True)
 

@@ -29,6 +29,8 @@ static func tiers_available() -> Array:
 	return out
 
 static var _cache: Dictionary = {}
+static var _room_ids: PackedStringArray = []
+static var _rooms: Dictionary = {}
 
 
 static func layout(id: String) -> Dictionary:
@@ -68,6 +70,7 @@ static func archive() -> Dictionary:
 
 ## Every room id that has both a layout and an exported model.
 static func room_ids() -> PackedStringArray:
+	if not _room_ids.is_empty(): return _room_ids
 	var result := PackedStringArray()
 	for file: String in DirAccess.get_files_at(LAYOUT_DIR):
 		if not file.ends_with(".json"):
@@ -78,14 +81,14 @@ static func room_ids() -> PackedStringArray:
 		if ResourceLoader.exists(SCENE_DIR + id + ".glb"):
 			result.append(id)
 	result.sort()
+	_room_ids = result
 	return result
 
 
 static func rooms() -> Dictionary:
-	var result := {}
-	for id: String in room_ids():
-		result[id] = layout(id)
-	return result
+	if _rooms.is_empty():
+		for id: String in room_ids(): _rooms[id] = layout(id)
+	return _rooms
 
 
 static var _rules: CampusModule
@@ -150,6 +153,8 @@ static func make_patrol() -> PatrolModule:
 
 ## Drop the shared module/navigation instances (called when the app or a test run ends).
 static func clear_caches() -> void:
+	_room_ids = []
+	_rooms = {}
 	_rules = null
 	_lift_geometry = null
 	_maze_geometry = null

@@ -46,6 +46,7 @@ var play_boot := false
 var wuda_roll: Callable = func() -> float: return randf()
 var _school_taps: Array = []
 var _graphics_applied: Dictionary = {}
+var lan: LanFlow
 
 
 func _ready() -> void:
@@ -103,7 +104,9 @@ func _ready() -> void:
 	ui.hot_requested.connect(_touch_hot)
 	ui.bag_closed.connect(_close_bag)
 	ui.debug_requested.connect(_toggle_debug)
-	ui.dlc_requested.connect(rules_dlc_flow.menu)
+	ui.dlc_requested.connect(func() -> void:
+		if is_instance_valid(lan) and lan.active(): ui.show_notice("合作模式暂不开放 DLC；可回主菜单进入单人体验。")
+		else: rules_dlc_flow.menu())
 	ui.fullscreen_requested.connect(func() -> void: _setting_changed("full_screen", 1 - settings.get_int("full_screen")))
 	ui.notes_requested.connect(_show_notes)
 	ui.results_requested.connect(_open_results)
@@ -153,6 +156,10 @@ func _ready() -> void:
 	ui.item_drop_requested.connect(_drop_item)
 	ui.boot_cue.connect(func(id: String) -> void: audio.play(id))
 	return_to_menu()
+	lan = LanFlow.new()
+	lan.name = "Lan"
+	lan.app = self
+	add_child(lan)
 	if play_boot or get_tree().current_scene == self:
 		ui.menu_preview.enabled = true
 		ui.play_boot(settings.get_int("reduce_flash") == 1)
@@ -285,6 +292,7 @@ func _save_profile(from: AchievementsModule) -> void:
 
 ## Report one fact; unlocked entries are announced and the profile is stored.
 func fact(f: Dictionary) -> void:
+	if is_instance_valid(lan) and lan.active(): return
 	if is_instance_valid(debug_flow): debug_flow.observe(f)
 	var ach := achievements()
 	if ach == null:
@@ -727,6 +735,9 @@ func _dead() -> bool:
 
 
 func save_game(quiet: bool = false) -> void:
+	if is_instance_valid(lan) and lan.playing():
+		lan.network.save()
+		return
 	if session == null or not session.running or _dead() or not speedrun.run.is_empty():
 		return
 	var snapshot := session.capture(player.capture_pose())
@@ -739,6 +750,9 @@ func save_game(quiet: bool = false) -> void:
 
 
 func load_game() -> void:
+	if is_instance_valid(lan) and lan.active():
+		ui.show_notice("合作存档由房主在大厅恢复。")
+		return
 	speedrun.disarm()
 	ui.speedrun_text = ""
 	var result := saves.read()
@@ -779,6 +793,9 @@ func _restore_loaded_world() -> void:
 
 
 func pause_game() -> void:
+	if is_instance_valid(lan) and lan.playing():
+		lan.pause()
+		return
 	if opening_busy() or is_instance_valid(maze_flow.cut):
 		return
 	# Game.pause: no pause menu once dead (a death cannot be saved around).
@@ -801,6 +818,9 @@ func pause_game() -> void:
 
 
 func resume_game() -> void:
+	if is_instance_valid(lan) and lan.playing():
+		lan.resume()
+		return
 	if session == null or not session.running or _dead():
 		return
 	get_tree().paused = false
@@ -833,6 +853,7 @@ func _cancel_cinematics() -> void:
 
 
 func return_to_menu() -> void:
+	if is_instance_valid(lan) and lan.active(): lan.stop()
 	_cancel_cinematics()
 	_last_result = {}
 	_fake_people_clear()
@@ -895,6 +916,7 @@ func return_to_menu() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if is_instance_valid(lan) and lan.active(): return
 	if is_instance_valid(archive_flow) and archive_flow.active(): return
 	if is_instance_valid(debug_flow) and debug_flow.blocks_simulation(): return
 	if _choice_left > 0.0 and ui.choice_open():
@@ -1075,6 +1097,9 @@ func _lift_crowd_events() -> void:
 
 
 func _campus_interact() -> void:
+	if is_instance_valid(lan) and lan.playing():
+		lan.send("interact")
+		return
 	var rules := campus()
 	if session == null or get_tree().paused or rules == null or not rules.knows(session.world_id):
 		return
@@ -1523,6 +1548,9 @@ func _bag_entries() -> Array:
 
 
 func _touch_torch() -> void:
+	if is_instance_valid(lan) and lan.playing():
+		lan.send("item", {"item": "torch"})
+		return
 	if is_instance_valid(debug_flow) and debug_flow.blocks_simulation(): return
 	if session == null or not player.enabled or story().over():
 		return
@@ -1533,6 +1561,9 @@ func _touch_torch() -> void:
 
 
 func _touch_hot(index: int) -> void:
+	if is_instance_valid(lan) and lan.playing():
+		if index in [0, 1] and items().hot[index] != null: lan.send("item", {"item": items().hot[index]})
+		return
 	if is_instance_valid(debug_flow) and debug_flow.blocks_simulation(): return
 	if session==null or get_tree().paused or story().over() or (not player.enabled and not knife_flow.captured()):
 		return
@@ -1544,6 +1575,9 @@ func _touch_hot(index: int) -> void:
 
 
 func _open_manual() -> void:
+	if is_instance_valid(lan) and lan.playing():
+		lan.manual()
+		return
 	if is_instance_valid(debug_flow) and debug_flow.blocks_simulation(): return
 	if knife_flow.captured() and not story().over():
 		_open_bag()
@@ -1584,6 +1618,10 @@ func _close_bag() -> void:
 
 
 func _use_item(id: String) -> void:
+	if is_instance_valid(lan) and lan.playing():
+		ui.hide_bag()
+		lan.send("item", {"item": id})
+		return
 	var bag := items()
 	if bag == null:
 		return
@@ -1597,6 +1635,9 @@ func _use_item(id: String) -> void:
 
 
 func _drop_item(id: String) -> void:
+	if is_instance_valid(lan) and lan.playing():
+		lan.send("drop", {"item": id})
+		return
 	var bag := items()
 	if bag == null or _dead() or not bag.drop(id):
 		return
@@ -1674,6 +1715,9 @@ func _pick_up_ground(index: int) -> void:
 
 
 func _set_hot(index: int, id: String) -> void:
+	if is_instance_valid(lan) and lan.playing():
+		lan.send("hot", {"index": index, "item": id})
+		return
 	var bag := items()
 	if bag != null and bag.set_hot(index, id):
 		ui.show_notice("「%s」放到快捷栏 %d" % [bag.item_name(id), index + 1])
@@ -2679,6 +2723,9 @@ func _show_notes(query: String = "") -> void:
 
 
 func _notes_focus(route: String) -> void:
+	if is_instance_valid(lan) and lan.playing():
+		lan.send("notes_focus", {"route": route})
+		return
 	var inv := investigation()
 	if inv != null and inv.set_focus(route):
 		save_game()
@@ -2841,6 +2888,9 @@ func _phone_danger() -> bool:
 
 
 func _phone_select(app: String) -> void:
+	if is_instance_valid(lan) and lan.playing() and app in ["plane", "camera", "album"]:
+		ui.show_notice("手机小游戏与相册暂仅支持单人；合作中可使用网络与终端。")
+		app = "home"
 	var net := phone()
 	if app == "plane" and _phone_danger():
 		ui.show_notice("遇险时不能玩纸飞机")
@@ -2850,6 +2900,9 @@ func _phone_select(app: String) -> void:
 
 
 func _phone_action(action: String) -> void:
+	if is_instance_valid(lan) and lan.playing():
+		lan.send("phone", {"operation": action})
+		return
 	var net := phone()
 	net.set_context(_phone_context())
 	match action:
@@ -2882,6 +2935,7 @@ func _camera_context() -> Dictionary:
 
 ## camera.js shoot: the lens image without the interface, the flash, the extra layer, then the album.
 func _shoot() -> void:
+	if is_instance_valid(lan) and lan.playing(): return
 	var cam := camera()
 	if cam == null or _shooting or not phone_open() or story().dead:
 		return
@@ -3368,7 +3422,10 @@ func _show_classmates(mates: ClassmatesModule, room: Variant, me: Vector2, dt: f
 		if is_instance_valid(_mates_nodes): _mates_nodes.queue_free()
 		_mates_nodes = ClassmatesView.new()
 		world.add_child(_mates_nodes)
-		_mates_nodes.build(room,mates.layout(key)["seats"])
+		var seats: Array = mates.layout(key)["seats"]
+		if is_instance_valid(lan) and lan.playing() and key == "teach1":
+			seats = seats.filter(func(t: Vector2i) -> bool: return t.y != 11 or t.x < 48 or t.x > 51)
+		_mates_nodes.build(room,seats)
 	var bell: bool = broadcast() != null and broadcast().b["phase"] == "bell"
 	var stare: bool = anomaly() != null and anomaly().an.get("active",false) and anomaly().an.get("id") == "stare"
 	_mates_nodes.advance(dt,me,school().viol,mates.state.get("door"),stare,bell,patrol().nav if patrol()!=null else null)
@@ -3874,6 +3931,9 @@ func _day_step(_delta: float) -> void:
 
 
 func _lesson_press() -> void:
+	if is_instance_valid(lan) and lan.playing():
+		lan.send("lesson")
+		return
 	if is_instance_valid(debug_flow) and debug_flow.blocks_simulation(): return
 	var dm := days()
 	if dm == null or ui.choice_open():
@@ -4321,6 +4381,9 @@ func _paint_terminal() -> void:
 
 
 func _terminal_command(line: String) -> void:
+	if is_instance_valid(lan) and lan.playing():
+		lan.send("terminal", {"line": line})
+		return
 	var net := phone()
 	if net == null:
 		return
@@ -4331,6 +4394,11 @@ func _terminal_command(line: String) -> void:
 
 
 func _terminal_closed() -> void:
+	if is_instance_valid(lan) and lan.playing():
+		ui.hide_terminal()
+		lan.send("cancel")
+		lan.resume()
+		return
 	ui.hide_terminal()
 	if phone() != null:
 		phone().terminal_open = false
@@ -5064,6 +5132,9 @@ func _open_choice(choice: Dictionary) -> void:
 
 
 func _choice_made(index: int) -> void:
+	if is_instance_valid(lan) and lan.playing():
+		lan.choice(index)
+		return
 	_choice_left = 0.0
 	ui.hide_choice()
 	if index == -2:
@@ -5078,6 +5149,9 @@ func _choice_made(index: int) -> void:
 
 
 func _lift_close() -> void:
+	if is_instance_valid(lan) and lan.playing():
+		lan.send("lift_close")
+		return
 	var lift := elevator()
 	var room: Variant = campus().room(session.world_id) if campus() != null and session != null else null
 	if lift == null or room == null:
@@ -5134,6 +5208,9 @@ func _location_name() -> String:
 
 
 func _interact(id: StringName) -> void:
+	if is_instance_valid(lan) and lan.playing():
+		lan.send("interact")
+		return
 	if session != null and not get_tree().paused:
 		session.interact(id)
 
@@ -5182,6 +5259,9 @@ func _process(delta: float) -> void:
 
 ## F9 (debug build or --dev): the developer tools.
 func _toggle_debug() -> void:
+	if is_instance_valid(lan) and lan.active():
+		lan.open()
+		return
 	if not DebugPanel.enabled():
 		return
 	if debug_panel == null:
@@ -5234,6 +5314,11 @@ func _playtest_state() -> Dictionary:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if is_instance_valid(lan) and lan.playing() and event.is_action_pressed("pause") and not event.is_echo():
+		if lan._paused: lan.resume()
+		else: lan.pause()
+		get_viewport().set_input_as_handled()
+		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_F2,KEY_F9]:
 		_toggle_debug()
 		get_viewport().set_input_as_handled()
@@ -5299,6 +5384,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _exit_tree() -> void:
+	if is_instance_valid(lan): lan.stop()
 	_cancel_cinematics()
 	if session != null:
 		_unwire(session)

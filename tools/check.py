@@ -24,6 +24,7 @@ def main():
     summary = {"mode": mode, "passed": False, "suites": {}}
     try:
         print(quality.check(ROOT), flush=True)
+        run("lan-manifest", [sys.executable, "tools/lan_manifest.py", "--check"], reports)
         run("tooling", [sys.executable, "-m", "unittest", "discover", "-s", "tests/tooling", "-v"], reports)
         if not options.static_only:
             summary["engine"] = check_version(reports)

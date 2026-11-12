@@ -187,7 +187,7 @@ func toggle_download() -> void:
 	_emit("save")
 
 
-func tick(dt: float) -> void:
+func tick(dt: float, advance_shared: bool = true) -> void:
 	if not (dt > 0.0):
 		return
 	acquire()
@@ -211,16 +211,20 @@ func tick(dt: float) -> void:
 				_toast("手机电量耗尽")
 			"on":
 				_toast("手机已恢复开机")
-	if termination["status"] == "accepted":
+	if advance_shared: tick_termination(dt)
+	if terminal_open and (not available() or not connected_computer()):
+		terminal_open = false
+
+
+## Shared countdown can progress independently of the operator's life and phone battery.
+func tick_termination(dt: float) -> void:
+	if dt > 0.0 and termination["status"] == "accepted":
 		termination["remaining"] = maxf(0.0, float(termination["remaining"]) - dt)
 		if float(termination["remaining"]) <= 1e-7 and not bool(_c.get("dead", false)):
 			termination["status"] = "completed"
 			termination["remaining"] = 0.0
 			terminal_open = false
 			_emit("ending", {"id": "cyber"})
-	if terminal_open and (not available() or not connected_computer()):
-		terminal_open = false
-
 
 ## Status line of the phone (the phone shell header).
 func status_text() -> String:

@@ -26,6 +26,15 @@ func get_module(id: StringName) -> FeatureModule:
 	return _modules.get(id)
 
 
+## Composition-only replacement. Shared cooperative features retain the same interface.
+func share(feature: FeatureModule) -> void:
+	var id := feature.module_id()
+	assert(_modules.has(id))
+	for key: StringName in _interactions:
+		if _interactions[key] == _modules[id]: _interactions[key] = feature
+	_modules[id] = feature
+
+
 func reset() -> void:
 	_unloaded_state.clear()
 	for feature: FeatureModule in _modules.values():

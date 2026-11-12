@@ -1,0 +1,98 @@
+name: LAN cooperation
+
+on:
+  push:
+    branches: [main, 'plan/lan-*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      soak:
+        description: Run the 30-minute four-process impaired-network diagnostic fixture
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  authority:
+    name: LAN authority and ENet
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-godot
+      - run: python tools/lan_manifest.py --check
+      - run: godot --headless --path . --editor --import
+      - run: python tools/test_lan.py --rules
+      - run: python tools/test_lan.py --players 2
+      - run: python tools/test_lan.py --players 2 --slow-load
+      - run: python tools/test_lan.py --players 4 --faults
+      - run: python tools/test_lan.py --players 2 --ending --faults
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lan-rules-enet
+          path: |
+            build/reports/lan/**/*.log
+            build/reports/lan/**/summary.json
+            build/reports/lan/**/impairment.json
+            build/reports/lan/**/*.png
+          retention-days: 14
+
+  interface:
+    name: LAN interface (${{ matrix.renderer }})
+    needs: authority
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        renderer: [forward_plus, mobile]
+    env:
+      LP_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-godot
+      - uses: ./.github/actions/setup-vulkan
+      - run: godot --headless --path . --editor --import
+      - name: Two independent native Vulkan game windows
+        env:
+          LAN_RENDERER: ${{ matrix.renderer }}
+        run: xvfb-run -a python tools/test_lan.py --players 2 --ui --renderer "$LAN_RENDERER"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lan-interface-${{ matrix.renderer }}
+          path: |
+            build/reports/lan/**/*.log
+            build/reports/lan/**/summary.json
+            build/reports/lan/**/impairment.json
+            build/reports/lan/**/*.png
+          retention-days: 14
+
+  soak:
+    name: LAN 30-minute diagnostic soak
+    if: github.event_name == 'workflow_dispatch' && inputs.soak
+    needs: authority
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-godot
+      - run: godot --headless --path . --editor --import
+      - run: python tools/test_lan.py --players 4 --faults --soak --seconds 1800
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lan-soak
+          path: |
+            build/reports/lan/**/*.log
+            build/reports/lan/**/summary.json
+            build/reports/lan/**/impairment.json
+            build/reports/lan/**/*.png
+          retention-days: 14
