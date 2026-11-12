@@ -9,7 +9,7 @@ import time
 def main():
     revision = os.environ['GITHUB_SHA']
     repo = os.environ['GITHUB_REPOSITORY']
-    deadline = time.monotonic() + 85 * 60
+    deadline = time.monotonic() + 115 * 60
     previous = None
     while time.monotonic() < deadline:
         output = subprocess.check_output(['gh', 'run', 'list', '--repo', repo,
