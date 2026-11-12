@@ -97,6 +97,8 @@ func _ready() -> void:
 	host_form = VBoxContainer.new()
 	host_form.add_theme_constant_override("separation", 10)
 	content.add_child(host_form)
+	# Keep create/join controls above connection help on short landscape screens.
+	content.move_child(_remote_info, 1)
 	var scope := Label.new()
 	scope.text = "支持六条公开结局。隐藏路线、特殊空间、DLC、手机小游戏与相册暂仅支持单人。"
 	scope.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -194,6 +196,9 @@ func _ready() -> void:
 	_button(footer, "离开房间", func() -> void: leave_requested.emit())
 	get_viewport().size_changed.connect(refit)
 	visibility_changed.connect(refit)
+	# Wrapped labels settle after the first container layout. Refit when their
+	# minimum height changes, otherwise the initial oversized panel stays clipped.
+	_panel.minimum_size_changed.connect(refit, CONNECT_DEFERRED)
 	show_room({}, "", "")
 	set_remote(false)
 	refit.call_deferred()
@@ -213,6 +218,7 @@ func set_remote(value: bool) -> void:
 	_invitation.text = ""
 	_copy_code.disabled = true
 	_remote_status = ""
+	_scroll.scroll_vertical = 0
 	status.text = "一人创建远程房间，把邀请码发给好友。" if value else "2–4 人局域网合作 · 一人建房，其他人输入房主的局域网地址。"
 	refit.call_deferred()
 

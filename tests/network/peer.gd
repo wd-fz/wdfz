@@ -87,10 +87,10 @@ func run() -> void:
 		check(app.ui.find_child("LanCoop", true, false) != null, "real main menu contains cooperation entry")
 		check(app.ui.find_child("RemoteCoop", true, false) != null, "real main menu contains Terracotta entry")
 		app.lan._open_mode(true)
-		await process_frame
-		await process_frame
+		for i in 4: await process_frame
 		check(app.lan.panel.remote_mode and not app.lan.panel.port.visible and not app.lan.panel._search.visible, "invitation flow hides LAN addresses and discovery")
 		check(app.lan.panel._remote_info.is_visible_in_tree() and app.lan.panel._copy_code.disabled, "attribution visible; no invitation is copied before success")
+		check(root.get_visible_rect().encloses(app.lan.panel._panel.get_global_rect()), "remote title and footer remain inside the viewport after wrapping settles")
 		await _capture("remote-entry")
 		app.lan._join("bad-code", "guest")
 		check(app.lan.remote.phase == "idle" and not app.lan.panel._search.disabled, "invalid invitation leaves retry controls available")
