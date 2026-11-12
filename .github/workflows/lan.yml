@@ -46,14 +46,20 @@ jobs:
           retention-days: 14
 
   interface:
-    name: LAN interface (${{ matrix.renderer }})
+    name: LAN interface (${{ matrix.renderer }}, ${{ matrix.display }})
     needs: authority
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        renderer: [forward_plus, mobile]
+        include:
+          - renderer: forward_plus
+            display: x11
+          - renderer: mobile
+            display: x11
+          - renderer: forward_plus
+            display: wayland
     env:
       LP_NUM_THREADS: '2'
     steps:
@@ -61,14 +67,18 @@ jobs:
       - uses: ./.github/actions/setup-godot
       - uses: ./.github/actions/setup-vulkan
       - run: godot --headless --path . --editor --import
-      - name: Two independent native Vulkan game windows
+      - name: Two independent native Vulkan X11 game windows
+        if: matrix.display == 'x11'
         env:
           LAN_RENDERER: ${{ matrix.renderer }}
         run: xvfb-run -a python tools/test_lan.py --players 2 --ui --renderer "$LAN_RENDERER"
+      - name: Two independent native Vulkan Wayland game windows
+        if: matrix.display == 'wayland'
+        run: xvfb-run -a python tools/ci/with_wayland.py python tools/test_lan.py --players 2 --ui --renderer forward_plus --display-driver wayland
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: lan-interface-${{ matrix.renderer }}
+          name: lan-interface-${{ matrix.renderer }}-${{ matrix.display }}
           path: |
             build/reports/lan/**/*.log
             build/reports/lan/**/summary.json

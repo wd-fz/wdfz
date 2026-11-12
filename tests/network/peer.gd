@@ -94,6 +94,7 @@ func run() -> void:
 		if DisplayServer.get_name() != "headless":
 			check(RenderingServer.get_current_rendering_driver_name() == "vulkan" and RenderingServer.get_rendering_device() != null, "real Vulkan device available")
 			print("RENDERER VERIFIED: vulkan / ", RenderingServer.get_current_rendering_method())
+			print("DISPLAY VERIFIED: ", DisplayServer.get_name().to_lower())
 	else:
 		var parent := Node.new()
 		parent.name = "LanTest"
