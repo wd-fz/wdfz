@@ -699,7 +699,7 @@ func _scatter_dirs_of(group: Node3D, _room: Variant) -> Array:
 
 
 ## The patroller's figure (patEnsureFig / patRender): the exported teacher figure scaled 1.12,
-## black and unlit, turned to face the player. Position in scene metres, height in metres.
+## black and unlit, facing the supplied observed target or route. Positions/heights are metres.
 var _patrol_figure: Node3D
 
 

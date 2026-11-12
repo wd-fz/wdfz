@@ -510,8 +510,8 @@ func door_at(p: Dictionary) -> String:
 	return "%s:%d:%d" % [room["id"], c, r] if String(room["grid"][r]).substr(c, 1) == "=" else ""
 
 
-## The far end of the exit the player was seen using (no live position is leaked).
-func observed_exit(from: String, to: String, seen: Dictionary) -> Dictionary:
+## The observed exit endpoint; near_side keeps ordinary night searches outside the dorm.
+func observed_exit(from: String, to: String, seen: Dictionary, near_side: bool = false) -> Dictionary:
 	var best := {}
 	var best_d := INF
 	for e: Dictionary in edges:
@@ -525,7 +525,7 @@ func observed_exit(from: String, to: String, seen: Dictionary) -> Dictionary:
 			var d := length(path(seen, a))
 			if d < best_d:
 				best_d = d
-				best = b
+				best = a if near_side else b
 	return best if is_finite(best_d) else {}
 
 

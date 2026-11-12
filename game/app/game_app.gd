@@ -1431,9 +1431,12 @@ func _school_step(delta: float, rules: CampusModule, advance_calendar: bool = tr
 			ui.scene_post().parameter("exposure",lit.lighting.post_exposure)
 		if watcher != null:
 			var fig_scene := Vector2.ZERO
+			var look_scene := Vector2.ZERO
 			if watcher.figure_visible():
 				fig_scene = CampusGeometry.to_scene(room, Vector2(float(watcher.pat["x"]), float(watcher.pat["y"])))
-			lit.show_patrol(watcher.figure_visible(), fig_scene, float(watcher.pat["fy"]), player.camera.global_position)
+				var look := watcher.look_point()
+				look_scene = CampusGeometry.to_scene(room, Vector2(float(look["x"]), float(look["y"])))
+			lit.show_patrol(watcher.figure_visible(), fig_scene, float(watcher.pat["fy"]), Vector3(look_scene.x, float(watcher.pat["fy"]), look_scene.y))
 		if weird_light != null and lit.anomaly_fx != null:
 			var cam_pos := player.camera.global_position
 			var fwd := -player.camera.global_transform.basis.z
@@ -1913,6 +1916,7 @@ func _patrol_context(room: Variant, pose: Dictionary) -> Dictionary:
 	return {"scene": session.world_id, "x": w.x, "y": w.y, "fy": height, "seated": day_rules != null and day_rules.seated,
 		"at_seat": day_rules != null and day_rules.at_my_seat(session.world_id, w), "excused": day_rules != null and day_rules.permit(),
 		"on_leave": school() != null and school().on_leave(), "night": SchoolClock.is_night(tsec), "need_where": SchoolClock.need_where(tsec), "dead": story() != null and story().dead,
+		"viol": day_rules.viol if day_rules != null else 0.0,
 		"playing": true, "inspection_room": String(cur.get("room", "")) if not cur.is_empty() else "",
 		"calm": float(day_rules.inspection.get("calm", 0.0)) if day_rules != null else 0.0, "calm_room": String(day_rules.inspection.get("calm_room", "")) if day_rules != null else "",
 		"has_seal": bag != null and bag.has("seal"), "active_seconds": day_rules.active_seconds if day_rules != null else 0.0, "car_chase": false}
