@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "digest": "40f6082ada803c2c915ba5861eb708a8330d8b5262b42b85725b4c0cf6d2177a",
+  "digest": "9408f370984979f0a6388d009cf235807e675cdea7884e27cf021b2bfed9e090",
   "files": {
     "assets/campus/archive.json": "0a3815b54b7591403085c29793d99e08f6f80fd18f7646b7d449a6552709b483",
     "assets/campus/death_geometry.json": "5b7a718919d12b00fa380efc95ffa2ed41262d680d11714d218603053cd52326",
@@ -67,7 +67,7 @@
     "game/app/inception_flow.gd": "876daf3430fe311479067e204212249b93cd5e57b2121f17bceeed7d3e4dec4f",
     "game/app/knife_flow.gd": "4f1b006cfa6cb440ba7ce7c1cd132814b9a69ae510edcc3a50335c7faab79a67",
     "game/app/lan_flow.gd": "6f4597186c139fc5f51d8b68dad4d5b68a1b556345993dbdffcfc19dfabcbd36",
-    "game/app/lan_session.gd": "8701542975810bfd5185cf2b5d3b7a0abb15008e1b597fcb7a9ff83fc9ffd461",
+    "game/app/lan_session.gd": "c4d7ca496263bf6d536ad447fc3a7866ce02d8ba112930ebb56c1ec45965bf6f",
     "game/app/maze_flow.gd": "516e018b10725860be78cdf0f6cd9e2a4615d36e70f9ad198eac20e772e07667",
     "game/app/rules_dlc_flow.gd": "1db22345c1fb893eecac0d4bd409777d494c1a5a9ffa71a081a86530954ab5f5",
     "game/app/session_factory.gd": "8b7f52159a551a25ee949b886787a6957d7a7b49369fcce69be5f865daec136d",

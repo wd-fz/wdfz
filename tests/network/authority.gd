@@ -51,6 +51,7 @@ func run() -> void:
 	await fresh()
 	transactions()
 	transport_ordering()
+	lobby_reconnect()
 	await fresh()
 	time_consent()
 	await fresh()
@@ -446,6 +447,34 @@ func transport_ordering() -> void:
 	check(Time.get_ticks_msec() / 1000.0 - net._last_heard < 0.1, "motion heartbeat cannot inherit a stale frame timestamp")
 	net.simulation = null
 	net.room = null
+	net.queue_free()
+
+
+func lobby_reconnect() -> void:
+	var net := LanSession.new()
+	root.add_child(net)
+	net.transport.serving = true
+	net.room = CooperativeRoom.new()
+	net.room.add_member("a", "host", true)
+	net.room.add_member("b", "guest")
+	net.connections = {2: "b"}
+	var token := "lobby-reconnect-fixture"
+	net.credentials[token.sha256_text()] = "b"
+	net._peer_left(2)
+	check(not net.room.members.has("b") and not net.credentials.has(token.sha256_text()), "leaving fresh lobby releases obsolete identity and credential together")
+	var hello := {"protocol": LanProtocol.VERSION, "rules": LanProtocol.RULES, "content": net._fingerprint, "name": "guest", "token": token}
+	net._accept(3, hello)
+	check(net.connections.has(3) and net.room.members.size() == 2, "invitation rejoin with an obsolete lobby token can create a new seat")
+	net.room = CooperativeRoom.new()
+	net.room.add_member("a", "host", true)
+	net.room.add_member("b", "saved guest")
+	net.connections = {4: "b"}
+	net.credentials = {token.sha256_text(): "b"}
+	net._resume = {"restored": true}
+	net._peer_left(4)
+	check(net.room.members.has("b") and not net.room.members["b"]["connected"], "restored lobby preserves a disconnected saved student")
+	net._accept(5, hello)
+	check(net.connections.get(5) == "b" and net.room.members["b"]["connected"], "restored lobby accepts the same credential after another disconnect")
 	net.queue_free()
 
 

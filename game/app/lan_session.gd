@@ -409,7 +409,17 @@ func _peer_left(peer_id: int) -> void:
 	var id := String(connections[peer_id])
 	connections.erase(peer_id)
 	_awaiting.erase(peer_id)
-	room.disconnect_member(id)
+	if room.phase == "lobby" and not _resume.is_empty() and room.members.has(id):
+		# A restored room must keep the saved student available for its owner.
+		room.members[id]["connected"] = false
+		room.members[id]["ready"] = false
+	else:
+		room.disconnect_member(id)
+		if room.phase == "lobby":
+			# Fresh lobbies release the seat. Its obsolete token must not point
+			# at a removed student and reject a later invitation-based join.
+			for credential: String in credentials.keys():
+				if credentials[credential] == id: credentials.erase(credential)
 	if simulation != null: simulation.disconnect_member(id)
 	_publish_room()
 
