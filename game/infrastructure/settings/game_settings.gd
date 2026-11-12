@@ -8,8 +8,8 @@ extends RefCounted
 ## sub 0/1/2 caption size · distortion 0 off / 1 reduced / 2 full · reduce_flash 1/0 · bright 50–150 ·
 ## grain 1/0 · mouse, touch 25–250 look sensitivity % · text 85–150 % · touch_size 85–125 % ·
 ## quality 0–4 presets / 5 custom; GraphicsProfile expands independent parameters.
-## fps_limit 0 unlimited / 20–360; VSync is independent. menu_orbit 1/0 (default off): live orbiting campus behind
-## the main menu instead of the still picture (costs power). auto_land rotates between landscape sides only.
+## fps_limit 0 unlimited / 20–360; VSync is independent. menu_orbit 1/0 (default off): a baked campus panorama panned
+## round behind the main menu instead of the still picture (no live rendering). auto_land rotates between landscape sides only.
 ## Desktop defaults to windowed; Android always uses immersive fullscreen.
 ## The Web "graphics mode" (WebGL / WebGPU) is replaced by Godot's renderer. Touch layout is
 ## stored separately from numeric settings and from gameplay saves.

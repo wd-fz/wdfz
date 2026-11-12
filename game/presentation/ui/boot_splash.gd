@@ -4,7 +4,7 @@ extends Control
 ## the left edge where the menu spine will stand; the title and school surface out of blur and noise over a
 ## heartbeat glow; then the black bleeds away from the crack and leaves the menu with its folded tag.
 ## Any key, click or touch skips (a short fade). With reduced flashing it is only a calm 1.2 s title fade.
-## While it plays the menu's live campus loads in the background (GameUI starts MenuPreview.begin_load).
+## GameUI calls MenuPreview.begin_load when it starts (the menu's panorama, when the setting is on).
 
 signal finished(skipped: bool)
 signal cue(id: String)

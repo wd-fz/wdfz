@@ -290,12 +290,12 @@ var boot_splash: BootSplash
 signal boot_cue(id: String)
 
 
-## The main menu: the side menu (side_menu.gd) over the live orbiting campus; the pause menu keeps MenuScreen.
+## The main menu: the side menu (side_menu.gd) over the panned campus panorama; the pause menu keeps MenuScreen.
 func _build_side_menu() -> SideMenu:
 	var content: VBoxContainer = menu.get_node("Margin/Center/Content")
 	menu_preview = MenuPreview.new()
 	menu.add_child(menu_preview)
-	# Above the static photo and its vignette (the side menu shader veils the live view itself).
+	# Above the static photo and its vignette (the side menu shader veils the panorama itself).
 	var under: Node = menu.get_node_or_null("MenuPhotoShade")
 	if under == null: under = menu.get_node_or_null("MenuPhoto")
 	menu.move_child(menu_preview, under.get_index() + 1 if under != null else 1)
@@ -320,7 +320,7 @@ func _build_menu_screen(panel: Control, is_pause: bool) -> MenuScreen:
 	return screen
 
 
-## The opening animation before the menu (boot_splash.gd); the live campus starts loading underneath.
+## The opening animation before the menu (boot_splash.gd); the menu's panorama is loaded underneath.
 func play_boot(reduce_motion: bool) -> void:
 	if is_instance_valid(boot_splash):
 		return
