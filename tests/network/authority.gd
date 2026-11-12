@@ -90,6 +90,8 @@ func transactions() -> void:
 	check(sim.command("a", packet).get("ok", false), "duplicate transaction returns cached result")
 	check(b.bag().has("pill") and not a.bag().has("pill"), "identity field cannot change actual sender or duplicate item")
 	check(not command(b, "item", {"item": {"unexpected": true}}).get("ok", false), "malformed typed command rejected without exception")
+	check(not command(b, "pickup", {"uid": []}).get("ok", false), "malformed ground ID rejected without exception")
+	check(not command(b, "interact", {"scene": {}}).get("ok", false), "malformed scene version rejected before numeric conversion")
 	check(not command(b, "debug_recover").get("ok", false) and not sim.room.debug_run, "guest cannot mutate debug state")
 	check(not command(a, "ending_request").get("ok", false), "forged ending without qualification rejected")
 	check(not command(a, "item", {"item": "pill", "epoch": "old"}).get("ok", false), "old room epoch rejected")
@@ -428,6 +430,13 @@ func transport_ordering() -> void:
 	older["phase"] = "loading"
 	net._receive_room(older)
 	check(net.room.phase == "playing", "cross-channel stale lobby cannot regress playing state")
+	net.transport.serving = false
+	net._clock = Time.get_ticks_msec() / 1000.0 - 80.0
+	net._control(1, {"kind": "notice", "text": "loading complete"})
+	check(Time.get_ticks_msec() / 1000.0 - net._last_heard < 0.1, "receipt uses current wall time even when scene loading blocked the prior frame")
+	net._last_heard = net._clock
+	net.transport.motion_received.emit({"epoch": net.room.epoch})
+	check(Time.get_ticks_msec() / 1000.0 - net._last_heard < 0.1, "motion heartbeat cannot inherit a stale frame timestamp")
 	net.simulation = null
 	net.room = null
 	net.queue_free()

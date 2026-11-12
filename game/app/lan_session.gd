@@ -52,7 +52,7 @@ func _ready() -> void:
 	transport.control_received.connect(_control)
 	transport.input_received.connect(_receive_input)
 	transport.motion_received.connect(func(data: Dictionary) -> void:
-		_last_heard = _clock
+		_last_heard = Time.get_ticks_msec() / 1000.0
 		if room != null and data.get("epoch") == room.epoch: motion_received.emit(data))
 	transport.chunk_received.connect(_chunk)
 	transport.api.peer_connected.connect(func(id: int) -> void:
@@ -198,7 +198,9 @@ func _send(data: Dictionary) -> void:
 func _control(peer_id: int, data: Dictionary) -> void:
 	if not data.get("kind") is String: return
 	if not transport.serving:
-		_last_heard = _clock
+		# Multiplayer polls before _process. A world build or Vulkan pipeline
+		# compilation may have blocked that frame; the cached clock is stale.
+		_last_heard = Time.get_ticks_msec() / 1000.0
 		match data["kind"]:
 			"welcome":
 				local_id = String(data.get("id", ""))
@@ -357,8 +359,8 @@ func _send_states(force: bool = false) -> void:
 
 
 func _chunk(_peer_id: int, packet: Dictionary) -> void:
-	_last_heard = _clock
-	var data := _chunks.accept(packet, _clock)
+	_last_heard = Time.get_ticks_msec() / 1000.0
+	var data := _chunks.accept(packet, _last_heard)
 	if data.is_empty() or not data.get("room") is Dictionary or not data.get("session") is Dictionary: return
 	if int(data.get("snapshot", -1)) <= _last_snapshot: return
 	if room == null or data["room"].get("epoch") != room.epoch: return
@@ -366,6 +368,8 @@ func _chunk(_peer_id: int, packet: Dictionary) -> void:
 	transport.send_control(1, {"kind": "state_ack", "snapshot": _last_snapshot})
 	_receive_room(data["room"])
 	snapshot_received.emit(data)
+	# Synchronous scene installation is local work, not a silent host.
+	_last_heard = Time.get_ticks_msec() / 1000.0
 
 
 func _peer_left(peer_id: int) -> void:

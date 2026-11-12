@@ -5372,9 +5372,11 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if key != null and key.is_action_pressed("think") and facilities() != null and player.enabled and not story().over():
-		facilities().set_context(_facility_context())
-		facilities().think()
-		_apply_facility_events()
+		if is_instance_valid(lan) and lan.playing(): lan.send("think")
+		else:
+			facilities().set_context(_facility_context())
+			facilities().think()
+			_apply_facility_events()
 		get_viewport().set_input_as_handled()
 		return
 	if key != null and key.is_action_pressed("mute") and audio != null:

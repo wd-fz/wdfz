@@ -192,9 +192,9 @@ func shared_tick(dt: float) -> void:
 
 
 func command(a: CooperativeActor, data: Dictionary) -> Dictionary:
-	if int(data.get("scene", -1)) != a.scene_version: return {"ok": false, "error": "场景已经变化，请重试。"}
+	if not SaveSchema.is_integer(data.get("scene"), 1, 2147483647) or int(data["scene"]) != a.scene_version: return {"ok": false, "error": "场景已经变化，请重试。"}
 	if not data.get("action") is String: return {"ok": false, "error": "操作格式无效。"}
-	for key: String in ["item", "to", "operation", "line", "paper", "route"]:
+	for key: String in ["item", "uid", "to", "operation", "line", "paper", "route"]:
 		if data.has(key) and (not data[key] is String or String(data[key]).length() > 256): return {"ok": false, "error": "操作参数无效。"}
 	for key: String in ["accept", "held"]:
 		if data.has(key) and not data[key] is bool: return {"ok": false, "error": "操作确认无效。"}

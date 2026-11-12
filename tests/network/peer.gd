@@ -29,6 +29,10 @@ var initial_position: Array = []
 var slow_load := false
 var load_stalled := false
 var peers_verified := false
+var restore_test := false
+var old_epoch := ""
+var saved_key := ""
+var saved_calendar := 0.0
 var screenshot_dir := ""
 var ending_test := false
 var ending_wait := 0.0
@@ -40,6 +44,7 @@ var peak_nodes := 0
 var peak_memory := 0
 var baseline_memory := 0
 var peak_regions := 0
+var soak_checked := false
 
 
 func _initialize() -> void:
@@ -52,6 +57,7 @@ func _initialize() -> void:
 		if argument == "--soak": soak = true
 		if argument == "--ending": ending_test = true
 		if argument == "--slow-load": slow_load = true
+		if argument == "--restore": restore_test = true
 		if argument.begins_with("--screenshots="): screenshot_dir = argument.trim_prefix("--screenshots=")
 	call_deferred("run")
 
@@ -65,6 +71,13 @@ func check(ok: bool, message: String) -> void:
 
 func run() -> void:
 	if ui_mode:
+		# This is an interface/transport check on software Vulkan, not a GPU
+		# benchmark. Use the real lowest preset in this process's isolated data.
+		var settings := GameSettings.new()
+		settings.set_value("quality", 0)
+		settings.set_value("fps_limit", 60)
+		settings.set_value("vsync", 0)
+		settings.save_file()
 		app = preload("res://game/app/app.tscn").instantiate()
 		root.add_child(app)
 		await process_frame
@@ -74,6 +87,10 @@ func run() -> void:
 		app.lan.open()
 		check(app.lan.panel.visible, "cooperation panel can be opened from menu")
 		app.lan.panel.hide()
+		if role == "host":
+			check(network.host("cancel", "host", port - 1 if port == 65535 else port + 1).is_empty(), "temporary lobby opens")
+			app.lan.panel.close_requested.emit()
+			check(not app.lan.active() and not paused and app.ui.menu.visible and not app.lan.panel.visible, "returning from lobby cancels networking and keeps single-player menu usable")
 		if DisplayServer.get_name() != "headless":
 			check(RenderingServer.get_current_rendering_driver_name() == "vulkan" and RenderingServer.get_rendering_device() != null, "real Vulkan device available")
 			print("RENDERER VERIFIED: vulkan / ", RenderingServer.get_current_rendering_method())
@@ -86,6 +103,14 @@ func run() -> void:
 		parent.add_child(network)
 	network.notice.connect(func(text: String) -> void: print("NOTICE: ", text))
 	network.closed.connect(func(reason: String) -> void:
+		if restore_test and elapsed >= 7.0 and not reconnecting:
+			saved_identity = network.local_id
+			token = network.reconnect_token
+			old_epoch = network.room.epoch
+			disconnected_at = startup
+			reconnecting = true
+			network.stop()
+			return
 		if elapsed < 7.0:
 			check(false, reason)
 			finish())
@@ -103,7 +128,9 @@ func run() -> void:
 		snapshots += 1
 		if loaded_epoch != network.room.epoch:
 			loaded_epoch = network.room.epoch
-			network.loaded())
+			print("BASELINE READY: ", role, " at ", Time.get_ticks_msec() / 1000.0)
+			# The actual UI owns its load/render barrier.
+			if not ui_mode: network.loaded())
 	network.motion_received.connect(func(_data: Dictionary) -> void: motions += 1)
 	var error := network.host("test", "host", port) if role == "host" else network.join("127.0.0.1:%d" % port, role)
 	check(error.is_empty(), "socket setup: " + error)
@@ -116,10 +143,10 @@ func _process(dt: float) -> bool:
 		check(false, "connection/loading timeout")
 		finish()
 	if network == null: return false
-	if reconnecting and startup - disconnected_at > 1.5:
+	if reconnecting and startup - disconnected_at > (3.0 if restore_test else 1.5):
 		reconnecting = false
 		check(network.join("127.0.0.1:%d" % port, role, token).is_empty(), "reconnect socket")
-	if role == "guest-1" and elapsed > 7.5 and disconnected_at < 0:
+	if role == "guest-1" and not restore_test and elapsed > 7.5 and disconnected_at < 0:
 		saved_identity = network.local_id
 		token = network.reconnect_token
 		disconnected_at = startup
@@ -130,6 +157,10 @@ func _process(dt: float) -> bool:
 			app.lan._lost = true
 		return false
 
+	if restore_test and role == "host" and stage == 2 and startup - disconnected_at > 2.0:
+		began = false
+		check(network.host("restored", "host", port, true).is_empty(), "host reopens the saved room with original credentials")
+		stage = 3
 	if network.room != null and network.room.phase == "playing": elapsed += dt
 	if network.room != null and network.room.phase == "playing" and not state.is_empty():
 		if role != "host" and elapsed > 1.0 and not peers_verified:
@@ -142,8 +173,10 @@ func _process(dt: float) -> bool:
 			network.input({"seq": seq, "scene": state["scene"], "x": 0.0, "y": -1.0 if elapsed < 5.0 and not ending_test else 0.0, "yaw": state["session"]["player"]["yaw"] if ending_test else 0.0, "pitch": 0.0, "run": true})
 		if role == "host":
 			if soak: _soak_scenario()
+			elif restore_test: _restore_host()
 			elif ending_test: _ending_host()
 			else: _host_scenario()
+		if ui_mode and role != "host": _touch_panel()
 		if ending_test: _ending_member(dt)
 	if ending_test and network.room != null and network.room.phase == "ended":
 		ending_wait += dt
@@ -155,7 +188,9 @@ func _process(dt: float) -> bool:
 		check(snapshots > 10, "received repeated baselines")
 		check(motions > 40, "received motion over unreliable ENet")
 		check(not ending_test and network.room != null and network.room.phase == "playing", "room stays running / ending completes before timeout")
-		if role == "guest-1": check(network.local_id == saved_identity, "reconnect keeps stable identity")
+		if role == "guest-1":
+			check(network.local_id == saved_identity, "reconnect keeps stable identity")
+			if restore_test: check(network.room.epoch != old_epoch and state["session"]["world_id"] == "lab3", "restored guest loads the new epoch in its saved world")
 		finish()
 	return false
 
@@ -201,6 +236,12 @@ func _host_scenario() -> void:
 			panel.show_room(network.room.public_state(), network.local_id, "127.0.0.1:%d" % port)
 			check(panel.members.get_children() == rows, "snapshot refresh keeps touch buttons and keyboard focus alive")
 			app.lan.resume()
+			var before_command := sim.actor(network.local_id).command_sequence
+			var think := InputEventKey.new()
+			think.physical_keycode = KEY_H
+			think.pressed = true
+			app._unhandled_key_input(think)
+			check(sim.actor(network.local_id).command_sequence > before_command, "keyboard escape hint goes through host authority")
 		stage = 5
 	elif stage == 5 and elapsed > 13.0:
 		sim.actor(network.local_id).fate().wakes = StoryModule.MAX_WAKES
@@ -210,6 +251,43 @@ func _host_scenario() -> void:
 	elif stage == 6 and elapsed > 14.0:
 		check(sim.state_for(network.local_id).has("observed"), "dead host receives authorized spectator view")
 		stage = 7
+
+
+func _touch_panel() -> void:
+	if stage != 0 or elapsed < 2.0: return
+	stage = 1
+	app.lan.open()
+	await _capture("touch-team")
+	var panel_rect := app.lan.panel._panel.get_global_rect()
+	var view := root.get_visible_rect()
+	check(view.encloses(panel_rect), "landscape touch room panel stays within the viewport")
+	check(not app.player.enabled and not paused, "touch room panel blocks only its own controls")
+	app.lan.resume()
+
+
+func _restore_host() -> void:
+	var sim := network.simulation
+	var guest := sim.actor(String(sim.actors.keys()[1]))
+	if stage == 0 and elapsed > 3.0:
+		guest.bag().add("key")
+		sim.inventory.reconcile(guest)
+		saved_key = sim.inventory.owners[guest.id]["key"]
+		(sim.shared[&"story.routes"] as RoutesModule).hacked = true
+		sim.travel(guest, "lab3", sim.spawn("lab3"))
+		stage = 1
+	elif stage == 1 and elapsed > 8.0:
+		old_epoch = network.room.epoch
+		saved_calendar = sim.calendar.seconds
+		disconnected_at = startup
+		network.stop()
+		check(not network.store.read().has("error"), "host shutdown writes a validated checkpoint")
+		stage = 2
+	elif stage == 3 and elapsed > 11.0:
+		check(network.room.epoch != old_epoch, "restored room discards the old session epoch")
+		check(guest.location() == "lab3" and sim.inventory.owners[guest.id].get("key") == saved_key, "saved world and unique item ownership survive host restart")
+		check((sim.shared[&"story.routes"] as RoutesModule).hacked and sim.calendar.seconds >= saved_calendar, "restored room keeps shared progress and time")
+		check(network.connections.size() == count, "all original members authenticate after host restart")
+		stage = 4
 
 
 func _terminal_pose(world: String) -> Dictionary:
@@ -293,7 +371,8 @@ func _soak_scenario() -> void:
 		for us: int in sim.timings.values(): cost += us
 		tick_samples.append(cost / 1000.0)
 		if tick_samples.size() > 5000: tick_samples.pop_front()
-	if elapsed > duration - 0.05:
+	if elapsed > duration - 0.05 and not soak_checked:
+		soak_checked = true
 		check(sim.physics.zones.size() <= 10, "active physical regions remain bounded")
 		check(network._awaiting.size() <= count - 1, "snapshot backlog remains bounded")
 		check(sim.inventory.ground.size() <= InventoryModule.GROUND_MAX, "shared ground bound")

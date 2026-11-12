@@ -23,11 +23,13 @@ def main():
     parser.add_argument("--ui", action="store_true")
     parser.add_argument("--soak", action="store_true")
     parser.add_argument("--slow-load", action="store_true", help="block the first client scene load for 12 seconds")
+    parser.add_argument("--restore", action="store_true", help="restart the host and recover the authoritative save over ENet")
     parser.add_argument("--ending", action="store_true", help="two-process whitelist route with controlled travel fixtures")
     parser.add_argument("--renderer", choices=("forward_plus", "mobile"))
     parser.add_argument("--seconds", type=int, default=18)
     args = parser.parse_args()
     if args.ending: args.seconds = max(30, args.seconds)
+    if args.restore: args.seconds = max(24, args.seconds)
     if args.rules:
         reports = ROOT / "build/reports/lan/rules"
         reports.mkdir(parents=True, exist_ok=True)
@@ -38,7 +40,7 @@ def main():
                 raise RuntimeError(result.stdout[-9000:])
             print(result.stdout.strip())
         return
-    reports = ROOT / "build/reports/lan" / (f"{args.players}-players" + ("-faults" if args.faults else "") + ("-soak" if args.soak else "") + ("-ending" if args.ending else "") + ("-slow-load" if args.slow_load else "") + ("-ui-" + (args.renderer or "headless") if args.ui else ""))
+    reports = ROOT / "build/reports/lan" / (f"{args.players}-players" + ("-faults" if args.faults else "") + ("-soak" if args.soak else "") + ("-ending" if args.ending else "") + ("-slow-load" if args.slow_load else "") + ("-restore" if args.restore else "") + ("-ui-" + (args.renderer or "headless") if args.ui else ""))
     reports.mkdir(parents=True, exist_ok=True)
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
         probe.bind(("127.0.0.1", 0))
@@ -64,6 +66,7 @@ def main():
             if args.soak: command.append("--soak")
             if args.slow_load: command.append("--slow-load")
             if args.ending: command.append("--ending")
+            if args.restore: command.append("--restore")
             process = subprocess.Popen(command, cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT)
             children.append((process, output, path))
             if index == 0:

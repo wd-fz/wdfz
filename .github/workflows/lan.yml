@@ -32,6 +32,7 @@ jobs:
       - run: python tools/test_lan.py --players 2
       - run: python tools/test_lan.py --players 2 --slow-load
       - run: python tools/test_lan.py --players 4 --faults
+      - run: python tools/test_lan.py --players 2 --restore --faults
       - run: python tools/test_lan.py --players 2 --ending --faults
       - uses: actions/upload-artifact@v4
         if: always()

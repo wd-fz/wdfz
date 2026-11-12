@@ -55,8 +55,9 @@ func _ready() -> void:
 		var error := network.start()
 		if error != "": panel.status.text = error)
 	panel.close_requested.connect(func() -> void:
-		panel.hide()
-		if playing(): resume())
+		if _lost: app.return_to_menu()
+		elif playing(): resume()
+		else: stop())
 	panel.leave_requested.connect(func() -> void: app.return_to_menu())
 	panel.discover_requested.connect(network.discovery.discover)
 	panel.reconnect_requested.connect(reconnect)
@@ -374,6 +375,11 @@ func _snapshot(data: Dictionary) -> void:
 
 
 func loaded() -> void:
+	var epoch := _epoch
+	# The first Vulkan frame can compile pipelines. Keep the shared loading
+	# barrier until that local work has completed instead of starting the game.
+	if DisplayServer.get_name() != "headless": await RenderingServer.frame_post_draw
+	if not _installed or network.room == null or network.room.epoch != epoch: return
 	network.loaded()
 	if network.room != null and network.room.phase == "playing": resume()
 
