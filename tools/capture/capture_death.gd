@@ -2,6 +2,8 @@ extends SceneTree
 ## Real Vulkan screenshots: godot --path . --script res://tools/capture/capture_death.gd -- patrol garage ...
 ## No progression/save changes: isolated hard-mode game, simulation frozen, presentation-only stages.
 ## Output: build/previews/deathcg/<scene>-<1..4>.png at 25 / 58 / 81 / 87 percent (87: the closest moment before the veil).
+## With "archive" as the first argument the isolated sets of the archive replay are shot instead of the live
+## in-place deaths (same causes; output deathcg/archive-<scene>-<n>.png).
 const APP := preload("res://game/app/app.tscn")
 
 func _initialize() -> void:
@@ -31,13 +33,21 @@ func _run() -> void:
 	app.player.enabled=false
 	app.ui.cut_mode(true)
 	app.player.set_pitch(0)
-	var which: Array=OS.get_cmdline_user_args() if not OS.get_cmdline_user_args().is_empty() else DeathCG.CAUSES
+	var which: Array=OS.get_cmdline_user_args()
+	var archive:=not which.is_empty() and which[0]=="archive"
+	if archive: which=which.slice(1)
+	if which.is_empty(): which=DeathCG.CAUSES
 	for cause: String in which:
 		if not DeathCG.has(cause):
 			push_error("Unknown death scene: "+cause)
 			quit(1)
 			return
-		app._start_death_cg(cause)
+		if archive:
+			app._stop_death_cg()
+			app._death_cg=DeathCG.new()
+			app.add_child(app._death_cg)
+			app._death_cg.begin(cause,app.player,app._campus_world(),app.ui,DeathCG.duration(cause,4.8))
+		else: app._start_death_cg(cause)
 		var cg:=app._death_cg
 		if cg==null:
 			push_error("A real display is required for death captures")
@@ -48,7 +58,7 @@ func _run() -> void:
 			n+=1
 			cg.k=cg.dur*fraction
 			cg.update(cg.k)
-			await _shot("%s-%d" % [cause,n])
+			await _shot("%s%s-%d" % ["archive-" if archive else "",cause,n])
 		app._stop_death_cg()
 		for _i in 2: await process_frame
 		print("CAPTURED: "+cause)
