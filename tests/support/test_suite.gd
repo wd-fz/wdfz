@@ -44,11 +44,11 @@ func _pose() -> Dictionary:
 	return {"position": [0.0, 0.1, 3.0], "yaw": 0.0, "pitch": 0.0}
 
 
-## A run starts behind the loading screen (GameApp._load_then): wait until it has started (bounded).
-func _until_started(app: Node, limit: int = 600) -> void:
-	for i in limit:
-		if not app.starting():
-			return
+## A run starts behind the loading screen (GameApp._load_then): wait until it has started. Bounded by real
+## time, not frames: the models are processed on a worker thread while headless frames fly by.
+func _until_started(app: Node, seconds: float = 180.0) -> void:
+	var until := Time.get_ticks_msec() + int(seconds * 1000.0)
+	while app.starting() and Time.get_ticks_msec() < until:
 		await _frames(1)
 
 
