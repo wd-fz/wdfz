@@ -185,8 +185,14 @@ func test_boot_and_preview() -> void:
 	preview.set_orbit(false)
 	check(preview.texture == null and preview.material == null and preview.modulate.a == 0.0, "switching it off releases the picture")
 	check(preview != null and preview.get_parent() == ui.menu, "the preview lives in the menu layer")
-	var c := MenuPreview.orbit_center(CampusData.layout("out"))
-	check(is_finite(c.x) and is_finite(c.z) and c != Vector3.ZERO, "the panorama's eye point is the lawn in front of the teaching building")
+	var eye := MenuPreview.EYE
+	var between := {}
+	for box: Dictionary in CampusData.layout("out")["boxes"]:
+		var inside := eye.x > float(box["x0"]) and eye.x < float(box["x1"]) and eye.z > float(box["z0"]) and eye.z < float(box["z1"])
+		check(not inside, "the panorama's eye point is in the open, not inside %s" % String(box.get("id", box["k"])))
+		if String(box["k"]) == "building" and eye.x > float(box["x0"]) and eye.x < float(box["x1"]):
+			between[String(box.get("id", ""))] = true
+	check(between.has("lab") and between.has("teach"), "the panorama is baked in the courtyard between the lab and teaching buildings")
 	preview.set_orbit(true)
 	ui.set_mode("play")
 	check(preview.texture == null and preview.modulate.a == 0.0, "leaving the menu drops the panorama")
@@ -221,6 +227,25 @@ func test_app_boot() -> void:
 	_step(shown_splash, 0.4)
 	await _frames(2)
 	check(not shown.ui.boot_playing() and shown.ui.menu_screen.state in ["opening", "open"], "after it the menu opens by itself")
+	# The menu's entrance (2026-11-13): the campus behind wakes, eyelids part with one blink, the panorama eases back.
+	var wake := shown.ui.menu_wake
+	check(wake != null and shown.ui.menu_entering() and wake.get_parent() == shown.ui.menu and wake.get_index() < shown.ui.menu_screen.get_index() and wake.get_index() > shown.ui.menu_preview.get_index(), "the menu's entrance plays between the panorama and the side menu")
+	check(wake.mouse_filter == Control.MOUSE_FILTER_IGNORE, "the entrance never blocks the menu")
+	check(wake.openness(0.0) == 0.0 and wake.openness(wake.blink_peak) > 0.3 and wake.openness(wake.blink_shut) < 0.05 and is_equal_approx(wake.openness(wake.open_time), 1.0) and wake.darkness(wake.open_time) == 0.0, "eyelids: shut, half open, blink shut, then fully open with no darkness left")
+	wake.set_process(false)
+	wake._t = 0.0
+	wake._apply()
+	check(is_equal_approx(shown.ui.menu_preview.zoom, shown.ui.menu_preview.entrance_zoom), "the panorama starts pushed in")
+	check(not shown.ui.menu_idle(), "the menu is not idle while it wakes")
+	wake.finish()
+	await _frames(1)
+	check(not shown.ui.menu_entering() and shown.ui.menu_preview.zoom == 1.0, "the entrance frees itself and leaves the panorama at rest")
+	shown.ui._enter_menu(false)
+	check(not shown.ui.menu_entering(), "re-entering a menu that is already open does not replay the entrance")
+	var calm := MenuWake.new()
+	calm.reduce_motion = true
+	check(calm.openness(0.1) == 1.0 and calm.total() == calm.reduced_time and calm.darkness(calm.reduced_time) == 0.0, "reduced flashing: a short fade from black, no blink")
+	calm.free()
 	# Idle menu frame cap in the launched app: 30 fps when nothing moves, normal at once on input.
 	shown.ui.menu_screen.open_now()
 	shown.ui._last_input_ms = -100000
@@ -234,5 +259,26 @@ func test_app_boot() -> void:
 	shown._menu_frame_cap()
 	check(not shown._menu_fps_capped, "an open settings panel is never throttled")
 	shown.ui.settings_panel.dismiss()
+	# The loading screen (2026-11-13): over everything, takes input, eases its bar, fades out and frees itself.
+	var screen := shown.ui.show_loading("读取校园")
+	await _frames(1)
+	check(shown.ui.loading() and screen.mouse_filter == Control.MOUSE_FILTER_STOP and screen.get_parent() == shown.ui.get_node("Root") and screen.get_index() == screen.get_parent().get_child_count() - 1, "the loading screen covers everything and takes input")
+	shown.ui._last_input_ms = -100000
+	check(not shown.ui.menu_idle(), "the menu is not throttled while a run loads")
+	screen.set_progress(0.6, "布置教室")
+	screen.set_progress(0.3)
+	check(screen.progress == 0.6 and screen.stage == "布置教室", "progress never runs backwards")
+	screen._process(5.0)
+	check(screen.shown_progress > 0.0 and screen.shown_progress <= 0.6, "the bar eases towards the progress without jumping on a long frame")
+	shown.ui.hide_loading()
+	check(not shown.ui.loading() and screen.closing() and screen.mouse_filter == Control.MOUSE_FILTER_IGNORE, "closing lets input through at once while it fades")
+	for _i in 6:
+		if is_instance_valid(screen): screen._process(0.1)
+	await _frames(1)
+	check(not is_instance_valid(screen), "the faded loading screen frees itself")
+	var paths := CampusWorld.asset_paths("teach1")
+	check(paths.has(CampusData.scene_path("teach1")) and paths.has(CampusWorld.PATROL_FIGURE) and CampusWorld.asset_paths("migration_lab").is_empty(), "the loading screen reads the start classroom's models first (none for non-campus worlds)")
+	for path: String in paths:
+		check(ResourceLoader.exists(path), "listed model exists: " + path)
 	shown.queue_free()
 	await _frames(2)

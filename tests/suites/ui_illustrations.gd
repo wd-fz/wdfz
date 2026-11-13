@@ -76,6 +76,7 @@ func test_interface() -> void:
 	await _tap(app.ui.selection_panel.cards[0])
 	check(app.session == null, "previewing an illustrated talent waits for confirmation")
 	await _tap(app.ui.selection_panel.confirm_button)
+	await _until_started(app)
 	check(app.session != null and app.talent().id == "tech" and app.items().has("phone"), "confirming an illustrated talent starts the selected talent")
 	if app._opening_cut != null and app._opening_cut.on:
 		app._opening_cut.end(true)

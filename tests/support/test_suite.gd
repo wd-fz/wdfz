@@ -44,6 +44,14 @@ func _pose() -> Dictionary:
 	return {"position": [0.0, 0.1, 3.0], "yaw": 0.0, "pitch": 0.0}
 
 
+## A run starts behind the loading screen (GameApp._load_then): wait until it has started (bounded).
+func _until_started(app: Node, limit: int = 600) -> void:
+	for i in limit:
+		if not app.starting():
+			return
+		await _frames(1)
+
+
 func _frames(count: int = 3) -> void:
 	for _i in count:
 		await physics_frame
