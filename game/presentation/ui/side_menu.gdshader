@@ -26,6 +26,8 @@ uniform vec4 u_a1 : source_color = vec4(0.012, 0.008, 0.012, 1.0);
 uniform vec4 u_b0 : source_color = vec4(0.36, 0.40, 0.38, 1.0);
 uniform vec4 u_b1 : source_color = vec4(0.18, 0.78, 0.48, 1.0);
 uniform float u_shift = 0.0;
+// 0 over the dark still photo … 1 over a visible panorama: the shadow and vignette ease off so the campus reads.
+uniform float u_lit = 0.0;
 uniform vec2 u_pulse_origin = vec2(0.0);
 uniform float u_pulse_r = 0.0;
 uniform float u_pulse_a = 0.0;
@@ -76,9 +78,9 @@ void fragment() {
 	vec3 pal_b = mix(u_b0.rgb * 0.35, u_b1.rgb * 0.55, smoothstep(0.4, 0.9, n1));
 	vec3 shade = mix(pal_a, pal_b, u_shift);
 	float side = smoothstep(0.95, 0.15, UV.x);
-	vec4 acc = toward(vec4(0.0), shade, u_bg_dim * (0.55 + 0.45 * side) + 0.18 * (1.0 - n1));
+	vec4 acc = toward(vec4(0.0), shade, (u_bg_dim * (0.55 + 0.45 * side) + 0.18 * (1.0 - n1)) * (1.0 - 0.5 * u_lit));
 	float vig = smoothstep(0.35, 1.15, length((UV - vec2(0.55, 0.5)) * vec2(1.1, 1.35)));
-	acc = toward(acc, u_a1.rgb, vig * 0.85);
+	acc = toward(acc, u_a1.rgb, vig * mix(0.85, 0.55, u_lit));
 
 	// ---- the shadow pulse after a choice ----
 	if (u_pulse_a > 0.001) {

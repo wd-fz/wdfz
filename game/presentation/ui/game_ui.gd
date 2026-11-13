@@ -287,6 +287,11 @@ var pause_screen: MenuScreen
 
 var menu_preview: MenuPreview
 var boot_splash: BootSplash
+var menu_wake: MenuWake
+## Only the launched app plays the menu's entrance (like the boot animation); embedded apps in tests and
+## tools open the menu at once unless they set this.
+var menu_entrance := false
+var reduce_motion := false
 signal boot_cue(id: String)
 
 
@@ -305,6 +310,7 @@ func _build_side_menu() -> SideMenu:
 	if menu.has_node("MenuPhoto"):
 		side.set_frost((menu.get_node("MenuPhoto") as TextureRect).texture)
 	side.quit_requested.connect(func() -> void: quit_requested.emit())
+	menu_preview.shown_changed.connect(side.set_backdrop_lit)
 	menu.get_node("Margin").hide()
 	menu.get_node("Margin").queue_free()
 	return side
@@ -330,10 +336,60 @@ func play_boot(reduce_motion: bool) -> void:
 	boot_splash.cue.connect(func(id: String) -> void: boot_cue.emit(id))
 	boot_splash.finished.connect(func(_skipped: bool) -> void:
 		boot_splash = null
-		if menu.visible: menu_screen.enter())
+		if menu.visible: _enter_menu())
 	$Root.add_child(boot_splash)
 	if is_instance_valid(menu_preview):
 		menu_preview.begin_load()
+
+
+## Open the main menu: the side panel tears open while the campus behind wakes (menu_wake.gd).
+func _enter_menu(wake: bool = true) -> void:
+	menu_screen.enter()
+	if not wake or not menu_entrance or boot_playing():
+		return
+	if is_instance_valid(menu_wake):
+		menu_wake.queue_free()
+	menu_wake = MenuWake.new()
+	menu_wake.reduce_motion = reduce_motion
+	menu_wake.preview = menu_preview
+	menu.add_child(menu_wake)
+	# Above the photo and the panorama, below the side menu.
+	menu.move_child(menu_wake, menu_screen.get_index())
+	menu_wake.finished.connect(func() -> void: menu_wake = null)
+
+
+var loading_screen: LoadingScreen
+
+
+## The loading screen before a run (loading_screen.gd); on top of everything until it fades out.
+func show_loading(what: String = "") -> LoadingScreen:
+	if is_instance_valid(loading_screen) and not loading_screen.closing():
+		loading_screen.set_progress(0.0, what)
+		return loading_screen
+	loading_screen = LoadingScreen.new()
+	loading_screen.reduce_motion = reduce_motion
+	loading_screen.stage = what
+	$Root.add_child(loading_screen)
+	return loading_screen
+
+
+func set_loading(amount: float, what: String = "") -> void:
+	if is_instance_valid(loading_screen):
+		loading_screen.set_progress(amount, what)
+
+
+func hide_loading() -> void:
+	if is_instance_valid(loading_screen):
+		loading_screen.close()
+		loading_screen = null
+
+
+func loading() -> bool:
+	return is_instance_valid(loading_screen) and not loading_screen.closing()
+
+
+func menu_entering() -> bool:
+	return is_instance_valid(menu_wake)
 
 
 func boot_playing() -> bool:
@@ -343,7 +399,7 @@ func boot_playing() -> bool:
 ## The main menu with nothing to animate and nobody touching it for a moment: the app may lower the frame
 ## rate there (the background crawl is slow), which is most of the time a menu stays open.
 func menu_idle() -> bool:
-	if not menu.visible or boot_playing() or not menu_screen.idle(): return false
+	if not menu.visible or boot_playing() or menu_entering() or loading() or not menu_screen.idle(): return false
 	if Time.get_ticks_msec() - _last_input_ms < 1500: return false
 	for panel: Variant in [settings_panel, ach_panel, records_panel, results_panel, _import_panel, selection_panel, choice_panel, map_panel, notes_panel]:
 		if is_instance_valid(panel) and (panel as CanvasItem).visible: return false
@@ -2572,7 +2628,8 @@ func _update_sprint_label() -> void:
 
 
 func set_mode(mode: String) -> void:
-	if _mode != mode:
+	var changed := _mode != mode
+	if changed:
 		show_notice("")
 		_map_generation += 1
 		for panel in [map_panel,notes_panel,_import_panel,settings_panel,records_panel,results_panel]:
@@ -2595,8 +2652,10 @@ func set_mode(mode: String) -> void:
 			menu_preview.begin_load()
 		else:
 			menu_preview.release()
+	if mode != "menu" and is_instance_valid(menu_wake):
+		menu_wake.finish()
 	if mode == "menu":
-		menu_screen.enter()
+		_enter_menu(changed)
 	elif mode == "pause":
 		%Resume.grab_focus()
 	else:

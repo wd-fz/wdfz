@@ -2,7 +2,8 @@ extends SceneTree
 ## 开机动画与侧边主菜单: boot animation frames, the panel tearing open on entry, the open panel with the peephole,
 ## an expanded group, the green pulse, reduced motion, 21:9, and the optional panorama orbit (setting 主菜单实景环绕).
 ## xvfb-run -a godot --windowed --path . --rendering-driver vulkan --script res://tools/capture/capture_side_menu.gd
-## Output: build/previews/side_menu/. SHOTS=boot,menu,wide,reduced,orbit (default: all).
+## 2026-11-13: the re-baked panorama behind the open menu, the menu's waking entrance and the loading screen.
+## Output: build/previews/side_menu/. SHOTS=boot,menu,wide,reduced,orbit,wake,loading (default: all).
 const APP := preload("res://game/app/app.tscn")
 var _want: PackedStringArray = []
 var _app: GameApp
@@ -59,6 +60,40 @@ func _run() -> void:
 			await shot("orbit-%.2f" % a, 6)
 		pv.still = false
 		_app._setting_changed("menu_orbit", 0)
+	if want("wake"):
+		_app._setting_changed("menu_orbit", 1)
+		var pv2 := ui.menu_preview
+		pv2.enabled = true
+		pv2.set_orbit(true)
+		for _i in 120:
+			await process_frame
+		pv2.still = true
+		pv2.angle = 0.25
+		side.open_now()
+		await shot("menu-open-panorama", 20)
+		ui.menu_entrance = true
+		ui._enter_menu()
+		var wake := ui.menu_wake
+		wake.set_process(false)
+		side.open_now()
+		for at: float in [0.6, 1.3, 1.8, 2.2]:
+			wake._t = at
+			wake._apply()
+			pv2._process(0.0)
+			await shot("menu-wake-%.1f" % at, 3)
+		wake.finish()
+		pv2.still = false
+	if want("loading"):
+		var screen := ui.show_loading("读取校园")
+		screen.set_process(false)
+		screen.modulate.a = 1.0
+		screen._t = 1.3
+		screen.shown_progress = 0.55
+		screen.set_progress(0.55)
+		await shot("loading-screen", 6)
+		ui.hide_loading()
+		screen.queue_free()
+		await process_frame
 	if want("menu"):
 		# The timeline is fixed by hand for the in-between frames (the software renderer is too slow for real time).
 		side.set_process(false)

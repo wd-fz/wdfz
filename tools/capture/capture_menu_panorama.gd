@@ -1,7 +1,10 @@
 extends SceneTree
-## Bakes the main menu's panorama (assets/ui/menu_panorama.jpg): the real outdoor campus at dusk (the same
-## place and time the live orbit used: the lawn in front of the teaching building, 19:10, windows lit),
-## rendered from one eye point in eight overlapping 90° views and resampled into a 360° cylindrical strip.
+## Bakes the main menu's panorama (assets/ui/menu_panorama.jpg): the real outdoor campus at 18:00, when the
+## evening fog is thick and warm, seen from the courtyard between the teaching building and the lab
+## building (both façades close on either side, the fog swallowing the open ends), rendered from one eye
+## point in eight overlapping 90° views and resampled into a 360° cylindrical strip.
+## 2026-11-13 (user: the old picture was too dark and not good-looking): replaced the 19:10 view from 11 m
+## above the lawn in front of the teaching building, a flat grey curve of one façade.
 ## The menu then only pans across this picture (MenuPreview); nothing 3D runs behind the menu.
 ## xvfb-run -a godot --windowed --path . --rendering-driver vulkan --script res://tools/capture/capture_menu_panorama.gd
 ## Output: assets/ui/menu_panorama.jpg (re-import afterwards) and build/previews/panorama/view-<k>.png.
@@ -9,10 +12,8 @@ extends SceneTree
 const VIEWS := 8                 # yaw steps; each view is 90° wide, the nearest one serves a column
 const VIEW_SIZE := 1280
 const WIDTH := 4096              # the full circle
-const TOP := 0.55                # tan of the highest elevation kept
-const BOTTOM := -0.6             # tan of the lowest
-const EYE := Vector3(0, 11.0, -3.0) # from the lawn's centre: above the tree tops, a little back from the building facing it
-										# (at eye height in the centre that building filled half the circle; lower, the trees hid the rest)
+const TOP := 0.85                # tan of the highest elevation kept (the façades are close: keep their tops)
+const BOTTOM := -0.42            # tan of the lowest
 const QUALITY := 4               # the top preset: the picture is baked once, its cost is not paid at run time
 
 var viewport: SubViewport
@@ -43,7 +44,7 @@ func _run() -> void:
 	camera.far = 800.0
 	viewport.add_child(camera)
 	camera.current = true
-	var eye := MenuPreview.orbit_center(CampusData.layout("out")) + EYE
+	var eye := MenuPreview.EYE
 	var shots: Array[Image] = []
 	for k in VIEWS:
 		_aim(eye, _yaw(k))

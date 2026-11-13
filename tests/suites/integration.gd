@@ -739,6 +739,8 @@ func _test_speedrun_app(app: GameApp) -> void:
 	app._speedrun_menu()
 	app._choice_made(0)
 	app._choice_made(4)
+	check(app.starting() and not app.speedrun.active(), "speedrun: the timer is not armed while the run loads")
+	await _until_started(app)
 	await _frames(2)
 	check(app.speedrun.active() and app.opening_busy(), "speedrun: talent, prologue")
 	await _skip_opening(app)

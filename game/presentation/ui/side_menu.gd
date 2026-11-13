@@ -26,6 +26,9 @@ signal quit_requested
 @export_range(0.0, 2.0) var glass_refraction := 1.0
 @export_range(0.0, 2.0) var glass_stain := 1.0
 @export_range(0.0, 1.0) var background_dim := 0.5
+## 0 over the (very dark) still photo, 1 over a fully shown panorama: the shadow and vignette ease off so the
+## campus behind can be seen (user request 2026-11-13). Set by GameUI from MenuPreview.shown_changed.
+var backdrop_lit := 0.0
 ## Timeline (seconds).
 @export var tear_time := 0.3
 @export var stretch_time := 0.36
@@ -333,6 +336,12 @@ func enter() -> void:
 	focus_default()
 
 
+func set_backdrop_lit(amount: float) -> void:
+	backdrop_lit = clampf(amount, 0.0, 1.0)
+	if _mat != null:
+		_mat.set_shader_parameter("u_lit", backdrop_lit)
+
+
 func focus_default() -> void:
 	var first: Button = _load if _load != null and not _load.disabled else items[1]
 	first.grab_focus.call_deferred()
@@ -539,4 +548,5 @@ func _draw_params() -> void:
 	_mat.set_shader_parameter("u_refraction", glass_refraction)
 	_mat.set_shader_parameter("u_stain", glass_stain)
 	_mat.set_shader_parameter("u_bg_dim", background_dim)
+	_mat.set_shader_parameter("u_lit", backdrop_lit)
 	_mat.set_shader_parameter("u_motion", 0.0 if reduce_motion else 1.0)
