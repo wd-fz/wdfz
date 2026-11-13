@@ -113,6 +113,44 @@ func _ready_banner() -> void:
 	banner.setup(layout)
 
 
+## The scenes a scene shows through openings as it is built (built by _load_visual): the campus seen from an
+## outside corridor or through a door to the outside (the start seat in teach1 is near one, and the campus
+## is the heaviest model of all), the stairwells and the linked building seen through doorways. From
+## outside, the rooms' door previews load on approach and are not listed.
+static func visual_ids(id: String) -> PackedStringArray:
+	var want := PackedStringArray()
+	var rooms := CampusData.rooms()
+	if id == "out" or not rooms.has(id):
+		return want
+	var layout := CampusData.layout(id)
+	if bool(layout.get("flags", {}).get("gallery", false)):
+		want.append("out")
+	for d: Dictionary in CampusData.campus().get("campus_doors", {}).get("doors", []):
+		if String(d["room"]) == id and not want.has("out"):
+			want.append("out")
+	for st: Dictionary in CampusData.campus().get("stair_layout", []):
+		if id != String(st["id"]) and (st["rooms"] as Array).has(id):
+			want.append(String(st["id"]))
+	for v: Dictionary in CampusPortals.link_ports(CampusData.campus().get("campus_link", {}), rooms, id):
+		want.append(String(v["peer"]["room"]))
+	return want
+
+
+## The model files a scene loads as it is built (its own model, the visual_ids, the patroller's figure),
+## so a loading screen can read them on worker threads first. Only files that exist are returned.
+static func asset_paths(id: String) -> PackedStringArray:
+	var out := PackedStringArray()
+	if id != "out" and not CampusData.rooms().has(id):
+		return out
+	for scene: String in [id] + Array(visual_ids(id)):
+		var path := CampusData.scene_path(scene)
+		if ResourceLoader.exists(path) and not out.has(path):
+			out.append(path)
+	if ResourceLoader.exists(PATROL_FIGURE):
+		out.append(PATROL_FIGURE)
+	return out
+
+
 func is_room() -> bool:
 	return scene_id != "out"
 
@@ -217,6 +255,35 @@ func update_shaft_previews(height: float) -> void:
 
 
 func _load_visual(id: String) -> Node3D:
+	var key := _visual_key(id, material_quality())
+	var model: Node3D = _prepared.get(key)
+	if model != null:
+		_prepared.erase(key)
+	else:
+		model = build_visual(id, material_quality())
+	if model == null:
+		return null
+	_register_preview_doors(model, id)
+	return model
+
+
+## Visual models built ahead (prepare on a worker thread, adopt on the main thread) and taken by
+## _load_visual instead of building them again; keyed by scene, model tier and material quality.
+static var _prepared: Dictionary = {}
+
+
+static func _visual_key(id: String, quality: int) -> String:
+	return "%s@%d@%d" % [id, CampusData.tier, quality]
+
+
+## The material quality a world built with these render options uses (material_quality()).
+static func quality_of(options: Dictionary) -> int:
+	return int(options.get("lighting_detail", CampusLighting.quality))
+
+
+## A scene's visual model, processed for display (instances, materials, batches, spatial cells). It only
+## touches a detached node tree and static helpers, so it may run on a worker thread.
+static func build_visual(id: String, quality: int) -> Node3D:
 	var path := CampusData.scene_path(id)
 	if not ResourceLoader.exists(path):
 		return null
@@ -224,12 +291,40 @@ func _load_visual(id: String) -> Node3D:
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
 			_to_multimesh(mesh)
-	SceneMaterials.apply(model, material_quality())
+	SceneMaterials.apply(model, quality)
 	if id != "garage1":
 		CampusBatches.optimize(model)
 		CampusMeshCells.apply(model)
-	_register_preview_doors(model, id)
 	return model
+
+
+## Build several visual models (worker thread); the result goes to adopt_prepared on the main thread.
+static func build_visuals(ids: PackedStringArray, quality: int) -> Dictionary:
+	var out := {}
+	for id: String in ids:
+		var key := _visual_key(id, quality)
+		if out.has(key):
+			continue
+		var model := build_visual(id, quality)
+		if model != null:
+			out[key] = model
+	return out
+
+
+static func adopt_prepared(models: Dictionary) -> void:
+	for key: String in models:
+		if _prepared.has(key):
+			(models[key] as Node).free()
+		else:
+			_prepared[key] = models[key]
+
+
+## Free whatever was prepared and not taken (the run did not need it after all).
+static func drop_prepared() -> void:
+	for model: Node in _prepared.values():
+		if is_instance_valid(model):
+			model.free()
+	_prepared.clear()
 
 
 func _register_preview_doors(model: Node3D, id: String) -> void:
@@ -706,6 +801,7 @@ func _scatter_dirs_of(group: Node3D, _room: Variant) -> Array:
 ## The patroller's figure (patEnsureFig / patRender): the exported teacher figure scaled 1.12,
 ## black and unlit, facing the supplied observed target or route. Positions/heights are metres.
 var _patrol_figure: Node3D
+const PATROL_FIGURE := "res://assets/campus/patrol/patrol_figure.glb"
 
 
 func show_patrol(visible_now: bool, scene_pos: Vector2, height: float, toward: Vector3) -> void:
@@ -714,7 +810,7 @@ func show_patrol(visible_now: bool, scene_pos: Vector2, height: float, toward: V
 			_patrol_figure.visible = false
 		return
 	if not is_instance_valid(_patrol_figure):
-		var packed := load("res://assets/campus/patrol/patrol_figure.glb") as PackedScene
+		var packed := load(PATROL_FIGURE) as PackedScene
 		if packed == null:
 			return
 		_patrol_figure = packed.instantiate() as Node3D

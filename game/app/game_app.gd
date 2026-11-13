@@ -134,7 +134,7 @@ func _ready() -> void:
 	ui.terminal_closed.connect(_terminal_closed)
 	ui.sound_toggled.connect(func(on: bool) -> void: audio.muted = not on)
 	ui.death_menu_requested.connect(return_to_menu)
-	ui.load_requested.connect(load_game)
+	ui.load_requested.connect(_continue_with_loading)
 	ui.save_requested.connect(save_game)
 	ui.menu_requested.connect(return_to_menu)
 	ui.pause_requested.connect(pause_game)
@@ -162,6 +162,7 @@ func _ready() -> void:
 	add_child(lan)
 	if play_boot or get_tree().current_scene == self:
 		ui.menu_preview.enabled = true
+		ui.menu_entrance = true
 		ui.play_boot(settings.get_int("reduce_flash") == 1)
 
 
@@ -486,12 +487,13 @@ func _pick_talent(difficulty: String, speed: bool = false) -> void:
 		if mine != _choice_count or index < 0 or index > TalentModule.KEYS.size():
 			return
 		var pick := String(TalentModule.KEYS[index]) if index < TalentModule.KEYS.size() else String(TalentModule.KEYS[randi() % TalentModule.KEYS.size()])
-		if speed:
-			speedrun.arm(difficulty)
-		else:
-			speedrun.disarm()
-		start_new_game(difficulty, pick)
-		_play_opening()
+		_load_then(initial_world, func() -> void:
+			if speed:
+				speedrun.arm(difficulty)
+			else:
+				speedrun.disarm()
+			start_new_game(difficulty, pick)
+			_play_opening())
 	ui.show_selection("选择天赋", ("梦魇" if difficulty == "hard" else "预知梦") + (" · 速通" if speed else " · 每局一个"), entries)
 
 
@@ -529,6 +531,99 @@ func import_legacy_save(text: String) -> String:
 		note += "\n未识别物品保留在导入原文中：" + "、".join(p["dropped"])
 	ui.show_notice(note)
 	return ""
+
+
+var _starting := false
+
+
+## True while the loading screen reads a run's models (the run has not started yet).
+func starting() -> bool:
+	return _starting
+
+
+## The models a world builds from, for the loading screen to read first ([] for non-campus worlds).
+func _world_assets(world_id: String) -> PackedStringArray:
+	return CampusWorld.asset_paths(world_id) if CampusData.rooms().has(world_id) or world_id == "out" else PackedStringArray()
+
+
+## Show the loading screen, read the world's models on worker threads while it animates, then run work
+## (which builds the scene on the main thread and starts the run) and fade the screen out over the start.
+## User request 2026-11-13: confirming a talent used to freeze the window with no feedback while the
+## campus model loaded synchronously.
+func _load_then(world_id: String, work: Callable) -> void:
+	if _starting:
+		return
+	_starting = true
+	ui.show_loading("读取校园")
+	# Let the screen be drawn before anything heavy happens.
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var pending: Array[String] = []
+	for path: String in _world_assets(world_id):
+		if ResourceLoader.has_cached(path):
+			continue
+		if ResourceLoader.load_threaded_request(path, "", true) == OK:
+			pending.append(path)
+	var held: Array = []
+	while not pending.is_empty():
+		var done := 0.0
+		var waiting := false
+		for path: String in pending:
+			var part := []
+			if ResourceLoader.load_threaded_get_status(path, part) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+				waiting = true
+				done += float(part[0]) if not part.is_empty() else 0.0
+			else:
+				done += 1.0
+		ui.set_loading(0.85 * done / float(pending.size()))
+		if not waiting:
+			break
+		await get_tree().process_frame
+	# Collect every request (also failed ones) so none is left for the synchronous build to collide with;
+	# held keeps the loaded models cached until the scene has instantiated them.
+	for path: String in pending:
+		held.append(ResourceLoader.load_threaded_get(path))
+	# The models seen through openings (above all the campus through the classroom door near the start
+	# seat) are processed off the main thread too: merged and split into spatial cells on a detached tree.
+	var ids := CampusWorld.visual_ids(world_id) if CampusData.rooms().has(world_id) else PackedStringArray()
+	if not ids.is_empty():
+		ui.set_loading(0.85, "布置校园")
+		var worker := Thread.new()
+		worker.start(CampusWorld.build_visuals.bind(ids, CampusWorld.quality_of(settings.graphics())), Thread.PRIORITY_LOW)
+		var waited := 0.0
+		while worker.is_alive():
+			# The worker reads mesh data back from the rendering server, which answers once per flush: flush
+			# it here for a slice of each frame instead of only once per drawn frame.
+			var slice := Time.get_ticks_usec()
+			while worker.is_alive() and Time.get_ticks_usec() - slice < 80000:
+				RenderingServer.force_sync()
+				OS.delay_usec(20)
+			waited += get_process_delta_time()
+			ui.set_loading(0.85 + 0.1 * (1.0 - exp(-waited / 2.0)))
+			await get_tree().process_frame
+		CampusWorld.adopt_prepared(worker.wait_to_finish())
+	ui.set_loading(0.95, "布置教室")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	work.call()
+	held.clear()
+	CampusWorld.drop_prepared()
+	ui.set_loading(1.0)
+	ui.hide_loading()
+	_starting = false
+
+
+## 继续入梦 from the main menu: the same loading screen, then the ordinary load. The pause menu's reload and
+## direct callers keep calling load_game.
+func _continue_with_loading() -> void:
+	if session != null or (is_instance_valid(lan) and lan.active()):
+		load_game()
+		return
+	var result := saves.read()
+	if result.has("error") or not (result["data"] is Dictionary):
+		load_game()
+		return
+	_load_then(String((result["data"] as Dictionary).get("world_id", "")), load_game)
 
 
 func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> void:
@@ -2459,6 +2554,7 @@ func _apply_settings() -> void:
 	ui.set_grain(settings.get_int("grain") == 1)
 	ui.menu_screen.set_reduce_motion(settings.get_int("reduce_flash") == 1)
 	ui.menu_preview.still = settings.get_int("reduce_flash") == 1
+	ui.reduce_motion = settings.get_int("reduce_flash") == 1
 	ui.menu_preview.render_options = settings.graphics()
 	ui.menu_preview.set_orbit(settings.get_int("menu_orbit") == 1)
 	_menu_fps_capped = false
