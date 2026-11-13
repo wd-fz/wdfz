@@ -558,8 +558,12 @@ func _load_then(world_id: String, work: Callable) -> void:
 	# Let the screen be drawn before anything heavy happens.
 	await get_tree().process_frame
 	await get_tree().process_frame
+	# Headless (tests, tools): the dummy renderer's mesh storage is not thread-safe and nothing is drawn
+	# while waiting, so the models are read and processed by the build itself as before. The Vulkan
+	# renderers' storage (Forward+ and Mobile share it) is thread-safe.
+	var threaded := DisplayServer.get_name() != "headless"
 	var pending: Array[String] = []
-	for path: String in _world_assets(world_id):
+	for path: String in (_world_assets(world_id) if threaded else PackedStringArray()):
 		if ResourceLoader.has_cached(path):
 			continue
 		if ResourceLoader.load_threaded_request(path, "", true) == OK:
@@ -585,7 +589,7 @@ func _load_then(world_id: String, work: Callable) -> void:
 		held.append(ResourceLoader.load_threaded_get(path))
 	# The models seen through openings (above all the campus through the classroom door near the start
 	# seat) are processed off the main thread too: merged and split into spatial cells on a detached tree.
-	var ids := CampusWorld.visual_ids(world_id) if CampusData.rooms().has(world_id) else PackedStringArray()
+	var ids := CampusWorld.visual_ids(world_id) if threaded and CampusData.rooms().has(world_id) else PackedStringArray()
 	if not ids.is_empty():
 		ui.set_loading(0.85, "布置校园")
 		var worker := Thread.new()
