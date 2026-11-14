@@ -145,6 +145,8 @@ func test_boot_and_preview() -> void:
 	_step(ui.boot_splash, ui.boot_splash.reduced_total + 0.1)
 	await _frames(2)
 	check(not ui.boot_playing(), "the calm version ends by itself")
+	await _test_boot_timeline()
+	await _test_loading_screen()
 	# The campus panorama behind the menu: off by default, a baked picture panned round, released outside the menu.
 	var preview := ui.menu_preview
 	check(GameSettings.DEFAULTS["menu_orbit"] == 1, "the panorama orbit is on by default (user request 2026-11-12)")
@@ -282,3 +284,64 @@ func test_app_boot() -> void:
 		check(ResourceLoader.exists(path), "listed model exists: " + path)
 	shown.queue_free()
 	await _frames(2)
+
+
+## The 2026-11-14 boot animation: tube flicker, the clock ticking to 18:00, one step back, the tube dying to black.
+func _test_boot_timeline() -> void:
+	var splash := BootSplash.new()
+	root.add_child(splash)
+	splash.set_process(false)
+	await _frames(1)
+	check(splash.light(0.0) == 0.0 and splash.light(splash.light_at + 0.01) == 1.0 and splash.light(splash.light_at + 0.1) == 0.0, "the tube starter-flickers on")
+	check(splash.light(splash.title_at) > 0.9 and splash.light(splash.back_tick_at) > 0.9, "then it hums steadily")
+	check(splash.light(splash.die_at + splash.die_time) == 0.0 and splash.light(splash.total()) == 0.0, "it dies and leaves black")
+	check(is_equal_approx(splash.second_hand(0.0), BootSplash.START_SECOND) and not splash.at_six(1.0), "the clock starts at 17:59:52")
+	check(splash.at_six(splash.title_at + 0.9) and absf(splash.second_hand(splash.back_tick_at - 0.05) - 60.0) < 0.05, "the second hand reaches twelve and the clock reads 18:00")
+	check(absf(splash.second_hand(splash.back_tick_at + 0.3) - 59.0) < 0.05, "then it ticks one step back")
+	var cues: Array = []
+	splash.cue.connect(func(id: String) -> void: cues.append(id))
+	var ended := [false]
+	splash.finished.connect(func(skipped: bool) -> void: ended[0] = not skipped)
+	_step(splash, splash.total() + 0.1)
+	check(cues == ["world.lampFlicker", "threat.heartLow", "dread.knock", "world.lampFlicker"], "cues: tube on, heartbeat, the backward knock, tube off (%s)" % [cues])
+	check(ended[0], "it ends by itself on black")
+	var calm := BootSplash.new()
+	calm.reduce_motion = true
+	root.add_child(calm)
+	calm.set_process(false)
+	await _frames(1)
+	var rising := true
+	var last := -1.0
+	for i in 20:
+		var at := calm.reduced_total * 0.45 * i / 19.0
+		rising = rising and calm.light(at) >= last
+		last = calm.light(at)
+	check(rising and calm.second_hand(0.2) == 60.0 and calm.at_six(0.0), "reduced flashing: the light only fades up (no flicker) on a still clock at 18:00")
+	var calm_cues: Array = []
+	calm.cue.connect(func(id: String) -> void: calm_cues.append(id))
+	_step(calm, calm.total() + 0.1)
+	check(calm_cues.is_empty(), "reduced flashing plays no flicker or knock cues")
+
+
+## The 2026-11-14 loading screen: clock follows the progress, rotating lines, percentage and the ember bar.
+func _test_loading_screen() -> void:
+	var screen := LoadingScreen.new()
+	root.add_child(screen)
+	screen.set_process(false)
+	await _frames(2)
+	screen.set_progress(0.5, "读取校园")
+	screen.shown_progress = 0.5
+	screen._apply()
+	var clock := (screen.get_node("LoadingColumn").find_child("LoadingClock", true, false) as ColorRect).material as ShaderMaterial
+	check(is_equal_approx(float(clock.get_shader_parameter("u_minute_hand")), 30.0) and is_equal_approx(float(clock.get_shader_parameter("u_minutes")), 1050.0), "half way the clock reads 17:30")
+	check((screen.find_child("LoadingPercent", true, false) as Label).text == "50%" and (screen.find_child("LoadingStage", true, false) as Label).text == "读取校园", "percentage and step are shown under the bar")
+	var bar := screen.find_child("LoadingBar", true, false) as ColorRect
+	check(absf(bar.size.x - screen._bar_back.custom_minimum_size.x * 0.5) < 0.5, "the bar's filled length follows the progress")
+	var first: Array = screen.line_at(0.5)
+	var second: Array = screen.line_at(LoadingScreen.LINE_TIME + 1.5)
+	check(first[1] == 1.0 and second[1] == 1.0 and first[0] != second[0], "the quiet line changes every few seconds")
+	check(screen.line_at(LoadingScreen.LINE_TIME - 0.01)[1] < 0.1 and screen.line_at(LoadingScreen.LINE_TIME + 0.01)[1] < 0.1, "lines crossfade through nothing")
+	screen.set_progress(0.2)
+	check(screen.progress == 0.5, "progress never runs backwards")
+	screen.queue_free()
+	await _frames(1)

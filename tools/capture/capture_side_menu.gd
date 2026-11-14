@@ -2,6 +2,7 @@ extends SceneTree
 ## 开机动画与侧边主菜单: boot animation frames, the panel tearing open on entry, the open panel with the peephole,
 ## an expanded group, the green pulse, reduced motion, 21:9, and the optional panorama orbit (setting 主菜单实景环绕).
 ## xvfb-run -a godot --windowed --path . --rendering-driver vulkan --script res://tools/capture/capture_side_menu.gd
+## 2026-11-14: the boot animation was redesigned (tube light, wall clock to 18:00); its frames are pinned.
 ## 2026-11-13: the re-baked panorama behind the open menu, the menu's waking entrance and the loading screen.
 ## Output: build/previews/side_menu/. SHOTS=boot,menu,wide,reduced,orbit,wake,loading (default: all).
 const APP := preload("res://game/app/app.tscn")
@@ -39,10 +40,15 @@ func _run() -> void:
 	await process_frame
 	var ui := _app.ui
 	if want("boot") and is_instance_valid(ui.boot_splash):
-		for at: float in [0.5, 1.4, 2.4, 3.3]:
-			while ui.boot_splash != null and is_instance_valid(ui.boot_splash) and ui.boot_splash.elapsed() < at:
-				await process_frame
-			await shot("boot-%.1f" % at, 1)
+		# 2026-11-14 redesign: fixed timeline frames (the software renderer is too slow for real time).
+		var splash := ui.boot_splash
+		splash.set_process(false)
+		for at: float in [0.27, 0.5, 1.2, 1.9, 2.4, 2.75, 3.05, 3.4]:
+			splash._t = at
+			splash._apply()
+			await shot("boot-%.2f" % at, 3)
+		splash.set_process(true)
+		splash.skip()
 		while is_instance_valid(ui.boot_splash):
 			await process_frame
 	var side := ui.menu_screen
@@ -87,10 +93,11 @@ func _run() -> void:
 		var screen := ui.show_loading("读取校园")
 		screen.set_process(false)
 		screen.modulate.a = 1.0
-		screen._t = 1.3
-		screen.shown_progress = 0.55
-		screen.set_progress(0.55)
-		await shot("loading-screen", 6)
+		for spec: Array in [[1.3, 0.3, "读取校园"], [6.1, 0.85, "布置教室"]]:
+			screen._t = spec[0]
+			screen.shown_progress = spec[1]
+			screen.set_progress(spec[1], spec[2])
+			await shot("loading-screen-%d" % roundi(spec[1] * 100.0), 6)
 		ui.hide_loading()
 		screen.queue_free()
 		await process_frame
