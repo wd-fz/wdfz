@@ -18,6 +18,8 @@ const COLA_R := 0.85
 const COLA_WARN := 1.6
 const COLA_SETTLE := 2.5
 const TURN_SMILE_P := 0.25
+## Seconds an unforetold anomaly waits after a chase ends (scare-overlap audit, 2026-11-14).
+const CHASE_GRACE := 8.0
 const FEAST_NORMAL := 9.0
 ## DEFS: w weight, small, cool (game minutes), lethal, warn (foretold before it happens), rained,
 ## late (not in the first-day dream), exam, dfx death scene, cn the name in forecasts.
@@ -1280,6 +1282,12 @@ func tick(dt: float) -> void:
 		if bool(_c.get("inspection_quiet", false)):
 			return
 		an["next"] = float(an["next"]) - dt
+		# 2026-11-14 scare-overlap audit (docs/plan/中式与西式恐怖及吓人手法.md, item 1): while the patroller
+		# chases the player, a new anomaly does not start on top of it; the countdown holds at CHASE_GRACE and
+		# runs out at least that long after the chase ends. A foretold anomaly (chalk / pendulum, an["locked"])
+		# keeps its told time.
+		if bool(_c.get("patrol_chase", false)) and not bool(an["locked"]):
+			an["next"] = maxf(float(an["next"]), CHASE_GRACE)
 		if float(an["next"]) <= 0.0:
 			_start()
 	else:
