@@ -43,6 +43,8 @@ var address_options: OptionButton
 var remote_mode := false
 var _heading: Label
 var _search: Button
+var search_note: Label
+var _scanned := false
 var _copy_address: Button
 var _remote_info: VBoxContainer
 var _invitation: LineEdit
@@ -140,6 +142,11 @@ func _ready() -> void:
 	host_form.add_child(search)
 	_search = _button(search, "查找附近房间", func() -> void: discover_requested.emit())
 	_button(search, "重连上次房间", func() -> void: reconnect_requested.emit())
+	search_note = Label.new()
+	search_note.name = "SearchNote"
+	search_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	search_note.visible = false
+	host_form.add_child(search_note)
 	discovered = VBoxContainer.new()
 	host_form.add_child(discovered)
 	lobby = VBoxContainer.new()
@@ -209,6 +216,7 @@ func set_remote(value: bool) -> void:
 	_heading.text = "一起离开校园 · " + ("远程合作" if value else "局域网合作")
 	_remote_info.visible = value
 	_search.visible = not value
+	search_note.visible = not value and _scanned
 	discovered.visible = not value
 	port.visible = not value
 	address_options.visible = not value
@@ -328,6 +336,25 @@ func inventory(entries: Array) -> void:
 		transfer.set_item_metadata(transfer.item_count - 1, entry["id"])
 
 
+## The discovery scan started or ended: say so, and after an empty scan say what to check.
+func scanning(active: bool) -> void:
+	_scanned = true
+	_search.disabled = active
+	_search.text = "正在查找…" if active else "查找附近房间"
+	_note_scan(active)
+
+
+func _note_scan(active: bool) -> void:
+	if search_note == null: return
+	search_note.visible = _scanned and _search.visible
+	if active:
+		search_note.text = "正在向本机所有网卡发送查找请求（UDP %d）……" % LanProtocol.DISCOVERY_PORT
+	elif discovered.get_child_count() == 0:
+		search_note.text = "没有找到房间。确认双方连着同一个 Wi-Fi／路由器（访客网络和热点可能禁止互访），防火墙放行 UDP %d 与 %d；也可以直接输入房主的 IP:端口。" % [LanProtocol.PORT, LanProtocol.DISCOVERY_PORT]
+	else:
+		search_note.text = "找到 %d 个房间，点一下填入地址再加入。" % discovered.get_child_count()
+
+
 func found(list: Array) -> void:
 	for child in discovered.get_children():
 		discovered.remove_child(child)
@@ -336,6 +363,7 @@ func found(list: Array) -> void:
 		var target := "%s:%d" % [entry["ip"], int(entry["port"])]
 		_button(discovered, "%s · %s · %d 人 · 协议 %d · %s" % [entry["name"], target, int(entry.get("count", 0)), LanProtocol.VERSION, {"lobby": "大厅", "loading": "加载中", "playing": "进行中", "ended": "已结束"}.get(entry.get("phase"), "未知")], func() -> void:
 			address.text = target)
+	if _scanned and not _search.disabled: _note_scan(false)
 	refit.call_deferred()
 
 

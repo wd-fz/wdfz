@@ -332,7 +332,6 @@ func play_boot(reduce_motion: bool) -> void:
 		return
 	boot_splash = BootSplash.new()
 	boot_splash.reduce_motion = reduce_motion
-	boot_splash.spine_x = menu_screen.layout_rects()["spine"].size.x if is_instance_valid(menu_screen) else 14.0
 	boot_splash.cue.connect(func(id: String) -> void: boot_cue.emit(id))
 	boot_splash.finished.connect(func(_skipped: bool) -> void:
 		boot_splash = null

@@ -109,5 +109,49 @@ func run() -> void:
 	check(figures.peers.is_empty(), "hidden teammate has no visible remote avatar")
 	figures.queue_free()
 	await process_frame
+	await _discovery()
 	print("LAN UNIT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+
+## UDP room discovery (2026-11-14): every adapter gets a directed probe, a same-machine host answers over
+## loopback, one room heard twice is listed once, replies are rate limited and a scan reports its end.
+func _discovery() -> void:
+	var targets := LanDiscovery.probe_targets([
+		{"addresses": ["192.168.31.7", "fe80::1", "127.0.0.1"]},
+		{"addresses": ["10.126.0.4", "192.168.31.9"]},
+	])
+	check(targets[0] == "255.255.255.255" and targets[targets.size() - 1] == "127.0.0.1", "limited broadcast first, loopback last")
+	check("192.168.31.255" in targets and "10.126.0.255" in targets and targets.count("192.168.31.255") == 1, "one directed /24 broadcast per adapter subnet")
+	check(not "127.0.0.255" in targets and targets.size() == 4, "IPv6 and loopback interfaces get no directed broadcast")
+	var host := LanDiscovery.new()
+	root.add_child(host)
+	var error := host.serve({"name": "测试房间", "port": 24560, "count": 1, "phase": "lobby"})
+	if not error.is_empty():
+		print("SKIP discovery socket checks: ", error)
+		host.queue_free()
+		return
+	check(String(host.advertisement.get("room", "")).length() == 16, "a served room carries a random id")
+	var guest := LanDiscovery.new()
+	root.add_child(guest)
+	var seen := {"rooms": [], "scan": []}
+	guest.found.connect(func(list: Array) -> void: seen["rooms"] = list)
+	guest.scanning_changed.connect(func(active: bool) -> void: seen["scan"].append(active))
+	guest.discover()
+	for i in 120:
+		await process_frame
+		if not seen["rooms"].is_empty(): break
+	check(seen["rooms"].size() == 1, "a room on the same machine is found exactly once (loopback and LAN merge)")
+	if seen["rooms"].size() == 1:
+		check(seen["rooms"][0]["name"] == "测试房间" and int(seen["rooms"][0]["port"]) == 24560, "the room's public fields arrive")
+	check(seen["scan"] == [true], "the scan reports that it started")
+	check(host._may_reply("198.51.100.4", 100.0) and host._may_reply("198.51.100.4", 100.0), "a probing guest is answered")
+	for i in LanDiscovery.REPLY_BUDGET: host._may_reply("198.51.100.4", 100.2)
+	check(not host._may_reply("198.51.100.4", 100.3), "replies to one sender are capped per second")
+	check(host._may_reply("198.51.100.4", 101.4), "the cap resets the next second")
+	guest._until = 0.0
+	guest._process(0.0)
+	check(seen["scan"] == [true, false] and not guest.scanning, "the scan reports its end")
+	guest.queue_free()
+	host.queue_free()
+	await process_frame
