@@ -2,7 +2,7 @@
 
 后续开发在本仓库进行。[旧 Web 版仓库](https://github.com/wd-fz/wd-fz.github.io)已停止维护，仅作为移植参考。
 
-**正式版：** [v0.3.0 下载与说明](https://github.com/wd-fz/wdfz/releases/tag/v0.3.0)，提供 Android ARM64、Windows x86_64 与 Linux x86_64。三个平台统一使用 Vulkan；Android 正式签名，可覆盖升级 v0.1.0／v0.2.x，独立于 Debug 包安装。
+**正式版：** [v0.3.0 下载与说明](https://github.com/wd-fz/wdfz/releases/tag/v0.3.0)（v0.4.0 草稿待审核发布，更新内容见 [docs/releases/0.4.0.md](docs/releases/0.4.0.md)），提供 Android ARM64、Windows x86_64 与 Linux x86_64。三个平台统一使用 Vulkan；Android 正式签名，可覆盖升级 v0.1.0／v0.2.x，独立于 Debug 包安装。
 
 **Android 启动即横屏并强制全屏；Windows / Linux 默认窗口化；竖屏不受维护。** 桌面与移动端都以横屏游玩为目标，优先适配常见横屏比例下的视野、界面和触屏操作。竖屏不作为后续迁移、回归或发布验收目标；早期竖屏截图与验证记录仅保留为历史证据。
 
