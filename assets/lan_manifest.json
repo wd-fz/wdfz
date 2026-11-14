@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "digest": "05e9d91c993a0c91c76ea5f362785d5d340e9075a06b5a2e7d46deadae4f7eca",
+  "digest": "98c2f3b5564fdb49e3b2c034cf5b371920b92a0b1046f4cf7805ffa03a80af4e",
   "files": {
     "assets/campus/archive.json": "0a3815b54b7591403085c29793d99e08f6f80fd18f7646b7d449a6552709b483",
     "assets/campus/death_geometry.json": "5b7a718919d12b00fa380efc95ffa2ed41262d680d11714d218603053cd52326",
@@ -150,7 +150,7 @@
     "game/infrastructure/network/terracotta_bridge.gd": "592a9d6d21f5ef4ebe18a9f8b7bbf8f878b4cc6360c979ce7f354b1f556f26ed",
     "game/infrastructure/network/terracotta_gateway.gd": "6dea2d992c8f20a4a470d7c7c04476234e2b0364112e70d43d184b76bc669769",
     "game/infrastructure/network/terracotta_protocol.gd": "9c5e5b4c6efc335bff8a68c784b2cc73c76b15748f820efa0156be2a112b2f1c",
-    "game/infrastructure/network/terracotta_session.gd": "841fdcb8bff4cc82fbb6f421117bfe7db047bc8a356115a6e713f159dca07cd8",
+    "game/infrastructure/network/terracotta_session.gd": "ed1cfb6354fb33c614526036e9581e4edbe2c9d7273d386d7c10ade548532f74",
     "game/presentation/actors/camera_motion.gd": "6f02c6d0013d660518226a2f67569b93d5421244d7ee17f3973459d13e3ad7ab",
     "game/presentation/actors/character_motor.gd": "585b8639dff9e016fa62cb36c3b490a316e3776c8a282c5e3630d0fd8113c74b",
     "game/presentation/actors/hands_view.gd": "fa6ed1d023d8ed4853864aabb82dd0dd0d86a2ab1bfa22c1ae48cb20f48f8c6e",

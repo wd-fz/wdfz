@@ -78,6 +78,36 @@ func run() -> void:
 	check(gateway.calls.back() == "/state/ide", "own room is reset before release")
 	gateway.answer({})
 	await process_frame
+	# 2026-11-14 CI flake: a busy local component can miss one status poll while a guest is still connecting.
+	var slow := setup()
+	var slow_gateway := slow.gateway as FakeGateway
+	var slow_errors: Array = []
+	slow.failed.connect(func(text: String) -> void: slow_errors.append(text))
+	check(slow.begin(false, "同学", CODE) == "", "a second guest starts")
+	await accept(slow)
+	slow._process(1.0)
+	slow_gateway.answer({}, 0)
+	check(slow_errors.is_empty() and slow.phase == "connecting", "one missed poll while connecting does not abandon the join")
+	slow._process(1.0)
+	slow_gateway.answer({"state": "guest-starting", "room": CODE, "index": 2})
+	slow._process(1.0)
+	slow_gateway.answer({}, 0)
+	slow._process(1.0)
+	slow_gateway.answer({}, 0)
+	slow._process(1.0)
+	slow_gateway.answer({}, 0)
+	check(slow._error.contains("无响应") and slow._cancel, "three misses in a row still fail with the component message")
+	await process_frame
+	var refused := setup()
+	var refused_gateway := refused.gateway as FakeGateway
+	var refused_errors: Array = []
+	refused.failed.connect(func(text: String) -> void: refused_errors.append(text))
+	refused.begin(false, "同学", CODE)
+	await accept(refused)
+	refused._process(1.0)
+	refused_gateway.answer({}, 404)
+	check(refused._error.contains("无响应") and refused._cancel, "a definite refusal while connecting fails at once")
+	await process_frame
 	check(session.phase == "idle", "cleanup finishes")
 	session.queue_free()
 
