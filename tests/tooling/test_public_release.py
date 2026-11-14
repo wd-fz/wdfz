@@ -18,12 +18,12 @@ class PublicReleaseTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.folder = Path(self.temp.name)
-        self.apk = self.folder / "wdfz-0.3.0-android-arm64.apk"
+        self.apk = self.folder / "wdfz-0.4.0-android-arm64.apk"
         self.apk.write_bytes(b"synthetic checksum fixture")
         self.sha = "1" * 40
         digest = hashlib.sha256(self.apk.read_bytes()).hexdigest()
         self.info = {"passed": True, "debug": False, "working_tree_dirty": False, "revision": self.sha,
-                     "package": "org.wdfz.godot", "version": "0.3.0", "version_code": 4,
+                     "package": "org.wdfz.godot", "version": "0.4.0", "version_code": 5,
                      "abi": "arm64-v8a", "min_sdk": 24, "target_sdk": 36, "page_alignment": 16384,
                      "launch_orientation": "userLandscape", "file": self.apk.name,
                      "rendering_driver": "vulkan", "rendering_method": "mobile", "vulkan_required": True,
@@ -132,3 +132,48 @@ class PublicReleaseTests(unittest.TestCase):
         self.assertEqual(presets['preset.3.options']['version/name'], f'"{RELEASE_VERSION}"')
         self.assertEqual(int(presets['preset.3.options']['version/code']), RELEASE_VERSION_CODE)
         self.assertEqual(presets['preset.3.options']['screen/immersive_mode'], 'true')
+
+    def test_draft_only_uploads_and_verifies_but_never_publishes(self):
+        # 2026-11-14: the release workflow defaults to stopping at a verified draft.
+        import os
+        import publish_release
+        from unittest.mock import patch
+        self.add_desktop("linux")
+        self.add_desktop("windows")
+        files = validate_all(self.folder, self.sha)
+        notes_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(notes_dir.cleanup)
+        notes = Path(notes_dir.name) / "notes.md"
+        notes.write_text("notes")
+        uploaded = {}
+        calls = []
+
+        def release():
+            return {"id": 7, "draft": True, "prerelease": False, "target_commitish": self.sha, "html_url": "https://example.invalid/r/7",
+                    "assets": [{"name": n, "state": "uploaded", "size": s, "digest": d} for n, (s, d) in uploaded.items()]}
+
+        class Done:
+            def __init__(self, out="", code=0, err=""):
+                self.stdout, self.returncode, self.stderr = out, code, err
+
+        def run(command, **_kwargs):
+            calls.append(command)
+            if command[:3] == ["gh", "api", "repos/fixture/game/git/ref/tags/v" + RELEASE_VERSION]:
+                return Done(code=1, err="(HTTP 404)")
+            if command[:3] == ["gh", "release", "view"]:
+                return Done(json.dumps({"apiUrl": "https://api.example.invalid/releases/7"}))
+            if command[:3] == ["gh", "release", "upload"]:
+                for path in command[6:]:
+                    p = Path(path)
+                    uploaded[p.name] = (p.stat().st_size, "sha256:" + hashlib.sha256(p.read_bytes()).hexdigest())
+                return Done()
+            if command[:2] == ["gh", "api"]:
+                return Done(json.dumps(release()))
+            return Done()
+
+        argv = ["publish_release.py", "--assets", str(self.folder), "--tag", "v" + RELEASE_VERSION, "--notes", str(notes), "--draft-only"]
+        with patch.dict(os.environ, {"GITHUB_SHA": self.sha, "GITHUB_REPOSITORY": "fixture/game"}), \
+             patch.object(sys, "argv", argv), patch.object(publish_release.subprocess, "run", side_effect=run):
+            publish_release.main()
+        self.assertEqual(set(uploaded), {f.name for f in files})
+        self.assertFalse(any(c[:3] == ["gh", "release", "edit"] for c in calls), "a draft-only run never publishes")

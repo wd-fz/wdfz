@@ -19,8 +19,8 @@ import terracotta
 BUILD_TOOLS = "36.0.0"
 PACKAGE = "org.wdfz.godot.debug"
 RELEASE_PACKAGE = "org.wdfz.godot"
-RELEASE_VERSION = "0.3.0"
-RELEASE_VERSION_CODE = 4
+RELEASE_VERSION = "0.4.0"
+RELEASE_VERSION_CODE = 5
 
 
 def verify_fullscreen_launch(raw):

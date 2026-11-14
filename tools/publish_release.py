@@ -100,6 +100,8 @@ def main():
     parser.add_argument("--assets", type=Path, required=True)
     parser.add_argument("--tag", required=True)
     parser.add_argument("--notes", type=Path, required=True)
+    parser.add_argument("--draft-only", action="store_true",
+                        help="upload and verify the assets on a draft release, then stop without publishing")
     args = parser.parse_args()
     if args.tag != "v" + RELEASE_VERSION:
         raise ValueError("Tag must match the release version")
@@ -164,6 +166,9 @@ def main():
             raise ValueError(f"Uploaded asset did not verify: {file.name}")
     if not release["draft"]:
         raise ValueError("Release unexpectedly changed during upload")
+    if args.draft_only:
+        print("Draft ready (not published) " + release["html_url"])
+        return
     subprocess.run(["gh", "release", "edit", args.tag, "--repo", repo, "--draft=false", "--latest"], check=True)
     release = api(f"releases/{release['id']}")
     if release["draft"] or release["prerelease"]:
