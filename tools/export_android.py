@@ -44,7 +44,7 @@ def verify_fullscreen_launch(raw):
 
 def verify_manifest(manifest, release=False):
     package = RELEASE_PACKAGE if release else PACKAGE
-    for expected in (f"package: name='{package}'", "sdkVersion:'24'", "targetSdkVersion:'36'", "native-code: 'arm64-v8a'", "uses-permission: name='android.permission.INTERNET'"):
+    for expected in (f"package: name='{package}'", "sdkVersion:'24'", "targetSdkVersion:'36'", "native-code: 'arm64-v8a'", "uses-permission: name='android.permission.INTERNET'", "uses-permission: name='android.permission.CHANGE_WIFI_MULTICAST_STATE'"):
         if expected not in manifest:
             raise RuntimeError(f"APK manifest did not confirm {expected}")
     if ("application-debuggable" in manifest) == release:

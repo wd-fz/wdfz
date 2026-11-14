@@ -81,6 +81,7 @@ func _ready() -> void:
 	panel.debug_requested.connect(func(action: String, fields: Dictionary) -> void: send(action, fields))
 	panel.give_requested.connect(func(target: String, item: String) -> void: send("give", {"to": target, "item": item}))
 	network.discovery.found.connect(panel.found)
+	network.discovery.scanning_changed.connect(panel.scanning)
 	network.room_changed.connect(_room_changed)
 	network.snapshot_received.connect(_snapshot)
 	network.motion_received.connect(_motion)
