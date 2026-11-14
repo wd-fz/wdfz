@@ -415,6 +415,8 @@ func _play_opening() -> void:
 
 
 func _opening_done(_skipped: bool) -> void:
+	if _skipped and playtest.recording:
+		playtest.horror.skip()
 	get_tree().paused = false
 	if session == null:
 		return
@@ -892,6 +894,8 @@ func _restore_loaded_world() -> void:
 
 
 func pause_game() -> void:
+	if playtest.recording and session != null and not get_tree().paused:
+		playtest.horror.pause()
 	if is_instance_valid(lan) and lan.playing():
 		lan.pause()
 		return
@@ -1484,6 +1488,7 @@ func _school_step(delta: float, rules: CampusModule, advance_calendar: bool = tr
 	_patrol_step(delta, watcher, day_rules, room, pose)
 	if story().dead:
 		return
+	_locker_overstay_step(delta, watcher, day_rules)
 	_routes_step(delta)
 	if story().over():
 		return
@@ -1854,6 +1859,28 @@ func _hide_out() -> void:
 	ui.show_hiding(false)
 
 
+## Item 7 of the 2026-11-14 horror plan (locker_overstay.gd): a locker kept too long while nothing hunts.
+var locker_overstay := LockerOverstay.new()
+
+
+func _locker_overstay_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule) -> void:
+	if watcher == null or (is_instance_valid(lan) and lan.active()):
+		locker_overstay.reset()
+		return
+	var threat: bool = bool(watcher.pat["locked"]) or watcher.local_threat() or bool(watcher.pat["near"]) or watcher.local_chase()
+	match locker_overstay.tick(delta, bool(watcher.hide["on"]), threat):
+		"knock":
+			audio.play("dread.knock", {"k": 0.7, "pan": 0.2, "caption": "铁皮从柜子里面被敲了两下"})
+			ui.show_notice("我：……铁皮在响。不是外面，是柜子里面。")
+		"breath":
+			audio.play("threat.breath", {"k": 0.7, "caption": "柜子里还有别人的呼吸"})
+			ui.show_notice("我：耳朵后面有呼吸声。这个柜子里不止我一个。")
+		"push":
+			day_rules.san = maxf(day_rules.san - LockerOverstay.SAN_COST, minf(day_rules.san, 1.0))
+			_hide_out()
+			ui.show_notice("我：有人对着我的后颈呼了一口气。我撞开柜门跌了出来——柜子里什么也没有。")
+
+
 # ---- deaths (story.js kill / dreamWake) ----
 
 func _handle_deaths() -> void:
@@ -1899,6 +1926,8 @@ func kill(msg: String, fx: String, source: String) -> void:
 	if not result.get("dead", false):
 		return
 	archive_flow.record(source, fx)
+	if playtest.recording:
+		playtest.horror.death(source)
 	debug_flow.before_death()
 	fact({"kind": "death", "source": source, "fx": fx, "wake": bool(result["wake"])})
 	rules_dlc_flow.cancel()
@@ -2125,6 +2154,28 @@ func _progress_step(watcher: PatrolModule, day_rules: SchoolModule, weird: Anoma
 		_seen_hide = hid
 
 
+## The patroller heard before it is seen, in three tiers (patrol_precursor.gd, 2026-11-14 horror plan item 2).
+var patrol_precursor := PatrolPrecursor.new()
+
+
+func _patrol_precursor_step(delta: float, watcher: PatrolModule) -> void:
+	var d := dread()
+	if watcher == null or d == null or story().dead or get_tree().paused:
+		patrol_precursor.step(delta, INF, false)
+		return
+	var metric := watcher.approach()
+	var heard: bool = not metric.is_empty() and watcher.pat["state"] == "walk" and not watcher.figure_visible()
+	var metres := float(metric["distance"]) * CampusGeometry.U2M if not metric.is_empty() else INF
+	var cue := patrol_precursor.step(delta, metres, heard)
+	if cue.is_empty():
+		return
+	d.set_context(_dread_context())
+	var dir: Variant = metric.get("direction")
+	var w := Vector2(float(dir["x"]), float(dir["y"])) if dir is Dictionary else Vector2(float(d._c.get("x", 0.0)), float(d._c.get("y", 0.0)))
+	var pl := d.place(w)
+	audio.play(String(cue["id"]), {"pan": float(pl["pan"]), "k": float(cue["k"]), "lp": (0.35 if bool(pl["muffled"]) else 1.0) * (0.7 if bool(pl["behind"]) else 1.0), "place": pl})
+
+
 ## Sound layers and cues from the current state (AudioFx never changes a rule).
 func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, room: Variant, p: Array) -> void:
 	if audio == null or story().over():
@@ -2160,6 +2211,7 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 		"patrol_pos": patrol_pos, "patrol_behind": behind, "big": big, "blackout": weird != null and weird.blackout_now(),
 		"moth_near": cw.anomaly_fx.moth_nearness() if cw != null and cw.anomaly_fx != null and an_id == "moth" else 0.0,
 		"busy": ui.terminal_open() or (days() != null and days().waiting != null), "echo": dread() != null and dread().echo})
+	_patrol_precursor_step(delta, watcher)
 	ui.show_captions(audio.captions.lines() if audio.captions.enabled(audio.volume, audio.muted) else PackedStringArray())
 	# fx/weather.js: in the rain a bolt every 6–14 s, the screen whitens twice and the thunder comes late.
 	if an_id in ["rain", "raindots"]:
@@ -2464,6 +2516,8 @@ func _dread_context() -> Dictionary:
 		"night": night, "day": day_rules.day, "busy": busy, "an_active": weird != null and bool(weird.an["active"]),
 		"an_next": float(weird.an["next"]) if weird != null else -1.0, "an_next0": int(weird.an["next0"]) if weird != null else 0,
 		"ear": talent() != null and talent().has("ear"),
+		"chase": watcher != null and watcher.local_chase(), "inspect": day_rules.inspection_active(),
+		"tsec": day_rules.tsec, "free": String(SchoolClock.period_at(day_rules.tsec)[3]) == "自由",
 		"door_open": func(c: int, r: int) -> bool: return campus().is_open(CampusGeometry.door_key(campus().room(rid), c, r))}
 
 
@@ -2474,6 +2528,54 @@ func _dread_step(delta: float) -> void:
 	d.set_context(_dread_context())
 	d.tick(delta)
 	_apply_dread_events()
+	_read_wall_notice()
+
+
+## A wall point from the dread module (a wall or door tile centre, world units) as the face towards the
+## player in scene metres, at reading height, and the yaw that turns the text to the reader.
+func _wall_face(w: Vector2) -> Dictionary:
+	var room: Variant = campus().room(session.world_id)
+	var tile := CampusGeometry.to_scene(room, w)
+	var p: Array = player.capture_pose()["position"]
+	var me := Vector2(float(p[0]), float(p[2]))
+	var dir := (me - tile).normalized() if me.distance_to(tile) > 0.01 else Vector2(0.0, 1.0)
+	var half := float(room["tw"]) * CampusGeometry.U2M * 0.5 if room is Dictionary and room.has("tw") else 0.5
+	# Lay the text flat on the wall: the axis-aligned side of the tile that is open and faces the player.
+	if room is Dictionary and room.has("grid"):
+		var best := -2.0
+		var axis := dir
+		for n: Vector2 in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+			var step := Vector2(float(room["tw"]), float(room["th"])) * n
+			if CampusGeometry.tile_at(room, w + step) == "#" or n.dot(dir) <= best:
+				continue
+			best = n.dot(dir)
+			axis = n
+			half = absf(step.x + step.y) * CampusGeometry.U2M * 0.5
+		dir = axis
+	var face := tile + dir * (half + 0.02)
+	return {"pos": Vector3(face.x, float(p[1]) + 1.45, face.y), "yaw": atan2(dir.x, dir.y)}
+
+
+## The corridor notice is written into the notebook once it has actually been read: within 2.5 m, facing it.
+func _read_wall_notice() -> void:
+	var cw := _campus_world()
+	var d := dread()
+	if cw == null or d == null or d.notice.is_empty() or cw.wall_text_kind() != "notice" or investigation() == null:
+		return
+	var id := "notice:%d" % int(d.notice["day"])
+	if investigation().entries.has(id):
+		return
+	var at: Variant = cw.wall_text_position()
+	if not (at is Vector3):
+		return
+	var to: Vector3 = (at as Vector3) - player.camera.global_position
+	if to.length() > 2.5 or (-player.camera.global_basis.z).dot(to.normalized()) < 0.75:
+		return
+	var parts: PackedStringArray = []
+	for i in (d.notice["lines"] as Array).size():
+		var l: Dictionary = d.notice["lines"][i]
+		parts.append(String(l["text"]) + ("（红字，没有盖章）" if bool(l["fake"]) else ""))
+	investigation().record(id, "第%d天走廊里的教务处通知：%s" % [int(d.notice["day"]), " / ".join(parts)], "规则", "走廊通知")
 
 
 func _apply_dread_events() -> void:
@@ -2497,9 +2599,17 @@ func _apply_dread_events() -> void:
 						cw.lighting.dread_lamp = int(e["i"])
 					elif e["fx"] == "note":
 						cw.show_dread_note(String(e["text"]), float(e["seed"]), player.capture_pose())
+					elif e["fx"] == "board":
+						var face := _wall_face(Vector2(float(e["x"]), float(e["y"])))
+						cw.show_wall_text("board", [String(e["text"])], face["pos"], float(face["yaw"]))
+			"notice":
+				if cw != null:
+					var face := _wall_face(Vector2(float(e["x"]), float(e["y"])))
+					cw.show_wall_text("notice", e["lines"], face["pos"], float(face["yaw"]))
 			"clear":
 				if cw != null:
 					cw.show_dread_note("", 0.0, {})
+					cw.show_wall_text("", [], Vector3.ZERO, 0.0)
 					if cw.lighting != null:
 						cw.lighting.dread_lamp = -1
 
@@ -4839,6 +4949,7 @@ func _play_car_intro() -> void:
 	player.enabled = false
 	get_tree().paused = true
 	_ending_cut.finished.connect(func(_skipped: bool) -> void:
+		if _skipped and playtest.recording: playtest.horror.skip()
 		get_tree().paused = was_paused
 		_enter_drive())
 	_ending_cut.audio = audio
@@ -5042,6 +5153,7 @@ func _reach_ending(id: String) -> void:
 		var was_paused := get_tree().paused
 		get_tree().paused = true
 		_ending_cut.finished.connect(func(_skipped: bool) -> void:
+			if _skipped and playtest.recording: playtest.horror.skip()
 			get_tree().paused = was_paused
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 			show_card.call())
@@ -5355,6 +5467,14 @@ func _process(delta: float) -> void:
 	if session != null and not get_tree().paused and not opening_busy():
 		m = "death" if story().dead else "play"
 	playtest.frame(delta, m)
+	if playtest.recording and m == "play":
+		var weird := anomaly()
+		var watcher := patrol()
+		var an_id := weird.active_id() if weird != null else ""
+		playtest.horror_frame(delta, {"anomaly": an_id != "", "lethal": an_id != "" and bool(AnomalyModule.DEFS.get(an_id, {}).get("lethal", false)),
+			"chase": watcher != null and watcher.local_chase(), "inspection": school() != null and school().inspection_active(),
+			"blackout": weird != null and weird.blackout_now(), "hiding": watcher != null and bool(watcher.hide["on"]),
+			"yaw": float(player.capture_pose()["yaw"]), "dead": story().dead})
 
 
 ## F9 (debug build or --dev): the developer tools.

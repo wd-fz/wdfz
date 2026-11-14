@@ -951,6 +951,74 @@ func show_dread_note(text: String, seed: float, pose: Dictionary) -> void:
 	add_child(_dread_note)
 
 
+## A sheet or a chalk line on a wall (2026-11-14 horror plan): "board" is a revisit's chalk line, "notice" the
+## academic office's corridor notice (black lines, one in red ink without the stamp). pos is the wall face in
+## scene metres, yaw faces the reader. Empty lines remove it.
+var _wall_text: Node3D
+
+
+func show_wall_text(kind: String, lines: Array, pos: Vector3, yaw: float) -> void:
+	if is_instance_valid(_wall_text):
+		_wall_text.queue_free()
+	_wall_text = null
+	if lines.is_empty() or not is_room():
+		return
+	_wall_text = Node3D.new()
+	_wall_text.name = "WallText_" + kind
+	_wall_text.set_meta("kind", kind)
+	_wall_text.set_meta("lines", lines.duplicate(true))
+	var notice := kind == "notice"
+	if notice:
+		var paper := MeshInstance3D.new()
+		paper.name = "Paper"
+		var q := QuadMesh.new()
+		q.size = Vector2(0.5, 0.66)
+		paper.mesh = q
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.86, 0.84, 0.77)
+		mat.emission_enabled = true
+		mat.emission = Color(0.5, 0.48, 0.43) * 0.5
+		paper.material_override = mat
+		_wall_text.add_child(paper)
+	var rows: Array = [{"text": "教务处通知", "color": Color(0.12, 0.11, 0.1), "size": 70}] if notice else []
+	for l: Variant in lines:
+		var d: Dictionary = l if l is Dictionary else {"text": String(l)}
+		var red := bool(d.get("fake", false))
+		rows.append({"text": String(d["text"]), "color": Color(0.62, 0.06, 0.05) if red else (Color(0.1, 0.12, 0.2) if notice else Color(0.9, 0.9, 0.86, 0.85)), "size": 48 if notice else 110})
+	if notice:
+		rows.append({"text": "教务处（章）", "color": Color(0.62, 0.1, 0.08), "size": 42})
+	var y := 0.24 if notice else 0.0
+	for r: Dictionary in rows:
+		var label := Label3D.new()
+		label.text = String(r["text"])
+		label.font_size = int(r["size"])
+		label.pixel_size = 0.0007 if notice else 0.0012
+		label.modulate = r["color"]
+		label.outline_size = 0
+		label.width = 520.0 if notice else 900.0
+		label.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
+		label.position = Vector3(0.0, y, 0.004)
+		label.alpha_cut = Label3D.ALPHA_CUT_DISCARD
+		label.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		_wall_text.add_child(label)
+		y -= 0.115 if notice else 0.16
+	_wall_text.position = pos
+	_wall_text.rotation.y = yaw
+	add_child(_wall_text)
+
+
+func wall_text_kind() -> String:
+	return String(_wall_text.get_meta("kind", "")) if is_instance_valid(_wall_text) else ""
+
+
+func wall_text_lines() -> Array:
+	return _wall_text.get_meta("lines", []) if is_instance_valid(_wall_text) else []
+
+
+func wall_text_position() -> Variant:
+	return _wall_text.global_position if is_instance_valid(_wall_text) and _wall_text.is_inside_tree() else null
+
+
 func dread_note_text() -> String:
 	if not is_instance_valid(_dread_note):
 		return ""

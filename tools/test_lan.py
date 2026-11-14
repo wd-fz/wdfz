@@ -29,7 +29,9 @@ def main():
     parser.add_argument("--display-driver", choices=("x11", "wayland"), default="x11")
     parser.add_argument("--seconds", type=int, default=18)
     args = parser.parse_args()
-    if args.ending: args.seconds = max(30, args.seconds)
+    # The ending fixture finishes as soon as the shared ending lands (about 20 s on CI). The limit only bounds a
+    # real failure: 30 s left no room for the mid-route reconnect under 3 % loss on a loaded runner (2026-11-14).
+    if args.ending: args.seconds = max(60, args.seconds)
     if args.restore: args.seconds = max(24, args.seconds)
     if args.rules:
         reports = ROOT / "build/reports/lan/rules"

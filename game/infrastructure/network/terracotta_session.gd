@@ -15,6 +15,8 @@ var _nick := ""
 var _owned := false
 var _cancel := false
 var _poll := 0.0
+## Phases driven by one request each; the 0.5–1 s state poll runs in all the others.
+const UNPOLLED := ["idle", "boot", "meta", "inspect", "command", "cleanup", "release"]
 var _deadline := 0
 var _index := -1
 var _scaffolding := 13448
@@ -110,7 +112,12 @@ func _reply(path: String, status: int, data: Dictionary) -> void:
 		return
 	if status != 200:
 		_failures += 1
-		if phase != "connected" or _failures >= 3: _fail("远程联机组件无响应，请检查网络后重新连接。")
+		# A busy local component can miss one 5 s poll while EasyTier starts (four instances on one machine
+		# did in CI): in the polling phases keep going through up to three misses in a row; give up at once
+		# on a definite refusal (4xx) or in the one-shot setup phases, which have no poll to retry with.
+		var polled := phase not in UNPOLLED
+		if _failures >= 3 or not polled or (status >= 400 and status < 500 and phase != "connected"): _fail("远程联机组件无响应，请检查网络后重新连接。")
+		else: _poll = 0.0
 		return
 	_failures = 0
 	if path == "/meta":
@@ -196,7 +203,7 @@ func _released() -> void:
 
 
 func _process(dt: float) -> void:
-	if _cancel or phase in ["idle", "boot", "meta", "inspect", "command", "cleanup", "release"]: return
+	if _cancel or phase in UNPOLLED: return
 	if not available and Time.get_ticks_msec() > _deadline:
 		_fail("远程连接超时。请确认房主在线，允许游戏通过防火墙，或尝试更换网络。")
 		return

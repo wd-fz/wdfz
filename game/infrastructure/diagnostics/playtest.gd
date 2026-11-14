@@ -14,6 +14,8 @@ var recording := false
 var mode := "menu"
 var _frame_bins := [0, 0, 0, 0]
 var _elapsed := 0.0
+## Fear pacing while recording (horror_stats.gd, 2026-11-14): encounters, overlaps, look-backs, hides, deaths.
+var horror := HorrorStats.new()
 
 
 func _init(file: String = "user://playtest.json") -> void:
@@ -24,6 +26,7 @@ func start(settings: Dictionary, viewport: Vector2i) -> void:
 	recording = true
 	_elapsed = 0.0
 	_frame_bins = [0, 0, 0, 0]
+	horror = HorrorStats.new()
 	data = {"version": 1, "startedAt": Time.get_datetime_string_from_system(true), "environment": "由执行者补录真实设备；引擎信息不证明是真机",
 		"settings": settings.duplicate(true), "viewport": {"width": viewport.x, "height": viewport.y},
 		"seconds": {"play": 0.0, "menu": 0.0, "background": 0.0, "death": 0.0}, "events": [], "discardedEvents": 0}
@@ -74,6 +77,7 @@ func export() -> Dictionary:
 	var out := data.duplicate(true)
 	out["recording"] = recording
 	out["elapsedSeconds"] = _elapsed
+	out["horror"] = horror.report()
 	out["frameIntervals"] = {"under25ms": _frame_bins[0], "from25to50ms": _frame_bins[1], "from50to100ms": _frame_bins[2], "over100ms": _frame_bins[3]}
 	out["evidence"] = "本地事件与帧间隔记录；不自动推断理解度、真机性能、听感或试玩结论"
 	return out
@@ -89,3 +93,9 @@ func save() -> bool:
 	f.store_string(JSON.stringify(export(), "  "))
 	f.close()
 	return true
+
+
+## Called every playing frame with what the app knows (see HorrorStats.tick); only while recording.
+func horror_frame(dt: float, state: Dictionary) -> void:
+	if recording and mode == "play":
+		horror.tick(dt, state)

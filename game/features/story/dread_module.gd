@@ -12,13 +12,26 @@ extends FeatureModule
 ##   the floor, an echo in your steps, or someone just leaving as you come in); reproduced on load
 ##   from the room and the visit count.
 ## Nothing for the first 60 s of a run. The 5-minute debug slice is a dev tool and is not ported.
+## 2026-11-14 (user-approved horror plan, docs/plan/中式与西式恐怖及吓人手法.md):
+## · Director pacing (item 5): a pressure value rises while an anomaly, a chase or an inspection is on and
+##   decays with a 60 s half-life. High pressure slows the false threats (a breather after something real);
+##   a long calm (150 s with nothing real) speeds them up a little. Only the ambience; never a rule.
+## · Revisits gain a fifth change (item 3): a line of chalk on a wall near you ("board").
+## · The corridor notice (item 4): from day 2, once a day, in a free period indoors, a sheet from the
+##   academic office appears on a wall ahead: two true lines read from the timetable and one false line in
+##   red ink without the stamp. Nothing checks whether the player obeys it: following the false line simply
+##   puts the player where the existing rules (lessons, lights-out, inspections) already count it.
 ## Events out: dread {cue, place}, duck {sec}, precursor {k}, visit {fx, ...}, clear.
 
 const STATE_VERSION := 1
 const CFG := {"strong_gap": 45.0, "strong_area": 120.0, "mild_gap": 9.0, "mild_area": 24.0, "amb_min": 24.0, "amb_max": 52.0, "safe_start": 60.0, "pre_lead": 3.2}
 const NOTES := ["你昨天也来过。", "这张纸条不是写给你的。", "第二排靠窗的位子，今天也空着。",
 	"我数过了，楼梯比早上多一级。", "有人在等你先走。", "如果你看到这张纸，就别再回来找它了。", "他走路的声音，和你一样。"]
-const VISIT_KINDS := ["lamp", "note", "echo", "left"]
+const VISIT_KINDS := ["lamp", "note", "echo", "left", "board"]
+const BOARD_LINES := ["今天的值日生：你", "下一节还是这一节", "这里少了一张桌子", "作业：明天交昨天的", "老师马上回来"]
+const PACE := {"half": 60.0, "rest": 0.7, "quiet_after": 150.0, "quiet_boost": 1.4, "hold": 0.8, "inspect": 0.4}
+## Corridor notice: chance per second while eligible (about once in 90 s of free time indoors).
+const NOTICE_RATE := 1.0 / 90.0
 const EAR_DREAD := 0.8   # talents.js earDread: the price of 顺风耳 is more frequent false threats
 
 var visits: Dictionary = {}     # "day:room" → visits that day (saved: revisits replay on load)
@@ -32,6 +45,9 @@ var visit_fx: Dictionary = {}
 var echo := false
 var left_at := 0.0
 var events: Array = []
+var pressure := 0.0             # 0..1, director pacing (not saved: mood only)
+var calm := 0.0                 # seconds since anything real
+var notice: Dictionary = {}     # the corridor notice shown now {day, lines, fake, x, y}
 
 var _rooms: Dictionary = {}
 var _outdoor_scale := 1.0
@@ -69,6 +85,9 @@ func _reset_run() -> void:
 	echo = false
 	left_at = 0.0
 	events = []
+	pressure = 0.0
+	calm = 0.0
+	notice = {}
 
 
 func capture() -> Dictionary:
@@ -276,6 +295,7 @@ func clear_revisit() -> void:
 ## Entering a room; restoring rebuilds the saved room without counting a visit.
 func enter(room: String, restoring: bool = false) -> void:
 	_emit("clear")
+	notice = {}
 	visit_fx = {}
 	echo = false
 	left_at = 0.0
@@ -299,6 +319,10 @@ func enter(room: String, restoring: bool = false) -> void:
 		"left":
 			if not restoring:
 				left_at = t + 0.8
+		"board":
+			var sp: Variant = spot(2.5, 7.0)
+			if sp != null:
+				_emit("visit", {"fx": "board", "text": BOARD_LINES[floori(lhash("%sB%d" % [key, n]) * BOARD_LINES.size())], "x": (sp as Vector2).x, "y": (sp as Vector2).y})
 	note("visit:" + kind, 0, {"room": room, "visit": n})
 
 
@@ -310,6 +334,7 @@ func tick(dt: float) -> void:
 		var sp: Variant = spot(5.0, 14.0)
 		if sp != null:
 			_emit("dread", {"cue": "desk", "place": place(sp)})
+	_pace_step(dt)
 	var busy := bool(_c.get("busy", false))
 	var nxt := float(_c.get("an_next", -1.0))
 	if not bool(_c.get("an_active", false)) and nxt > 0.0 and nxt < float(CFG["pre_lead"]) and pre_for != int(_c.get("an_next0", 0)):
@@ -319,10 +344,87 @@ func tick(dt: float) -> void:
 			note("precursor", 0)
 	if busy or t < float(CFG["safe_start"]):
 		return
-	next_amb -= dt * (0.75 + tension() * 0.9) / (EAR_DREAD if bool(_c.get("ear", false)) else 1.0)
+	_notice_step(dt)
+	next_amb -= dt * (0.75 + tension() * 0.9) * pace() / (EAR_DREAD if bool(_c.get("ear", false)) else 1.0)
 	if next_amb > 0.0:
 		return
 	next_amb = _rng.randf_range(float(CFG["amb_min"]), float(CFG["amb_max"]))
 	var kind := pick_ambient()
 	if not false_threat(kind, 2 if kind == "run" else 1):
 		next_amb = _rng.randf_range(6.0, 12.0)
+
+
+# ---- director pacing (item 5) ----
+
+## Pressure follows what is really happening: held up while an anomaly or a chase is on, raised by an
+## inspection, halving every 60 s otherwise.
+func _pace_step(dt: float) -> void:
+	pressure *= pow(0.5, dt / float(PACE["half"]))
+	calm += dt
+	if bool(_c.get("an_active", false)) or bool(_c.get("chase", false)):
+		pressure = maxf(pressure, float(PACE["hold"]))
+		calm = 0.0
+	elif bool(_c.get("inspect", false)):
+		pressure = maxf(pressure, float(PACE["inspect"]))
+		calm = 0.0
+
+
+## The rate multiplier for the false threats: a breather after something real, a nudge after a long calm.
+func pace() -> float:
+	if pressure > 0.05:
+		return 1.0 - float(PACE["rest"]) * clampf(pressure, 0.0, 1.0)
+	return float(PACE["quiet_boost"]) if calm > float(PACE["quiet_after"]) else 1.0
+
+
+# ---- the corridor notice (item 4) ----
+
+## Three lines for a day: two true ones read from the timetable, one false in red. Deterministic per day.
+static func notice_lines(day: int, tsec: float) -> Dictionary:
+	var next_class: Array = []
+	for row: Array in SchoolClock.SCHED:
+		if float(row[0]) > tsec and row[3] == "教室":
+			next_class = row
+			break
+	var cls_name := String(next_class[2]) if not next_class.is_empty() else "晚自习一"
+	var cls_at := SchoolClock.fmt_clock(float(next_class[0])) if not next_class.is_empty() else SchoolClock.fmt_clock(1090.0)
+	var truths := ["%s %s 开始，请提前回本班教室就座。" % [cls_name, cls_at],
+		"%s 熄灯，熄灯后请回宿舍。" % SchoolClock.fmt_clock(SchoolClock.LIGHTS_OUT),
+		"学生会检查时，请留在本班教室。"]
+	var lies := ["%s改在操场上，铃响后到操场集合。" % cls_name,
+		"今晚熄灯推迟到 23:59，熄灯前可在校园内自由活动。",
+		"学生会检查改在一楼走廊进行，请到走廊集合。"]
+	var h := lhash("notice:%d" % day)
+	var topic := floori(h * 3.0) % 3
+	var lines: Array = []
+	for i in 3:
+		lines.append({"text": lies[i] if i == topic else truths[i], "fake": i == topic})
+	# The false line does not always sit in the same row.
+	var shift := floori(lhash("notice-row:%d" % day) * 3.0) % 3
+	var ordered: Array = []
+	for i in 3:
+		ordered.append(lines[(i + shift) % 3])
+	var fake := 0
+	for i in 3:
+		if ordered[i]["fake"]:
+			fake = i
+	return {"lines": ordered, "fake": fake}
+
+
+func _notice_step(dt: float) -> void:
+	var day := int(_c.get("day", 1))
+	var key := "notice:%d" % day
+	if day < 2 or visits.has(key) or not notice.is_empty() or not bool(_c.get("free", false)):
+		return
+	var scene := String(_c.get("scene", ""))
+	if scene == "out" or not _rooms.has(scene) or scene == "portal_tunnel" or scene == "lift_dream":
+		return
+	if _rng.randf() >= dt * NOTICE_RATE or not allow(1):
+		return
+	var sp: Variant = spot(3.0, 8.0)
+	if sp == null:
+		return
+	visits[key] = 1
+	var content := notice_lines(day, float(_c.get("tsec", 700.0)))
+	notice = {"day": day, "lines": content["lines"], "fake": content["fake"], "x": (sp as Vector2).x, "y": (sp as Vector2).y}
+	_emit("notice", notice.duplicate(true))
+	note("notice", 1, {"day": day})
