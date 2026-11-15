@@ -11,7 +11,7 @@ import sys
 import tempfile
 import zipfile
 from ci.common import ENGINE, ROOT, check_version, run
-from ci import quality
+from ci import quality, package_budget
 from export_android import RELEASE_VERSION
 import terracotta
 
@@ -42,7 +42,9 @@ def main():
                 shutil.rmtree(directory)
             directory.mkdir(parents=True)
             binary = directory / ('wdfz.x86_64' if target == 'linux' else 'wdfz.exe')
+            package_budget.clear_report(ROOT, binary)
             run('export-' + target, [ENGINE, '--headless', '--path', str(ROOT), '--export-release', target.title(), str(binary)], reports, timeout=900)
+            optimization = package_budget.read_report(ROOT, binary)
             if not binary.is_file() or not binary.with_suffix('.pck').is_file():
                 raise RuntimeError(f'{target}: exporter did not produce binary and PCK')
             if target == 'linux':
@@ -62,12 +64,12 @@ def main():
                             raise RuntimeError(f'Exported Linux runtime did not start windowed with Vulkan on {display}')
                         output = run('smoke-linux-' + display, [ENGINE, *flags, '--audio-driver', 'Dummy',
                                      '--main-pack', str(binary.with_suffix('.pck')),
-                                     '--script', str(ROOT / 'tools/ci/export_smoke.gd')], reports, timeout=180, cwd=directory, env=env)
+                                     '--script', str(ROOT / 'tools/ci/export_smoke.gd')], reports, timeout=300, cwd=directory, env=env)
                         if 'EXPORT SMOKE: passed' not in output or 'EXPORT RENDERER: vulkan / forward_plus' not in output:
                             raise RuntimeError(f'Exported Linux runtime did not complete the {display} smoke test')
             shutil.copy2(ROOT / 'LICENSE', directory / 'LICENSE')
             terracotta.bundle(target, directory / 'terracotta')
-            info = {'revision': revision, 'engine': summary['engine'], 'platform': target,
+            info = {'revision': revision, 'engine': summary['engine'], 'platform': target, 'package_optimization': optimization,
                     'version': RELEASE_VERSION, 'release': args.release, 'working_tree_dirty': dirty, 'terracotta': terracotta.VERSION,
                     'source': 'https://github.com/wd-fz/wdfz', 'runtime_verified': target == 'linux',
                     'rendering_driver': 'vulkan', 'rendering_method': 'forward_plus',

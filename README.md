@@ -88,6 +88,8 @@ godot --windowed --path . --script res://tools/capture/capture_preview.gd
 
 本地导出：安装同版本桌面 export templates、Xvfb 和 Weston 后运行 `xvfb-run -a python tools/ci/with_wayland.py python tools/export.py`。详细安装、日志与限制见[项目结构与持续集成](docs/项目结构与持续集成.md)。
 
+所有平台导出均自动执行[包体积优化](docs/包体积优化.md)：排除停用的第五套校园模型，无损压缩场景并共享相同纹理。原始美术保留在仓库，五档画质预设继续可用。
+
 Android 调试包在 [Actions → Android Debug](https://github.com/wd-fz/wdfz/actions/workflows/android-debug.yml) 的成功运行中下载 `wdfz-android-debug-arm64-<SHA>`。解压后安装其中的 APK，支持 ARM64、Android 7.0 及以上且具备 Vulkan 的设备；采用独立调试包名，横屏运行并自动启用触屏控件。构建检查签名、Debug 标记、启动横屏与 Vulkan 必需功能声明、Mobile 渲染器元数据、16 KB 对齐和运行时资源，尚未代表 Android 真机运行验收。本地 Linux 构建入口为 `python tools/export_android.py --sdk <Android SDK 路径>`。
 
 ## 存档与范围

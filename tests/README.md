@@ -26,3 +26,5 @@
 `support/test_suite.gd` 向当前 SceneTree 转发断言、帧等待与计时器，提供测试上下文辅助，不持有独立游戏局。新增测试须在 `run_tests.gd` 显式调用，避免文件存在但从未执行。
 
 运行命令和 CI 解释见[项目结构与持续集成](../docs/项目结构与持续集成.md)。`tooling/` 使用 Python 标准库 unittest，验证架构检查与错误处理本身。不得把真实设备或完整自然游玩的结论从这些测试中推导出来。
+
+包体积优化：`package_export.gd` 验证 RSCC 无损压缩边界与原生加载；`test_package_budget.py` 检查构建报告、导出排除与 APK 标记。`tools/ci/export_smoke.gd` 从实际 PCK 加载所有模型及材质依赖，再验证游戏流程。

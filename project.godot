@@ -45,6 +45,9 @@ textures/vram_compression/import_etc2_astc=true
 textures/default_filters/use_nearest_mipmap_filter=false
 environment/defaults/default_clear_color=Color(0.035, 0.05, 0.065, 1)
 
+[editor_plugins]
+enabled=PackedStringArray("res://addons/package_optimizer/plugin.cfg")
+
 [input]
 move_forward={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":87),Object(InputEventKey,"physical_keycode":4194320)]}
 move_back={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":83),Object(InputEventKey,"physical_keycode":4194322)]}

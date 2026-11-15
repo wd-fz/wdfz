@@ -60,7 +60,7 @@ def check(root: Path):
             if name[1] in classes:
                 errors.append(f"Duplicate class {name[1]}: {path}")
             classes[name[1]] = path.relative_to(root).as_posix()
-    for base in ("game", "tests", "tools/capture", "tools/benchmarks"):
+    for base in ("game", "tests", "tools/capture", "tools/benchmarks", "addons"):
         for path in sorted((root / base).rglob("*.gd")):
             uid_file = path.with_suffix(".gd.uid")
             if not uid_file.exists():
@@ -81,6 +81,10 @@ def check(root: Path):
         resources += [p for p in (root / base).rglob("*") if p.suffix in (".gd", ".tscn", ".tres")]
     for path in resources:
         for ref in re.findall(r'["\x27]res://([^"\x27\n]+)["\x27]', path.read_text(encoding="utf-8")):
+            # Editor-only export hook, excluded from every shipping preset. Runtime
+            # scripts still cannot import editor/addon code through this exception.
+            if path == root / "project.godot" and ref == "addons/package_optimizer/plugin.cfg" and (root / ref).is_file():
+                continue
             # The editor-only Terracotta launcher uses a verified build cache; exports
             # use the executable alongside the package. This is not a packed resource.
             if path.name == 'terracotta_gateway.gd' and ref == 'build/deps/terracotta/%s/%s':

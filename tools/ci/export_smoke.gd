@@ -15,14 +15,38 @@ func _check(ok: bool, message: String) -> void:
 		printerr("EXPORT FAILURE: ", message)
 
 
+func _model_paths(directory: String) -> PackedStringArray:
+	var result := PackedStringArray()
+	for file in DirAccess.get_files_at(directory):
+		if file.ends_with(".glb.remap"):
+			result.append(directory.path_join(file.trim_suffix(".remap")))
+		elif file.ends_with(".glb"):
+			result.append(directory.path_join(file))
+	for child in DirAccess.get_directories_at(directory):
+		result.append_array(_model_paths(directory.path_join(child)))
+	return result
+
+
 func _run() -> void:
 	var driver := RenderingServer.get_current_rendering_driver_name()
 	var method := RenderingServer.get_current_rendering_method()
-	_check(driver == "vulkan" and method == "forward_plus" and RenderingServer.get_rendering_device() != null,
-		"exported project must render with Vulkan Forward+")
+	var expected := "mobile" if "--expect-renderer=mobile" in OS.get_cmdline_user_args() else "forward_plus"
+	_check(driver == "vulkan" and method == expected and RenderingServer.get_rendering_device() != null,
+		"exported project must render with Vulkan " + expected)
 	print("EXPORT RENDERER: %s / %s" % [driver, method])
-	for folder: String in ["tests", "tools", "docs", "pictures"]:
+	for folder: String in ["tests", "tools", "docs", "pictures", "addons", "assets/campus_q4"]:
 		_check(not DirAccess.dir_exists_absolute("res://" + folder), "development folder shipped: " + folder)
+	var model_paths := _model_paths("res://assets")
+	_check(model_paths.size() >= 172, "the four model tiers are not present in the export")
+	for model_path in model_paths:
+		var packed := load(model_path) as PackedScene
+		_check(packed != null, "exported model/material dependency missing: " + model_path)
+		if packed != null:
+			var model := packed.instantiate()
+			_check(model != null, "exported model cannot instantiate: " + model_path)
+			if model != null: model.free()
+		await process_frame
+	print("EXPORTED MODELS: %d loaded with native typed material dependencies" % model_paths.size())
 	var path := "user://framework-tests/export-%s/" % Time.get_ticks_usec()
 	var app: GameApp = APP.instantiate()
 	app.saves = SaveStore.new(path + "slot.json")
@@ -43,7 +67,8 @@ func _run() -> void:
 	await RenderingServer.frame_post_draw
 	_check(not root.get_texture().get_image().is_empty(), "exported campus did not render a frame")
 	_check(CampusData.room_ids().size() == 42, "dynamic layout JSON or models missing")
-	_check(CampusData.tiers_available().size() == 5, "quality tiers missing")
+	_check(CampusData.tiers_available() == [0,1,2,3], "supported model tiers missing")
+	_check(FileAccess.file_exists("res://assets/package_policy.json"), "lossless export plugin did not run")
 	_check(FileAccess.file_exists("res://assets/audio/index.json"), "audio index missing")
 	for id: String in CampusData.campus()["items"]:
 		_check(UIArt.item(id) != null, "exported item illustration missing: " + id)

@@ -201,16 +201,18 @@ func _test_model_tiers() -> void:
 	CampusData.tier = CampusData.DEFAULT_TIER
 	check(CampusData.scene_path("teach1") == CampusData.SCENE_DIR + "teach1.glb" and CampusData.tiers_available().has(CampusData.DEFAULT_TIER), "the default tier loads from the usual folder")
 	CampusData.tier = 0
-	check(CampusData.scene_path("teach1") == "res://assets/campus_q0/scenes/teach1.glb" and CampusData.tiers_available() == [0, 1, 2, 3, 4], "all five tiers are exported and tier 0 loads its own model")
+	check(CampusData.scene_path("teach1") == "res://assets/campus_q0/scenes/teach1.glb" and CampusData.tiers_available() == [0, 1, 2, 3], "all four supported model tiers are exported and tier 0 loads its own model")
 	CampusData.tier = 3
 	check(CampusData.scene_path("lab2") == "res://assets/campus_q3/scenes/lab2.glb" and ResourceLoader.exists(CampusData.scene_path("stair_garage")), "every scene exists in every tier, stairwells included")
-	for t in [0, 1, 3, 4]:
+	for t in [0, 1, 3]:
 		CampusData.tier = t
 		var n := 0
 		for id: String in CampusData.rooms():
 			if ResourceLoader.exists(CampusData.scene_path(id)) and CampusData.scene_path(id).contains("campus_q%d" % t):
 				n += 1
 		check(n == CampusData.rooms().size(), "tier %d has a model for every room (%d)" % [t, n])
+	CampusData.tier = 4
+	check(CampusData.scene_path("teach1") == "res://assets/campus_q3/scenes/teach1.glb", "retired model tier 4 safely resolves to tier 3")
 	CampusData.tier = was
 
 

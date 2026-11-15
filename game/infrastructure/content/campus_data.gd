@@ -5,16 +5,18 @@ extends RefCounted
 
 const LAYOUT_DIR := "res://assets/campus/layout/"
 const SCENE_DIR := "res://assets/campus/scenes/"
-## The model tier the player chose (GameSettings model_detail 0–4; the default tier is 2, the one in SCENE_DIR). A tier's exports live in
+## The model tier the player chose (GameSettings model_detail 0–3; the default tier is 2, the one in SCENE_DIR). A tier's exports live in
 ## res://assets/campus_q<N>/scenes/ (tools/export_scenes/export_scenes.py --quality N --out assets/campus_qN); a scene missing there falls
 ## back to the default tier, so tiers can be added one by one. Only the models change: the layout and the collision are the same.
 const DEFAULT_TIER := 2
+const MODEL_TIERS := [0, 1, 2, 3]
 static var tier := DEFAULT_TIER
 
 
 static func scene_path(id: String) -> String:
-	if tier != DEFAULT_TIER:
-		var alt := "res://assets/campus_q%d/scenes/%s.glb" % [tier, id]
+	var selected := clampi(tier, 0, 3)
+	if selected != DEFAULT_TIER:
+		var alt := "res://assets/campus_q%d/scenes/%s.glb" % [selected, id]
 		if ResourceLoader.exists(alt):
 			return alt
 	return SCENE_DIR + id + ".glb"
@@ -22,7 +24,7 @@ static func scene_path(id: String) -> String:
 
 static func tiers_available() -> Array:
 	var out: Array = [DEFAULT_TIER]
-	for q in 5:
+	for q in MODEL_TIERS:
 		if q != DEFAULT_TIER and DirAccess.dir_exists_absolute("res://assets/campus_q%d/scenes" % q):
 			out.append(q)
 	out.sort()

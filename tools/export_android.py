@@ -11,7 +11,7 @@ import struct
 import subprocess
 import sys
 import zipfile
-from ci import quality
+from ci import quality, package_budget
 from ci.common import ENGINE, ROOT, check_version, run
 from ci import terracotta_android
 import terracotta
@@ -208,9 +208,11 @@ def main():
             terracotta_android.install_template(template, source_zip, expected)
         terracotta_android.install(ROOT, template, terracotta.prepare('android'))
         summary['terracotta'] = terracotta.VERSION
+        package_budget.clear_report(ROOT, unsigned)
         run("export-android", [ENGINE, "--headless", "--path", str(ROOT), "--export-release" if args.release else "--export-debug",
                               "Android Release" if args.release else "Android Debug", str(unsigned)],
             reports, timeout=900, env=env)
+        summary['package_optimization'] = package_budget.read_report(ROOT, unsigned)
         signer = build_tools / ("apksigner.bat" if os.name == "nt" else "apksigner")
         if args.release:
             aligned = packages / ".release-aligned.apk"
@@ -233,6 +235,7 @@ def main():
         summary["launch_orientation"] = verify_launcher_orientation(manifest_tree)
         summary.update(verify_vulkan_manifest(manifest_tree))
         with zipfile.ZipFile(apk) as archive:
+            package_budget.verify_apk(archive)
             summary['fullscreen_forced'] = verify_fullscreen_launch(archive.read('assets/_cl_'))
             names = archive.namelist()
             terracotta_android.verify(manifest_tree, names)
