@@ -58,6 +58,14 @@ func _frames(count: int = 3) -> void:
 		await process_frame
 
 
+## A real walking crossing can wait for its detached geometry worker. Leave input
+## and the normal portal rule in control; never teleport or finish the worker here.
+func _until_world(app: GameApp, id: String, seconds: float = 180.0) -> void:
+	var until := Time.get_ticks_msec() + int(seconds * 1000.0)
+	while app.session != null and app.session.world_id != id and Time.get_ticks_msec() < until:
+		await _frames(1)
+
+
 func _tap(control: Control) -> void:
 	await _frames(2)
 	var position := root.get_final_transform() * control.get_global_rect().get_center()

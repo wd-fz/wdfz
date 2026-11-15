@@ -1,5 +1,33 @@
 extends "res://tests/support/test_suite.gd"
 
+
+func test_material_lifecycle() -> void:
+	var camera := Camera3D.new()
+	root.add_child(camera)
+	camera.position = Vector3(0, 2, 5)
+	camera.current = true
+	for cycle in 12:
+		var view := ClassmatesView.new()
+		root.add_child(view)
+		view.build(CampusData.layout("teach1"), [Vector2i(8, 8), Vector2i(9, 8)])
+		var shared := view._material
+		for data: Dictionary in view.figures:
+			(data["node"] as Node3D).position = Vector3.ZERO
+		view.set_normal(true)
+		for data: Dictionary in view.figures: view._pose(data, "person")
+		await _frames(1)
+		var meshes := view.find_children("*", "MeshInstance3D", true, false)
+		check(shared != null and meshes.all(func(mesh: MeshInstance3D) -> bool: return mesh.material_override == shared)
+			and shared.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL, "rebuilt classroom poses retain the live shared material %d" % cycle)
+		view.set_normal(false)
+		for data: Dictionary in view.figures: view._pose(data, "sit")
+		await _frames(1)
+		check(shared.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and shared.albedo_color == Color("080b0d"), "new poses preserve the dark classroom tint %d" % cycle)
+		view.queue_free()
+		await _frames(2)
+	camera.queue_free()
+	await _frames(2)
+
 func fixture() -> Dictionary:
 	var bytes := FileAccess.get_file_as_bytes("res://tests/fixtures/classmates-reference.json.gz")
 	return JSON.parse_string(bytes.decompress_dynamic(16*1024*1024,FileAccess.COMPRESSION_GZIP).get_string_from_utf8())

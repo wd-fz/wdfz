@@ -15,7 +15,7 @@ static func available(kind: String) -> bool:
 
 ## A figure of the kind, tinted; scale multiplies the old size (1 = as built). unlit = the dark, unlit
 ## silhouette used by the anomalies. Returns an empty Node3D when the model is missing.
-static func make(kind: String, color: Color, unlit: bool = false, scale: float = 1.0, emission: Color = Color.BLACK, fog_enabled: bool = true, flat_shadow: bool = false) -> Node3D:
+static func make(kind: String, color: Color, unlit: bool = false, scale: float = 1.0, emission: Color = Color.BLACK, fog_enabled: bool = true, flat_shadow: bool = false, shared_material: StandardMaterial3D = null) -> Node3D:
 	var root := Node3D.new()
 	root.name = "Figure_" + kind
 	if not available(kind):
@@ -28,6 +28,15 @@ static func make(kind: String, color: Color, unlit: bool = false, scale: float =
 	var inst := (_cache[key] as PackedScene).instantiate() as Node3D
 	inst.rotation.y = PI
 	root.add_child(inst)
+	var mat := shared_material if shared_material != null else material(color, unlit, emission, fog_enabled)
+	for mi: Node in inst.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).material_override = mat
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if unlit else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	root.scale = Vector3.ONE * scale
+	return root
+
+
+static func material(color: Color, unlit: bool = false, emission: Color = Color.BLACK, fog_enabled: bool = true) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	# Original figMesh callers tint the whole person; they do not enable vertexColors.
 	# The exported asset carries baked vertex shades for other uses, which must not darken this tint.
@@ -39,11 +48,7 @@ static func make(kind: String, color: Color, unlit: bool = false, scale: float =
 	mat.disable_fog = not fog_enabled
 	if unlit:
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	for mi: Node in inst.find_children("*", "MeshInstance3D", true, false):
-		(mi as MeshInstance3D).material_override = mat
-		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if unlit else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	root.scale = Vector3.ONE * scale
-	return root
+	return mat
 
 
 ## The dressed variant of a kind (tools/remodel/dress.py): the same body with clothes laid over it, one

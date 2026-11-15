@@ -41,11 +41,12 @@ func _pose(data: Dictionary, kind: String) -> void:
 	for child in figure.get_children():
 		figure.remove_child(child)
 		child.queue_free()
-	var model := FigureModel.make(kind,Color("5d6873") if normal else Color("080b0d"),not normal)
-	if CampusBatches.enabled:
-		for mesh: MeshInstance3D in model.find_children("*","MeshInstance3D",true,false):
-			if _material==null: _material=mesh.material_override
-			else: mesh.material_override=_material
+	var tint := Color("5d6873") if normal else Color("080b0d")
+	if CampusBatches.enabled and _material == null:
+		_material = FigureModel.material(tint, not normal)
+	# Bind the final shared material once. Replacing a just-created override releases
+	# its last reference while a streaming flush can still inspect the old renderer RID.
+	var model := FigureModel.make(kind, tint, not normal, 1.0, Color.BLACK, true, false, _material if CampusBatches.enabled else null)
 	# FigureModel already turns students' meshes around; the teacher faces the class.
 	if data["teacher"]: model.rotation.y = PI
 	figure.add_child(model)
