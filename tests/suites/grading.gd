@@ -34,9 +34,11 @@ func test_original_lighting() -> void:
 		light.fake_normal=s["fake"]
 		light.update(0,s["t"],null)
 		var equal := true
-		for key: String in ["day","amb","hemi","dir","pt"]:
+		# Ordinary buildings deliberately use the shared campus sky now. Keep the original
+		# clock/day blend and all special-space light terms pinned to the reference.
+		for key: String in (["day"] if light.campus_daylight() else ["day","amb","hemi","dir","pt"]):
 			equal=equal and absf(light.terms[key]-s[key])<.00001
-		check(equal,"lightState matches original %s t=%s normal=%s fake=%s (%s)" % [s["room"],s["t"],s["normal"],s["fake"],light.terms])
+		check(equal,"reference clock blend / special-space lighting %s t=%s normal=%s fake=%s (%s)" % [s["room"],s["t"],s["normal"],s["fake"],light.terms])
 		check(light.env.tonemap_mode==Environment.TONE_MAPPER_LINEAR and not light.env.adjustment_enabled,"world lighting leaves tone mapping to the post pass")
 	for light: CampusLighting in lights.values():
 		light.queue_free()

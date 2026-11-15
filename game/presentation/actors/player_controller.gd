@@ -181,9 +181,13 @@ func capture_pose() -> Dictionary:
 
 
 ## Seamless move (campus door thresholds): keep held input and velocity direction.
-func place(data: Dictionary) -> void:
+func place(data: Dictionary, rebase_velocity: bool = false) -> void:
 	var coordinates: Array = data["position"]
 	position = Vector3(coordinates[0], coordinates[1], coordinates[2])
+	# Stair/bridge portals can rotate the local coordinate frame. Carry momentum through
+	# the same rotation as the view instead of sliding sideways for a frame after crossing.
+	if rebase_velocity:
+		velocity = velocity.rotated(Vector3.UP, wrapf(float(data["yaw"]) - rotation.y, -PI, PI))
 	rotation = Vector3(0.0, float(data["yaw"]), 0.0)
 	set_pitch(float(data["pitch"]))
 	reset_physics_interpolation()

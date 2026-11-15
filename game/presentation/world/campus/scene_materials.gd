@@ -71,6 +71,6 @@ static func apply(model: Node, quality: int) -> int:
 			var r := response(mat, float(mat.get_meta("wdfz_rough")), quality)
 			if not is_equal_approx(mat.roughness, float(r["roughness"])) or not is_equal_approx(mat.metallic, float(r["metallic"])):
 				changed += 1
-			mat.roughness = float(r["roughness"])
-			mat.metallic = float(r["metallic"])
+				mat.roughness = float(r["roughness"])
+				mat.metallic = float(r["metallic"])
 	return changed

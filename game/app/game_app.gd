@@ -543,77 +543,39 @@ func starting() -> bool:
 	return _starting
 
 
-## The models a world builds from, for the loading screen to read first ([] for non-campus worlds).
-func _world_assets(world_id: String) -> PackedStringArray:
-	return CampusWorld.asset_paths(world_id) if CampusData.rooms().has(world_id) or world_id == "out" else PackedStringArray()
-
-
-## Show the loading screen, read the world's models on worker threads while it animates, then run work
-## (which builds the scene on the main thread and starts the run) and fade the screen out over the start.
-## User request 2026-11-13: confirming a talent used to freeze the window with no feedback while the
-## campus model loaded synchronously.
+## The first load prepares the starting region and its nearest exits before control begins.
+## Subsequent walking crossings reuse resident geometry; distant regions stream during exploration.
 func _load_then(world_id: String, work: Callable) -> void:
 	if _starting:
 		return
 	_starting = true
 	ui.show_loading("读取校园")
-	# Let the screen be drawn before anything heavy happens.
 	await get_tree().process_frame
 	await get_tree().process_frame
-	# Headless (tests, tools): the dummy renderer's mesh storage is not thread-safe and nothing is drawn
-	# while waiting, so the models are read and processed by the build itself as before. The Vulkan
-	# renderers' storage (Forward+ and Mobile share it) is thread-safe.
-	var threaded := DisplayServer.get_name() != "headless"
-	var pending: Array[String] = []
-	for path: String in (_world_assets(world_id) if threaded else PackedStringArray()):
-		if ResourceLoader.has_cached(path):
-			continue
-		if ResourceLoader.load_threaded_request(path, "", true) == OK:
-			pending.append(path)
-	var held: Array = []
-	while not pending.is_empty():
-		var done := 0.0
-		var waiting := false
-		for path: String in pending:
-			var part := []
-			if ResourceLoader.load_threaded_get_status(path, part) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
-				waiting = true
-				done += float(part[0]) if not part.is_empty() else 0.0
-			else:
-				done += 1.0
-		ui.set_loading(0.85 * done / float(pending.size()))
-		if not waiting:
-			break
-		await get_tree().process_frame
-	# Collect every request (also failed ones) so none is left for the synchronous build to collide with;
-	# held keeps the loaded models cached until the scene has instantiated them.
-	for path: String in pending:
-		held.append(ResourceLoader.load_threaded_get(path))
-	# The models seen through openings (above all the campus through the classroom door near the start
-	# seat) are processed off the main thread too: merged and split into spatial cells on a detached tree.
-	var ids := CampusWorld.visual_ids(world_id) if threaded and CampusData.rooms().has(world_id) else PackedStringArray()
-	if not ids.is_empty():
-		ui.set_loading(0.85, "布置校园")
-		var worker := Thread.new()
-		worker.start(CampusWorld.build_visuals.bind(ids, CampusWorld.quality_of(settings.graphics())), Thread.PRIORITY_LOW)
-		var waited := 0.0
-		while worker.is_alive():
-			# The worker reads mesh data back from the rendering server, which answers once per flush: flush
-			# it here for a slice of each frame instead of only once per drawn frame.
-			var slice := Time.get_ticks_usec()
-			while worker.is_alive() and Time.get_ticks_usec() - slice < 80000:
-				RenderingServer.force_sync()
-				OS.delay_usec(20)
-			waited += get_process_delta_time()
-			ui.set_loading(0.85 + 0.1 * (1.0 - exp(-waited / 2.0)))
-			await get_tree().process_frame
-		CampusWorld.adopt_prepared(worker.wait_to_finish())
-	ui.set_loading(0.95, "布置教室")
-	await get_tree().process_frame
+	if world_id == "out" or CampusData.rooms().has(world_id):
+		var ids := PackedStringArray([world_id])
+		var at := Vector3.ZERO
+		if world_id != "out":
+			var pose := CampusData.rules().start_pose() if world_id == initial_world else CampusData.rules().default_spawn(world_id)
+			var p: Array = pose["position"]
+			at = Vector3(p[0], p[1], p[2])
+		# Real devices warm exits too. Headless tools have no GPU and run deterministic explicit prefetch tests.
+		if router.stream.automatic():
+			ids.append_array(CampusConnections.nearby(world_id, at))
+		if ids.has("out"):
+			# Reuse the campus geometry for the classroom's outward view instead of processing it twice.
+			ids.erase("out")
+			ids.insert(0, "out")
+		for i in ids.size():
+			router.prepare(ids[i])
+			var waited := 0.0
+			while not router.warm(ids[i]) and router.stream.pending(ids[i]):
+				ui.set_loading((i + .9 * (1.0 - exp(-waited / 3.0))) / float(ids.size()), "准备校园通道")
+				waited += get_process_delta_time()
+				await get_tree().process_frame
+	ui.set_loading(0.95, "进入校园")
 	await get_tree().process_frame
 	work.call()
-	held.clear()
-	CampusWorld.drop_prepared()
 	ui.set_loading(1.0)
 	ui.hide_loading()
 	_starting = false
@@ -1043,7 +1005,7 @@ func _physics_process(delta: float) -> void:
 # ---- formal campus (features/campus) ----
 
 func _campus_world() -> CampusWorld:
-	return router.get_child(0) as CampusWorld if router.get_child_count() > 0 else null
+	return router.world_instance() as CampusWorld
 
 
 func _sync_world() -> void:
@@ -1061,6 +1023,27 @@ func _sync_world() -> void:
 		var want := days().today(school().day, school().tsec) == "anniversary"
 		if want != world.banner.is_on():
 			world.banner.set_on(want)
+
+	_update_campus_lighting(world, 0.0)
+
+
+## Seed the incoming region before its first rendered frame, as well as on every simulation tick.
+## Otherwise a night-time crossing briefly shows the new light nodes' default daytime energy.
+func _update_campus_lighting(world: CampusWorld, delta: float) -> void:
+	if world == null or world.lighting == null or school() == null:
+		return
+	var light := world.lighting
+	light.reduce_flash = settings.get_int("reduce_flash") == 1
+	light.brightness = float(settings.get_int("bright")) / 100.0
+	light.world_normal = ui.scene_post().world_normal
+	light.fake_normal = ui.scene_post().fake_normal
+	light.gaze = ui.scene_post().gaze_level
+	light.crowd_state = lift_crowd().state if lift_crowd() != null else {}
+	var watcher := patrol()
+	var weird := anomaly()
+	world.update_lighting(delta, school().tsec, player.camera, watcher.flick if watcher != null else 0.0, watcher.red if watcher != null else 0.0,
+		weird != null and weird.blackout_now(), weird.overcast_target() if weird != null else 0.0)
+	ui.scene_post().parameter("exposure", light.post_exposure)
 
 
 func _door_changed(key: String, open: bool) -> void:
@@ -1110,7 +1093,13 @@ func _campus_step(delta: float) -> void:
 		return
 	var crossing := rules.crossing(session.world_id, player.capture_pose())
 	if not crossing.is_empty():
-		travel(crossing["world"], crossing["pose"], true)
+		# Never turn a cold doorway into a synchronous load on the gameplay thread. The
+		# existing threshold apron keeps the player on valid collision while a late worker
+		# catches up; look/input/simulation remain live and the pose is sampled again next tick.
+		if router.stream.automatic() and not router.warm(String(crossing["world"])):
+			router.prepare(String(crossing["world"]))
+		else:
+			travel(crossing["world"], crossing["pose"], true)
 	_hint_cooldown -= delta
 	_refresh_interaction_prompt()
 
@@ -1547,17 +1536,7 @@ func _school_step(delta: float, rules: CampusModule, advance_calendar: bool = tr
 	var lit := _campus_world()
 	if lit != null:
 		var weird_light := anomaly()
-		if lit.lighting != null:
-			lit.lighting.reduce_flash = settings.get_int("reduce_flash") == 1
-			lit.lighting.brightness = float(settings.get_int("bright")) / 100.0
-			lit.lighting.world_normal = ui.scene_post().world_normal
-			lit.lighting.fake_normal = ui.scene_post().fake_normal
-			lit.lighting.gaze = ui.scene_post().gaze_level
-			lit.lighting.crowd_state = lift_crowd().state if lift_crowd() != null else {}
-		lit.update_lighting(delta, day_rules.tsec, player.camera, watcher.flick if watcher != null else 0.0, watcher.red if watcher != null else 0.0,
-			weird_light != null and weird_light.blackout_now(), weird_light.overcast_target() if weird_light != null else 0.0)
-		if lit.lighting != null:
-			ui.scene_post().parameter("exposure",lit.lighting.post_exposure)
+		_update_campus_lighting(lit, delta)
 		if watcher != null:
 			var fig_scene := Vector2.ZERO
 			var look_scene := Vector2.ZERO
@@ -2696,6 +2675,8 @@ func _configure_world_rendering(world: Node3D) -> void:
 func _apply_graphics() -> void:
 	var options:=settings.graphics()
 	if options==_graphics_applied: return
+	# The worker must finish against its original model/material settings before they change.
+	router.stream.clear()
 	var model:=int(options.model_detail)
 	var q:=int(options.lighting_detail)
 	CampusData.tier=model if CampusData.tiers_available().has(model) else CampusData.DEFAULT_TIER
@@ -5402,7 +5383,7 @@ func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
 		_runlog_room(world_id)
 	_enter_cool = 0.0 if seamless else 0.9
 	if seamless:
-		player.place(pose)
+		player.place(pose, true)
 	else:
 		player.restore_pose(pose)
 	maze_flow.changed_world()
@@ -5447,7 +5428,14 @@ func _menu_frame_cap() -> void:
 		RenderQuality.apply_frame_limit(limit, settings.get_int("vsync") == 1)
 
 
+var _stream_tick := 0.0
+
+
 func _process(delta: float) -> void:
+	_stream_tick -= delta
+	if session != null and not get_tree().paused and _stream_tick <= 0.0:
+		_stream_tick = 0.2
+		router.prefetch(player.position)
 	_menu_frame_cap()
 	if is_instance_valid(archive_flow) and archive_flow.active(): return
 	if session != null and player != null and player.camera != null:

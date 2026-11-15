@@ -407,6 +407,11 @@ func _open_air() -> bool:
 	return scene_id == "teach6" or bool(room.get("flags", {}).get("gallery", false))
 
 
+## Ordinary buildings share the campus sky. Underground/otherworld spaces retain their own light.
+func campus_daylight() -> bool:
+	return scene_id not in ["garage1", "stair_garage", "portal_tunnel", "lift_dream", "dream_top"]
+
+
 static func _hex(h: String) -> Color:
 	return Color.html(h)
 
@@ -455,6 +460,7 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var h := fposmod(tsec, 1440.0) / 60.0
 	var sun := sun_at(h)
 	var indoor := room != null and not _open_air()
+	var shared_sky := campus_daylight()
 	var day := float(sun["day"])
 	day += (1.0-day)*.6*world_normal
 	day += (maxf(day,.85)-day)*fake_normal
@@ -467,7 +473,18 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var hemi: float
 	var dirv: float
 	var pt_k: float
-	if indoor:
+	if shared_sky:
+		# A door no longer switches to a permanently dark indoor environment. Daylight, dusk
+		# and moonlight have the same base energy on both sides; local lamps remain local.
+		amb = 0.018 + 0.177 * day
+		hemi = 0.03 + 0.31 * day
+		dirv = 0.035 + 0.345 * day
+		pt_k = 0.08 + 0.56 * day if indoor else 1.0
+		amb = lerpf(amb, .38, world_normal)
+		hemi = lerpf(hemi, .28, world_normal)
+		dirv = lerpf(dirv, .32, world_normal)
+		pt_k = lerpf(pt_k, 1.0, world_normal)
+	elif indoor:
 		var garage := scene_id == "garage1"
 		amb = 0.025 if garage else 0.048 + 0.028 * day
 		hemi = 0.015 if garage else 0.022 + 0.030 * day
@@ -532,18 +549,18 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 		spot.light_energy = window_gain * window_k * gaze_mul
 	var window_cut := 1.0 - WINDOW_AMBIENT_CUT * window_k
 	var lamp_gain := lerpf(float(Q_LAMP_GAIN[qi]), minf(float(Q_LAMP_GAIN[qi]), NORMAL_LAMP_GAIN), maxf(world_normal, fake_normal))
-	env.ambient_light_energy = strength * ENERGY_AMBIENT * gaze_mul * (float(Q_INDOOR_AMB[qi]) * window_cut if indoor else float(Q_OUTDOOR_AMB[qi]))
+	env.ambient_light_energy = strength * ENERGY_AMBIENT * gaze_mul * (float(Q_INDOOR_AMB[qi]) * window_cut if indoor and not shared_sky else float(Q_OUTDOOR_AMB[qi]))
 	sun_light.light_color = dc
-	sun_light.light_energy = dirv * ENERGY_DIR * gaze_mul * (1.0 if indoor else float(Q_SUN_GAIN[qi]))
-	var d: Vector3 = sun["dir"] if day > 0.02 and not indoor else MOON_DIR
+	sun_light.light_energy = dirv * ENERGY_DIR * gaze_mul * (1.0 if indoor and not shared_sky else float(Q_SUN_GAIN[qi]))
+	var d: Vector3 = sun["dir"] if day > 0.02 and (shared_sky or not indoor) else MOON_DIR
 	sun_light.look_at_from_position(d * 16.0, Vector3.ZERO, Vector3.UP if absf(d.normalized().y) < 0.99 else Vector3.FORWARD)
 	var sky := sky_colors(h)
-	if not indoor:
+	if shared_sky or not indoor:
 		env.background_color = sky[1].lerp(sky[2], 0.5)
-	if not indoor:
+	if shared_sky or not indoor:
 		var hz := sky[3] * 0.86
 		var dens := 0.034 + (0.019 - 0.034) * day
-		if room != null:
+		if room != null and not shared_sky:
 			dens *= 1.4
 		if overcast > 0.0:
 			dens += 0.030 * overcast
@@ -568,7 +585,7 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	env.adjustment_enabled = false
 	env.adjustment_brightness = 1.0
 	# lighting.js dayExpo: outdoors the picture is pressed down to 0.6 at noon (DAY_K).
-	post_exposure = 1.0 if indoor else 1.0 - .4*float(sun["day"])*(1.0-world_normal)
+	post_exposure = 1.0 if indoor and not shared_sky else 1.0 - .4*float(sun["day"])*(1.0-world_normal)
 	env.tonemap_exposure = 1.0
 	var sum := 0.0
 	for i in room_lights.size():
@@ -607,6 +624,8 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	if camera != null:
 		cam_light.global_position = camera.global_position
 	cam_light.light_energy = (float(lcfg.get("camI", 0.9)) + float(lcfg.get("camIk", 0.45)) * day) * ENERGY_POINT * 9.0 * (0.08 if blackout and indoor else 1.0) * gaze_mul * float(Q_CAM_GAIN[qi])
+	if shared_sky:
+		cam_light.light_energy *= lerpf(0.12, 1.0, day)
 	_lamps(dt, 1.0 - day if not indoor else 0.0, camera, sky, day)
 	_shadow_pick -= dt
 	if _shadow_pick <= 0.0:

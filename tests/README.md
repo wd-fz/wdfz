@@ -7,6 +7,7 @@
 | rendering | 确认真实 Vulkan RenderingDevice；headless 明确不算 GPU 验证 |
 | framework | 时钟、模块协议、存档、应用生命周期、输入 |
 | campus | 校园、门与电梯、背包、设施、探索 |
+| campus_streaming | 各楼入口／楼梯平台的提前准备、跨区域模型与碰撞复用、输入和速度保持、门状态同步、异象销毁、缓存上限、菜单释放，以及昼夜光照一致与停电／车库例外 |
 | school | 课表、检查、特殊日、怪谈、同学、伤势与感官规则 |
 | story | 剧情、路线、天赋、调查与偶发事件 |
 | threats | 巡察、异象、车库 |

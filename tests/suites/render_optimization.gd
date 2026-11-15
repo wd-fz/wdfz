@@ -37,12 +37,14 @@ func test_instances() -> void:
 	_instances(model,box,[a,b])
 	var second:=box.duplicate() as BoxMesh
 	second.material=mat.duplicate()
+	var original_material := second.material
 	_instances(model,second,[Transform3D(Basis.IDENTITY,Vector3(2,0,2))])
 	var door:=Node3D.new()
 	door.set_meta("extras",{"door_key":"test:door","state":"closed"})
 	model.add_child(door)
 	var moving:=_instances(door,box,[Transform3D.IDENTITY])
 	var report:=CampusBatches.optimize(model)
+	check(second.material == original_material, "background batching does not replace materials on a shared source mesh")
 	check(report.instances==3 and report.prototypes==1 and report.batches>=2,"exact clones share a prototype and are partitioned spatially without dropping instances: %s" % report)
 	check(is_instance_valid(moving) and moving.get_parent()==door,"door geometry remains under its movable holder")
 	var found:=false

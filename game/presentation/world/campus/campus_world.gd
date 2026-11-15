@@ -1,6 +1,7 @@
 class_name CampusWorld
 extends Node3D
-## Presentation + physics adapter for one Web-version scene (a room or the campus outside).
+## A campus region's presentation + physics. Static geometry can remain resident across visits;
+## the region ID is a rules/save boundary, not a reason to reload its meshes at every doorway.
 ## Geometry is the glb exported from the old game's own builders; collision boxes are the old
 ## game's own static collision rectangles (tools/export_scenes). Rendering-only spatial
 ## batches, mesh cells and occluders keep the original full-detail surfaces and collision.
@@ -42,6 +43,12 @@ var render_options: Dictionary = {}
 var visual_ground:=VisualGround.new()
 ## Authority worlds use exactly the same collision geometry, without loading any meshes.
 var collision_only := false
+var geometry_ready := false
+## Set by the router: previews are prepared on its worker instead of blocking a movement frame.
+var preview_request: Callable
+var entry_views := PackedStringArray()
+var entry_height := -1.0
+var _patrol_asset: PackedScene
 
 
 func _ready() -> void:
@@ -49,8 +56,7 @@ func _ready() -> void:
 	if collision_only:
 		_build_collision()
 		return
-	_build_model()
-	_build_collision()
+	prepare_geometry()
 	_build_lighting()
 	anomaly_fx = AnomalyFx.new()
 	anomaly_fx.particle_quality=int(render_options.get("particle_detail",-1))
@@ -89,11 +95,6 @@ func _ready() -> void:
 			add_child(mirror_view)
 	if not is_room():
 		_ready_banner()
-	else:
-		_build_link_preview()
-	_build_stair_preview()
-	_build_door_preview()
-	_build_gallery_view()
 	if is_room():
 		atmos_fx = AtmosFx.new()
 		atmos_fx.name = "AtmosFx"
@@ -104,6 +105,74 @@ func _ready() -> void:
 			duty.name = "DutyRoster"
 			add_child(duty)
 			duty.setup(layout)
+
+
+## Detached static work only. The stream prepares this before activation; lights, viewports,
+## effects and other live adapters are created on the main thread by _ready.
+func prepare_geometry() -> void:
+	if geometry_ready:
+		return
+	layout = CampusData.layout(scene_id)
+	# Preserve the startup loader's figure warm-up; the first patrol must not introduce
+	# a fresh disk read in the middle of an otherwise smooth walk.
+	if ResourceLoader.exists(PATROL_FIGURE):
+		_patrol_asset = load(PATROL_FIGURE) as PackedScene
+	_build_model()
+	_build_collision()
+	if is_room():
+		_build_link_preview()
+	_build_stair_preview()
+	_build_door_preview()
+	_build_gallery_view()
+	# The view back through the entry must be ready with the region itself, not appear
+	# several frames after crossing. Other outdoor entrances remain distance-driven.
+	for view: Node3D in door_previews:
+		if entry_views.has(String(view.get_meta("preview_scene", ""))):
+			_ensure_door_preview(view)
+	if entry_height >= 0.0:
+		update_shaft_previews(entry_height)
+	var seeds := get_node_or_null("VisualSeeds")
+	if seeds != null:
+		seeds.free()
+	geometry_ready = true
+
+
+## A worker can reuse a resident region's already processed meshes. Duplicate nodes on the
+## main thread, then clip privately off-tree; never read or reparent a live node on the worker.
+func seed_visual(id: String, source: Node3D) -> void:
+	var seeds := get_node_or_null("VisualSeeds")
+	if seeds == null:
+		seeds = Node3D.new()
+		seeds.name = "VisualSeeds"
+		add_child(seeds)
+	if seeds.has_node(NodePath(id)):
+		return
+	var copy := source.duplicate() as Node3D
+	copy.name = id
+	for occluder: Node in copy.find_children("*", "OccluderInstance3D", true, false):
+		occluder.free()
+	seeds.add_child(copy)
+
+
+## Transfer, never duplicate, expensive geometry to a dormant region. Effects are left on the
+## outgoing world and freed with it, so cached rooms cannot resurrect a previous anomaly or death.
+func release_geometry() -> CampusWorld:
+	var next := CampusWorld.new()
+	for property: String in ["scene_id", "layout", "visual_tier", "render_options", "visual_ground", "geometry_ready", "_patrol_asset",
+		"_door_bodies", "_door_leaves", "_preview_doors", "_preview_lifts", "_open_doors", "_lift_leaves", "_lift_bodies", "_lift_amount",
+		"link_previews", "stair_previews", "door_previews", "gallery_campus", "_shaft_levels"]:
+		next.set(property, get(property))
+	var nodes: Array[Node3D] = _visual_models()
+	for key: String in ["Collision", "Doors"]:
+		var node := get_node_or_null(key) as Node3D
+		if node != null:
+			nodes.append(node)
+	for node: Node3D in nodes:
+		remove_child(node)
+		next.add_child(node)
+		# An asynchronous preview belonged to the old live adapter, not to this cached geometry.
+		node.remove_meta("stream_pending")
+	return next
 
 
 func _ready_banner() -> void:
@@ -185,7 +254,7 @@ func _build_clinic() -> void:
 
 
 ## The corridor bridges seen from both ends (modules/campus-link/link-view.js): the neighbouring room's model placed by the rigid
-## transform of the port pair (CampusPortals.link_between), plus a lamp 3 m inside its doorway so the far end is not black.
+## transform of the port pair (CampusPortals.link_between), under the same campus daylight.
 ## Visual only: no collision, nothing advances. Standing at the west end of the second floor you see the whole bridge.
 var link_previews: Array[Node3D] = []
 var stair_previews: Array[Node3D] = []
@@ -238,11 +307,14 @@ func update_shaft_previews(height: float) -> void:
 	var outside := CampusData.layout("out")
 	for f: int in want:
 		if _shaft_levels.has(f):
+			_ensure_door_preview(_shaft_levels[f])
 			continue
 		var id := String(rooms_list[f])
-		var model := _load_visual(id)
 		var port := CampusPortals.stair_port(st, f, rooms, outside)
-		if model == null or port.is_empty():
+		if port.is_empty():
+			continue
+		var model := Node3D.new() if preview_request.is_valid() else _load_visual(id)
+		if model == null:
 			continue
 		var pp := CampusGeometry.to_scene(rooms[id] if id != "out" else null, port["p"])
 		var theta := CampusPortals.stair_turn(port["n"])
@@ -250,35 +322,26 @@ func update_shaft_previews(height: float) -> void:
 		model.rotation.y = theta
 		model.position = Vector3(-(cos(theta) * pp.x + sin(theta) * pp.y), float(f) * rise, -2.8 - (-sin(theta) * pp.x + cos(theta) * pp.y))
 		add_child(model)
-		CampusPreview.clip(model, Plane(Vector3.FORWARD, 2.8))
+		var plane := Plane(Vector3.FORWARD, 2.8)
+		if preview_request.is_valid():
+			model.set_meta("preview_scene", id)
+			model.set_meta("preview_plane", plane)
+			preview_request.call(self, model, id, plane)
+		else:
+			CampusPreview.clip(model, plane)
 		_shaft_levels[f] = model
 
 
 func _load_visual(id: String) -> Node3D:
-	var key := _visual_key(id, material_quality())
-	var model: Node3D = _prepared.get(key)
+	var model := get_node_or_null(NodePath("VisualSeeds/" + id)) as Node3D
 	if model != null:
-		_prepared.erase(key)
+		model.get_parent().remove_child(model)
 	else:
 		model = build_visual(id, material_quality())
 	if model == null:
 		return null
 	_register_preview_doors(model, id)
 	return model
-
-
-## Visual models built ahead (prepare on a worker thread, adopt on the main thread) and taken by
-## _load_visual instead of building them again; keyed by scene, model tier and material quality.
-static var _prepared: Dictionary = {}
-
-
-static func _visual_key(id: String, quality: int) -> String:
-	return "%s@%d@%d" % [id, CampusData.tier, quality]
-
-
-## The material quality a world built with these render options uses (material_quality()).
-static func quality_of(options: Dictionary) -> int:
-	return int(options.get("lighting_detail", CampusLighting.quality))
 
 
 ## A scene's visual model, processed for display (instances, materials, batches, spatial cells). It only
@@ -296,35 +359,6 @@ static func build_visual(id: String, quality: int) -> Node3D:
 		CampusBatches.optimize(model)
 		CampusMeshCells.apply(model)
 	return model
-
-
-## Build several visual models (worker thread); the result goes to adopt_prepared on the main thread.
-static func build_visuals(ids: PackedStringArray, quality: int) -> Dictionary:
-	var out := {}
-	for id: String in ids:
-		var key := _visual_key(id, quality)
-		if out.has(key):
-			continue
-		var model := build_visual(id, quality)
-		if model != null:
-			out[key] = model
-	return out
-
-
-static func adopt_prepared(models: Dictionary) -> void:
-	for key: String in models:
-		if _prepared.has(key):
-			(models[key] as Node).free()
-		else:
-			_prepared[key] = models[key]
-
-
-## Free whatever was prepared and not taken (the run did not need it after all).
-static func drop_prepared() -> void:
-	for model: Node in _prepared.values():
-		if is_instance_valid(model):
-			model.free()
-	_prepared.clear()
 
 
 func _register_preview_doors(model: Node3D, id: String) -> void:
@@ -357,10 +391,28 @@ func _door_visual(id: String) -> Node3D:
 
 func _ensure_door_preview(model: Node3D) -> void:
 	if not model.has_meta("preview_scene") or model.get_child_count() > 0: return
+	if preview_request.is_valid():
+		preview_request.call(self, model, String(model.get_meta("preview_scene")), model.get_meta("preview_plane"))
+		return
 	var contents := _load_visual(String(model.get_meta("preview_scene")))
 	if contents == null: return
 	model.add_child(contents)
 	CampusPreview.clip(model,model.get_meta("preview_plane"))
+	_trim_door_previews(model)
+
+
+func install_streamed_preview(model: Node3D, contents: Node3D, id: String) -> void:
+	model.remove_meta("stream_pending")
+	if model.get_child_count() > 0:
+		contents.free()
+		return
+	_register_preview_doors(contents, id)
+	model.add_child(contents)
+	if door_previews.has(model):
+		_trim_door_previews(model)
+
+
+func _trim_door_previews(model: Node3D) -> void:
 	var cached: Array[Node3D] = []
 	for other: Node3D in door_previews:
 		if other != model and other.has_meta("preview_scene") and other.get_child_count() > 0: cached.append(other)
@@ -441,12 +493,6 @@ func _build_stair_preview() -> void:
 		var n: Vector2 = port["n"]
 		shaft.position = Vector3(pos.x + 2.8 * n.x, -float(level) * float(st["rise"]), pos.y + 2.8 * n.y)
 		shaft.rotation.y = -CampusPortals.stair_turn(n)
-		var lamp := OmniLight3D.new()
-		lamp.light_color = Color("#f2dcc0")
-		lamp.omni_range = 9.0
-		lamp.light_energy = 0.8
-		lamp.position = Vector3(0, 2.4 + float(level) * float(st["rise"]), 0)
-		shaft.add_child(lamp)
 		add_child(shaft)
 		CampusPreview.clip(shaft, _preview_plane(pos, n))
 		stair_previews.append(shaft)
@@ -469,16 +515,6 @@ func _build_link_preview() -> void:
 		var p := (c_there.rotated(phi) + (t["t"] as Vector2) - c_here) * CampusGeometry.U2M
 		model.rotation.y = -phi
 		model.position = Vector3(p.x, 0.0, p.y)
-		var pp: Dictionary = v["peer"]
-		var inner: Vector2 = (pp["p"] as Vector2) - (pp["n"] as Vector2) * 3.0 / CampusGeometry.U2M
-		var lamp := OmniLight3D.new()
-		lamp.name = "LinkLamp"
-		lamp.light_color = Color("#f2dcc0")
-		lamp.omni_range = 14.0
-		lamp.light_energy = 0.9
-		lamp.shadow_enabled = false
-		lamp.position = Vector3((inner.x - c_there.x) * CampusGeometry.U2M, 2.7, (inner.y - c_there.y) * CampusGeometry.U2M)
-		model.add_child(lamp)
 		add_child(model)
 		CampusPreview.clip(model, _preview_plane(CampusGeometry.to_scene(layout, v["self"]["p"]), v["self"]["n"]))
 		link_previews.append(model)
@@ -611,7 +647,7 @@ static func _to_multimesh(source: MeshInstance3D) -> void:
 	if mm.use_colors and source.mesh != null:
 		for s in source.mesh.get_surface_count():
 			var mat := source.mesh.surface_get_material(s) as BaseMaterial3D
-			if mat != null:
+			if mat != null and not mat.vertex_color_use_as_albedo:
 				mat.vertex_color_use_as_albedo = true
 	var node := MultiMeshInstance3D.new()
 	node.name = source.name

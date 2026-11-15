@@ -83,7 +83,6 @@ static func _split(group: Dictionary, batches: Array[Dictionary]) -> void:
 static func optimize(model: Node3D) -> Dictionary:
 	if not enabled: return {}
 	var meshes := {}
-	var materials := {}
 	var signatures := {}
 	var groups := {}
 	var removed: Array[MultiMeshInstance3D] = []
@@ -98,9 +97,8 @@ static func optimize(model: Node3D) -> Dictionary:
 			for s in mesh.get_surface_count():
 				var mat := mesh.surface_get_material(s)
 				var material_key := _digest(_material_key(mat))
-				if not materials.has(material_key): materials[material_key] = mat
-				# Resource substitution is limited to byte-identical stored material properties.
-				if mesh is ArrayMesh: mesh.surface_set_material(s, materials[material_key])
+				# The winning prototype already carries byte-identical materials. Do not mutate
+				# imported meshes: a streaming worker may share them with a currently visible room.
 				bytes.append_array(var_to_bytes([_primitive(mesh,s), material_key, mesh.surface_get_arrays(s)]))
 			signatures[mesh] = _digest(bytes)
 		var signature: String = signatures[mesh]
