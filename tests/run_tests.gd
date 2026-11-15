@@ -49,6 +49,7 @@ func _run() -> void:
 	print("CASE: campus_streaming")
 	streaming.test_connections()
 	streaming.test_daylight()
+	await streaming.test_queue_and_late_seeds()
 	await streaming.test_residency()
 	var selection_ui := preload("res://tests/suites/selection_ui.gd").new(self)
 	print("CASE: selection_ui.test_selection")

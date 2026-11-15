@@ -46,9 +46,10 @@ func prepare(world: CampusWorld) -> void:
 		world.free()
 		return
 	var job := {"kind": "region", "id": world.scene_id, "world": world, "generation": _generation}
-	# Build the real region first so a pending doorway preview can reuse its processed meshes.
+	# All real regions precede visual previews. A later preview of the next storey
+	# must not move that storey ahead of the landing the player is already approaching.
 	for i in _queue.size():
-		if _queue[i].get("kind") == "preview" and _queue[i].get("id") == world.scene_id:
+		if _queue[i].get("kind") == "preview":
 			_queue.insert(i, job)
 			return
 	_queue.append(job)
@@ -59,7 +60,7 @@ func request_preview(owner: CampusWorld, holder: Node3D, id: String, plane: Plan
 		return
 	_serial += 1
 	holder.set_meta("stream_pending", _serial)
-	_queue.push_front({"kind": "preview", "id": id, "owner": weakref(owner), "holder": weakref(holder),
+	_queue.append({"kind": "preview", "id": id, "owner": weakref(owner), "holder": weakref(holder),
 		"transform": holder.transform, "plane": plane, "quality": owner.material_quality(), "generation": _generation, "ticket": _serial})
 
 
@@ -109,6 +110,16 @@ func poll() -> void:
 			_dispose(_job)
 			_job = {}
 			return
+	if _job["kind"] == "region":
+		# Neighbours may have finished while this region was queued. Reuse those
+		# processed meshes now, on the main thread, before the detached worker starts.
+		# Seeding only when enqueued rebuilt the entire campus for each upper floor.
+		var world: CampusWorld = _job["world"]
+		for id: String in CampusWorld.visual_ids(world.scene_id):
+			if cached.has(id):
+				var source := (cached[id] as CampusWorld).get_node_or_null("Model") as Node3D
+				if source != null:
+					world.seed_visual(id, source)
 	if _job["kind"] == "preview" and cached.has(_job["id"]):
 		# The approaching building is usually resident already. Share its processed meshes;
 		# only the clipped view's node tree/edge meshes are private, not a second mesh build.

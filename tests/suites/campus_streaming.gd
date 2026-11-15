@@ -1,6 +1,59 @@
 extends "res://tests/support/test_suite.gd"
 
 
+class SeedProbe extends CampusWorld:
+	var reused: Mesh
+
+	func prepare_geometry() -> void:
+		var seed := get_node_or_null("VisualSeeds/out") as MeshInstance3D
+		if seed != null:
+			reused = seed.mesh
+		geometry_ready = true
+
+
+func test_queue_and_late_seeds() -> void:
+	var stream := CampusStream.new()
+	var owner := CampusWorld.new()
+	var outside := Node3D.new()
+	var upstairs := Node3D.new()
+	owner.add_child(outside)
+	owner.add_child(upstairs)
+	stream.request_preview(owner, outside, "out", Plane())
+	var first := SeedProbe.new()
+	first.scene_id = "teach2"
+	stream.prepare(first)
+	stream.request_preview(owner, upstairs, "teach3", Plane())
+	var next := SeedProbe.new()
+	next.scene_id = "teach3"
+	stream.prepare(next)
+	check(stream._queue.map(func(job: Dictionary) -> String: return job["id"]) == ["teach2", "teach3", "out", "teach3"],
+		"later upstairs previews cannot overtake an already queued landing")
+	stream.clear()
+	check(not outside.has_meta("stream_pending") and not upstairs.has_meta("stream_pending"), "clearing reordered work releases every preview ticket")
+	owner.free()
+	# The campus is still being built when the floor is requested, then becomes
+	# resident before dispatch. A detached copy must share its processed mesh.
+	var landing := SeedProbe.new()
+	landing.scene_id = "teach2"
+	stream.prepare(landing)
+	var campus := CampusWorld.new()
+	campus.scene_id = "out"
+	var model := MeshInstance3D.new()
+	model.name = "Model"
+	model.mesh = BoxMesh.new()
+	campus.add_child(model)
+	stream.keep(campus)
+	var mesh := model.mesh
+	var until := Time.get_ticks_msec() + 10000
+	while not stream.has("teach2") and Time.get_ticks_msec() < until:
+		stream.poll()
+		await _frames(1)
+	check(stream.has("teach2") and landing.reused == mesh, "queued floor reuses a neighbour that completed after it was requested")
+	check(landing.get_node_or_null("VisualSeeds/out") != model and model.get_parent() == campus,
+		"late seeding copies the detached tree without stealing the resident model")
+	stream.clear()
+
+
 func test_connections() -> void:
 	for door: Dictionary in CampusData.campus()["campus_doors"]["doors"]:
 		var id := String(door["room"])

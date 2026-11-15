@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "digest": "51784ce72b9efc037efc5c23a45fd2d839923359dcfd175eff3dc326bc6b89b8",
+  "digest": "1664840ed07ee74e1615419dedbadc86527e209aa62c57ec1c64bb13e066ec1d",
   "files": {
     "assets/campus/archive.json": "0a3815b54b7591403085c29793d99e08f6f80fd18f7646b7d449a6552709b483",
     "assets/campus/death_geometry.json": "5b7a718919d12b00fa380efc95ffa2ed41262d680d11714d218603053cd52326",
@@ -167,7 +167,7 @@
     "game/presentation/world/campus/campus_lighting.gd": "79d478c5c8d56a8ea40ab21ba236c83d0b43dc9911bc7bd70b37f65f1782b2fb",
     "game/presentation/world/campus/campus_mesh_cells.gd": "952862aaaab51810229df872a988b874622a4bb626eca1756d6108fc0b8bc2ee",
     "game/presentation/world/campus/campus_preview.gd": "bf9106178cb930659b5473c5a9cd8c59f22486d6ebc6d430986462017d629cb1",
-    "game/presentation/world/campus/campus_stream.gd": "fbbb375bc97495966b9ab7df1952551d3752574fcbc952e02bd7288e1bb50f1f",
+    "game/presentation/world/campus/campus_stream.gd": "cf5a811b8f61af3364d91739544adcf160bae430a5b64e9e6daa04b5f44e7863",
     "game/presentation/world/campus/campus_world.gd": "b2fffc4accbc7be4182b44983a73f44964bde5f71cd16fd4efea7c86fde46534",
     "game/presentation/world/campus/canteen_view.gd": "37739e92bc23caf9c95e7545e8efbb63a32e858c20c3265b8947cc29f18b9d84",
     "game/presentation/world/campus/car_chase_view.gd": "90584a48870808ec32e56000091f75909f3c560d5b9e4186c5ab535fcca73872",
