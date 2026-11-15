@@ -235,6 +235,9 @@ func _control(peer_id: int, data: Dictionary) -> void:
 		_last_heard = Time.get_ticks_msec() / 1000.0
 		match data["kind"]:
 			"welcome":
+				# A retry already in flight can arrive after the room. It must not
+				# move an established player back to the joining UI/state.
+				if _hello_deadline == 0.0 and room != null: return
 				local_id = String(data.get("id", ""))
 				reconnect_token = String(data.get("token", ""))
 				connection_stage = "joining"

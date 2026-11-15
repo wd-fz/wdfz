@@ -181,6 +181,8 @@ func handshake_checks() -> void:
 	check(guest.connection_stage == "joining" and guest._hello_deadline > 0.0, "welcome alone does not finish entering a room")
 	guest._receive_room(host.room.public_state())
 	check(guest.connection_stage == "joined" and guest._hello_deadline == 0.0 and guest.room != null, "room receipt completes the handshake")
+	guest._control(1, first)
+	check(guest.connection_stage == "joined", "late welcome replay cannot return a joined player to the joining stage")
 	check(not host.connection_details().contains(String(first.token)), "shareable diagnostics never expose reconnect credentials")
 	host.queue_free()
 	guest.queue_free()
