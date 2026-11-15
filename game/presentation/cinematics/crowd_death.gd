@@ -40,7 +40,7 @@ static func build(c: DeathStage) -> void:
 			steel.albedo_texture = grain
 			steel.uv1_scale = Vector3(14,1,1)
 			steel.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		wall.material_override=steel
+		RenderMaterials.set_override(wall, steel)
 		wall.set_meta("base_color",wall.material_override.albedo_color.srgb_to_linear())
 	c.d["lamp"]=c.box(.6,.012,.4,Color("#d8ddd6"),-1,0,2.29,D-.8,false)
 	c.stage_dark(Color(.01,.012,.014),.04,Color(.2,.2,.19),.45)
@@ -66,7 +66,7 @@ static func build(c: DeathStage) -> void:
 	c.d["leaf_l"]=c.box(.45,2.1,.03,Color("#737b7a"),-1,.225,1.05,D)
 	c.d["leaf_r"]=c.box(.45,2.1,.03,Color("#737b7a"),-1,-.225,1.05,D)
 	c.d["out"]=c.box(1.6,2.3,.01,Color("#b9b6a8"),-1,0,1.15,D+.9,false)
-	c.d["out"].material_override=c._mat_lit(Color("8a877c"),-1,false,.9,false)
+	RenderMaterials.set_override(c.d["out"], c._mat_lit(Color("8a877c"),-1,false,.9,false))
 	c.d["card"]=c.box(.12,.004,.078,Color("#e9e4d6"),-1,.04,.004,D-.42)
 	c.d["photo"]=c.box(.03,.005,.04,Color("#47515a"),-1,.058,.005,D-.43)
 	c.d["card"].rotation.y=.5

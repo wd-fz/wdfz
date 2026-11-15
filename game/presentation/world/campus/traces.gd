@@ -46,7 +46,7 @@ func _box(m: Material, w: float, h: float, d: float, x: float, y: float, z: floa
 	var bm := BoxMesh.new()
 	bm.size = Vector3(w, h, d)
 	mi.mesh = bm
-	mi.material_override = m
+	RenderMaterials.set_override(mi, m)
 	mi.position = Vector3(x, y, z)
 	mi.rotation.y = rot
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -95,7 +95,7 @@ func _disc(m: Material, radius: float, x: float, z: float, y: float = 0.018) -> 
 	var cm:=_circle(radius,10)
 	var mi := MeshInstance3D.new()
 	mi.mesh = cm
-	mi.material_override = m
+	RenderMaterials.set_override(mi, m)
 	mi.position = Vector3(x, y, z)
 	mi.rotation.x=-PI/2
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -223,7 +223,7 @@ func build(scene_id: String, room: Variant, dynamic: Array = []) -> void:
 					_flat(chalk, float(s[2]) if float(s[2]) != 0.0 else 0.06, float(s[3]) if float(s[3]) != 0.0 else 0.06, p.x + float(s[0]), p.y + float(s[1]), 0.0)
 				var ring := MeshInstance3D.new()
 				ring.mesh = _circle(.2,14,.16)
-				ring.material_override = chalk
+				RenderMaterials.set_override(ring, chalk)
 				ring.rotation.x=-PI/2
 				ring.position = Vector3(p.x, 0.017, p.y + 1.25)
 				add_child(ring)

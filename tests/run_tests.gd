@@ -76,6 +76,7 @@ func _run() -> void:
 	var optimization:=preload("res://tests/suites/render_optimization.gd").new(self)
 	print("CASE: render_optimization")
 	optimization.test_instances()
+	await optimization.test_material_replacement()
 	optimization.test_mesh_cells()
 	await optimization.test_occlusion()
 	await optimization.test_post_path()

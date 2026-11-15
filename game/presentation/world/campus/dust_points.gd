@@ -13,7 +13,7 @@ func setup(points: PackedVector3Array) -> void:
 	material.shader = preload("res://game/presentation/world/campus/dust_points.gdshader")
 	material.set_shader_parameter("dust_color",Color(Color("#303030"),.65))
 	material.set_shader_parameter("point_size",.012)
-	material_override = material
+	RenderMaterials.set_override(self, material)
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	update_points(points)
 

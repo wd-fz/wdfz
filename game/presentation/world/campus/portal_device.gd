@@ -140,7 +140,7 @@ static func disc(radius: float, seg: int) -> ArrayMesh:
 func _mesh(parent: Node3D, m: Mesh, mat: Material, pos: Vector3 = Vector3.ZERO) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.mesh = m
-	mi.material_override = mat
+	RenderMaterials.set_override(mi, mat)
 	mi.position = pos
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mi)

@@ -237,7 +237,7 @@ func _build_clinic() -> void:
 	white.albedo_color = Color("#eef0ee")
 	white.emission_enabled = true
 	white.emission = Color("#2c2e2c")
-	cab.material_override = white
+	RenderMaterials.set_override(cab, white)
 	cab.position = Vector3(p.x, 1.55, p.y - 0.12)
 	add_child(cab)
 	var red := StandardMaterial3D.new()
@@ -248,7 +248,7 @@ func _build_clinic() -> void:
 		var rb := BoxMesh.new()
 		rb.size = dims
 		bar.mesh = rb
-		bar.material_override = red
+		RenderMaterials.set_override(bar, red)
 		bar.position = Vector3(p.x, 1.6, p.y - 0.235)
 		add_child(bar)
 
@@ -966,7 +966,7 @@ func show_dread_note(text: String, seed: float, pose: Dictionary) -> void:
 	mat.albedo_color = Color(0.85, 0.82, 0.74)
 	mat.emission_enabled = true
 	mat.emission = Color(0.54, 0.52, 0.47) * 0.6
-	paper.material_override = mat
+	RenderMaterials.set_override(paper, mat)
 	_dread_note.add_child(paper)
 	var label := Label3D.new()
 	label.text = text
@@ -1013,7 +1013,7 @@ func show_wall_text(kind: String, lines: Array, pos: Vector3, yaw: float) -> voi
 		mat.albedo_color = Color(0.86, 0.84, 0.77)
 		mat.emission_enabled = true
 		mat.emission = Color(0.5, 0.48, 0.43) * 0.5
-		paper.material_override = mat
+		RenderMaterials.set_override(paper, mat)
 		_wall_text.add_child(paper)
 	var rows: Array = [{"text": "教务处通知", "color": Color(0.12, 0.11, 0.1), "size": 70}] if notice else []
 	for l: Variant in lines:

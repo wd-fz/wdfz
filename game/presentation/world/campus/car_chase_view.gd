@@ -74,7 +74,7 @@ func _build_dash() -> void:
 	var wm := StandardMaterial3D.new()
 	wm.albedo_color = Color("#77817c")
 	wm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	wheel.material_override = wm
+	RenderMaterials.set_override(wheel, wm)
 	wheel.position = Vector3(0, -0.49, -0.88)
 	wheel.rotation.x = PI / 2.0 - 0.5
 	_dash.add_child(wheel)
@@ -103,7 +103,7 @@ func _box(pos: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mi.material_override = mat
+	RenderMaterials.set_override(mi, mat)
 	mi.position = pos
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)

@@ -112,7 +112,7 @@ func _apply_texture(tex: Texture2D) -> void:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_texture = tex
 	mat.roughness = 1.0
-	boards[_board_index].material_override = mat
+	RenderMaterials.set_override(boards[_board_index], mat)
 	boards[_board_index].visible = true
 	_board_index += 1
 

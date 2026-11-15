@@ -46,7 +46,7 @@ func begin(r: Dictionary) -> void:
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	material.albedo_color = Color("#f2ead2")
-	light.material_override = material
+	RenderMaterials.set_override(light, material)
 	light.position = cell(room,59.5,16.6)+Vector3(0,1.05,.42)
 	add_child(light)
 

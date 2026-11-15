@@ -21,7 +21,7 @@ func _flat(size: Vector2, at: Vector3, material: Material) -> void:
 	plane.size=size
 	var mesh:=MeshInstance3D.new()
 	mesh.mesh=plane
-	mesh.material_override=material
+	RenderMaterials.set_override(mesh, material)
 	mesh.rotation.x=-PI/2
 	mesh.position=at
 	add_child(mesh)
@@ -50,7 +50,7 @@ func build(room: Dictionary) -> void:
 	var box:=BoxMesh.new()
 	box.size=Vector3(.9,2.05,.06)
 	door.mesh=box
-	door.material_override=_material(Color("#6b5a44"),false)
+	RenderMaterials.set_override(door, _material(Color("#6b5a44"),false))
 	door.material_override.emission_enabled=true
 	door.material_override.emission=Color("#1a140c")
 	door.position=Vector3(p.x,1.03,p.y+.47)
@@ -62,7 +62,7 @@ func build(room: Dictionary) -> void:
 	sphere.radial_segments=10
 	sphere.rings=8
 	knob.mesh=sphere
-	knob.material_override=_material(Color("#c9b27a"),false)
+	RenderMaterials.set_override(knob, _material(Color("#c9b27a"),false))
 	knob.position=Vector3(p.x+.32,1,p.y+.43)
 	add_child(knob)
 	spinner=TopModel.make()

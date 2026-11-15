@@ -14,7 +14,7 @@ func material(color: String, emission: String = "000000") -> StandardMaterial3D:
 func add_mesh(parent: Node3D, shape: Mesh, mat: Material, position: Vector3) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
 	mesh.mesh = shape
-	mesh.material_override = mat
+	RenderMaterials.set_override(mesh, mat)
 	mesh.position = position
 	mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mesh)

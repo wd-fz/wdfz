@@ -32,7 +32,7 @@ func _mesh(shape: Mesh, mat: Material, p: Vector3) -> MeshInstance3D:
 	var n:=MeshInstance3D.new()
 	n.rotation_order=EULER_ORDER_XYZ
 	n.mesh=shape
-	n.material_override=mat
+	RenderMaterials.set_override(n, mat)
 	n.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	n.position=p
 	add_child(n)
@@ -92,7 +92,7 @@ func _figure_horror(hex: String, p: Vector3, type: String, size: float, opts: Di
 	matte.set_shader_parameter("rim_emit",0.0)
 	matte.set_shader_parameter("rim_strength",.3)
 	for mi: Node in head.find_children("*","MeshInstance3D",true,false):
-		if mi.name=="Face": (mi as MeshInstance3D).material_override=matte
+		if mi.name=="Face": RenderMaterials.set_override((mi as MeshInstance3D), matte)
 		(mi as MeshInstance3D).cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	head.rotation.y=PI
 	head.scale=Vector3.ONE*size*head_size*1.3 # the kit head is a little smaller than the model's own
@@ -105,7 +105,7 @@ func _figure_horror(hex: String, p: Vector3, type: String, size: float, opts: Di
 	var collar:=MeshInstance3D.new()
 	collar.name="Collar"
 	collar.mesh=ring
-	collar.material_override=HorrorKit._cloth(Color("b9b6aa"))
+	RenderMaterials.set_override(collar, HorrorKit._cloth(Color("b9b6aa")))
 	collar.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	collar.scale=Vector3(1,.55,1)*size
 	collar.position=Vector3(0,float(spec[0])-.02,.005)*size
@@ -117,7 +117,7 @@ func _figure_horror(hex: String, p: Vector3, type: String, size: float, opts: Di
 		var tube:=MeshInstance3D.new()
 		tube.name="BareNeck"
 		tube.mesh=_bare_neck_mesh(2.2,float(spec[0])-.05)
-		tube.material_override=matte
+		RenderMaterials.set_override(tube, matte)
 		tube.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		tube.position=Vector3(0,0,.005)*size
 		tube.scale=Vector3.ONE*size
@@ -304,7 +304,7 @@ func _hand(tier: int, p: Vector3, feet: Vector3) -> void:
 	# Darker nails than the skin, so the tips read from above.
 	var nail_mat:=HorrorKit.skin("nail",.0).duplicate() as ShaderMaterial
 	nail_mat.set_shader_parameter("base_color",Color(.3,.26,.24))
-	for nail: Node in hand.find_children("Nail","MeshInstance3D",true,false): (nail as MeshInstance3D).material_override=nail_mat
+	for nail: Node in hand.find_children("Nail","MeshInstance3D",true,false): RenderMaterials.set_override((nail as MeshInstance3D), nail_mat)
 	# Where the forearm meets the floor (holder-local, unscaled): along the arm from the wrist.
 	var floor_y:=-HAND_PALM.y/HAND_SCALE
 	var wrist:=hand.position
@@ -313,7 +313,7 @@ func _hand(tier: int, p: Vector3, feet: Vector3) -> void:
 	var split:=MeshInstance3D.new()
 	split.name="FloorSplit"
 	split.mesh=_split_mesh()
-	split.material_override=_split_material()
+	RenderMaterials.set_override(split, _split_material())
 	split.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	split.position=Vector3(enter.x,floor_y+.004/HAND_SCALE,enter.z)
 	holder.add_child(split)
@@ -357,7 +357,7 @@ func _hand_sleeve(holder: Node3D, wrist: Vector3, arm_dir: Vector3, reach: float
 	sleeve.mesh=st.commit()
 	var cloth:=HorrorKit._cloth(Color("2a3445")).duplicate() as ShaderMaterial
 	cloth.set_shader_parameter("ambient_lift",.9)  # a little self-light, like the hand: a navy sleeve must not drop out in the dark
-	sleeve.material_override=cloth
+	RenderMaterials.set_override(sleeve, cloth)
 	sleeve.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var basis_z:=arm_dir.normalized()
 	var x_axis:=Vector3.UP.cross(basis_z).normalized()
@@ -388,7 +388,7 @@ func _hand_stain(holder: Node3D, floor_y: float) -> void:
 	var stain:=MeshInstance3D.new()
 	stain.name="WetStain"
 	stain.mesh=st.commit()
-	stain.material_override=_split_material()
+	RenderMaterials.set_override(stain, _split_material())
 	stain.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	stain.position=Vector3(0,floor_y+.008/HAND_SCALE,.05)
 	holder.add_child(stain)
@@ -468,7 +468,7 @@ func _split_chips(split: MeshInstance3D) -> void:
 		var chip:=MeshInstance3D.new()
 		chip.name="Chip%d"%i
 		chip.mesh=shape
-		chip.material_override=mat
+		RenderMaterials.set_override(chip, mat)
 		chip.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		chip.position=Vector3(cos(a)*.05,.004,sin(a)*.1)
 		chip.rotation=Vector3(.2+.1*absf(sin(i*12.9898)),a,.2+.2*absf(sin(i*78.233)))*(1 if i%2 else -1)
@@ -503,7 +503,7 @@ func _fingertip_shadows(holder: Node3D, hand: Node3D, floor_y: float) -> void:
 		var spot:=MeshInstance3D.new()
 		spot.name="TipShadow%d"%f
 		spot.mesh=disc
-		spot.material_override=_split_material()
+		RenderMaterials.set_override(spot, _split_material())
 		spot.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		spot.position=Vector3(at.x,floor_y+.002/HAND_SCALE,at.z)
 		holder.add_child(spot)

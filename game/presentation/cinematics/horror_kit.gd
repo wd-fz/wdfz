@@ -208,7 +208,7 @@ static func figure_skin(col: Color, tint: float = 0.0, cut_y: float = INF) -> Sh
 
 static func dress(node: Node, mat: Material) -> void:
 	for mi: Node in node.find_children("*", "MeshInstance3D", true, false):
-		(mi as MeshInstance3D).material_override = mat
+		RenderMaterials.set_override((mi as MeshInstance3D), mat)
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
@@ -295,7 +295,7 @@ static func _part(parent: Node3D, name: String, shape: Mesh, mat: Material) -> M
 	var mi := MeshInstance3D.new()
 	mi.name = name
 	mi.mesh = shape
-	mi.material_override = mat
+	RenderMaterials.set_override(mi, mat)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mi)
 	return mi

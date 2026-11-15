@@ -57,7 +57,7 @@ func _box(g: Node3D, size: Vector3, color: String, at: Vector3) -> MeshInstance3
 	var mesh:=BoxMesh.new()
 	mesh.size=size
 	node.mesh=mesh
-	node.material_override=_material(color)
+	RenderMaterials.set_override(node, _material(color))
 	node.position=at
 	g.add_child(node)
 	return node
@@ -110,7 +110,7 @@ func begin() -> void:
 	var plane:=QuadMesh.new()
 	plane.size=Vector2(1.6,3.2)
 	beam.mesh=plane
-	beam.material_override=_material("#fff0c8",.12)
+	RenderMaterials.set_override(beam, _material("#fff0c8",.12))
 	beam.rotation.x=-1
 	beam.position=Vector3(.6,.9,-1.6)
 	c.add_child(beam)
@@ -130,7 +130,7 @@ func begin() -> void:
 		circle.surface_add_vertex(Vector3(cos(TAU*i/20)*.07,0,sin(TAU*i/20)*.07))
 	circle.surface_end()
 	shadow.mesh=circle
-	shadow.material_override=_material("#2a2218",.55)
+	RenderMaterials.set_override(shadow, _material("#2a2218",.55))
 	shadow.position=Vector3(.05,.787,.04)
 	d.add_child(shadow)
 	finger=_box(d,Vector3(.03,.03,.18),"#e2c3a6",Vector3(.3,.83,.25))

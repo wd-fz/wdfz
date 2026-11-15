@@ -27,7 +27,7 @@ static func display_face(width: float, height: float) -> MeshInstance3D:
 	var material := StandardMaterial3D.new()
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.albedo_texture = load("res://assets/campus/crowd/full.png")
-	face.material_override = material
+	RenderMaterials.set_override(face, material)
 	face.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return face
 
@@ -93,7 +93,7 @@ func _build(scene: String, world: Node3D, lift: ElevatorModule) -> void:
 	mesh.mesh=box
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color=Color("#22272a")
-	mesh.material_override=mat
+	RenderMaterials.set_override(mesh, mat)
 	mesh.position.z=-.017
 	sign.add_child(mesh)
 	var face := display_face(.26,.1)

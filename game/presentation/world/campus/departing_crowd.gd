@@ -21,7 +21,7 @@ func _init() -> void:
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = Color("1a232b")
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		bag.material_override = mat
+		RenderMaterials.set_override(bag, mat)
 		bag.position = Vector3(0,1.1,-.15)
 		bag.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		person.add_child(bag)

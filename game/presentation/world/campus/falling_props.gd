@@ -53,7 +53,7 @@ func _mat(hex: String, alpha: float) -> StandardMaterial3D:
 func _mesh(shape: Mesh, mat: Material) -> MeshInstance3D:
 	var n:=MeshInstance3D.new()
 	n.mesh=shape
-	n.material_override=mat
+	RenderMaterials.set_override(n, mat)
 	n.rotation_order=EULER_ORDER_XYZ
 	n.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	n.hide()

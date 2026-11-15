@@ -72,7 +72,7 @@ func setup_rain(feet: Vector3, quality: int = -1) -> void:
 	_mesh = ArrayMesh.new()
 	_lines = MeshInstance3D.new()
 	_lines.mesh = _mesh
-	_lines.material_override = _mat(Color("#aebfcc"), 0.36)
+	RenderMaterials.set_override(_lines, _mat(Color("#aebfcc"), 0.36))
 	_lines.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# Local vertices move with this node. The old fixed origin AABB incorrectly
 	# culled rain when the player was far from the campus/room origin.
@@ -98,7 +98,7 @@ func setup_rain(feet: Vector3, quality: int = -1) -> void:
 		var mi := MeshInstance3D.new()
 		mi.mesh = ring
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mi.material_override = _mat(Color("#c8d6de"), 0.0)
+		RenderMaterials.set_override(mi, _mat(Color("#c8d6de"), 0.0))
 		mi.visible = false
 		mi.set_meta("life", 0.0)
 		mi.set_meta("big", 1.0)
@@ -116,7 +116,7 @@ func setup_rain(feet: Vector3, quality: int = -1) -> void:
 		var pm := MeshInstance3D.new()
 		pm.mesh = disc
 		pm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		pm.material_override = _mat(Color("#1a242c"), 0.0)
+		RenderMaterials.set_override(pm, _mat(Color("#1a242c"), 0.0))
 		pm.scale = Vector3(0.5 + _rng.randf() * 1.1, 1.0, 0.35 + _rng.randf() * 0.7)
 		pm.rotation.y = _rng.randf() * PI
 		pm.position = Vector3(feet.x + cos(a) * r, feet.y + 0.012 + float(i) * 0.0005, feet.z + sin(a) * r)
@@ -226,7 +226,7 @@ func _multi(m: Mesh, mat: Material, n: int) -> MultiMeshInstance3D:
 	mm.instance_count = n
 	var mi := MultiMeshInstance3D.new()
 	mi.multimesh = mm
-	mi.material_override = mat
+	RenderMaterials.set_override(mi, mat)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.custom_aabb = AABB(Vector3(-100, -10, -100), Vector3(200, 40, 200))
 	add_child(mi)

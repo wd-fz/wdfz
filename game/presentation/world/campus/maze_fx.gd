@@ -29,7 +29,7 @@ static func _figure(color: Color, size: float) -> Node3D:
 		mat.albedo_color = color
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		mat.disable_fog = color.r > 0.5
-		(mesh as MeshInstance3D).material_override = mat
+		RenderMaterials.set_override((mesh as MeshInstance3D), mat)
 	return root
 
 

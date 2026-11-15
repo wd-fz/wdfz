@@ -48,7 +48,7 @@ func _box(w: float, h: float, d: float, c: Color, x: float, y: float, z: float) 
 	var bm := BoxMesh.new()
 	bm.size = Vector3(w, h, d)
 	mi.mesh = bm
-	mi.material_override = _mat(c)
+	RenderMaterials.set_override(mi, _mat(c))
 	mi.position = Vector3(x, y, z)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
@@ -62,7 +62,7 @@ func _label(text: String, w: float, h: float, pos: Vector3, color: Color = Color
 	var q := QuadMesh.new()
 	q.size = Vector2(w, h)
 	plate.mesh = q
-	plate.material_override = _mat(Color("#171f1e"))
+	RenderMaterials.set_override(plate, _mat(Color("#171f1e")))
 	n.add_child(plate)
 	var l := Label3D.new()
 	l.text = text
@@ -108,7 +108,7 @@ func build(room: Dictionary) -> void:
 		cm.height = 0.32
 		cm.radial_segments = 8
 		neck.mesh = cm
-		neck.material_override = _mat(Color("#77847f"))
+		RenderMaterials.set_override(neck, _mat(Color("#77847f")))
 		neck.position = Vector3(s.x - 0.2, 1.15, s.y)
 		add_child(neck)
 		_count += 1

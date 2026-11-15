@@ -27,7 +27,7 @@ func build(nz: float) -> void:
 		ball.radial_segments = 10
 		ball.rings = 8
 		eye.mesh = ball
-		eye.material_override = white
+		RenderMaterials.set_override(eye, white)
 		eye.scale = Vector3(1.5,.8,.4)
 		eye.position.x = dx
 		eyes.add_child(eye)

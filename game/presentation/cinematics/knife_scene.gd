@@ -53,7 +53,7 @@ func _box(g: Node3D, size: Vector3, col: String, at: Vector3, alpha: float = 1.0
 	mat.albedo_color=Color(col)
 	mat.albedo_color.a=alpha
 	if alpha<1: mat.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.material_override=mat
+	RenderMaterials.set_override(m, mat)
 	m.position=at
 	g.add_child(m)
 	return m

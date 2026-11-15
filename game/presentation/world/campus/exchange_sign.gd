@@ -19,7 +19,7 @@ static func make(at: Vector2) -> Node3D:
 	material.emission_texture = material.albedo_texture
 	material.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
 	material.roughness = 1
-	plate.material_override = material
+	RenderMaterials.set_override(plate, material)
 	plate.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	plate.position.y = 1.2
 	root.add_child(plate)
@@ -31,7 +31,7 @@ static func make(at: Vector2) -> Node3D:
 	var metal := StandardMaterial3D.new()
 	metal.albedo_color = Color("#555b5e")
 	metal.roughness = 1
-	post.material_override = metal
+	RenderMaterials.set_override(post, metal)
 	post.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# Keep the support behind the printed face; the old +.02 offset covered its lower text.
 	post.position = Vector3(0,.6,-.04)

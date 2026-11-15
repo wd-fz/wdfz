@@ -97,7 +97,7 @@ func _box(parent: Node3D, size: Vector3, pos: Vector3, color: Color) -> MeshInst
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.disable_fog = true
 	mat.albedo_color = color
-	node.material_override = mat
+	RenderMaterials.set_override(node, mat)
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	node.position = pos
 	node.set_meta("base_color", color)

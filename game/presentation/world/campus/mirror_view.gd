@@ -70,14 +70,14 @@ func build(room: Dictionary, spots: Array) -> void:
 		var fm := BoxMesh.new()
 		fm.size = Vector3(0.68, 0.88, 0.02)
 		frame.mesh = fm
-		frame.material_override = _mat(Color("#3a3f42"))
+		RenderMaterials.set_override(frame, _mat(Color("#3a3f42")))
 		frame.position.z = -0.012
 		g.add_child(frame)
 		var glass := MeshInstance3D.new()
 		var qm := QuadMesh.new()
 		qm.size = Vector2(0.62, 0.82)
 		glass.mesh = qm
-		glass.material_override = _mat(Color("#8d999b"), Color("#1b2224"))
+		RenderMaterials.set_override(glass, _mat(Color("#8d999b"), Color("#1b2224")))
 		g.add_child(glass)
 		var fig := Node3D.new()
 		var body := FigureModel.make("person", Color("#1d2326"), true)
@@ -89,7 +89,7 @@ func build(room: Dictionary, spots: Array) -> void:
 		var abm := BoxMesh.new()
 		abm.size = Vector3(0.09, 0.62, 0.04)
 		am.mesh = abm
-		am.material_override = _mat(Color("#1d2326"))
+		RenderMaterials.set_override(am, _mat(Color("#1d2326")))
 		am.position.y = -0.31          # pivot at the shoulder
 		arm.add_child(am)
 		arm.position = Vector3(0.27, 1.61, 0.0)

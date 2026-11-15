@@ -33,7 +33,7 @@ func build() -> void:
 	plane.mesh = mesh
 	var paper := _material("f1eee4","2a2924")
 	paper.cull_mode = BaseMaterial3D.CULL_DISABLED
-	plane.material_override = paper
+	RenderMaterials.set_override(plane, paper)
 	add_child(plane)
 	hand = Node3D.new()
 	hand.name = "Hand"
@@ -44,7 +44,7 @@ func build() -> void:
 		var box := BoxMesh.new()
 		box.size = Vector3(.09,.11,.03) if i==0 else Vector3(.018,.08,.02)
 		part.mesh = box
-		part.material_override = skin
+		RenderMaterials.set_override(part, skin)
 		if i>0: part.position = Vector3(-.033+(i-1)*.022,.09,0)
 		hand.add_child(part)
 

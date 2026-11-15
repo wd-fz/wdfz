@@ -273,9 +273,9 @@ func _fig_head(opts: Dictionary, at: Vector3, size: float = 1.0, parent: Node3D 
 	if not opts.has("eyes"): opts["eyes"]="hollow"
 	var head := HorrorKit.head(opts)
 	var face := head.get_node_or_null("Skull/Face") as MeshInstance3D
-	if face != null: face.material_override=_fig_skin(opts.get("tone","wax"),float(opts.get("rim",.25)),true)
+	if face != null: RenderMaterials.set_override(face, _fig_skin(opts.get("tone","wax"),float(opts.get("rim",.25)),true))
 	var neck := head.get_node_or_null("Skull/Neck") as MeshInstance3D
-	if neck != null: neck.material_override=_fig_skin(opts.get("tone","wax"),float(opts.get("rim",.25)),true)
+	if neck != null: RenderMaterials.set_override(neck, _fig_skin(opts.get("tone","wax"),float(opts.get("rim",.25)),true))
 	head.rotation_order=EULER_ORDER_YXZ
 	head.scale=Vector3.ONE*size
 	(parent if parent != null else root).add_child(head)
@@ -321,7 +321,7 @@ func _fig_hand(opts: Dictionary, parent: Node3D = null) -> Node3D:
 	var hand := HorrorKit.hand(opts)
 	var mat := _fig_skin(opts.get("tone","wax"),float(opts.get("rim",.3)),true)
 	for mi: Node in hand.find_children("*","MeshInstance3D",true,false):
-		if mi.name!="Nail" or HorrorKit.is_dark(opts.get("tone","wax")): (mi as MeshInstance3D).material_override=mat
+		if mi.name!="Nail" or HorrorKit.is_dark(opts.get("tone","wax")): RenderMaterials.set_override((mi as MeshInstance3D), mat)
 	hand.rotation_order=EULER_ORDER_YXZ
 	(parent if parent != null else root).add_child(hand)
 	return hand
@@ -553,7 +553,7 @@ func _build_backseat() -> void:
 	_ring(Vector3(.36,-.5,.62),.19,.03,Color("66645d")).rotation.x=.45
 	# Two dials, each with a small needle.
 	for x in [.26,.48]:
-		_ring(Vector3(x,-.5,1.0),.055,.006,Color("d9a066")).material_override=c._mat(Color("a8794a"))
+		RenderMaterials.set_override(_ring(Vector3(x,-.5,1.0),.055,.006,Color("d9a066")), c._mat(Color("a8794a")))
 		var tip:=Vector3(.028,.028,0) if x<.4 else Vector3(-.03,.026,0)
 		_rod(Vector3(x,-.5,.99),Vector3(x,-.5,.99)+tip,.006,Color("c96a4a"))
 	_box(Vector3(30,.05,60),Vector3(0,-1.45,30),Color("5a5c58"))
@@ -847,7 +847,7 @@ func _build_classroom() -> void:
 	for z in [3,6.5,10]:
 		var window := _window(Vector3(3.92,.4,z))
 		window.rotation.y=PI/2
-		(window.get_node("GlassPane") as MeshInstance3D).material_override=_surface(Color("5a5e60"),.4)
+		RenderMaterials.set_override((window.get_node("GlassPane") as MeshInstance3D), _surface(Color("5a5e60"),.4))
 	p["own"]=_desk(Vector3(0,0,.7))
 	p["blank"]=_box(Vector3(5.9,1.5,.04),Vector3(0,.45,11.65),Color("bbc2b1"))
 	p["blank"].hide()
@@ -947,7 +947,7 @@ func _show_classroom(t: float) -> void:
 		var tone:=Color(.62,.52,.44).lerp(SKIN,greyed)
 		for hand: Node3D in p["own_hands"]:
 			for mi: Node in hand.find_children("*","MeshInstance3D",true,false):
-				if mi.name!="Nail": (mi as MeshInstance3D).material_override=_fig_skin(tone,.2,true)
+				if mi.name!="Nail": RenderMaterials.set_override((mi as MeshInstance3D), _fig_skin(tone,.2,true))
 			hand.position.z=(p["own"] as Node3D).position.z-.2
 			HorrorKit.pose_hand(hand,.15,.05)
 	_fig_key().light_energy=3.0+.6*near
@@ -1074,7 +1074,7 @@ func _build_fence() -> void:
 	(p["body"].get_meta("head") as Node3D).visible=false
 	p["head"]=_fig_head({"tone":SKIN,"mouth":"closed","skew":.3,"eyes":"dull","hair":true,"socket":.75},Vector3(-1.5,.88,3.2),1.4)
 	p["neck"]=MeshInstance3D.new()
-	p["neck"].material_override=_fig_skin(Color(.34,.32,.29),.2,true)
+	RenderMaterials.set_override(p["neck"], _fig_skin(Color(.34,.32,.29),.2,true))
 	p["neck"].cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(p["neck"])
 	focus=p["head"]
@@ -1125,7 +1125,7 @@ func _build_double() -> void:
 	for z in [3,7,11]:
 		var w:=_window(Vector3(2.45,.2,z))
 		w.rotation.y=PI/2
-		(w.get_node("GlassPane") as MeshInstance3D).material_override=_surface(Color("3b4046"),.55)
+		RenderMaterials.set_override((w.get_node("GlassPane") as MeshInstance3D), _surface(Color("3b4046"),.55))
 	# Sodium light from the street outside the windows.
 	c.motive_light(Vector3(2.2,1.2,6.5),Color("d9a066"),2.6,4.5,root)
 	# The left-hand wall: two classroom doors with their plates and a notice board.
@@ -1235,7 +1235,7 @@ func _build_flood() -> void:
 	_env_room(7,12,Color("4a5752"),Color("2f4a47"),Color("394240"))
 	# The window at the far end: night outside, the only light in the room.
 	var window := _window(Vector3(0,.35,10.9),Vector2(3,2.3))
-	(window.get_node("GlassPane") as MeshInstance3D).material_override = _env_shader("rainpane","""
+	RenderMaterials.set_override((window.get_node("GlassPane") as MeshInstance3D), _env_shader("rainpane","""
 shader_type spatial;
 render_mode unshaded, cull_disabled;
 uniform float time = 0.0;
@@ -1248,7 +1248,7 @@ void fragment() {
 	float streak = smoothstep(.0, .05, y) * (1.0 - smoothstep(.05, .35, y)) * step(.55, h1(col * 1.3)) * rain;
 	ALBEDO = night + vec3(.22, .27, .28) * streak;
 }
-""",{"rain":1.0 if c.fx=="drown" else .2})
+""",{"rain":1.0 if c.fx=="drown" else .2}))
 	p["pane"]=window.get_node("GlassPane")
 	p["window"]=window
 	p["window_light"]=c.motive_light(Vector3(0,.3,9.4),Color("8fb2c4"),10.0,14,root)
@@ -1442,11 +1442,11 @@ func _build_frost() -> void:
 	# A dormitory in winter: bed and desk, a frosting window at the upper left of the frame, and a uniform on a rail.
 	_env_room(4.6,6.2,Color("8b8a82"),Color("3f5b4d"),Color("57554e"))
 	var window := _window(Vector3(1.45,.8,5.15),Vector2(1.2,1.4))
-	(window.get_node("GlassPane") as MeshInstance3D).material_override = _env_flat(Color("46586a"))
+	RenderMaterials.set_override((window.get_node("GlassPane") as MeshInstance3D), _env_flat(Color("46586a")))
 	var pane := MeshInstance3D.new()
 	pane.mesh = QuadMesh.new()
 	(pane.mesh as QuadMesh).size = Vector2(1.2,1.4)
-	pane.material_override = _env_shader("frostpane",ENV_FROST_PANE,{"grow":.1},5)
+	RenderMaterials.set_override(pane, _env_shader("frostpane",ENV_FROST_PANE,{"grow":.1},5))
 	c.put(pane,0,0,-.075,window)
 	p["pane"]=pane
 	# Moonlight from the window (the cold side) and a warm bedside lamp low on the right: the one scene of this
@@ -1474,7 +1474,7 @@ func _build_frost() -> void:
 	for i in 5:
 		var puff := MeshInstance3D.new()
 		puff.mesh = QuadMesh.new()
-		puff.material_override = _env_shader("breath","""
+		RenderMaterials.set_override(puff, _env_shader("breath","""
 shader_type spatial;
 render_mode unshaded, blend_mix, cull_disabled, depth_draw_never, shadows_disabled;
 uniform float fade = 0.0;
@@ -1493,7 +1493,7 @@ void fragment() {
 	ALBEDO = vec3(.78, .84, .86);
 	ALPHA = body * fade * .3;
 }
-""",{"seed":float(i)},5)
+""",{"seed":float(i)},5))
 		root.add_child(puff)
 		p["breaths"].append(puff)
 	focus=p["coat"]
@@ -1782,7 +1782,7 @@ func _build_ritual() -> void:
 	var chalk:=Color("c9c5b5")
 	p["circle"]=_ring(Vector3(0,-1.54,4.4),2.0,.02,chalk)
 	p["circle"].rotation.x=PI/2
-	p["circle"].material_override=_surface(chalk,.7,true)
+	RenderMaterials.set_override(p["circle"], _surface(chalk,.7,true))
 	p["ring"]=[]
 	for i in 7:
 		var a:float=-PI/2+(i+1)*TAU/8
@@ -1957,7 +1957,7 @@ func _build_face() -> void:
 		# the two uprights give the pane its edges; no bar crosses where his face comes.
 		p["window"]=_anchor(Vector3(0,0,.8))
 		var pane:=_box(Vector3(2.1,3.4,.02),Vector3(0,0,-.02),Color("9a9a92"),p["window"])
-		pane.material_override=_surface(Color("9a9a92"),.1)
+		RenderMaterials.set_override(pane, _surface(Color("9a9a92"),.1))
 		for x in [-1.08,1.08]: _box(Vector3(.1,3.6,.08),Vector3(x,0,0),Color("5a5546"),p["window"])
 		_box(Vector3(2.3,.07,.08),Vector3(0,-.62,0),Color("5a5546"),p["window"])
 		_box(Vector3(3.4,3.6,.06),Vector3(-2.8,0,.06),WALL)
@@ -2084,7 +2084,7 @@ func _build_mirror() -> void:
 		var len:=.15+.25*_env_h(i+3.0)
 		var to:=Vector3(clampf(from.x+cos(ang)*len,-1.1,1.1),clampf(from.y+sin(ang)*len,-.65,.85),_MZ-.012)
 		var rod:=_rod(from,to,.003,PAPER,rig)
-		rod.material_override=crack
+		RenderMaterials.set_override(rod, crack)
 		p["fractures"].append(rod)
 	focus=p["head"]
 
@@ -2119,7 +2119,7 @@ func _build_paper() -> void:
 	c.stage_dark(DARK,.05,Color(.19,.2,.22),.18)
 	_env_room(6,12,Color("7d8780"),Color("3d5a50"),Color("5c5e57"))
 	var window := _window(Vector3(0,.3,6),Vector2(3,2.5))
-	(window.get_node("GlassPane") as MeshInstance3D).material_override = _env_flat(Color("2a3a48"))
+	RenderMaterials.set_override((window.get_node("GlassPane") as MeshInstance3D), _env_flat(Color("2a3a48")))
 	c.motive_light(Vector3(0,.6,5.2),Color("8fa6c8"),2.2,8,root)
 	c.motive_light(Vector3(0,1.3,2.4),Color("9fb2cc"),1.3,6,root)
 	_desk(Vector3(-1.2,0,2.6))
@@ -2208,7 +2208,7 @@ func _build_fall() -> void:
 			window.reparent(p["facade"],true)
 			var face_window := row==5 and col==2
 			var lit := face_window or _env_h(row*5+col)<.25
-			(window.get_node("GlassPane") as MeshInstance3D).material_override = lit_glass if lit else dark_glass
+			RenderMaterials.set_override((window.get_node("GlassPane") as MeshInstance3D), lit_glass if lit else dark_glass)
 			if lit and not face_window: _env_box(Vector3(.4,.9,.02),Vector3(0,-.25,-.07),figure,window)
 	# Pressed against the glass of the fifth row's middle window: it passes the centre of the frame around mid-fall.
 	p["window_face"]=_fig_head({"tone":Color(.46,.46,.42),"mouth":"closed","skew":.4},Vector3(0,-18,3.72),6.0,p["facade"])
@@ -2322,8 +2322,8 @@ func _build_door() -> void:
 	p["right"]=_box(Vector3(1.15,3,.12),Vector3(-.575,-.1,3),Color("77877d"))
 	# A lift is brushed steel with a cold lamp behind it; a dorm room is wood with a warm bulb and a peephole.
 	var leaf:=_env_lit(Color("6b5a44"),.7) if dorm else _env_lit(Color("8d9390"),.5,.6,.3)
-	p["left"].material_override=leaf
-	p["right"].material_override=leaf
+	RenderMaterials.set_override(p["left"], leaf)
+	RenderMaterials.set_override(p["right"], leaf)
 	for x in [-1.27,1.27]: _box(Vector3(.2,3.3,.2),Vector3(x,-.1,3.12),INK)
 	_box(Vector3(2.7,.2,.2),Vector3(0,1.45,3.12),INK)
 	p["inner"]=c.motive_light(Vector3(0,1.2,4.2),Color("e0b98a") if dorm else Color("cfe0e6"),1.6,3,root)

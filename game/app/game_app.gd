@@ -3775,7 +3775,7 @@ func _show_marks() -> void:
 			mat.roughness = 1.0
 			mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 			mat.render_priority = 2
-			quad.material_override = mat
+			RenderMaterials.set_override(quad, mat)
 			quad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			quad.rotation_order = EULER_ORDER_YXZ
 			if m["face"] == "floor":

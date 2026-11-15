@@ -24,7 +24,7 @@ func _init() -> void:
 	for material: StandardMaterial3D in [_wall,_door]:
 		var batch:=MeshInstance3D.new()
 		batch.mesh=ArrayMesh.new()
-		batch.material_override=material
+		RenderMaterials.set_override(batch, material)
 		batch.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(batch)
 		_batches.append(batch)

@@ -254,7 +254,7 @@ func mesh(m: Mesh, mat: Material, x: float, y: float, z: float, parent: Node3D =
 	var mi := MeshInstance3D.new()
 	mi.mesh = m
 	mi.rotation_order = EULER_ORDER_XYZ
-	mi.material_override = mat
+	RenderMaterials.set_override(mi, mat)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	put(mi, x, y, z, parent)
 	return mi
@@ -309,7 +309,7 @@ func fxm(name: String, scale: float, x: float, y: float, z: float) -> Node3D:
 		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 		mat.disable_fog = false
 		for mi: Node in inst.find_children("*", "MeshInstance3D", true, false):
-			(mi as MeshInstance3D).material_override = mat
+			RenderMaterials.set_override((mi as MeshInstance3D), mat)
 			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		g.add_child(inst)
 	g.scale = Vector3.ONE * scale
@@ -325,7 +325,7 @@ func veil(col: Color) -> void:
 	veil_mesh = MeshInstance3D.new()
 	veil_mesh.name = "DeathVeil"
 	veil_mesh.mesh = sm
-	veil_mesh.material_override = _mat(col, 0.0, false, true, false)
+	RenderMaterials.set_override(veil_mesh, _mat(col, 0.0, false, true, false))
 	(veil_mesh.material_override as StandardMaterial3D).cull_mode = BaseMaterial3D.CULL_FRONT
 	cam.add_child(veil_mesh)
 
@@ -347,7 +347,7 @@ func hide_world(sky: Color = Color(0.02, 0.025, 0.03)) -> void:
 	_sky.mesh = sm
 	var m := _mat(sky,-1,false,false,false)
 	m.cull_mode = BaseMaterial3D.CULL_FRONT
-	_sky.material_override = m
+	RenderMaterials.set_override(_sky, m)
 	cam.add_child(_sky)
 
 
@@ -359,7 +359,7 @@ func inst(m: Mesh, mat: Material, count: int) -> MultiMeshInstance3D:
 	mm.instance_count = count
 	var mi := MultiMeshInstance3D.new()
 	mi.multimesh = mm
-	mi.material_override = mat
+	RenderMaterials.set_override(mi, mat)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.custom_aabb = AABB(Vector3(-50, -50, -50), Vector3(100, 100, 100))
 	put(mi, 0.0, 0.0, 0.0)

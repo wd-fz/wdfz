@@ -93,7 +93,7 @@ static func build_fall(c: DeathStage) -> void:
 	var pad := Node3D.new()
 	c.put(pad,0,0,1.2)
 	var slab := c.box(4.8,.3,4.8,Color("#8f9294"),-1,0,-.15,0,false)
-	slab.material_override = c._mat_lit(Color("#8f9294"),-1,false,.9,false)
+	RenderMaterials.set_override(slab, c._mat_lit(Color("#8f9294"),-1,false,.9,false))
 	slab.reparent(pad,false)
 	var hatch := original_mesh(c,"hatch",pad)
 	var man := c.fig("person",Color("#0b0d10"),1,.2,.1)

@@ -17,7 +17,7 @@ static func make(size: float, color: String) -> MeshInstance3D:
 	material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
 	material.disable_fog = true
 	material.render_priority = 5
-	eye.material_override = material
+	RenderMaterials.set_override(eye, material)
 	eye.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	eye.scale = Vector3(size,size*.6875,1)
 	return eye

@@ -278,7 +278,7 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.albedo_color = face_lamp(0.0)
-	_lamp.material_override = m
+	RenderMaterials.set_override(_lamp, m)
 	_lamp.position = _g + Vector3(0.4, 1.15, 0.9)
 	_root.add_child(_lamp)
 	for i in 15:
@@ -447,7 +447,7 @@ func _box(g: Node3D, w: float, h: float, d: float, c: Color, x: float, y: float,
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED if (glow or not _lit) else BaseMaterial3D.SHADING_MODE_PER_PIXEL
 	mat.albedo_color = c
 	mat.disable_fog = glow or not _lit
-	m.material_override = mat
+	RenderMaterials.set_override(m, mat)
 	m.position = Vector3(x, y, z)
 	g.add_child(m)
 
@@ -471,7 +471,7 @@ func _card(lines: Array) -> Node3D:
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.albedo_color = Color("#f4f1e6")
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
-	back.material_override = m
+	RenderMaterials.set_override(back, m)
 	n.add_child(back)
 	var strip := MeshInstance3D.new()
 	var sq := QuadMesh.new()
@@ -480,7 +480,7 @@ func _card(lines: Array) -> Node3D:
 	var sm := StandardMaterial3D.new()
 	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	sm.albedo_color = Color("#2a3a52")
-	strip.material_override = sm
+	RenderMaterials.set_override(strip, sm)
 	strip.position = Vector3(0.0, 0.085, 0.001)
 	n.add_child(strip)
 	for i in lines.size():
@@ -619,7 +619,7 @@ func _screen(parent: Node3D, screen_mode: String, w: int, h: int, quad: Vector2,
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.albedo_texture = vp.get_texture()
 	m.disable_fog = true
-	mi.material_override = m
+	RenderMaterials.set_override(mi, m)
 	mi.position = pos
 	parent.add_child(mi)
 	return vp
@@ -657,7 +657,7 @@ func _setup_dis() -> void:
 		var mat := StandardMaterial3D.new()
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		mat.albedo_color = Color("#313b34")
-		m.material_override = mat
+		RenderMaterials.set_override(m, mat)
 		m.position = Vector3(-1.6 + float(i) * 0.8, 2.55, -2.37)
 		a.add_child(m)
 		_speakers.append(m)
@@ -702,7 +702,7 @@ func _setup_dis() -> void:
 		var mat := StandardMaterial3D.new()
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		mat.albedo_color = Color("#aba17c")
-		w.material_override = mat
+		RenderMaterials.set_override(w, mat)
 		w.position = Vector3(_dis_teach.x, 2.7 + float(i) * 3.2, _dis_teach.y + 0.04)
 		w.visible = false
 		_root.add_child(w)
@@ -843,7 +843,7 @@ func _setup_portal() -> void:
 	ring.mesh = tm
 	ring.rotation.x = PI / 2.0
 	ring.position = Vector3(0, ring_y, 0)
-	ring.material_override = steel
+	RenderMaterials.set_override(ring, steel)
 	g.add_child(ring)
 	for i in 3:
 		var r := MeshInstance3D.new()
@@ -856,7 +856,7 @@ func _setup_portal() -> void:
 		var m := StandardMaterial3D.new()
 		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		m.albedo_color = Color("#70d0ff")
-		r.material_override = m
+		RenderMaterials.set_override(r, m)
 		r.visible = false
 		g.add_child(r)
 		_rails.append(r)
@@ -872,7 +872,7 @@ func _setup_portal() -> void:
 	dmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	dmat.albedo_color = Color(0.45, 0.78, 1.0, 0.0)
 	dmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_door.material_override = dmat
+	RenderMaterials.set_override(_door, dmat)
 	g.add_child(_door)
 	_root.set_meta("ring_y", ring_y)
 
@@ -1015,7 +1015,7 @@ func _setup_cyber() -> void:
 	_sky_mat.cull_mode = BaseMaterial3D.CULL_FRONT
 	_sky_mat.disable_fog = true
 	_sky_mat.albedo_color = Color(0.02, 0.026, 0.03)
-	_sky.material_override = _sky_mat
+	RenderMaterials.set_override(_sky, _sky_mat)
 	_sky.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_root.add_child(_sky)
 	var a: Node3D = _st[0]
@@ -1037,7 +1037,7 @@ func _setup_cyber() -> void:
 			var mat := StandardMaterial3D.new()
 			mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 			mat.albedo_color = Color("#6ff09a")
-			led.material_override = mat
+			RenderMaterials.set_override(led, mat)
 			led.position = Vector3(side * (1.45 - 0.42), 1.85 - float(j / 2) * 0.3, -4.0 + row * 1.25 - 0.25 + float(j % 2) * 0.1)
 			a.add_child(led)
 			rack_leds.append(led)
@@ -1261,7 +1261,7 @@ func _setup_live_car(world: Node3D, player: PlayerController) -> void:
 	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	bm.albedo_color = Color(1.0, 0.9, 0.69, 0.0)
-	_beam.material_override = bm
+	RenderMaterials.set_override(_beam, bm)
 	_root.add_child(_beam)
 	_thing = FigureModel.make("roam", Color("#05070a"), true)
 	_thing.position = _car_p + _car_f * 6.5
@@ -1346,7 +1346,7 @@ func _setup_car() -> void:
 	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	bm.albedo_color = Color(1.0, 0.9, 0.69, 0.0)
-	_beam.material_override = bm
+	RenderMaterials.set_override(_beam, bm)
 	a.add_child(_beam)
 	_thing = FigureModel.make("roam", Color("#05070a"), true)
 	_thing.position = Vector3(0, 0, 6.5)
@@ -1375,7 +1375,7 @@ func _setup_car() -> void:
 	_sky_mat.cull_mode = BaseMaterial3D.CULL_FRONT
 	_sky_mat.disable_fog = true
 	_sky_mat.albedo_color = Color(0.02, 0.025, 0.035)
-	_sky.material_override = _sky_mat
+	RenderMaterials.set_override(_sky, _sky_mat)
 	_root.add_child(_sky)
 
 

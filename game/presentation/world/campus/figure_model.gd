@@ -30,7 +30,7 @@ static func make(kind: String, color: Color, unlit: bool = false, scale: float =
 	root.add_child(inst)
 	var mat := shared_material if shared_material != null else material(color, unlit, emission, fog_enabled)
 	for mi: Node in inst.find_children("*", "MeshInstance3D", true, false):
-		(mi as MeshInstance3D).material_override = mat
+		RenderMaterials.set_override((mi as MeshInstance3D), mat)
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if unlit else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	root.scale = Vector3.ONE * scale
 	return root

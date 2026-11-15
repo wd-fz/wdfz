@@ -26,10 +26,10 @@ static func make(cinematic: bool = false) -> Node3D:
 		var node:=MeshInstance3D.new()
 		node.mesh=mesh
 		node.position.y=s[3]
-		node.material_override=material
+		RenderMaterials.set_override(node, material)
 		if cinematic and i==1:
 			var cap: StandardMaterial3D=material.duplicate()
 			cap.albedo_color=Color("#6e5528")
-			node.material_override=cap
+			RenderMaterials.set_override(node, cap)
 		root.add_child(node)
 	return root

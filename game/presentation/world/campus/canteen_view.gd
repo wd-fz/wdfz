@@ -52,7 +52,7 @@ func _unlit(c: Color, op: float = 1.0, add: bool = false) -> StandardMaterial3D:
 func _mesh(m: Mesh, mat: Material, p: Vector3) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.mesh = m
-	mi.material_override = mat
+	RenderMaterials.set_override(mi, mat)
 	mi.position = p
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
@@ -108,7 +108,7 @@ func build(room: Dictionary) -> void:
 	bm.emission = Color("#4a3a26")
 	var cm := MeshInstance3D.new()
 	cm.mesh = cup
-	cm.material_override = bm
+	RenderMaterials.set_override(cm, bm)
 	_bowl.add_child(cm)
 	var rice := SphereMesh.new()
 	rice.radius = 0.1
@@ -116,7 +116,7 @@ func build(room: Dictionary) -> void:
 	rice.is_hemisphere = true
 	var rm := MeshInstance3D.new()
 	rm.mesh = rice
-	rm.material_override = bm
+	RenderMaterials.set_override(rm, bm)
 	rm.position.y = 0.03
 	rm.scale.y = 0.5
 	_bowl.add_child(rm)

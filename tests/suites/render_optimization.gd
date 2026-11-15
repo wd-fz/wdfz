@@ -3,6 +3,29 @@ extends "res://tests/support/test_suite.gd"
 ## dynamic-door independence, a real open doorway under occlusion and post mip switching.
 
 
+func test_material_replacement() -> void:
+	var mesh := MeshInstance3D.new()
+	mesh.mesh = BoxMesh.new()
+	root.add_child(mesh)
+	var camera := Camera3D.new()
+	root.add_child(camera)
+	camera.position.z = 3
+	camera.current = true
+	for frame in 24:
+		var old: WeakRef = weakref(mesh.material_override) if mesh.material_override != null else null
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(float(frame) / 24.0, .3, .6)
+		RenderMaterials.set_override(mesh, mat)
+		RenderMaterials.set_override(mesh, mat)
+		check(mesh.material_override == mat and (old == null or old.get_ref() == null), "material replacement binds the new resource and promptly releases the old one %d" % frame)
+		await _frames(1)
+	RenderMaterials.set_override(mesh, null)
+	check(mesh.material_override == null, "material override can be cleared")
+	mesh.queue_free()
+	camera.queue_free()
+	await _frames(2)
+
+
 func _instances(parent: Node3D, mesh: Mesh, places: Array[Transform3D]) -> MultiMeshInstance3D:
 	var node := MultiMeshInstance3D.new()
 	var mm := MultiMesh.new()

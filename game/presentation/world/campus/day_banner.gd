@@ -45,7 +45,7 @@ func setup(layout: Dictionary) -> void:
 		var bm := BoxMesh.new()
 		bm.size = Vector3(0.04, 2.6, 0.04)
 		r.mesh = bm
-		r.material_override = rope
+		RenderMaterials.set_override(r, rope)
 		r.position = at + Vector3(dx, 0.0, -0.02)
 		r.visible = false
 		add_child(r)
@@ -65,7 +65,7 @@ func set_on(on: bool) -> void:
 		mat.albedo_texture = tex
 		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 		mat.roughness = 1.0
-		_banner.material_override = mat
+		RenderMaterials.set_override(_banner, mat)
 		_busy = false
 
 

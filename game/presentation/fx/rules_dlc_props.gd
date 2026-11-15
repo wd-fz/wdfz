@@ -15,7 +15,7 @@ func build(spots: Array, scene: String, room: Variant) -> void:
 		material.emission_enabled=true
 		material.emission=Color("3a3830")
 		material.cull_mode=BaseMaterial3D.CULL_DISABLED
-		page.material_override=material
+		RenderMaterials.set_override(page, material)
 		page.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		page.rotation_order=EULER_ORDER_XYZ
 		if float(p["h"])<1: page.rotation=Vector3(-PI/2,0,.4)

@@ -70,7 +70,7 @@ func setup(r: Dictionary) -> void:
 			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 			m.disable_fog = true
 			m.albedo_texture = tex
-			sign_mesh.material_override = m
+			RenderMaterials.set_override(sign_mesh, m)
 			sign_mesh.position = Vector3(p.x, 2.55, p.y - 0.06)
 			sign_mesh.name = "ExitSign"
 			add_child(sign_mesh)
@@ -87,7 +87,7 @@ func setup(r: Dictionary) -> void:
 			light.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 			light.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
 			light.disable_fog = true
-			glow.material_override = light
+			RenderMaterials.set_override(glow, light)
 			glow.position = Vector3(p.x,2.5,p.y-.05)
 			glow.name = "ExitGlow"
 			add_child(glow)
@@ -121,7 +121,7 @@ func _build_props(r: Dictionary, door: int) -> void:
 	cyl.radial_segments = 6
 	cyl.rings = 1
 	stick.mesh = cyl
-	stick.material_override = _lit(Color("#9a7a55"))
+	RenderMaterials.set_override(stick, _lit(Color("#9a7a55")))
 	stick.position = Vector3(0, 0.72, 0)
 	stick.rotation.z = 0.18
 	var head := MeshInstance3D.new()
@@ -132,7 +132,7 @@ func _build_props(r: Dictionary, door: int) -> void:
 	hc.radial_segments = 8
 	hc.rings = 1
 	head.mesh = hc
-	head.material_override = _lit(Color("#8d8a80"))
+	RenderMaterials.set_override(head, _lit(Color("#8d8a80")))
 	head.position = Vector3(-0.11, 0.09, 0)
 	var bucket := MeshInstance3D.new()
 	var bc := CylinderMesh.new()
@@ -142,7 +142,7 @@ func _build_props(r: Dictionary, door: int) -> void:
 	bc.radial_segments = 10
 	bc.rings = 1
 	bucket.mesh = bc
-	bucket.material_override = _lit(Color("#3d6c9a"))
+	RenderMaterials.set_override(bucket, _lit(Color("#3d6c9a")))
 	bucket.position = Vector3(0.32, 0.14, 0.02)
 	props.add_child(stick)
 	props.add_child(head)

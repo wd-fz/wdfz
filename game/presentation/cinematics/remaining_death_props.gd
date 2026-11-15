@@ -30,7 +30,7 @@ func _fx(type: String, p: Vector3, size: float = 1) -> Node3D:
 	var mat:=_mat("ffffff")
 	mat.vertex_color_use_as_albedo=true
 	for child: Node in model.find_children("*","MeshInstance3D",true,false):
-		(child as MeshInstance3D).material_override=mat
+		RenderMaterials.set_override((child as MeshInstance3D), mat)
 		(child as MeshInstance3D).cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	n.add_child(model)
 	n.scale=Vector3.ONE*size

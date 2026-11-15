@@ -325,7 +325,7 @@ func _build_garage_here() -> void:
 			dot.radius = .0042
 			dot.height = .0084
 			glint.mesh = dot
-			glint.material_override = c._mat(Color(.52,.56,.52))
+			RenderMaterials.set_override(glint, c._mat(Color(.52,.56,.52)))
 			skull.add_child(glint)
 			glint.position = Vector3(side*.033,.012,-.07)
 			p["eyes"].append(glint)
@@ -421,7 +421,7 @@ func _build_classroom_here() -> void:
 			var a: Vector2 = pts[i]
 			var b: Vector2 = pts[i+1]
 			var stroke := _rod(Vector3(a.x,a.y,0),Vector3(b.x,b.y,0),.0045,CHALK,p["outline"])
-			stroke.material_override = _surface(Color("9d9b93"),.45)
+			RenderMaterials.set_override(stroke, _surface(Color("9d9b93"),.45))
 			p["strokes"].append(stroke)
 	p["writing"] = _ink("请回到座位",Vector3(0,-.02,1.15),.085,CHALK)
 	focus = p["writing"]
@@ -484,7 +484,7 @@ func _build_fence_here() -> void:
 	for i in 11: _rod(Vector3(-1.25+i*.25,-1.2,0),Vector3(-1.25+i*.25,.06,0),.022,Color("4b3127"),rail)
 	p["head"] = _fig_head({"tone":SKIN,"mouth":"closed","skew":.35,"eyes":"hollow","hair":true,"socket":1.0},Vector3(.7,-.3,1.8),1.15)
 	p["neck"] = MeshInstance3D.new()
-	p["neck"].material_override = _fig_skin(Color(.3,.29,.27),.25,true)
+	RenderMaterials.set_override(p["neck"], _fig_skin(Color(.3,.29,.27),.25,true))
 	root.add_child(p["neck"])
 	focus = p["head"]
 
@@ -690,7 +690,7 @@ func _build_frost_here() -> void:
 	shader.code = _FROST
 	var material := ShaderMaterial.new()
 	material.shader = shader
-	pane.material_override = material
+	RenderMaterials.set_override(pane, material)
 	c.put(pane,0,0,.42,root)
 	p["frost"] = pane
 	p["jacket"] = _anchor(Vector3(.1,.35,1.5))
@@ -797,11 +797,11 @@ func _build_banquet_here() -> void:
 	# in the view while everything behind it stretches away (a dolly zoom): you never reach the table.
 	var tray := _anchor(Vector3(0,-.36,.95))
 	p["tray"] = tray
-	_box(Vector3(.42,.012,.3),Vector3.ZERO,STEEL,tray).material_override = _surface_steel()
+	RenderMaterials.set_override(_box(Vector3(.42,.012,.3),Vector3.ZERO,STEEL,tray), _surface_steel())
 	for side in [-1,1]:
-		_box(Vector3(.42,.03,.008),Vector3(0,.014,side*.146),STEEL,tray).material_override = _surface_steel()
-		_box(Vector3(.008,.03,.3),Vector3(side*.206,.014,0),STEEL,tray).material_override = _surface_steel()
-	_box(Vector3(.008,.022,.3),Vector3(.02,.012,0),STEEL,tray).material_override = _surface_steel()
+		RenderMaterials.set_override(_box(Vector3(.42,.03,.008),Vector3(0,.014,side*.146),STEEL,tray), _surface_steel())
+		RenderMaterials.set_override(_box(Vector3(.008,.03,.3),Vector3(side*.206,.014,0),STEEL,tray), _surface_steel())
+	RenderMaterials.set_override(_box(Vector3(.008,.022,.3),Vector3(.02,.012,0),STEEL,tray), _surface_steel())
 	var rice := _sphere(Vector3(-.1,.012,0),.08,Color("5d5b53"),tray)
 	rice.scale = Vector3(1.1,.35,1.4)
 	for i in 5:
@@ -919,9 +919,9 @@ func _build_corridor_here() -> void:
 			p["signs"] = []
 			for i in (3 if c.fx=="trap_out" else 1):
 				var sign := _anchor(Vector3([0.0,.45,-.4][i],.5-i*.06,1.4+i*.55))
-				_box(Vector3(.34,.13,.04),Vector3.ZERO,Color("1f6b45"),sign).material_override = c._mat(Color("2f8f5c"))
+				RenderMaterials.set_override(_box(Vector3(.34,.13,.04),Vector3.ZERO,Color("1f6b45"),sign), c._mat(Color("2f8f5c")))
 				_ink("安全出口",Vector3(.03,0,-.022),.045,Color("e6f2ea"),sign).shaded = false
-				_box(Vector3(.05,.06,.002),Vector3(.12,0,-.022),Color("e6f2ea"),sign).material_override = c._mat(Color("e6f2ea"))
+				RenderMaterials.set_override(_box(Vector3(.05,.06,.002),Vector3(.12,0,-.022),Color("e6f2ea"),sign), c._mat(Color("e6f2ea")))
 				_soft("disc",Vector2(.7,.35),Color(.3,.9,.55,.25),Vector3(0,0,-.03),sign)
 				p["signs"].append(sign)
 			focus = p["signs"][0]
