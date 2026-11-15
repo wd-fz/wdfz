@@ -879,7 +879,8 @@ func _test_settings_app(app: GameApp) -> void:
 	check(cw.visual_tier == 0 and cw.get_node("Collision").get_instance_id() == collision_before and cw.lighting.live_count() > 0, "quality replaces the current visual models and rebinds lamps without replacing physics")
 	check(not app.player.view_motion.shake_enabled, "the shake setting reaches the player camera")
 	check(cw.lighting.reduce_flash and absf(cw.lighting.brightness - 1.2) < 0.0001, "reduce flash and brightness reach the lighting")
-	check(absf(app.get_viewport().scaling_3d_scale - 0.55) < 0.0001, "the 流畅 tier renders at 55 %% of the resolution")
+	var rendered_size := Vector2(app.get_window().size) * app.get_viewport().scaling_3d_scale
+	check(rendered_size.x * rendered_size.y <= 409601.0 and app.get_viewport().scaling_3d_scale <= 1.0, "the 流畅 tier respects its 480p pixel budget at the actual window size")
 	app.ui.setting_changed.emit("distortion", 0)
 	app.school().san = 10.0
 	await _frames(30)

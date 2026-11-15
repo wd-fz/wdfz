@@ -554,8 +554,7 @@ func configure_rendering(options: Dictionary, camera: Camera3D = null) -> void:
 		lighting.options=render_options
 		lighting.apply_quality(camera)
 		lighting.update(0,lighting.clock_minutes,camera)
-		lighting._pick_shadow_lamps(camera)
-		lighting._pick_shadow_windows(camera)
+		lighting._select_local_lights(camera)
 
 
 ## Replace rendering nodes while physics, interactions and rule modules remain alive.

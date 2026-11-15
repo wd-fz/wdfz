@@ -9,7 +9,7 @@ extends Node3D
 ##  off, so the picture is never wholly covered; the dust of the wings falls all the time.
 ## Presentation only. The random numbers are the old "presentation random" (a fixed seed here).
 
-const RAIN_COUNTS := [500, 900, 1500, 2200, 3000]
+const RAIN_COUNTS := [350, 500, 700, 900, 1000]
 const AREA := 18.0
 const HEIGHT := 9.0
 const MOTH_COUNTS := [50, 80, 120, 180, 220]
@@ -19,7 +19,9 @@ var kind := ""                       # "rain" | "moth"
 var _rng := RandomNumberGenerator.new()
 var _t := 0.0
 # rain
-var _mesh: ImmediateMesh
+var _mesh: ArrayMesh
+var _lines: MeshInstance3D
+var _vertices := PackedVector3Array()
 var _seeds: Array = []               # Vector3 per drop (offset from the camera, y = height)
 var _rings: Array[MeshInstance3D] = []
 var _ring_i := 0
@@ -67,21 +69,35 @@ func _mat(c: Color, op: float = 1.0, double: bool = false) -> StandardMaterial3D
 func setup_rain(feet: Vector3, quality: int = -1) -> void:
 	kind = "rain"
 	_rng.seed = 2024
-	_mesh = ImmediateMesh.new()
-	var lines := MeshInstance3D.new()
-	lines.mesh = _mesh
-	lines.material_override = _mat(Color("#aebfcc"), 0.36)
-	lines.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	lines.custom_aabb = AABB(Vector3(-40, -5, -40), Vector3(80, 30, 80))
-	add_child(lines)
+	_mesh = ArrayMesh.new()
+	_lines = MeshInstance3D.new()
+	_lines.mesh = _mesh
+	_lines.material_override = _mat(Color("#aebfcc"), 0.36)
+	_lines.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Local vertices move with this node. The old fixed origin AABB incorrectly
+	# culled rain when the player was far from the campus/room origin.
+	_lines.position = feet
+	_lines.custom_aabb = AABB(Vector3(-AREA * .5 - 1, -1, -AREA * .5 - 1), Vector3(AREA + 2, HEIGHT + 2, AREA + 2))
+	add_child(_lines)
 	for i in int(RAIN_COUNTS[CampusData.tier if quality < 0 else clampi(quality, 0, 4)]):
 		_seeds.append(Vector3((_rng.randf() - 0.5) * AREA, _rng.randf() * HEIGHT, (_rng.randf() - 0.5) * AREA))
+	_vertices.resize(_seeds.size() * 2)
+	for i in _seeds.size():
+		_vertices[i * 2] = _seeds[i]
+		_vertices[i * 2 + 1] = _seeds[i] + Vector3.UP * .55
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = _vertices
+	_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays, [], {}, Mesh.ARRAY_FLAG_USE_DYNAMIC_UPDATE)
 	var ring := TorusMesh.new()
 	ring.inner_radius = 0.035
 	ring.outer_radius = 0.06
+	ring.rings = 12
+	ring.ring_segments = 4
 	for i in 36:
 		var mi := MeshInstance3D.new()
 		mi.mesh = ring
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mi.material_override = _mat(Color("#c8d6de"), 0.0)
 		mi.visible = false
 		mi.set_meta("life", 0.0)
@@ -99,6 +115,7 @@ func setup_rain(feet: Vector3, quality: int = -1) -> void:
 		var r := 1.2 + _rng.randf() * 6.0
 		var pm := MeshInstance3D.new()
 		pm.mesh = disc
+		pm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		pm.material_override = _mat(Color("#1a242c"), 0.0)
 		pm.scale = Vector3(0.5 + _rng.randf() * 1.1, 1.0, 0.35 + _rng.randf() * 0.7)
 		pm.rotation.y = _rng.randf() * PI
@@ -125,8 +142,7 @@ func update_rain(dt: float, cam: Vector3, floor_y: float) -> void:
 	var lx := w.x / sp * length
 	var lz := w.y / sp * length
 	var half := AREA / 2.0
-	_mesh.clear_surfaces()
-	_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
+	_lines.position = Vector3(cam.x, floor_y, cam.z)
 	for i in _seeds.size():
 		var s: Vector3 = _seeds[i]
 		s.y -= sp * dt
@@ -147,10 +163,11 @@ func update_rain(dt: float, cam: Vector3, floor_y: float) -> void:
 		elif s.z < -half:
 			s.z += AREA
 		_seeds[i] = s
-		var p := Vector3(cam.x + s.x, floor_y + s.y, cam.z + s.z)
-		_mesh.surface_add_vertex(p)
-		_mesh.surface_add_vertex(p + Vector3(-lx, length, -lz))
-	_mesh.surface_end()
+		_vertices[i * 2] = s
+		_vertices[i * 2 + 1] = s + Vector3(-lx, length, -lz)
+	# One reusable vertex buffer upload, not thousands of ImmediateMesh calls and
+	# new surfaces/buffers every frame. Rules/exposure remain outside this adapter.
+	_mesh.surface_update_vertex_region(0, 0, _vertices.to_byte_array())
 	for m in _rings:
 		if not m.visible:
 			continue

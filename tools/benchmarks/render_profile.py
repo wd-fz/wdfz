@@ -15,6 +15,10 @@ def main():
     parser.add_argument("--scene", action="append", choices=("teach1", "out", "admin5", "garage1"))
     parser.add_argument("--quality", type=int, choices=range(5), default=2)
     parser.add_argument("--samples", type=int, default=60)
+    parser.add_argument("--width", type=int, default=960)
+    parser.add_argument("--height", type=int, default=540)
+    parser.add_argument("--minutes", type=float, default=700)
+    parser.add_argument("--native", action="store_true", help="pin 3D scale to native for equal-resolution comparisons")
     parser.add_argument("--compare", action="store_true", help="also measure the original submission/mipmap/portal path")
     parser.add_argument("--ablate", action="store_true", help="add individual post/shadow/light/preview ablations")
     parser.add_argument("--display-driver", choices=("x11", "wayland"), default="x11")
@@ -36,7 +40,10 @@ def main():
                            "--audio-driver", "Dummy", "--display-driver", options.display_driver,
                            "--rendering-method", renderer, "--rendering-driver", "vulkan",
                            "--script", "res://tools/benchmarks/render_profile.gd", "--", str(path),
-                           f"--scene={scene}", f"--quality={options.quality}", f"--samples={options.samples}"]
+                           f"--scene={scene}", f"--quality={options.quality}", f"--samples={options.samples}",
+                           f"--width={options.width}", f"--height={options.height}", f"--minutes={options.minutes}"]
+                if options.native:
+                    command.append("--native")
                 if reference:
                     command.append("--reference")
                 if not options.ablate:

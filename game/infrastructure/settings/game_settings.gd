@@ -14,27 +14,25 @@ extends RefCounted
 ## The Web "graphics mode" (WebGL / WebGPU) is replaced by Godot's renderer. Touch layout is
 ## stored separately from numeric settings and from gameplay saves.
 
-const VERSION := 3
+const VERSION := 4
 const DEFAULTS := {"vol": 70, "amb": 1, "captions": 1, "sub": 1, "distortion": 2, "reduce_flash": 0, "bright": 100, "grain": 1,
 	"mouse": 100, "touch": 100, "text": 100, "touch_size": 100, "quality": 2, "auto_land": 1, "full_screen": 0, "shake": 1,
-	"fps_limit":0, "vsync":1, "render_scale":100, "model_detail":2, "lighting_detail":2,
-	"particle_detail":2, "upscaler":0, "msaa":0, "fxaa":1, "lod_detail":2,
-	"sun_shadows":1, "sun_shadow_detail":1, "shadow_resolution":2, "shadow_filter":2,
-	"lamp_shadows":1, "window_shadows":1, "torch_shadows":1, "window_light":1,
-	"ssao":1, "ssao_half":1, "glow":1, "volumetric_fog":0, "post_detail":1, "bloom":0, "grain_strength":100, "menu_orbit":1}
+	"fps_limit":60, "vsync":1, "render_scale":100, "render_budget":2, "model_detail":2, "lighting_detail":2,
+	"particle_detail":2, "upscaler":1, "msaa":0, "fxaa":1, "lod_detail":1,
+	"sun_shadows":1, "sun_shadow_detail":0, "shadow_resolution":1, "shadow_filter":1,
+	"torch_shadows":1, "post_detail":1, "grain_strength":100, "menu_orbit":1}
 const LIMITS := {"vol": [0,100], "bright": [50,150], "mouse": [25,250], "touch": [25,250], "text": [85,150], "touch_size": [85,125],
-	"fps_limit":[0,360], "render_scale":[50,150], "lamp_shadows":[0,4], "window_shadows":[0,4], "bloom":[0,100], "grain_strength":[0,100]}
+	"fps_limit":[0,360], "render_scale":[50,100], "grain_strength":[0,100]}
 const CHOICES := {"amb":2, "captions":3, "sub":3, "distortion":3, "reduce_flash":2, "grain":2, "quality":6, "auto_land":2, "full_screen":2, "shake":2,
-	"vsync":2, "model_detail":5, "lighting_detail":5, "particle_detail":5, "upscaler":2,
-	"msaa":4, "fxaa":2, "lod_detail":4, "sun_shadows":2, "sun_shadow_detail":3,
-	"shadow_resolution":4, "shadow_filter":6, "torch_shadows":2, "window_light":2,
-	"ssao":5, "ssao_half":2, "glow":2, "volumetric_fog":2, "post_detail":2, "menu_orbit":2}
-const QUALITY_LABELS := ["流畅", "均衡", "精细", "超精细", "真实", "自定义"]
-## Rendering scale, MSAA (Viewport enum: 0 off, 2 = 4x, 3 = 8x) and sun shadows per quality (quality.js: scale, samples,
-## shadow). As in the reference, 精细 and above cast sun shadows.
-const QUALITY_SCALE := [0.55, 0.7, 1.0, 1.0, 1.0]
-const QUALITY_MSAA := [0, 0, 0, 2, 3]
-## Default 精细 (2): the imported models are the old tier-2 build, so this keeps the picture as it was.
+	"vsync":2, "render_budget":6, "model_detail":4, "lighting_detail":5, "particle_detail":5, "upscaler":2,
+	"msaa":2, "fxaa":2, "lod_detail":3, "sun_shadows":2, "sun_shadow_detail":2,
+	"shadow_resolution":3, "shadow_filter":2, "torch_shadows":2, "post_detail":2, "menu_orbit":2}
+const QUALITY_LABELS := ["流畅", "均衡", "精细", "高清", "极清", "自定义"]
+## Compatibility helpers for UI/tests. RenderQuality applies the actual pixel budget;
+## no preset supersamples or requests more than 2x MSAA.
+const QUALITY_SCALE := [1.0, 1.0, 1.0, 1.0, 1.0]
+const QUALITY_MSAA := [0, 0, 0, 1, 1]
+## Default 精细 (2) retains tier-2 geometry; higher tiers do not add physical-lighting passes.
 const QUALITY_SHADOW := [false, false, true, true, true]
 const SUB_MULT := [0.6, 1.0, 1.6]
 
@@ -102,10 +100,26 @@ func load_file(touch_device: bool = false) -> bool:
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
 	wuda_armed = parsed is Dictionary and parsed.get("wuda_armed") is bool and parsed["wuda_armed"]
 	rules_armed = parsed is Dictionary and parsed.get("rules_armed") is bool and parsed["rules_armed"]
-	values = normalize(parsed.get("values", {}) if parsed is Dictionary else {})
+	var version: Variant = parsed.get("version", 0) if parsed is Dictionary else 0
+	if not (version is int or version is float) or not is_finite(float(version)): version = 0
+	var raw: Dictionary = parsed.get("values", {}) if parsed is Dictionary and parsed.get("values") is Dictionary else {}
+	if int(version) < 4:
+		raw = raw.duplicate()
+		# An old preset adopts its replacement budget; custom profiles retain supported
+		# choices, clamped below. Retired effects are dropped by normalize().
+		var tier: Variant = raw.get("quality", 2)
+		if (tier is int or tier is float) and is_finite(float(tier)) and int(tier) in range(5):
+			raw.merge(GraphicsProfile.preset(int(tier)), true)
+		for key: String in ["msaa", "model_detail", "lod_detail", "sun_shadow_detail", "shadow_resolution", "shadow_filter"]:
+			if raw.get(key) is int or raw.get(key) is float:
+				if is_finite(float(raw[key])): raw[key] = clampi(int(raw[key]), 0, int(CHOICES[key]) - 1)
+		# Version 3 defaulted to unlimited, which drives 120/144 Hz phones continuously.
+		# Apply the new 60 FPS default once; version 4 still accepts an explicit unlimited choice.
+		if raw.get("fps_limit", 0) == 0: raw["fps_limit"] = 60
+	values = normalize(raw)
 	# Files before version 3 stored the menu orbit's old default (off, chosen for the cost of the live render).
 	# The orbit is a panned picture now and on by default (user request 2026-11-12): older files take the new default.
-	if parsed is Dictionary and float(parsed.get("version", 0) if (parsed.get("version", 0) is int or parsed.get("version", 0) is float) else 0) < 3:
+	if int(version) < 3:
 		values["menu_orbit"] = DEFAULTS["menu_orbit"]
 	_enforce_platform()
 	touch_layout = TouchLayout.normalize(parsed.get("touch_layout", {}) if parsed is Dictionary else {})

@@ -74,7 +74,7 @@ func _run() -> void:
 	app.set_physics_process(false)
 	app.player.set_physics_process(false)
 	app._setting_changed("render_scale",85)
-	app._setting_changed("ssao",0)
+	app._setting_changed("render_budget",5)
 	app._setting_changed("fps_limit",72)
 	_check(app.settings.get_int("quality")==GraphicsProfile.CUSTOM and is_equal_approx(root.scaling_3d_scale,.85)
 		and not app._campus_world().lighting.env.ssao_enabled and Engine.max_fps==72,"exported custom graphics/frame pacing did not apply")

@@ -364,6 +364,8 @@ func _run() -> void:
 	controls_ui.test_touch_defaults_spaced()
 	var render_quality := preload("res://tests/suites/render_quality.gd").new(self)
 	print("CASE: render_quality.test_lighting_tiers")
+	render_quality.test_pixel_budget()
+	render_quality.test_rain_buffers()
 	await render_quality.test_lighting_tiers()
 	print("CASE: render_quality.test_torch")
 	await render_quality.test_torch()

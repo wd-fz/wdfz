@@ -18,7 +18,6 @@ uniform float san=1.0;
 uniform float gaze=0.0;
 uniform float red=0.0;
 uniform float hurt=0.0;
-uniform float bloom=0.0;
 uniform bool lite=false;
 
 float hash(vec2 p){p=fract(p*vec2(443.8975,397.2973));p+=dot(p,p.yx+19.19);return fract((p.x+p.y)*p.x);}
@@ -26,11 +25,13 @@ vec3 linear_color(vec3 c){return mix(c/12.92,pow((c+.055)/1.055,vec3(2.4)),step(
 vec3 srgb(vec3 c){c=clamp(c,vec3(0),vec3(1));return mix(c*12.92,1.055*pow(c,vec3(1.0/2.4))-.055,step(vec3(.0031308),c));}
 vec3 scene(vec2 p){return linear_color(textureLod(screen_tex,vec2(p.x,1.0-p.y),0.0).rgb);}
 vec3 aces(vec3 x){return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),vec3(0),vec3(1));}
-vec3 disk_blur(vec2 p,vec2 r,float rotation,float lod){
-	vec3 s=vec3(0);float n=lite?6.0:12.0;
-	for(int i=0;i<12;i++){if(float(i)>=n){break;}float fi=float(i)+.5;float rr=sqrt(fi/n);float th=fi*2.39996+rotation;
-		vec2 uv=clamp(p+vec2(cos(th),sin(th))*rr*r,vec2(.001),vec2(.999));s+=linear_color(textureLod(screen_tex,vec2(uv.x,1.0-uv.y),lod).rgb);}
-	return s/n;
+// Fixed six-point kernel: no per-pixel trigonometry or 12-tap disk integration.
+const vec2 BLUR_TAPS[6] = vec2[6](vec2(.35,.15),vec2(-.35,-.15),vec2(-.18,.72),vec2(.18,-.72),vec2(.86,-.32),vec2(-.86,.32));
+vec3 disk_blur(vec2 p,vec2 r,float lod){
+	vec3 s=vec3(0);int count=lite?4:6;
+	for(int i=0;i<6;i++){if(i>=count){break;}
+		vec2 uv=clamp(p+BLUR_TAPS[i]*r,vec2(.001),vec2(.999));s+=linear_color(textureLod(screen_tex,vec2(uv.x,1.0-uv.y),lod).rgb);}
+	return s/float(count);
 }
 void fragment(){
 	vec2 res=1.0/SCREEN_PIXEL_SIZE;
@@ -48,17 +49,13 @@ void fragment(){
 	uv=clamp(uv,vec2(.001),vec2(.999));
 	float bpx=(mix(3.2*blur*blur,13.0*blur,smoothstep(.15,.85,e))+4.5*focus)*fx;
 	vec3 col=scene(uv);
-	if(bpx>=.3){float rpx=bpx*min(res.x,res.y)/720.0;vec3 bl=disk_blur(uv,vec2(rpx)/res,hash(frag)*6.2832,log2(max(1.0,rpx*(lite?.7:.45))));col=mix(col,bl,smoothstep(.3,1.2,bpx));}
+	if(bpx>=.3){float rpx=bpx*min(res.x,res.y)/720.0;vec3 bl=disk_blur(uv,vec2(rpx)/res,log2(max(1.0,rpx*(lite?.7:.45))));col=mix(col,bl,smoothstep(.3,1.2,bpx));}
 	if(ghost>.001){vec2 go=ghost_dir*(10.0*min(res.x,res.y)/720.0)/res;col=mix(col,scene(clamp(uv+go,vec2(.001),vec2(.999))),.5*ghost*smoothstep(.05,.3,e)*fx);}
-	vec3 glow=vec3(0);
-	if(bloom>0.0){vec3 bl=vec3(0);vec2 asp=vec2(res.y/res.x,1);
-		for(int i=0;i<12;i++){float a=float(i)*.5236+.26;vec2 o=vec2(cos(a),sin(a))*asp;
-			bl+=max(scene(uv+o*.007)-.62,vec3(0));bl+=max(scene(uv+o*.017)-.62,vec3(0))*.65;bl+=max(scene(uv+o*.034)-.62,vec3(0))*.35;}
-		glow=bl/12.0*bloom;col+=glow;}
-	if(halo>.001){vec3 hl=vec3(0);vec2 asp=vec2(res.y/res.x,1);
-		for(int i=0;i<6;i++){float a=float(i)*1.0472+.5;vec2 o=vec2(cos(a),sin(a))*asp;
-			hl+=max(scene(uv+o*.012)-.55,vec3(0))*(lite?1.6:1.0);if(!lite){hl+=max(scene(uv+o*.026)-.55,vec3(0))*.6;}}
-		col+=min(hl/6.0*halo*.9*fx,max(vec3(0),vec3(.5)-glow));}
+	// The sensory halo is a warning, not a second photographic bloom pass.
+	if(halo>.001){vec2 r=vec2(res.y/res.x,1)*.018;vec3 hl=vec3(0);
+		hl+=max(scene(uv+vec2(r.x,0))-.55,vec3(0));hl+=max(scene(uv-vec2(r.x,0))-.55,vec3(0));
+		hl+=max(scene(uv+vec2(0,r.y))-.55,vec3(0));hl+=max(scene(uv-vec2(0,r.y))-.55,vec3(0));
+		col+=min(hl*.4*halo*.9*fx,vec3(.5));}
 	col=aces(col*brightness*exposure*.96);
 	float lum=dot(col,vec3(.2126,.7152,.0722));col=mix(vec3(lum),col,mix(.46+.49*gaze,1.0,normal));
 	col*=vec3(1.03,1,.985);float lm=dot(col,vec3(.299,.587,.114));

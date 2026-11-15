@@ -163,6 +163,8 @@ func snapshot() -> Dictionary:
 		"quality":app.settings.get_int("quality"),"quality_label":GameSettings.QUALITY_LABELS[app.settings.get_int("quality")],
 		"model_detail":CampusData.tier,"lighting_detail":app.settings.get_int("lighting_detail"),
 		"fps_limit":app.settings.get_int("fps_limit"),"vsync":app.settings.get_int("vsync"),
+		"render_scale":app.get_viewport().scaling_3d_scale,"render_size":Vector2i(Vector2(app.get_window().size)*app.get_viewport().scaling_3d_scale),
+		"local_lights":app._campus_world().lighting.local_light_count() if app._campus_world()!=null and app._campus_world().lighting!=null else 0,
 		"fps":Engine.get_frames_per_second(),"history":history.duplicate(),
 		"metrics":telemetry.capture(DisplayServer.get_name()!="headless"),"trace":trace.capture(),
 		"collision_view":collision_view,"collision_count":probe.shown if is_instance_valid(probe) else 0,

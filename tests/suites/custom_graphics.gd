@@ -11,7 +11,7 @@ func test_storage() -> void:
 	FileAccess.open(path,FileAccess.WRITE).store_string(JSON.stringify({"version":1,"values":{"quality":3,"mouse":125}}))
 	var settings:=GameSettings.new(path)
 	settings.load_file()
-	check(settings.get_int("model_detail")==3 and settings.get_int("msaa")==2 and settings.get_int("mouse")==125,"v1 file migration preserves quality and comfort")
+	check(settings.get_int("model_detail")==3 and settings.get_int("msaa")==1 and settings.get_int("mouse")==125,"v1 file migration preserves quality and comfort")
 	settings.set_value("fps_limit",93)
 	settings.set_value("vsync",0)
 	settings.set_value("render_scale",85)
@@ -27,11 +27,23 @@ func test_storage() -> void:
 	settings.set_value("quality",GraphicsProfile.CUSTOM)
 	check(settings.graphics()==GraphicsProfile.preset(1),"selecting custom preserves the current graphics values")
 	var invalid:=GameSettings.normalize({"quality":5,"render_scale":999,"fps_limit":1,"msaa":9,"model_detail":-1,"ssao":INF,"glow":NAN,"bogus":12})
-	check(invalid.render_scale==150 and invalid.fps_limit==20 and invalid.msaa==0 and invalid.model_detail==2 and invalid.ssao==1 and invalid.glow==1 and not invalid.has("bogus"),"graphics values reject nonfinite numbers and clamp unsafe or invalid input")
+	check(invalid.render_scale==100 and invalid.fps_limit==20 and invalid.msaa==0 and invalid.model_detail==2 and not invalid.has("ssao") and not invalid.has("glow") and not invalid.has("bogus"),"graphics values reject nonfinite numbers and clamp unsafe or invalid input")
 	check(GameSettings.normalize({"fps_limit":0}).fps_limit==0,"zero remains an unlimited frame cap")
 	var touch:=GameSettings.new(path+"-fresh","Android")
 	touch.load_file(true)
 	check(touch.graphics()==GraphicsProfile.preset(0) and touch.get_int("full_screen")==1,"fresh touch profiles expand 流畅 and retain Android fullscreen")
+
+	FileAccess.open(path,FileAccess.WRITE).store_string(JSON.stringify({"version":3,"values":{"quality":4,"msaa":3,"fps_limit":0,"shadow_resolution":3,"glow":1,"volumetric_fog":1}}))
+	loaded.load_file()
+	check(loaded.graphics()==GraphicsProfile.preset(4) and loaded.get_int("fps_limit")==60 and not loaded.values.has("glow"), "v3 high preset adopts its replacement and the 60 FPS default")
+	loaded.set_value("fps_limit",0)
+	loaded.save_file()
+	loaded.load_file()
+	check(loaded.get_int("fps_limit")==0, "an explicit unlimited choice made after migration survives reload")
+	FileAccess.open(path,FileAccess.WRITE).store_string(JSON.stringify({"version":3,"values":{"quality":5,"msaa":3,"model_detail":4,"render_scale":150,"fps_limit":90,"shadow_resolution":3,"volumetric_fog":1,"mouse":140}}))
+	loaded.load_file()
+	check(loaded.get_int("msaa")==1 and loaded.get_int("model_detail")==3 and loaded.get_int("render_scale")==100 and loaded.get_int("shadow_resolution")==2 and loaded.get_int("fps_limit")==90 and loaded.get_int("mouse")==140,
+		"legacy custom values are capped while explicit FPS and controls are preserved")
 
 
 func test_render_controls() -> void:
@@ -41,11 +53,11 @@ func test_render_controls() -> void:
 	options.render_scale=85
 	options.msaa=1
 	options.shadow_resolution=1
-	options.lod_detail=3
+	options.lod_detail=2
 	options.fxaa=1
-	RenderQuality.apply(vp,0,false,options)
-	check(is_equal_approx(vp.scaling_3d_scale,.85) and vp.msaa_3d==Viewport.MSAA_2X and vp.positional_shadow_atlas_size==1024 and vp.mesh_lod_threshold==.5,"resolution, AA, shadow atlas and LOD are independent of the preset")
-	check(vp.scaling_3d_mode==Viewport.SCALING_3D_MODE_FSR and vp.screen_space_aa==Viewport.SCREEN_SPACE_AA_DISABLED,"FSR works below native resolution and FXAA does not stack with MSAA")
+	RenderQuality.apply(vp,0,RenderingServer.get_current_rendering_method()=="mobile",options)
+	check(is_equal_approx(vp.scaling_3d_scale,.85) and vp.msaa_3d==Viewport.MSAA_2X and vp.positional_shadow_atlas_size==1024 and vp.mesh_lod_threshold==1.0,"resolution, AA, shadow atlas and LOD are independent of the preset")
+	check(vp.scaling_3d_mode==(Viewport.SCALING_3D_MODE_BILINEAR if RenderingServer.get_current_rendering_method()=="mobile" else Viewport.SCALING_3D_MODE_FSR) and vp.screen_space_aa==Viewport.SCREEN_SPACE_AA_DISABLED,"FSR works below native resolution and FXAA does not stack with MSAA")
 	options.msaa=0
 	RenderQuality.apply(vp,0,true,options)
 	check(vp.scaling_3d_mode==Viewport.SCALING_3D_MODE_BILINEAR and vp.screen_space_aa==Viewport.SCREEN_SPACE_AA_DISABLED,"Mobile keeps supported scaling and the FXAA workaround")
@@ -56,7 +68,7 @@ func test_render_controls() -> void:
 	var camera:=Camera3D.new()
 	root.add_child(camera)
 	options.sun_shadows=1
-	options.lamp_shadows=2
+	options.lamp_shadows=2 # an old caller cannot restore the retired effect
 	options.ssao=3
 	options.glow=1
 	options.volumetric_fog=1
@@ -66,11 +78,11 @@ func test_render_controls() -> void:
 	CampusLighting.mobile_renderer=actual_mobile
 	light.apply_quality(camera)
 	light.update(0,700,camera)
-	light._pick_shadow_lamps(camera)
-	check(light.sun_light.shadow_enabled and light.shadow_lamps()==2 and light.env.ssao_enabled==not actual_mobile and light.env.glow_enabled==not actual_mobile and light.env.volumetric_fog_enabled==not actual_mobile,"lighting detail zero can independently enable supported shadows and post effects")
+	light._select_local_lights(camera)
+	check(light.sun_light.shadow_enabled and light.shadow_lamps()==0 and not light.env.ssao_enabled and not light.env.glow_enabled and not light.env.volumetric_fog_enabled,"legacy custom flags cannot restore retired passes or omni shadows")
 	CampusLighting.mobile_renderer=true
 	light.apply_quality(camera)
-	check(not light.env.ssao_enabled and not light.env.glow_enabled and not light.env.volumetric_fog_enabled and light.options.ssao==3,"unavailable Mobile effects stay disabled without losing stored preferences")
+	check(not light.env.ssao_enabled and not light.env.glow_enabled and not light.env.volumetric_fog_enabled,"both renderers use the same bounded effect policy")
 	options.shadow_resolution=0
 	light.options=options
 	light.apply_quality(camera)
@@ -81,7 +93,7 @@ func test_render_controls() -> void:
 	post.render_options=options.merged({"post_detail":1,"bloom":23,"grain_strength":35},true)
 	post.tick(0)
 	var mat:=post.material as ShaderMaterial
-	check(not mat.get_shader_parameter("lite") and is_equal_approx(mat.get_shader_parameter("bloom"),.23) and is_equal_approx(mat.get_shader_parameter("grain"),.35),"post precision, halo and grain strength do not follow model detail")
+	check(not mat.get_shader_parameter("lite") and is_equal_approx(mat.get_shader_parameter("grain"),.35),"post precision and grain strength do not follow model detail")
 	post.free()
 	light.queue_free()
 	camera.queue_free()
@@ -171,7 +183,7 @@ func test_panel() -> void:
 	check(app.settings.get_int("quality")==5 and panel.controls.quality[5].button_pressed,"an individual control selects the custom indicator")
 	panel.mobile_renderer=true
 	panel.set_values(app.settings.values)
-	check(panel.controls.glow.disabled and panel.controls.ssao[3].disabled and panel.controls.upscaler[1].disabled,"Mobile UI explains and disables unavailable effects")
+	check(not panel.controls.has("glow") and not panel.controls.has("ssao") and panel.controls.upscaler[1].disabled,"retired effects are absent and Mobile disables unsupported FSR")
 	panel.mobile_renderer=RenderingServer.get_current_rendering_method()=="mobile"
 	for size in [Vector2i(960,540),Vector2i(1280,800),Vector2i(2340,1080)]:
 		root.size=size

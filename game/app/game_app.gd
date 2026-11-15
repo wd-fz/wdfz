@@ -51,6 +51,7 @@ var lan: LanFlow
 
 func _ready() -> void:
 	router.world_preparing.connect(_configure_world_rendering)
+	get_viewport().size_changed.connect(_resize_render_target)
 	audio = AudioFx.new()
 	audio.name = "AudioFx"
 	add_child(audio)
@@ -2670,6 +2671,11 @@ func _configure_world_rendering(world: Node3D) -> void:
 	# load of the same scene first, so the worker pool never waits on a request nobody collects.
 	ui.menu_preview.release()
 	if world is CampusWorld: world.render_options=settings.graphics()
+
+
+## Resize the 3D buffer only. No scene, collision or streaming rebuild on rotation/window resize.
+func _resize_render_target() -> void:
+	RenderQuality.apply_resolution(get_viewport(), RenderingServer.get_current_rendering_method() == "mobile", settings.graphics())
 
 
 func _apply_graphics() -> void:

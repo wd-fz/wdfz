@@ -511,6 +511,8 @@ FPS %d · 最近 %d 帧 · 均值 %.2f ms · P95 %.2f ms
 节点 %d · 资源 %d · 引擎静态内存 %.1f MiB
 线框 %d / 附近 %d 个" % [state.rendering_driver,state.renderer,state.get("quality_label",str(state.quality)),metrics.fps,metrics.samples,metrics.average_ms,metrics.p95_ms,render,metrics.nodes,metrics.resources,metrics.static_mib,state.get("collision_count",0),state.get("collision_nearby",0)]
 	_perf.text+="\n模型 %d · 光照 %d · 帧率上限 %s · 垂直同步 %s" % [state.get("model_detail",state.quality),state.get("lighting_detail",state.quality),"不限" if int(state.get("fps_limit",0))==0 else str(state.fps_limit),"开" if state.get("vsync",1)==1 else "关"]
+	if state.has("render_size"):
+		_perf.text+="\n3D %d × %d（%.0f%%）· 附近照明 %d 盏" % [state.render_size.x,state.render_size.y,float(state.get("render_scale",1.0))*100,state.get("local_lights",0)]
 	var hit: Dictionary=state.get("inspect",{})
 	if hit.is_empty():
 		_inspect.text="进入游戏并选择此页后检查视线；过场期间停用。"

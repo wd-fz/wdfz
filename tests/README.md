@@ -4,6 +4,7 @@
 
 | 套件 | 范围 |
 | --- | --- |
+| render_quality / custom_graphics | 全档像素／灯光预算、旧配置迁移、雨线顶点缓冲复用与远离原点的剔除边界 |
 | rendering | 确认真实 Vulkan RenderingDevice；headless 明确不算 GPU 验证 |
 | framework | 时钟、模块协议、存档、应用生命周期、输入 |
 | campus | 校园、门与电梯、背包、设施、探索 |

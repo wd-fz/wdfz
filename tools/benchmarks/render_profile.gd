@@ -68,7 +68,7 @@ func _inventory() -> Dictionary:
 			var meshes:=child.find_children("*","MeshInstance3D",true,false)
 			var multi:=child.find_children("*","MultiMeshInstance3D",true,false)
 			groups[String(child.name)]={"meshes":meshes.size(),"multimeshes":multi.size(),"visible":child.visible}
-	return {"groups":groups,"lights":world.find_children("*","Light3D",true,false).size(),"room_lights":world.lighting.room_lights.size(),"window_lights":world.lighting.window_lights.size(),"nodes":world.find_children("*","Node",true,false).size()}
+	return {"groups":groups,"lights":world.find_children("*","Light3D",true,false).size(),"room_lights":world.lighting.room_lights.size(),"local_lights_active":world.lighting.local_light_count(),"shadow_lights":world.find_children("*","Light3D",true,false).filter(func(l: Light3D) -> bool: return l.shadow_enabled and l.visible).size(),"nodes":world.find_children("*","Node",true,false).size()}
 
 func _run() -> void:
 	if DisplayServer.get_name()=="headless" or RenderingServer.get_current_rendering_driver_name()!="vulkan":
@@ -81,11 +81,16 @@ func _run() -> void:
 	reference="--reference" in args
 	CampusBatches.enabled=not reference
 	var quality:=2
+	var size:=Vector2i(960,540)
+	var clock_minutes:=700.0
 	for arg in args:
 		if arg.begins_with("--scene="): scene_id=arg.trim_prefix("--scene=")
 		if arg.begins_with("--quality="): quality=clampi(int(arg.trim_prefix("--quality=")),0,4)
 		if arg.begins_with("--samples="): samples=maxi(4,int(arg.trim_prefix("--samples=")))
-	root.size=Vector2i(960,540)
+		if arg.begins_with("--width="): size.x=maxi(320,int(arg.trim_prefix("--width=")))
+		if arg.begins_with("--height="): size.y=maxi(180,int(arg.trim_prefix("--height=")))
+		if arg.begins_with("--minutes="): clock_minutes=float(arg.trim_prefix("--minutes="))
+	root.size=size
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps=0
 	app=APP.instantiate()
@@ -103,8 +108,9 @@ func _run() -> void:
 	app.debug_flow.collision_view=false
 	app.debug_flow.probe.clear()
 	app._setting_changed("quality",quality)
+	if "--native" in args: app._setting_changed("render_budget",5)
 	app.classmates().set_seed("render-profile-v1")
-	app.school().tsec=700
+	app.school().tsec=clock_minutes
 	app._stand_up()
 	var pose: Dictionary={}
 	if scene_id=="out":
@@ -122,14 +128,16 @@ func _run() -> void:
 	var world:=app._campus_world()
 	var lighting:=world.lighting
 	lighting.time=0
-	lighting.update(0,700,app.player.camera)
-	lighting._pick_shadow_lamps(app.player.camera)
-	lighting._pick_shadow_windows(app.player.camera)
+	lighting.update(0,clock_minutes,app.player.camera)
+	lighting._select_local_lights(app.player.camera)
 	# Settings apply the user's frame pacing. A rendering benchmark must explicitly
 	# remove that cap after all setup/settings calls, independently of the UI defaults.
 	RenderQuality.apply_frame_limit(0,false)
 	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(),true)
-	result={"engine":Engine.get_version_info().string,"renderer":RenderingServer.get_current_rendering_method(),"driver":RenderingServer.get_current_rendering_driver_name(),"device":RenderingServer.get_video_adapter_name(),"reference":reference,"scene":scene_id,"quality":quality,"resolution":[960,540],"samples":samples,"inventory":_inventory(),"batches":world.get_node("Model").get_meta("render_batches",{}),"cells":world.get_node("Model").get_meta("render_cells",0),"camera":{"position":str(app.player.camera.global_position),"rotation":str(app.player.camera.global_rotation)},"cases":{}}
+	result={"engine":Engine.get_version_info().string,"renderer":RenderingServer.get_current_rendering_method(),"driver":RenderingServer.get_current_rendering_driver_name(),"device":RenderingServer.get_video_adapter_name(),"reference":reference,"scene":scene_id,"quality":quality,"resolution":[root.size.x,root.size.y],"render_scale":root.scaling_3d_scale,"render_options":app.settings.graphics(),"minutes":clock_minutes,"samples":samples,"inventory":_inventory(),"batches":world.get_node("Model").get_meta("render_batches",{}),"cells":world.get_node("Model").get_meta("render_cells",0),"camera":{"position":str(app.player.camera.global_position),"rotation":str(app.player.camera.global_rotation)},"cases":{}}
+	# Streaming preparation is not a steady-state rendering cost. Complete it before sampling.
+	while not app.router.stream._queue.is_empty() or not app.router.stream._job.is_empty():
+		await _frames(1)
 	await _measure("baseline")
 	root.get_texture().get_image().save_png(output.get_basename()+".png")
 	if "--quick" in args:
@@ -142,15 +150,6 @@ func _run() -> void:
 	post.hide()
 	await _measure("post_off")
 	post.show()
-	lighting.env.ssao_enabled=false
-	await _measure("ssao_off")
-	lighting.apply_quality()
-	lighting.env.glow_enabled=false
-	await _measure("glow_off")
-	lighting.apply_quality()
-	lighting.update(0,700,app.player.camera)
-	lighting._pick_shadow_lamps(app.player.camera)
-	lighting._pick_shadow_windows(app.player.camera)
 	var shadows: Array[Light3D]=[]
 	for light: Light3D in app.find_children("*","Light3D",true,false):
 		if light.shadow_enabled: shadows.append(light); light.shadow_enabled=false

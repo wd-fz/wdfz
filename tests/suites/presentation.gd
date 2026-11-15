@@ -25,7 +25,7 @@ func _test_settings_rules() -> void:
 	b.set_value("touch_size", 120)
 	b.reset_comfort()
 	check(b.get_int("text") == 100 and b.get_int("touch_size") == 100 and b.get_int("vol") == 35, "restoring comfort defaults leaves sound and picture alone")
-	check(GameSettings.QUALITY_SCALE.size() == 5 and GameSettings.QUALITY_LABELS[4] == "真实" and GameSettings.SUB_MULT == [0.6, 1.0, 1.6], "five quality tiers, three caption sizes")
+	check(GameSettings.QUALITY_SCALE.size() == 5 and GameSettings.QUALITY_LABELS[4] == "极清" and GameSettings.SUB_MULT == [0.6, 1.0, 1.6], "five quality tiers, three caption sizes")
 	for p2: String in [path, path + ".touch"]:
 		if FileAccess.file_exists(p2):
 			DirAccess.remove_absolute(p2)

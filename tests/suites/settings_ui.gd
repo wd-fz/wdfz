@@ -58,7 +58,7 @@ func test_editor() -> void:
 	await _tap(panel._nav_buttons["画面"])
 	await _tap(panel._graphics_buttons["细节"])
 	await _tap(panel.controls["quality"][1])
-	check(app.settings.get_int("quality") == 1 and panel._quality_note.text.contains("平衡"), "quality selection shows the active tier and its tradeoff")
+	check(app.settings.get_int("quality") == 1 and panel._quality_note.text.contains("600p") and panel._quality_note.text.contains("三盏"), "quality selection shows the active tier and its tradeoff")
 	for size: Vector2i in [Vector2i(960,540),Vector2i(1280,800),Vector2i(2340,1080)]:
 		root.size = size
 		for text_size: int in [100,150]:

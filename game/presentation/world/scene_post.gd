@@ -74,4 +74,3 @@ func tick(dt: float) -> void:
 	parameter("t",clock)
 	parameter("grain",(1.0 if grain else 0.0)*float(render_options.get("grain_strength",60 if quality==4 else 100))/100.0)
 	parameter("lite",int(render_options.get("post_detail",0 if quality==0 else 1))==0)
-	parameter("bloom",float(render_options.get("bloom",32 if quality==4 else 0))/100.0)
