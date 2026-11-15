@@ -1,0 +1,157 @@
+{
+  "measured_on": "2026-11-15",
+  "unit": "bytes",
+  "android": {
+    "baseline": {
+      "workflow": "https://github.com/wd-fz/wdfz/actions/runs/43701387134",
+      "evidence": "CI build report",
+      "passed": true,
+      "package": "org.wdfz.godot.debug",
+      "runtime_verified": false,
+      "build_system": "gradle",
+      "engine": "4.6.3.stable.official.7d41c59c4",
+      "terracotta": "0.4.2",
+      "launch_orientation": "userLandscape",
+      "rendering_driver": "vulkan",
+      "rendering_method": "mobile",
+      "vulkan_required": true,
+      "vulkan_version_encoded": 4194307,
+      "fullscreen_forced": true,
+      "imported_resources": 2108,
+      "textures": 970,
+      "native_libraries": 3,
+      "page_alignment": 16384,
+      "revision": "227e6a8f487a4fb55a5be52a7f31817abfdc6311",
+      "working_tree_dirty": false,
+      "file": "wdfz-android-debug-arm64.apk",
+      "bytes": 590649595,
+      "sha256": "912f11869b88b6f884ba47702ce0f6a6dc369ef827eb5f03fd99729a7a6e4a41",
+      "abi": "arm64-v8a",
+      "min_sdk": 24,
+      "target_sdk": 36,
+      "debug": true
+    },
+    "optimized": {
+      "workflow": "https://github.com/wd-fz/wdfz/actions/runs/43705259365",
+      "evidence": "CI build report and downloaded APK verified independently",
+      "passed": true,
+      "package": "org.wdfz.godot.debug",
+      "runtime_verified": false,
+      "build_system": "gradle",
+      "engine": "4.6.3.stable.official.7d41c59c4",
+      "terracotta": "0.4.2",
+      "package_optimization": {
+        "lossless_verified": 224,
+        "policy": {
+          "lossless": true,
+          "model_tiers": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "scene_block_max": 1048576,
+          "version": 1
+        },
+        "scene_bytes_after": 153040091,
+        "scene_bytes_before": 245056932,
+        "scenes": 224,
+        "texture_bytes_after": 57464716,
+        "texture_bytes_before": 66328988,
+        "textures": 786,
+        "unique_textures": 448
+      },
+      "launch_orientation": "userLandscape",
+      "rendering_driver": "vulkan",
+      "rendering_method": "mobile",
+      "vulkan_required": true,
+      "vulkan_version_encoded": 4194307,
+      "fullscreen_forced": true,
+      "imported_resources": 1886,
+      "textures": 453,
+      "native_libraries": 3,
+      "page_alignment": 16384,
+      "revision": "36228da9ce344229473abe892861b1724e3a982d",
+      "working_tree_dirty": false,
+      "file": "wdfz-android-debug-arm64.apk",
+      "bytes": 301466454,
+      "sha256": "95bd996a7746bbeba5737d25b0b7133659b13a655debc688b9371133aa1fd470",
+      "abi": "arm64-v8a",
+      "min_sdk": 24,
+      "target_sdk": 36,
+      "debug": true
+    },
+    "reduction_bytes": 289183141,
+    "reduction_percent": 48.9602,
+    "downloaded_apk_checks": {
+      "sha256": true,
+      "zip_integrity": true,
+      "import_references": 1886,
+      "shared_textures_hash_verified": 448,
+      "native_scene_containers": 224,
+      "retired_assets_absent": true,
+      "editor_plugin_absent": true
+    },
+    "optimized_zip_entries": {
+      "other": {
+        "entries": 2942,
+        "compressed_bytes": 10009463,
+        "uncompressed_bytes": 17085538
+      },
+      "native_libraries": {
+        "entries": 3,
+        "compressed_bytes": 84487800,
+        "uncompressed_bytes": 84487800
+      },
+      "scenes": {
+        "entries": 229,
+        "compressed_bytes": 148866715,
+        "uncompressed_bytes": 153071733
+      },
+      "textures": {
+        "entries": 453,
+        "compressed_bytes": 57343778,
+        "uncompressed_bytes": 57467408
+      }
+    }
+  },
+  "local_linux_pck": {
+    "baseline_revision": "227e6a8f487a4fb55a5be52a7f31817abfdc6311",
+    "optimized_revision": "36228da9ce344229473abe892861b1724e3a982d",
+    "engine": "4.6.3.stable.official.7d41c59c4",
+    "baseline_bytes": 519323684,
+    "optimized_bytes": 221256132,
+    "optimization": {
+      "lossless_verified": 224,
+      "policy": {
+        "lossless": true,
+        "model_tiers": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "scene_block_max": 1048576,
+        "version": 1
+      },
+      "scene_bytes_after": 153040430,
+      "scene_bytes_before": 245057036,
+      "scenes": 224,
+      "texture_bytes_after": 57464716,
+      "texture_bytes_before": 66328988,
+      "textures": 786,
+      "unique_textures": 448
+    }
+  },
+  "local_validation": {
+    "headless_checks": 21206,
+    "headless_failures": 0,
+    "focused_codec_and_tier_checks": 30,
+    "focused_failures": 0,
+    "exported_models_loaded": 224,
+    "exported_vulkan_forward_plus": "passed",
+    "exported_vulkan_mobile": "passed",
+    "gpu": "llvmpipe",
+    "android_device_runtime_verified": false
+  }
+}
