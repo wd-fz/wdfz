@@ -37,6 +37,7 @@ var _pointer_inside := false
 var remote := TerracottaSession.new()
 var _remote_mode := false
 var _remote_token := ""
+var _diagnostic_timer := 0.0
 
 
 func _ready() -> void:
@@ -65,6 +66,8 @@ func _ready() -> void:
 		else: stop())
 	panel.leave_requested.connect(func() -> void: app.return_to_menu())
 	panel.discover_requested.connect(network.discovery.discover)
+	panel.mode_requested.connect(_open_mode)
+	panel.cancel_requested.connect(_cancel_connection)
 	panel.reconnect_requested.connect(reconnect)
 	panel.pause_requested.connect(network.pause)
 	panel.remove_requested.connect(network.remove)
@@ -83,6 +86,7 @@ func _ready() -> void:
 	network.discovery.found.connect(panel.found)
 	network.discovery.scanning_changed.connect(panel.scanning)
 	network.room_changed.connect(_room_changed)
+	network.connection_changed.connect(func(text: String) -> void: panel.status.text = text)
 	network.snapshot_received.connect(_snapshot)
 	network.motion_received.connect(_motion)
 	network.notice.connect(func(text: String) -> void:
@@ -95,22 +99,18 @@ func _ready() -> void:
 		app.player.clear_input()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		panel.show_room({}, "", "")
+		panel.set_busy(false)
+		panel.connection_info.text = network.connection_details()
 		panel.show()
 		panel.status.text = reason)
 	var new_game := app.ui.find_child("NewGame", true, false) as Button
 	if new_game != null:
 		var button := Button.new()
 		button.name = "LanCoop"
-		button.text = "局域网合作 · 2–4 人"
+		button.text = "与好友联机 · 2–4 人"
 		button.custom_minimum_size.y = 48
 		button.pressed.connect(func() -> void: _open_mode(false))
 		new_game.get_parent().add_child(button)
-		var remote_button := Button.new()
-		remote_button.name = "RemoteCoop"
-		remote_button.text = "远程合作 · Terracotta"
-		remote_button.custom_minimum_size.y = 48
-		remote_button.pressed.connect(func() -> void: _open_mode(true))
-		new_game.get_parent().add_child(remote_button)
 	remote.status_changed.connect(func(text: String) -> void:
 		panel.remote_status(text, remote.code if remote.available else "", remote.available))
 	remote.connected.connect(func(target: String, code: String) -> void:
@@ -154,6 +154,7 @@ func _ready() -> void:
 			_last_connection = data
 			if data.get("mode", "lan") == "lan": panel.address.text = String(data.get("address", ""))
 			panel.nickname.text = String(data.get("name", "同学"))
+	_refresh_history()
 
 
 func active() -> bool:
@@ -161,8 +162,8 @@ func active() -> bool:
 
 
 func _open_mode(value: bool) -> void:
-	if active() and value != _remote_mode:
-		panel.status.text = "请先离开当前房间。"
+	if active() and not _lost:
+		if value != _remote_mode: panel.status.text = "请先离开当前房间。"
 		open()
 		return
 	_remote_mode = value
@@ -174,6 +175,7 @@ func _open_mode(value: bool) -> void:
 
 func _host(room_name: String, nick: String, port: int, restore: bool) -> void:
 	if remote.phase != "idle":
+		panel.set_busy(false)
 		panel.status.text = "请等待远程连接关闭。"
 		return
 	var error := network.host(room_name, nick, port, restore)
@@ -188,6 +190,14 @@ func _host(room_name: String, nick: String, port: int, restore: bool) -> void:
 
 
 func _join(target: String, nick: String) -> void:
+	# A finger double tap or keyboard submit must not replace a live handshake.
+	if _lost:
+		network.stop()
+		_installed = false
+		_epoch = ""
+	if network.active() or remote.phase != "idle": return
+	_lost = false
+	panel.set_busy(true)
 	if _remote_mode:
 		_remote_token = String(_last_connection.get("token", "")) if _last_connection.get("mode") == "remote" else ""
 		panel.set_busy(true)
@@ -197,7 +207,23 @@ func _join(target: String, nick: String) -> void:
 			panel.status.text = error
 	else:
 		var error := network.join(target, nick)
-		panel.status.text = error if error != "" else "正在连接，可随时离开取消。"
+		if error != "":
+			panel.set_busy(false)
+			panel.status.text = error
+
+
+func _cancel_connection() -> void:
+	network.stop()
+	remote.stop()
+	_lost = false
+	panel.show_room({}, "", "")
+	panel.set_busy(remote.phase != "idle")
+	panel.status.text = "已取消连接。" if remote.phase == "idle" else "正在关闭远程连接……"
+	_refresh_history()
+
+
+func _refresh_history() -> void:
+	panel.set_history(not _last_connection.is_empty(), FileAccess.file_exists(network.store.path) or FileAccess.file_exists(network.store.path + ".bak"))
 
 
 func playing() -> bool:
@@ -207,6 +233,7 @@ func playing() -> bool:
 func open() -> void:
 	if playing(): pause()
 	panel.show()
+	_refresh_history()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	panel.refit.call_deferred()
 
@@ -218,6 +245,11 @@ func reconnect() -> void:
 	_epoch = ""
 	_installed = false
 	_lost = false
+	network.stop()
+	if remote.phase != "idle":
+		panel.status.text = "远程连接正在关闭，请稍后再试。"
+		return
+	panel.show_room({}, "", "")
 	if _last_connection.get("mode") == "remote":
 		_remote_mode = true
 		panel.set_remote(true)
@@ -227,7 +259,9 @@ func reconnect() -> void:
 		return
 	_remote_mode = false
 	panel.set_remote(false)
+	panel.set_busy(true)
 	var error := network.join(String(_last_connection["address"]), String(_last_connection["name"]), String(_last_connection["token"]))
+	if error != "": panel.set_busy(false)
 	panel.status.text = error if error != "" else "正在恢复原角色……"
 
 
@@ -241,6 +275,7 @@ func _addresses() -> String:
 
 func _room_changed(state: Dictionary) -> void:
 	panel.show_room(state, network.local_id, _addresses() if network.transport.serving else network.address)
+	panel.connection_info.text = network.connection_details()
 	if not network.transport.serving and network.reconnect_token != "" and network.address != "":
 		_last_connection = {"address": network.address, "name": network.nickname, "token": network.reconnect_token}
 		if _remote_mode:
@@ -334,6 +369,7 @@ func stop() -> void:
 	if is_instance_valid(panel):
 		panel.hide()
 		panel.show_room({}, "", "")
+		panel.set_busy(false)
 	if is_instance_valid(_team): _team.hide()
 
 
@@ -536,6 +572,13 @@ func _remote_step(at: Vector3, running: bool) -> void:
 	var surface := AudioFx.surface(world, world == "bell1" and at.y > 0.4, location, outdoor.get("objects", []), float(outdoor.get("SC", 1.0)))
 	# Player footsteps must not produce the patrol's threat captions.
 	app.audio.step_on(surface, 0.8 if running else 0.55, {"pos": at, "self_step": true})
+
+
+func _process(dt: float) -> void:
+	_diagnostic_timer += dt
+	if _diagnostic_timer >= 0.5 and is_instance_valid(panel) and panel.visible:
+		_diagnostic_timer = 0.0
+		panel.connection_info.text = network.connection_details()
 
 
 func _physics_process(dt: float) -> void:

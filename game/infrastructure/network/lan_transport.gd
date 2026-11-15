@@ -37,7 +37,12 @@ func _ready() -> void:
 
 func host(port: int) -> String:
 	close()
+	bytes_sent = 0
+	bytes_received = 0
 	peer = ENetMultiplayerPeer.new()
+	# Discovery and direct join both use IPv4. Do not rely on an Android
+	# dual-stack wildcard accepting IPv4 on every Wi-Fi / tethering interface.
+	peer.set_bind_ip("0.0.0.0")
 	# Allow each guest one replacement handshake while its lost tunnel expires.
 	# CooperativeRoom still caps the actual game at four authenticated students.
 	var error := peer.create_server(port, 6, LanProtocol.CHANNELS)
@@ -54,6 +59,8 @@ func host(port: int) -> String:
 
 func join(ip: String, port: int) -> String:
 	close()
+	bytes_sent = 0
+	bytes_received = 0
 	peer = ENetMultiplayerPeer.new()
 	var error := peer.create_client(ip, port, LanProtocol.CHANNELS)
 	if error != OK:

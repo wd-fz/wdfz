@@ -36,7 +36,7 @@ def main():
     if args.rules:
         reports = ROOT / "build/reports/lan/rules"
         reports.mkdir(parents=True, exist_ok=True)
-        for script, label in (("run_unit", "UNIT"), ("authority", "AUTHORITY")):
+        for script, label in (("run_unit", "UNIT"), ("authority", "AUTHORITY"), ("entry", "ENTRY")):
             result = subprocess.run([ENGINE, "--headless", "--path", str(ROOT), "--script", f"res://tests/network/{script}.gd"], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180)
             (reports / f"{script}.log").write_text(result.stdout)
             if result.returncode or "ERROR:" in result.stdout or not re.search(rf"LAN {label}: [1-9]\d* checks, 0 failures", result.stdout):
@@ -45,6 +45,14 @@ def main():
         return
     reports = ROOT / "build/reports/lan" / (f"{args.players}-players" + ("-faults" if args.faults else "") + ("-soak" if args.soak else "") + ("-ending" if args.ending else "") + ("-slow-load" if args.slow_load else "") + ("-restore" if args.restore else "") + ("-ui-" + (args.renderer or "headless") if args.ui else ""))
     reports.mkdir(parents=True, exist_ok=True)
+    rendering = ["--windowed", "--rendering-method", args.renderer, "--rendering-driver", "vulkan", "--display-driver", args.display_driver] if args.renderer else ["--headless"]
+    if args.ui:
+        entry = subprocess.run([ENGINE, *rendering, "--path", str(ROOT), "--audio-driver", "Dummy",
+                                "--script", "res://tests/network/entry.gd", "--", f"--screenshots={reports / 'entry'}"],
+                               cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120)
+        (reports / "entry.log").write_text(entry.stdout)
+        if entry.returncode or "ERROR:" in entry.stdout or not re.search(r"LAN ENTRY: [1-9]\d* checks, 0 failures", entry.stdout):
+            raise RuntimeError(entry.stdout[-9000:])
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -63,7 +71,6 @@ def main():
                 proxy = LanProxy(port, seed=714 + index)
                 proxies.append(proxy)
                 join_port = proxy.port
-            rendering = ["--windowed", "--rendering-method", args.renderer, "--rendering-driver", "vulkan", "--display-driver", args.display_driver] if args.renderer else ["--headless"]
             command = [ENGINE, *rendering, "--path", str(ROOT), "--audio-driver", "Dummy", "--max-fps", "60", "--script", "res://tests/network/peer.gd", "--", f"--role={role}", f"--port={join_port}", f"--players={args.players}", f"--seconds={args.seconds}"]
             if args.ui: command.extend(["--ui", f"--screenshots={reports}"])
             if args.soak: command.append("--soak")

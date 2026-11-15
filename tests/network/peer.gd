@@ -85,11 +85,12 @@ func run() -> void:
 		network = app.lan.network
 		if role != "host": app.ui.set_touch_enabled(true)
 		check(app.ui.find_child("LanCoop", true, false) != null, "real main menu contains cooperation entry")
-		check(app.ui.find_child("RemoteCoop", true, false) != null, "real main menu contains Terracotta entry")
+		check(app.lan.panel.find_child("RemoteMode", true, false) != null, "cooperation contains an explicit remote tab")
 		app.lan._open_mode(true)
 		for i in 4: await process_frame
 		check(app.lan.panel.remote_mode and not app.lan.panel.port.visible and not app.lan.panel._search.visible, "invitation flow hides LAN addresses and discovery")
-		check(app.lan.panel._remote_info.is_visible_in_tree() and app.lan.panel._copy_code.disabled, "attribution visible; no invitation is copied before success")
+		app.lan.panel.select_page("join")
+		check(app.lan.panel.address.is_visible_in_tree() and not app.lan.panel._remote_info.is_visible_in_tree() and app.lan.panel._copy_code.disabled, "remote guest only needs one invitation field")
 		check(root.get_visible_rect().encloses(app.lan.panel._panel.get_global_rect()), "remote title and footer remain inside the viewport after wrapping settles")
 		await _capture("remote-entry")
 		app.lan._join("bad-code", "guest")
@@ -144,9 +145,43 @@ func run() -> void:
 			# The actual UI owns its load/render barrier.
 			if not ui_mode: network.loaded())
 	network.motion_received.connect(func(_data: Dictionary) -> void: motions += 1)
-	var error := network.host("test", "host", port) if role == "host" else network.join("127.0.0.1:%d" % port, role)
-	check(error.is_empty(), "socket setup: " + error)
-	if error != "": finish()
+	if ui_mode:
+		app.lan.open()
+		app.lan.panel.nickname.text = role
+		if role == "host":
+			app.lan.panel.port.value = port
+			app.lan.panel.select_page("create")
+			await _tap(app.lan.panel.find_child("CreateRoom", true, false))
+		else:
+			app.lan.panel.select_page("join")
+			var deadline := Time.get_ticks_msec() + 15000
+			var button: Button
+			while button == null and Time.get_ticks_msec() < deadline:
+				for found: Button in app.lan.panel.discovered.get_children():
+					if String(found.get_meta("address", "")).ends_with(":%d" % port): button = found
+				await process_frame
+			check(button != null, "nearby room is discovered over real UDP")
+			if button == null:
+				finish()
+				return
+			await _tap(button)
+		check(network.transport.peer != null, "real touch create/join opens the ENet socket")
+	else:
+		var error := network.host("test", "host", port) if role == "host" else network.join("127.0.0.1:%d" % port, role)
+		check(error.is_empty(), "socket setup: " + error)
+		if error != "": finish()
+
+
+func _tap(control: Control) -> void:
+	for i in 4: await process_frame
+	var point := root.get_final_transform() * control.get_global_rect().get_center()
+	for down: bool in [true, false]:
+		var event := InputEventScreenTouch.new()
+		event.index = 0
+		event.position = point
+		event.pressed = down
+		Input.parse_input_event(event)
+		for i in 3: await process_frame
 
 
 func _process(dt: float) -> bool:

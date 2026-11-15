@@ -6,6 +6,7 @@ signal snapshot_received(data: Dictionary)
 signal motion_received(data: Dictionary)
 signal notice(text: String)
 signal closed(reason: String)
+signal connection_changed(text: String)
 var transport := LanTransport.new()
 var discovery := LanDiscovery.new()
 var room: CooperativeRoom
@@ -40,6 +41,10 @@ var _hello_again_at := 0.0
 var _transport_retry_at := 0.0
 var rtt_ms := 0.0
 var jitter_ms := 0.0
+var connection_stage := "idle"
+var _welcomes: Dictionary = {}
+var _trace: PackedStringArray = []
+var _attempts := 0
 
 
 func _ready() -> void:
@@ -59,7 +64,8 @@ func _ready() -> void:
 		if room != null and data.get("epoch") == room.epoch: motion_received.emit(data))
 	transport.chunk_received.connect(_chunk)
 	transport.api.peer_connected.connect(func(id: int) -> void:
-		if transport.serving: _peers_waiting[id] = _clock + 20.0)
+		_trace_event("ENet peer connected")
+		if transport.serving: _peers_waiting[id] = Time.get_ticks_msec() / 1000.0 + 20.0)
 	var manifest: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/lan_manifest.json"))
 	_fingerprint = String(manifest["digest"])
 
@@ -109,7 +115,9 @@ func host(name: String, who: String, requested_port: int, resume: bool = false) 
 		credentials = saved["credentials"].duplicate()
 		credentials[reconnect_token.sha256_text()] = local_id
 	connections[1] = local_id
-	var discovery_error := discovery.serve({"name": room_name, "port": port, "count": room.members.size(), "phase": "lobby"})
+	connection_stage = "hosting"
+	_trace_event("IPv4 host listening")
+	var discovery_error := discovery.serve({"name": room_name, "port": port, "count": room.members.size(), "capacity": room.capacity, "phase": "lobby", "content": _fingerprint})
 	if not discovery_error.is_empty(): notice.emit(discovery_error)
 	_publish_room()
 	return ""
@@ -125,15 +133,20 @@ func join(target: String, who: String, token: String = "") -> String:
 	reconnect_token = token
 	var error := transport.join(parsed["ip"], int(parsed["port"]))
 	if error.is_empty():
+		_attempts = 1
+		connection_stage = "connecting"
+		_trace_event("join started")
+		connection_changed.emit("正在连接房主……")
 		_hello_deadline = _clock + 20.0
-		_transport_retry_at = _clock + 4.0 if token != "" else 0.0
+		_transport_retry_at = _clock + 4.0
 		_last_heard = _clock
 	return error
 
 
 func _transport_closed(reason: String) -> void:
 	var now := Time.get_ticks_msec() / 1000.0
-	if not transport.serving and reconnect_token != "" and _hello_deadline > now:
+	if not transport.serving and _hello_deadline > now:
+		_trace_event("transport retry scheduled")
 		transport.close()
 		_transport_retry_at = now + 1.0
 		return
@@ -141,6 +154,10 @@ func _transport_closed(reason: String) -> void:
 
 
 func _hello() -> void:
+	if transport.can_send(1) and connection_stage == "connecting":
+		connection_stage = "handshake"
+		_trace_event("sending room handshake")
+		connection_changed.emit("已连接到房主，正在校验版本……")
 	transport.send_control(1, {"kind": "hello", "protocol": LanProtocol.VERSION, "rules": LanProtocol.RULES, "content": _fingerprint, "name": nickname, "token": reconnect_token})
 	if _hello_deadline > 0.0: _hello_again_at = Time.get_ticks_msec() / 1000.0 + 1.0
 
@@ -220,9 +237,9 @@ func _control(peer_id: int, data: Dictionary) -> void:
 			"welcome":
 				local_id = String(data.get("id", ""))
 				reconnect_token = String(data.get("token", ""))
-				_hello_deadline = 0.0
-				_hello_again_at = 0.0
-				_transport_retry_at = 0.0
+				connection_stage = "joining"
+				_trace_event("welcome received")
+				connection_changed.emit("版本校验通过，正在进入房间……")
 			"reconnect_wait":
 				if _hello_deadline > 0.0 and reconnect_token != "":
 					_hello_again_at = _last_heard + 1.0
@@ -278,7 +295,15 @@ func _control(peer_id: int, data: Dictionary) -> void:
 
 
 func _accept(peer_id: int, data: Dictionary) -> void:
-	if room == null or connections.has(peer_id): return
+	if room == null: return
+	if connections.has(peer_id):
+		# A retried hello must replay the acknowledgement, not leave the guest
+		# waiting forever if the first welcome/room was not queued successfully.
+		if _welcomes.has(peer_id):
+			transport.send_control(peer_id, _welcomes[peer_id])
+			transport.send_control(peer_id, {"kind": "room", "room": room.public_state()})
+		return
+	_trace_event("room handshake received")
 	var error := ""
 	if data.get("protocol") != LanProtocol.VERSION or data.get("rules") != LanProtocol.RULES or data.get("content") != _fingerprint: error = "游戏版本或玩法资源不兼容，请使用相同版本。"
 	if not data.get("token", "") is String or not data.get("name", "") is String:
@@ -304,12 +329,15 @@ func _accept(peer_id: int, data: Dictionary) -> void:
 				token = LanProtocol.token()
 				credentials[token.sha256_text()] = id
 	if not error.is_empty():
+		_trace_event("room handshake rejected: " + error)
 		transport.send_control(peer_id, {"kind": "reject", "text": error})
 		return
 	_peers_waiting.erase(peer_id)
 	connections[peer_id] = id
 	_peer_heard[peer_id] = Time.get_ticks_msec() / 1000.0
-	transport.send_control(peer_id, {"kind": "welcome", "id": id, "token": token})
+	_welcomes[peer_id] = {"kind": "welcome", "id": id, "token": token}
+	transport.send_control(peer_id, _welcomes[peer_id])
+	_trace_event("member admitted")
 	_publish_room()
 	if simulation != null: _send_state(peer_id, id)
 
@@ -329,6 +357,7 @@ func _publish_room() -> void:
 	if not discovery.advertisement.is_empty():
 		discovery.advertisement["count"] = room.members.size()
 		discovery.advertisement["phase"] = room.phase
+		discovery.advertisement["capacity"] = room.capacity
 	# Local listeners can start/load/leave synchronously; publish the current state
 	# to the transport first so reentrant notifications cannot send stale lobbies.
 	room_changed.emit(state)
@@ -336,6 +365,13 @@ func _publish_room() -> void:
 
 func _receive_room(state: Dictionary) -> void:
 	if not state.get("members") is Dictionary or not state.get("phase") is String: return
+	if local_id == "" or not state["members"].has(local_id): return
+	if _hello_deadline > 0.0:
+		_hello_deadline = 0.0
+		_hello_again_at = 0.0
+		_transport_retry_at = 0.0
+		connection_stage = "joined"
+		_trace_event("room entered")
 	if room == null: room = CooperativeRoom.new()
 	if state.get("epoch") == room.epoch:
 		if int(state.get("revision", 0)) < room.revision: return
@@ -403,6 +439,7 @@ func _chunk(_peer_id: int, packet: Dictionary) -> void:
 
 
 func _peer_left(peer_id: int) -> void:
+	_welcomes.erase(peer_id)
 	_peers_waiting.erase(peer_id)
 	_peer_heard.erase(peer_id)
 	if not transport.serving or room == null or not connections.has(peer_id): return
@@ -434,13 +471,15 @@ func _process(dt: float) -> void:
 	_clock = now
 	if not transport.serving and _hello_deadline > 0.0:
 		if _clock > _hello_deadline:
-			_lost("重连尚未完成；请确认原角色已断线，稍后重试。" if reconnect_token != "" else "房主没有响应。检查网络后可重连原角色。")
+			_lost("已连接到设备，但房间未确认加入。请确认双方版本一致，并让房主重建房间。" if connection_stage in ["handshake", "joining"] else "未能连接到房主。请让房主保持游戏前台，并检查 Wi-Fi／热点是否允许设备互访。")
 			return
 		# Rebuilding a tunnel can leave a nominally connected UDP path silent.
 		# Refresh its socket if no handshake replies arrive, without resetting the
 		# overall deadline or evicting an authenticated member on the host.
-		if _transport_retry_at > 0.0 and _clock >= _transport_retry_at and (transport.peer == null or transport.peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED or _clock - _last_heard > 4.0):
+		if _transport_retry_at > 0.0 and _clock >= _transport_retry_at and (transport.peer == null or transport.peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED or (reconnect_token != "" and _clock - _last_heard > 4.0)):
 			_transport_retry_at = _clock + 4.0
+			_attempts += 1
+			_trace_event("retry transport")
 			var target := LanProtocol.address(address)
 			transport.join(String(target["ip"]), int(target["port"]))
 	if transport.peer == null: return
@@ -495,11 +534,23 @@ func _process(dt: float) -> void:
 
 
 func _lost(reason: String) -> void:
+	connection_stage = "failed"
+	_trace_event(reason)
 	_hello_deadline = 0.0
 	_hello_again_at = 0.0
 	_transport_retry_at = 0.0
 	transport.close()
 	closed.emit(reason)
+
+
+func _trace_event(text: String) -> void:
+	_trace.append("%.1f %s" % [Time.get_ticks_msec() / 1000.0, text])
+	if _trace.size() > 24: _trace.remove_at(0)
+
+
+func connection_details() -> String:
+	# No invitation or member credential is included in shareable diagnostics.
+	return "阶段 %s · 尝试 %d · 连接 %d · 待验证 %d\n发送 %d B / 接收 %d B\n%s" % [connection_stage, _attempts, connections.size(), _peers_waiting.size(), transport.bytes_sent, transport.bytes_received, "\n".join(_trace)]
 
 
 func stop() -> void:
@@ -511,6 +562,10 @@ func stop() -> void:
 	discovery.close()
 	room = null
 	connections.clear()
+	_welcomes.clear()
+	_trace.clear()
+	_attempts = 0
+	connection_stage = "idle"
 	credentials.clear()
 	_awaiting.clear()
 	_chunks.clear()

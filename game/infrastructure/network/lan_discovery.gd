@@ -118,6 +118,8 @@ func _may_reply(sender: String, now: float) -> bool:
 func _remember(data: Dictionary, sender: String, now: float) -> void:
 	if not data.get("name") is String or String(data["name"]).length() > 32 or not SaveSchema.is_integer(data.get("port"), 1024, 65535): return
 	if not SaveSchema.is_integer(data.get("count"), 0, 4) or data.get("phase") not in ["lobby", "loading", "playing", "ended"]: return
+	if data.has("capacity") and not SaveSchema.is_integer(data["capacity"], 2, 4): return
+	if data.has("content") and (not data["content"] is String or String(data["content"]).length() != 64 or not String(data["content"]).is_valid_hex_number()): return
 	var room_id: Variant = data.get("room")
 	var valid_id := room_id is String and String(room_id).length() <= 32 and String(room_id).is_valid_hex_number()
 	var key := "room:" + String(room_id) if valid_id else sender + ":" + str(int(data["port"]))
