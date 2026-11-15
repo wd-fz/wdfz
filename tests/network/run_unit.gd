@@ -110,8 +110,45 @@ func run() -> void:
 	figures.queue_free()
 	await process_frame
 	await _discovery()
+	_transport_boundaries()
 	print("LAN UNIT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+
+func _transport_boundaries() -> void:
+	var transport := LanTransport.new()
+	var seen := {"control": 0, "input": 0, "chunk": 0, "motion": 0}
+	transport.control_received.connect(func(_id: int, _data: Dictionary) -> void: seen["control"] += 1)
+	transport.input_received.connect(func(_id: int, _data: Dictionary) -> void: seen["input"] += 1)
+	transport.chunk_received.connect(func(_id: int, _data: Dictionary) -> void: seen["chunk"] += 1)
+	transport.motion_received.connect(func(_data: Dictionary) -> void: seen["motion"] += 1)
+	for kind in 4:
+		var frame := LanProtocol.encode({"kind": "fixture"})
+		frame.insert(0, kind)
+		transport._receive_packet(2, frame)
+	check(seen.values() == [0, 0, 0, 0], "guest rejects all packets from another guest")
+	for kind in 4:
+		var frame := LanProtocol.encode({"kind": "fixture"})
+		frame.insert(0, kind)
+		transport._receive_packet(1, frame)
+	check(seen.values() == [1, 0, 1, 1], "guest only accepts authority control, baseline and motion")
+	transport.serving = true
+	for kind in 4:
+		var frame := LanProtocol.encode({"kind": "fixture"})
+		frame.insert(0, kind)
+		transport._receive_packet(2, frame)
+	check(seen.values() == [2, 1, 1, 1], "host rejects client-forged state and motion streams")
+	for frame: PackedByteArray in [PackedByteArray(), PackedByteArray([0]), PackedByteArray([255, 123, 125]), PackedByteArray([0, 91, 93]), PackedByteArray([0, 123])]:
+		transport._receive_packet(2, frame)
+	var large := LanProtocol.encode({"kind": "input", "extra": "x".repeat(1200)})
+	large.insert(0, LanTransport.Packet.INPUT)
+	transport._receive_packet(2, large)
+	check(seen.values() == [2, 1, 1, 1], "malformed, unknown and oversized frames never reach gameplay")
+	var ping := LanProtocol.encode({"kind": "ping"})
+	ping.insert(0, LanTransport.Packet.CONTROL)
+	for i in 100: transport._receive_packet(3, ping)
+	check(seen["control"] == 82, "control rate limit still rejects excess messages")
+	transport.free()
 
 
 ## UDP room discovery (2026-11-14): every adapter gets a directed probe, a same-machine host answers over

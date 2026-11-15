@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "digest": "4b1acf1b2c943e92a76b37f5f19b139b395ec4fb89e3373e4f1ff1cbf741cb4f",
+  "digest": "17e5aea4f67d34a7f5cec87ea8334bf3368bbdc0c3f427bbcb1549b0ed556a84",
   "files": {
     "assets/campus/archive.json": "0a3815b54b7591403085c29793d99e08f6f80fd18f7646b7d449a6552709b483",
     "assets/campus/death_geometry.json": "5b7a718919d12b00fa380efc95ffa2ed41262d680d11714d218603053cd52326",
@@ -145,8 +145,8 @@
     "game/features/story/wuda_kid_module.gd": "63a0da8c2f31c90ec45678e0e71037ef8b8dea529ec08f78a6265c27e9bb8c64",
     "game/infrastructure/network/lan_chunks.gd": "1c53b8391826a3588b334593e0219a995cf81c58dface9c4f1df25c7f7d692e2",
     "game/infrastructure/network/lan_discovery.gd": "dbe10fcb3df485e3ff4f8d61dd8c912f85b8cdefacd38ae0478c87c2f5eb52b7",
-    "game/infrastructure/network/lan_protocol.gd": "8580913118adee428ebd61a6555850098ec52de99ea107d9e36830b0ed8cbb26",
-    "game/infrastructure/network/lan_transport.gd": "3456fe3b430ad3984b2c3e8c1d6b2c784f2c7c4b50c4ac14864ae4f398d0db84",
+    "game/infrastructure/network/lan_protocol.gd": "11611c6781f67d3a1d5a0d38777161d50dbc5751dcfa838bc54f665777577227",
+    "game/infrastructure/network/lan_transport.gd": "fcdae2898289e575108e48687f3396fc71c9fe49e76fc21414d33f0c5de41aa2",
     "game/infrastructure/network/terracotta_bridge.gd": "592a9d6d21f5ef4ebe18a9f8b7bbf8f878b4cc6360c979ce7f354b1f556f26ed",
     "game/infrastructure/network/terracotta_gateway.gd": "6dea2d992c8f20a4a470d7c7c04476234e2b0364112e70d43d184b76bc669769",
     "game/infrastructure/network/terracotta_protocol.gd": "9c5e5b4c6efc335bff8a68c784b2cc73c76b15748f820efa0156be2a112b2f1c",

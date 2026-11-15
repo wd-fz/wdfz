@@ -116,6 +116,7 @@ func run() -> void:
 		parent.add_child(network)
 	network.notice.connect(func(text: String) -> void: print("NOTICE: ", text))
 	network.closed.connect(func(reason: String) -> void:
+		print("CONNECTION CLOSED: ", reason, "\n", network.connection_details())
 		if restore_test and elapsed >= 7.0 and not reconnecting:
 			saved_identity = network.local_id
 			token = network.reconnect_token
@@ -231,7 +232,10 @@ func _process(dt: float) -> bool:
 			check(network.room.ending == "face" and state.get("life", {}).get("ended") == "face", "real ENet client receives shared whitelist ending")
 			if role == "guest-1": check(network.local_id == saved_identity, "route survives original-member reconnect")
 			finish()
-	if elapsed > duration + (2.0 if role == "host" else 0.0):
+	# A lost disconnect datagram keeps the old member alive until its 12-second
+	# heartbeat expires. Let the reconnecting guest finish its full play interval
+	# before shutting down the authority; the overall startup deadline still bounds failures.
+	if elapsed > duration + (20.0 if role == "host" else 0.0):
 		check(snapshots > 10, "received repeated baselines")
 		check(motions > 40, "received motion over unreliable ENet")
 		check(not ending_test and network.room != null and network.room.phase == "playing", "room stays running / ending completes before timeout")

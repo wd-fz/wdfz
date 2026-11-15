@@ -4,7 +4,7 @@ from pathlib import Path
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
-from export_android import verify_launcher_orientation, verify_manifest, verify_vulkan_manifest, verify_fullscreen_launch
+from export_android import RELEASE_VERSION, RELEASE_VERSION_CODE, verify_launcher_orientation, verify_manifest, verify_vulkan_manifest, verify_fullscreen_launch
 
 
 def activity(orientation, launcher=True):
@@ -62,9 +62,9 @@ class AndroidManifestTests(unittest.TestCase):
                 verify_launcher_orientation(bad)
 
     def test_public_release_must_not_be_debuggable(self):
-        manifest = "package: name='org.wdfz.godot' versionCode='5' versionName='0.4.0'\nsdkVersion:'24'\ntargetSdkVersion:'36'\nnative-code: 'arm64-v8a'\nuses-permission: name='android.permission.INTERNET'\nuses-permission: name='android.permission.CHANGE_WIFI_MULTICAST_STATE'\n"
+        manifest = f"package: name='org.wdfz.godot' versionCode='{RELEASE_VERSION_CODE}' versionName='{RELEASE_VERSION}'\nsdkVersion:'24'\ntargetSdkVersion:'36'\nnative-code: 'arm64-v8a'\nuses-permission: name='android.permission.INTERNET'\nuses-permission: name='android.permission.CHANGE_WIFI_MULTICAST_STATE'\n"
         verify_manifest(manifest,True)
-        for bad in [manifest.replace("uses-permission: name='android.permission.INTERNET'", ""), manifest.replace("uses-permission: name='android.permission.CHANGE_WIFI_MULTICAST_STATE'", ""), manifest+"application-debuggable", manifest.replace("0.4.0","0.1-debug"), manifest.replace("org.wdfz.godot'","org.wdfz.godot.debug'"), manifest.replace("arm64-v8a","x86")]:
+        for bad in [manifest.replace("uses-permission: name='android.permission.INTERNET'", ""), manifest.replace("uses-permission: name='android.permission.CHANGE_WIFI_MULTICAST_STATE'", ""), manifest+"application-debuggable", manifest.replace(RELEASE_VERSION,"0.1-debug"), manifest.replace("org.wdfz.godot'","org.wdfz.godot.debug'"), manifest.replace("arm64-v8a","x86")]:
             with self.subTest(bad=bad), self.assertRaises(RuntimeError):
                 verify_manifest(bad,True)
 

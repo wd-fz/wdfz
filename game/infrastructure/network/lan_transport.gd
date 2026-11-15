@@ -15,6 +15,7 @@ var bytes_sent := 0
 var bytes_received := 0
 var _budgets: Dictionary = {}
 var _budget_time := 0.0
+enum Packet { CONTROL, INPUT, CHUNK, MOTION }
 
 
 func _ready() -> void:
@@ -24,6 +25,7 @@ func _ready() -> void:
 	# This is a host-authoritative star; clients never talk to other clients.
 	# Avoid ENet relay notifications racing with disconnected peer channels.
 	api.server_relay = false
+	api.peer_packet.connect(_receive_packet)
 	api.connected_to_server.connect(func() -> void: connected.emit())
 	api.connection_failed.connect(func() -> void: disconnected.emit("连接失败：检查地址、同一局域网和防火墙。"))
 	api.server_disconnected.connect(func() -> void: disconnected.emit("房主连接中断。可重连原房间或返回菜单。"))
@@ -51,7 +53,7 @@ func host(port: int) -> String:
 		return "无法创建房间，端口可能被占用（%d）。" % error
 	serving = true
 	# Compressed ENet datagrams leave space for EasyTier's tunnel headers.
-	# Raw fragmented snapshot RPCs otherwise stall across its UDP forwarding path.
+	# Uncompressed fragmented snapshots otherwise stall across its UDP forwarding path.
 	peer.host.compress(ENetConnection.COMPRESS_RANGE_CODER)
 	api.multiplayer_peer = peer
 	return ""
@@ -91,33 +93,30 @@ func expire_peer(id: int) -> void:
 
 
 func send_control(id: int, data: Dictionary) -> void:
-	if not can_send(id): return
-	var packet := LanProtocol.encode(data)
-	if packet.size() > LanProtocol.MAX_PACKET: return
-	bytes_sent += packet.size()
-	_control.rpc_id(id, packet)
+	_send(id, Packet.CONTROL, data, LanProtocol.MAX_PACKET, MultiplayerPeer.TRANSFER_MODE_RELIABLE, 0)
 
 
 func send_input(data: Dictionary) -> void:
-	if not can_send(1): return
-	var packet := LanProtocol.encode(data)
-	bytes_sent += packet.size()
-	_receive_input_packet.rpc_id(1, packet)
+	if not serving: _send(1, Packet.INPUT, data, 1200, MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED, 2)
 
 
 func send_chunk(id: int, data: Dictionary) -> void:
-	if not can_send(id): return
-	var packet := LanProtocol.encode(data)
-	if packet.size() > LanProtocol.MAX_PACKET: return
-	bytes_sent += packet.size()
-	_chunk.rpc_id(id, packet)
+	if serving: _send(id, Packet.CHUNK, data, LanProtocol.MAX_PACKET, MultiplayerPeer.TRANSFER_MODE_RELIABLE, 1)
 
 
 func send_motion(id: int, data: Dictionary) -> void:
+	if serving: _send(id, Packet.MOTION, data, 8192, MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED, 3)
+
+
+func _send(id: int, kind: Packet, data: Dictionary, limit: int, mode: MultiplayerPeer.TransferMode, channel: int) -> void:
 	if not can_send(id): return
 	var packet := LanProtocol.encode(data)
-	bytes_sent += packet.size()
-	_motion.rpc_id(id, packet)
+	if packet.size() > limit: return
+	# Messages contain JSON, not scene nodes. Raw SceneMultiplayer packets avoid
+	# RPC path-cache IDs arriving ahead of their reliable registration after a
+	# reconnect. Preserve independent ENet delivery/order for all four streams.
+	packet.insert(0, kind)
+	if api.send_bytes(packet, id, mode, channel) == OK: bytes_sent += packet.size()
 
 
 func can_send(id: int) -> bool:
@@ -136,40 +135,31 @@ func _allowed(id: int, size: int, input: bool = false) -> bool:
 	return size <= (1200 if input else LanProtocol.MAX_PACKET) and int(_budgets[key]) <= (90 if input else 80)
 
 
-@rpc("any_peer", "call_remote", "reliable", 0)
-func _control(packet: PackedByteArray) -> void:
-	var sender := api.get_remote_sender_id()
-	if not serving and sender != 1: return
-	if not _allowed(sender, packet.size()): return
+func _receive_packet(sender: int, packet: PackedByteArray) -> void:
+	if sender < 1 or (not serving and sender != 1) or packet.size() < 2: return
+	var kind := int(packet[0])
+	var limit := LanProtocol.MAX_PACKET
+	match kind:
+		Packet.CONTROL:
+			if not _allowed(sender, packet.size() - 1): return
+		Packet.INPUT:
+			if not serving or not _allowed(sender, packet.size() - 1, true): return
+			limit = 1200
+		Packet.CHUNK:
+			if serving: return
+		Packet.MOTION:
+			if serving: return
+			limit = 8192
+		_: return
+	if packet.size() > limit + 1: return
+	var data := LanProtocol.decode(packet.slice(1), limit)
+	if data.is_empty(): return
 	bytes_received += packet.size()
-	var data := LanProtocol.decode(packet)
-	if not data.is_empty(): control_received.emit(sender, data)
-
-
-@rpc("any_peer", "call_remote", "unreliable_ordered", 2)
-func _receive_input_packet(packet: PackedByteArray) -> void:
-	if not serving: return
-	var sender := api.get_remote_sender_id()
-	if not _allowed(sender, packet.size(), true): return
-	bytes_received += packet.size()
-	var data := LanProtocol.decode(packet, 1200)
-	if not data.is_empty(): input_received.emit(sender, data)
-
-
-@rpc("authority", "call_remote", "reliable", 1)
-func _chunk(packet: PackedByteArray) -> void:
-	if serving or api.get_remote_sender_id() != 1 or packet.size() > LanProtocol.MAX_PACKET: return
-	bytes_received += packet.size()
-	var data := LanProtocol.decode(packet)
-	if not data.is_empty(): chunk_received.emit(1, data)
-
-
-@rpc("authority", "call_remote", "unreliable_ordered", 3)
-func _motion(packet: PackedByteArray) -> void:
-	if serving or api.get_remote_sender_id() != 1: return
-	bytes_received += packet.size()
-	var data := LanProtocol.decode(packet, 8192)
-	if not data.is_empty(): motion_received.emit(data)
+	match kind:
+		Packet.CONTROL: control_received.emit(sender, data)
+		Packet.INPUT: input_received.emit(sender, data)
+		Packet.CHUNK: chunk_received.emit(sender, data)
+		Packet.MOTION: motion_received.emit(data)
 
 
 func _exit_tree() -> void:

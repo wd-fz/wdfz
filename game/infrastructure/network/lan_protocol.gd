@@ -1,7 +1,7 @@
 class_name LanProtocol
 extends RefCounted
 ## JSON-only wire format. Never decode objects or resource paths from a peer.
-const VERSION := 2
+const VERSION := 3
 const RULES := "coop-1"
 const PORT := 24560
 const DISCOVERY_PORT := 24561
