@@ -64,7 +64,9 @@ class TerracottaBuildTests(unittest.TestCase):
             service = app.find('service')
             self.assertEqual(service.get(key('exported')), 'false')
             self.assertEqual(service.get(key('permission')), 'android.permission.BIND_VPN_SERVICE')
-            self.assertEqual(len(final.findall('uses-permission')), 3)
+            self.assertEqual(len(final.findall('uses-permission')), 5)
+            self.assertEqual(sum(node.get(key('name')) == 'org.godotengine.plugin.v2.WdfzLanNetwork' for node in app.findall('meta-data')), 1)
+            self.assertTrue((template / 'build/src/main/java/org/wdfz/lan/WdfzLanNetwork.java').is_file())
             for variant in ('debug', 'release'):
                 self.assertEqual((template / f'build/libs/{variant}/arm64-v8a/libterracotta.so').read_bytes(), library.read_bytes())
             self.assertEqual((template / '.build_version').read_text(), '4.6.3.stable\n')

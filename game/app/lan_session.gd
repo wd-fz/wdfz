@@ -9,6 +9,8 @@ signal closed(reason: String)
 signal connection_changed(text: String)
 var transport := LanTransport.new()
 var discovery := LanDiscovery.new()
+var route := LanNetworkRoute.new()
+var direct_lan := true
 var room: CooperativeRoom
 var simulation: CooperativeSimulation
 var local_id := ""
@@ -54,6 +56,13 @@ func _ready() -> void:
 	transport.name = "Transport"
 	add_child(transport)
 	add_child(discovery)
+	add_child(route)
+	route.unavailable.connect(func(reason: String) -> void:
+		discovery.close()
+		if active(): _lost(reason)
+		else:
+			route.release()
+			notice.emit(reason))
 	transport.connected.connect(_hello)
 	transport.disconnected.connect(_transport_closed)
 	transport.peer_left.connect(_peer_left)
@@ -75,13 +84,17 @@ func active() -> bool:
 
 
 func host(name: String, who: String, requested_port: int, resume: bool = false) -> String:
-	stop()
+	var stop_error := stop()
+	if not stop_error.is_empty(): return stop_error
 	_clock = Time.get_ticks_msec() / 1000.0
 	if requested_port < 1024 or requested_port > 65535: return "端口应为 1024–65535。"
 	port = requested_port
 	nickname = who.strip_edges().left(24)
 	room_name = name.strip_edges().left(32)
-	var error := transport.host(port)
+	var error := _prepare_route()
+	if not error.is_empty(): return error
+	error = transport.host(port)
+	if not error.is_empty(): route.release()
 	if not error.is_empty(): return error
 	room = CooperativeRoom.new()
 	local_id = "p-" + LanProtocol.token().left(12)
@@ -124,14 +137,18 @@ func host(name: String, who: String, requested_port: int, resume: bool = false) 
 
 
 func join(target: String, who: String, token: String = "") -> String:
-	stop()
+	var stop_error := stop()
+	if not stop_error.is_empty(): return stop_error
 	_clock = Time.get_ticks_msec() / 1000.0
 	var parsed := LanProtocol.address(target)
 	if parsed.is_empty(): return "请输入有效 IPv4 地址，可加端口，例如 192.168.1.23:24560。"
 	address = target.strip_edges()
 	nickname = who.strip_edges().left(24)
 	reconnect_token = token
-	var error := transport.join(parsed["ip"], int(parsed["port"]))
+	var error := _prepare_route(String(parsed["ip"]))
+	if not error.is_empty(): return error
+	error = transport.join(parsed["ip"], int(parsed["port"]))
+	if not error.is_empty(): route.release()
 	if error.is_empty():
 		_attempts = 1
 		connection_stage = "connecting"
@@ -141,6 +158,24 @@ func join(target: String, who: String, token: String = "") -> String:
 		_transport_retry_at = _clock + 4.0
 		_last_heard = _clock
 	return error
+
+
+func _prepare_route(target: String = "") -> String:
+	if not direct_lan: return route.release()
+	var error := route.acquire(target)
+	discovery.targets = route.broadcasts.duplicate()
+	return error
+
+
+func discover() -> void:
+	if not direct_lan or active(): return
+	discovery.close()
+	var error := route.release()
+	if error.is_empty(): error = _prepare_route()
+	if error.is_empty(): discovery.discover()
+	else:
+		discovery.scanning_changed.emit(false)
+		notice.emit(error)
 
 
 func _transport_closed(reason: String) -> void:
@@ -551,6 +586,9 @@ func _lost(reason: String) -> void:
 	_hello_again_at = 0.0
 	_transport_retry_at = 0.0
 	transport.close()
+	discovery.close()
+	var release_error := route.release()
+	if not release_error.is_empty(): _trace_event(release_error)
 	closed.emit(reason)
 
 
@@ -585,12 +623,13 @@ func connection_details() -> String:
 		"ENet %s%s · 自动轮询 %s" % [transport.last_state, "（已关闭，保留最后状态）" if transport.peer == null else "", str(get_tree().multiplayer_poll)],
 		"UDP 累计发送 %d B / %d 包 · 接收 %d B / %d 包（含握手）" % [transport.wire_sent, transport.packets_sent, transport.wire_received, transport.packets_received],
 		"游戏数据累计发送 %d B / 接收 %d B" % [transport.bytes_sent, transport.bytes_received]]
+	lines.append(route.details if direct_lan else "远程模式：使用系统／Terracotta 网络，不绑定本地 Wi-Fi")
 	if not transport.last_error.is_empty(): lines.append(transport.last_error)
 	lines.append_array(_trace)
 	return "\n".join(lines)
 
 
-func stop() -> void:
+func stop() -> String:
 	if simulation != null and is_instance_valid(simulation):
 		if room != null and room.phase in ["playing", "ended"]: store.write(simulation.capture(), credentials)
 		simulation.queue_free()
@@ -598,6 +637,7 @@ func stop() -> void:
 	transport.close()
 	transport.reset_diagnostics()
 	discovery.close()
+	var route_error := route.release()
 	room = null
 	connections.clear()
 	_welcomes.clear()
@@ -618,6 +658,7 @@ func stop() -> void:
 	_hello_again_at = 0.0
 	_transport_retry_at = 0.0
 	_heartbeat = 0.0
+	return route_error
 
 
 func _exit_tree() -> void:

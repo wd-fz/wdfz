@@ -20,6 +20,8 @@ var socket: PacketPeerUDP
 var advertisement: Dictionary = {}
 var rooms: Dictionary = {}
 var scanning := false
+## Android supplies only the selected physical interface's actual subnet broadcasts.
+var targets: PackedStringArray = []
 var _elapsed := 0.0
 var _until := 0.0
 var _replies: Dictionary = {}
@@ -75,7 +77,7 @@ func _process(dt: float) -> void:
 		if now < _until and _elapsed >= PROBE_EVERY:
 			_elapsed = 0.0
 			var probe := LanProtocol.encode({"wdfz": LanProtocol.VERSION})
-			for target: String in probe_targets():
+			for target: String in (probe_targets() if targets.is_empty() else targets):
 				socket.set_dest_address(target, LanProtocol.DISCOVERY_PORT)
 				socket.put_packet(probe)
 		# Rooms only expire while probing; once the scan ends the last list stays for the player to pick.

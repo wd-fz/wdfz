@@ -1,4 +1,4 @@
-"""Inject the source plugin into Godot's official, disposable Gradle build template."""
+"""Inject Android LAN/Terracotta plugins into the disposable official Gradle template."""
 from pathlib import Path
 import shutil
 import xml.etree.ElementTree as ET
@@ -30,6 +30,7 @@ def install(root: Path, template: Path, library: Path):
     source = root / 'platform/android/terracotta/src'
     # Official template uses standard src/main/java; no custom engine build needed.
     shutil.copytree(source, project / 'src/main/java', dirs_exist_ok=True)
+    shutil.copytree(root / 'platform/android/lan/src', project / 'src/main/java', dirs_exist_ok=True)
     for variant in ('debug', 'release'):
         destination = project / 'libs' / variant / 'arm64-v8a'
         destination.mkdir(parents=True, exist_ok=True)
@@ -52,14 +53,15 @@ def install(root: Path, template: Path, library: Path):
     tree = ET.parse(manifest)
     main = tree.getroot()
     existing = {node.get(key('name')) for node in main.findall('uses-permission')}
-    for permission in ('FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_SPECIAL_USE'):
+    for permission in ('FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_SPECIAL_USE', 'ACCESS_NETWORK_STATE', 'CHANGE_NETWORK_STATE'):
         name = 'android.permission.' + permission
         if name not in existing: ET.SubElement(main, 'uses-permission', {key('name'): name})
     application = main.find('application')
     for node in list(application):
-        if node.get(key('name')) in ('org.godotengine.plugin.v2.WdfzTerracotta', 'org.wdfz.terracotta.TerracottaVpnService'):
+        if node.get(key('name')) in ('org.godotengine.plugin.v2.WdfzTerracotta', 'org.godotengine.plugin.v2.WdfzLanNetwork', 'org.wdfz.terracotta.TerracottaVpnService'):
             application.remove(node)
     ET.SubElement(application, 'meta-data', {key('name'): 'org.godotengine.plugin.v2.WdfzTerracotta', key('value'): 'org.wdfz.terracotta.WdfzTerracotta'})
+    ET.SubElement(application, 'meta-data', {key('name'): 'org.godotengine.plugin.v2.WdfzLanNetwork', key('value'): 'org.wdfz.lan.WdfzLanNetwork'})
     service = ET.SubElement(application, 'service', {
         key('name'): 'org.wdfz.terracotta.TerracottaVpnService', key('exported'): 'false',
         key('permission'): 'android.permission.BIND_VPN_SERVICE', key('foregroundServiceType'): 'specialUse'})
@@ -71,7 +73,9 @@ def install(root: Path, template: Path, library: Path):
 
 def verify(tree, names):
     for entry in ('org.godotengine.plugin.v2.WdfzTerracotta', 'org.wdfz.terracotta.TerracottaVpnService',
-                  'android.permission.BIND_VPN_SERVICE', 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE'):
+                  'android.permission.BIND_VPN_SERVICE', 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE',
+                  'org.godotengine.plugin.v2.WdfzLanNetwork', 'org.wdfz.lan.WdfzLanNetwork',
+                  'android.permission.ACCESS_NETWORK_STATE', 'android.permission.CHANGE_NETWORK_STATE'):
         if entry not in tree: raise RuntimeError('APK Terracotta manifest entry missing: ' + entry)
     for entry in ('lib/arm64-v8a/libterracotta.so', 'assets/terracotta/LICENSE', 'assets/terracotta/NOTICE.md'):
         if entry not in names: raise RuntimeError('APK Terracotta resource missing: ' + entry)

@@ -65,7 +65,7 @@ func _ready() -> void:
 		elif playing(): resume()
 		else: stop())
 	panel.leave_requested.connect(func() -> void: app.return_to_menu())
-	panel.discover_requested.connect(network.discovery.discover)
+	panel.discover_requested.connect(network.discover)
 	panel.mode_requested.connect(_open_mode)
 	panel.cancel_requested.connect(_cancel_connection)
 	panel.reconnect_requested.connect(reconnect)
@@ -166,7 +166,13 @@ func _open_mode(value: bool) -> void:
 		if value != _remote_mode: panel.status.text = "请先离开当前房间。"
 		open()
 		return
+	var route_error := network.stop()
+	if not route_error.is_empty():
+		panel.show_connection_error(route_error)
+		open()
+		return
 	_remote_mode = value
+	network.direct_lan = not value
 	panel.set_remote(value)
 	if _last_connection.get("mode", "lan") == ("remote" if value else "lan"):
 		panel.address.text = String(_last_connection.get("code" if value else "address", ""))
@@ -178,6 +184,7 @@ func _host(room_name: String, nick: String, port: int, restore: bool) -> void:
 		panel.set_busy(false)
 		panel.status.text = "请等待远程连接关闭。"
 		return
+	network.direct_lan = not _remote_mode
 	var error := network.host(room_name, nick, port, restore)
 	if error == "" and _remote_mode:
 		panel.set_busy(true)
@@ -198,7 +205,13 @@ func _join(target: String, nick: String) -> void:
 	if network.active() or remote.phase != "idle": return
 	_lost = false
 	panel.set_busy(true)
+	network.direct_lan = not _remote_mode
 	if _remote_mode:
+		var route_error := network.route.release()
+		if not route_error.is_empty():
+			panel.set_busy(false)
+			panel.show_connection_error(route_error)
+			return
 		_remote_token = String(_last_connection.get("token", "")) if _last_connection.get("mode") == "remote" else ""
 		panel.set_busy(true)
 		var error := remote.begin(false, nick, target)
@@ -258,6 +271,7 @@ func reconnect() -> void:
 		_join(String(_last_connection["code"]), String(_last_connection["name"]))
 		return
 	_remote_mode = false
+	network.direct_lan = true
 	panel.set_remote(false)
 	panel.set_busy(true)
 	var error := network.join(String(_last_connection["address"]), String(_last_connection["name"]), String(_last_connection["token"]))
@@ -267,7 +281,8 @@ func reconnect() -> void:
 
 func _addresses() -> String:
 	var list: Array = []
-	for address: String in IP.get_local_addresses():
+	var addresses := network.route.addresses if network.direct_lan and not network.route.addresses.is_empty() else IP.get_local_addresses()
+	for address: String in addresses:
 		if address.contains(":") or address.begins_with("127.") or address.begins_with("169.254."): continue
 		list.append("%s:%d" % [address, network.port])
 	return " / ".join(list)

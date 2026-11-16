@@ -170,6 +170,7 @@ def main():
                "build_system": "gradle"}
     try:
         print(quality.check(ROOT), flush=True)
+        run('android-lan-network', [sys.executable, 'tools/test_android_network.py', '--java', str(jdk / 'bin/java')], reports, timeout=120)
         summary["engine"] = check_version(reports)
         # An isolated editor configuration avoids replacing a developer's Android settings.
         config = ROOT / "build/android-editor"

@@ -27,6 +27,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-godot
       - run: python tools/lan_manifest.py --check
+      - run: python tools/test_android_network.py
       - run: godot --headless --path . --editor --import
       - run: python tools/test_remote.py --unit
       - name: Official Terracotta, EasyTier and ENet integration
