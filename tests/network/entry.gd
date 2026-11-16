@@ -163,7 +163,12 @@ func interface_checks() -> void:
 		var copy := panel.find_child("CopyDiagnostics", true, false) as Button
 		panel._scroll.ensure_control_visible(copy)
 		await frames(5)
-		check(panel._scroll.get_global_rect().encloses(copy.get_global_rect()), "copy diagnostic button remains reachable at " + str(size))
+		# Fallback font metrics can center the panel on a half pixel, while
+		# ScrollContainer offsets are integers. Allow one raster pixel, not a
+		# partially hidden button; include both rectangles if this fails again.
+		var viewport := panel._scroll.get_global_rect()
+		var button_rect := copy.get_global_rect()
+		check(viewport.grow(1.0).encloses(button_rect), "copy diagnostic button remains reachable at %s: viewport=%s button=%s" % [size, viewport, button_rect])
 	panel.queue_free()
 	await frames()
 
