@@ -36,7 +36,7 @@ def main():
     if args.rules:
         reports = ROOT / "build/reports/lan/rules"
         reports.mkdir(parents=True, exist_ok=True)
-        for script, label in (("run_unit", "UNIT"), ("authority", "AUTHORITY"), ("entry", "ENTRY")):
+        for script, label in (("run_unit", "UNIT"), ("authority", "AUTHORITY"), ("entry", "ENTRY"), ("transport", "TRANSPORT")):
             result = subprocess.run([ENGINE, "--headless", "--path", str(ROOT), "--script", f"res://tests/network/{script}.gd"], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180)
             (reports / f"{script}.log").write_text(result.stdout)
             if result.returncode or "ERROR:" in result.stdout or not re.search(rf"LAN {label}: [1-9]\d* checks, 0 failures", result.stdout):

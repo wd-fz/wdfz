@@ -98,8 +98,6 @@ func _ready() -> void:
 	column.add_child(_modes)
 	_button(_modes, "同一 Wi-Fi / 热点", func() -> void: mode_requested.emit(false), "LanMode")
 	_button(_modes, "远程联机", func() -> void: mode_requested.emit(true), "RemoteMode")
-	status = _label(column, "2–4 人合作 · 一人建房，好友加入")
-	status.add_theme_color_override("font_color", UISkin.MUTED)
 	_scroll = TouchScroll.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -108,6 +106,10 @@ func _ready() -> void:
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.add_theme_constant_override("separation", 12)
 	_scroll.add_child(content)
+	# Long failure reports belong to the scrollable body; they must not squeeze
+	# its viewport into the fixed tabs/footer on a short landscape screen.
+	status = _label(content, "2–4 人合作 · 一人建房，好友加入")
+	status.add_theme_color_override("font_color", UISkin.MUTED)
 	host_form = VBoxContainer.new()
 	host_form.add_theme_constant_override("separation", 10)
 	content.add_child(host_form)
@@ -234,14 +236,14 @@ func _ready() -> void:
 		if address_options.selected >= 0:
 			DisplayServer.clipboard_set(address_options.get_item_text(address_options.selected))
 			status.text = "地址已复制，让好友在“直接连接”中粘贴。")
-	_label(_details, "同一 Wi-Fi 或连接房主的热点；房主保持游戏前台。\n看得到房间却进不去时，检查双方版本是否一致，以及路由器的设备隔离设置。")
+	_label(_details, "双方使用同一版本，连接同一 Wi-Fi 或房主热点，并保持游戏前台。\n能发现房间但加入失败时，请复制房主与客户端两端的诊断；发现房间与游戏连接使用不同端口。")
 	connection_info = _label(_details, "")
 	connection_info.add_theme_font_size_override("font_size", 14)
 	metrics = _label(_details, "")
 	metrics.add_theme_font_size_override("font_size", 14)
 	_button(_details, "复制诊断信息", func() -> void:
 		DisplayServer.clipboard_set(connection_info.text + "\n" + metrics.text)
-		status.text = "诊断信息已复制。")
+		status.text = "诊断信息已复制。", "CopyDiagnostics")
 	var debug := _fold(_details, "房主调试工具", "HostDebug")
 	_button(debug, "恢复本人状态（标记整局）", func() -> void: debug_requested.emit("debug_recover", {}))
 	_debug_target = OptionButton.new()
@@ -285,6 +287,14 @@ func select_page(value: String) -> void:
 	_scroll.scroll_vertical = 0
 	_update_layout()
 	if page == "join" and not remote_mode: discover_requested.emit()
+
+
+func show_connection_error(reason: String) -> void:
+	status.text = reason
+	_details.show()
+	_scroll.stop_motion()
+	_scroll.scroll_vertical = 0
+	refit.call_deferred()
 
 
 func _go_back() -> void:

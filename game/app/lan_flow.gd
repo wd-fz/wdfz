@@ -102,7 +102,7 @@ func _ready() -> void:
 		panel.set_busy(false)
 		panel.connection_info.text = network.connection_details()
 		panel.show()
-		panel.status.text = reason)
+		panel.show_connection_error(reason))
 	var new_game := app.ui.find_child("NewGame", true, false) as Button
 	if new_game != null:
 		var button := Button.new()

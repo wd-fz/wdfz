@@ -146,7 +146,7 @@ func join(target: String, who: String, token: String = "") -> String:
 func _transport_closed(reason: String) -> void:
 	var now := Time.get_ticks_msec() / 1000.0
 	if not transport.serving and _hello_deadline > now:
-		_trace_event("transport retry scheduled")
+		_trace_event("transport retry scheduled: " + reason)
 		transport.close()
 		_transport_retry_at = now + 1.0
 		return
@@ -155,6 +155,9 @@ func _transport_closed(reason: String) -> void:
 
 func _hello() -> void:
 	if transport.can_send(1) and connection_stage == "connecting":
+		# A slow ENet connect has just proved the link alive. Give the room
+		# handshake its own silence interval; repeated hellos cannot extend it.
+		_last_heard = Time.get_ticks_msec() / 1000.0
 		connection_stage = "handshake"
 		_trace_event("sending room handshake")
 		connection_changed.emit("已连接到房主，正在校验版本……")
@@ -474,17 +477,22 @@ func _process(dt: float) -> void:
 	_clock = now
 	if not transport.serving and _hello_deadline > 0.0:
 		if _clock > _hello_deadline:
-			_lost("已连接到设备，但房间未确认加入。请确认双方版本一致，并让房主重建房间。" if connection_stage in ["handshake", "joining"] else "未能连接到房主。请让房主保持游戏前台，并检查 Wi-Fi／热点是否允许设备互访。")
+			_lost(_join_timeout_reason())
 			return
-		# Rebuilding a tunnel can leave a nominally connected UDP path silent.
-		# Refresh its socket if no handshake replies arrive, without resetting the
-		# overall deadline or evicting an authenticated member on the host.
-		if _transport_retry_at > 0.0 and _clock >= _transport_retry_at and (transport.peer == null or transport.peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED or (reconnect_token != "" and _clock - _last_heard > 4.0)):
+		# ENet retransmits CONNECT itself. Replacing a still-connecting socket
+		# every four seconds discards delayed replies and can fill the host with
+		# unfinished handshakes. Retry only a failed transport, or a *connected*
+		# but silent old tunnel while restoring a member. Keep the total deadline.
+		var state := transport.peer.get_connection_status() if transport.peer != null else MultiplayerPeer.CONNECTION_DISCONNECTED
+		var retry := state == MultiplayerPeer.CONNECTION_DISCONNECTED or (state == MultiplayerPeer.CONNECTION_CONNECTED and reconnect_token != "" and _clock - _last_heard > 4.0)
+		if _transport_retry_at > 0.0 and _clock >= _transport_retry_at and retry:
 			_transport_retry_at = _clock + 4.0
 			_attempts += 1
 			_trace_event("retry transport")
 			var target := LanProtocol.address(address)
-			transport.join(String(target["ip"]), int(target["port"]))
+			connection_stage = "connecting"
+			var error := transport.join(String(target["ip"]), int(target["port"]), false)
+			if not error.is_empty(): _trace_event(error)
 	if transport.peer == null: return
 	if not transport.serving:
 		var timeout := 60.0 if room != null and room.phase == "loading" else 12.0
@@ -546,6 +554,17 @@ func _lost(reason: String) -> void:
 	closed.emit(reason)
 
 
+func _join_timeout_reason() -> String:
+	if connection_stage in ["handshake", "joining"]:
+		return "已连接到设备，但房间未确认加入。请确认双方版本一致，并让房主重建房间。"
+	transport.sample_network()
+	if transport.packets_sent == 0:
+		return "连接超时，尚未记录到游戏连接数据包发出。请复制两端的连接诊断。"
+	if transport.packets_received == 0:
+		return "连接超时，游戏端口没有回包。请保持房主在前台，并复制两端的连接诊断。"
+	return "已收到游戏端口回包，但连接握手未完成。请复制两端的连接诊断。"
+
+
 func _trace_event(text: String) -> void:
 	_trace.append("%.1f %s" % [Time.get_ticks_msec() / 1000.0, text])
 	if _trace.size() > 24: _trace.remove_at(0)
@@ -553,7 +572,22 @@ func _trace_event(text: String) -> void:
 
 func connection_details() -> String:
 	# No invitation or member credential is included in shareable diagnostics.
-	return "阶段 %s · 尝试 %d · 连接 %d · 待验证 %d\n发送 %d B / 接收 %d B\n%s" % [connection_stage, _attempts, connections.size(), _peers_waiting.size(), transport.bytes_sent, transport.bytes_received, "\n".join(_trace)]
+	transport.sample_network()
+	var addresses: PackedStringArray = []
+	for ip: String in IP.get_local_addresses():
+		if not ip.contains(":") and not ip.begins_with("127.") and not ip.begins_with("169.254."): addresses.append(ip)
+	var lines: PackedStringArray = [
+		"版本 %s · %s · Godot %s" % [ProjectSettings.get_setting("application/config/version", "?"), OS.get_name(), Engine.get_version_info().string],
+		"协议 %d · 规则 %s · 内容 %s" % [LanProtocol.VERSION, LanProtocol.RULES, _fingerprint.left(12)],
+		"阶段 %s · 尝试 %d · 已连接设备 %d · 待验证 %d" % [connection_stage, _attempts, transport.api.get_peers().size(), _peers_waiting.size()],
+		"%s %s · 本地端口 %d" % ["监听" if transport.role == "host" else "目标", transport.endpoint, transport.local_port],
+		"本机 IPv4：%s" % ", ".join(addresses),
+		"ENet %s%s · 自动轮询 %s" % [transport.last_state, "（已关闭，保留最后状态）" if transport.peer == null else "", str(get_tree().multiplayer_poll)],
+		"UDP 累计发送 %d B / %d 包 · 接收 %d B / %d 包（含握手）" % [transport.wire_sent, transport.packets_sent, transport.wire_received, transport.packets_received],
+		"游戏数据累计发送 %d B / 接收 %d B" % [transport.bytes_sent, transport.bytes_received]]
+	if not transport.last_error.is_empty(): lines.append(transport.last_error)
+	lines.append_array(_trace)
+	return "\n".join(lines)
 
 
 func stop() -> void:
@@ -562,6 +596,7 @@ func stop() -> void:
 		simulation.queue_free()
 	simulation = null
 	transport.close()
+	transport.reset_diagnostics()
 	discovery.close()
 	room = null
 	connections.clear()

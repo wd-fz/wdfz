@@ -150,6 +150,20 @@ func interface_checks() -> void:
 		check(root.get_visible_rect().encloses(panel._panel.get_global_rect()), "lobby panel fits " + str(size))
 		check(root.get_visible_rect().encloses(panel._back.get_global_rect()) and root.get_visible_rect().encloses(panel.start_button.get_global_rect()), "lobby primary actions remain reachable at " + str(size))
 		await capture("lobby-%dx%d" % [size.x, size.y])
+	panel.show_room({}, "", "")
+	panel.connection_info.text = "目标 192.168.43.1:24560\n本机 IPv4：192.168.43.2\nUDP 累计发送 256 B / 5 包 · 接收 0 B / 0 包\n" + "1.0 join started\n".repeat(24)
+	for size: Vector2i in [Vector2i(960, 540), Vector2i(720, 360)]:
+		root.size = size
+		panel.show_connection_error("连接超时，游戏端口没有回包。请保持房主在前台，并复制两端的连接诊断。")
+		await frames(8)
+		check(root.get_visible_rect().encloses(panel._panel.get_global_rect()) and panel._details.visible, "failure report fits the landscape panel with diagnostics open at " + str(size))
+		check(panel.status.get_parent() == panel._scroll.get_child(0) and panel._scroll.get_global_rect().encloses(panel.status.get_global_rect()), "long failure status stays inside the scroll body at " + str(size))
+		check(panel._back.get_global_rect().position.y >= panel._scroll.get_global_rect().end.y, "failure scroll content does not overlap fixed actions at " + str(size))
+		await capture("failure-%dx%d" % [size.x, size.y])
+		var copy := panel.find_child("CopyDiagnostics", true, false) as Button
+		panel._scroll.ensure_control_visible(copy)
+		await frames(5)
+		check(panel._scroll.get_global_rect().encloses(copy.get_global_rect()), "copy diagnostic button remains reachable at " + str(size))
 	panel.queue_free()
 	await frames()
 

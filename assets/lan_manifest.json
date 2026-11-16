@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "digest": "1664840ed07ee74e1615419dedbadc86527e209aa62c57ec1c64bb13e066ec1d",
+  "digest": "ad293a7c5e8761bc2887ae7612a4c8228ca2d2c58eede76c215106f1992f722b",
   "files": {
     "assets/campus/archive.json": "0a3815b54b7591403085c29793d99e08f6f80fd18f7646b7d449a6552709b483",
     "assets/campus/death_geometry.json": "5b7a718919d12b00fa380efc95ffa2ed41262d680d11714d218603053cd52326",
@@ -66,8 +66,8 @@
     "game/app/game_app.gd": "35532d2681a2becce4aa44731cb39a471fd7901415cef31396bedeb970fc49a8",
     "game/app/inception_flow.gd": "876daf3430fe311479067e204212249b93cd5e57b2121f17bceeed7d3e4dec4f",
     "game/app/knife_flow.gd": "4f1b006cfa6cb440ba7ce7c1cd132814b9a69ae510edcc3a50335c7faab79a67",
-    "game/app/lan_flow.gd": "07ce0543bb8127e46809421128a74690bbed4b14ae0c94a486476c729852fa3d",
-    "game/app/lan_session.gd": "6e96c236d2ca90244364a0fbf54f0501486710e13b9b6b8b6b053dd9de97febd",
+    "game/app/lan_flow.gd": "2cb69bd03e3415952ac485f93700e431de7fef97e04f7ac06a10ba12cf6eada6",
+    "game/app/lan_session.gd": "b56681912b4b1c9a9d576587b1f6eac55b29283e8a50173dedc0325d5a2bb8e1",
     "game/app/maze_flow.gd": "516e018b10725860be78cdf0f6cd9e2a4615d36e70f9ad198eac20e772e07667",
     "game/app/rules_dlc_flow.gd": "1db22345c1fb893eecac0d4bd409777d494c1a5a9ffa71a081a86530954ab5f5",
     "game/app/session_factory.gd": "8b7f52159a551a25ee949b886787a6957d7a7b49369fcce69be5f865daec136d",
@@ -146,7 +146,7 @@
     "game/infrastructure/network/lan_chunks.gd": "1c53b8391826a3588b334593e0219a995cf81c58dface9c4f1df25c7f7d692e2",
     "game/infrastructure/network/lan_discovery.gd": "dbe10fcb3df485e3ff4f8d61dd8c912f85b8cdefacd38ae0478c87c2f5eb52b7",
     "game/infrastructure/network/lan_protocol.gd": "11611c6781f67d3a1d5a0d38777161d50dbc5751dcfa838bc54f665777577227",
-    "game/infrastructure/network/lan_transport.gd": "fcdae2898289e575108e48687f3396fc71c9fe49e76fc21414d33f0c5de41aa2",
+    "game/infrastructure/network/lan_transport.gd": "dbf1186847e6128354d679f8544734c4883a722f3e6caa5bd2802db8337be5ff",
     "game/infrastructure/network/terracotta_bridge.gd": "592a9d6d21f5ef4ebe18a9f8b7bbf8f878b4cc6360c979ce7f354b1f556f26ed",
     "game/infrastructure/network/terracotta_gateway.gd": "6dea2d992c8f20a4a470d7c7c04476234e2b0364112e70d43d184b76bc669769",
     "game/infrastructure/network/terracotta_protocol.gd": "9c5e5b4c6efc335bff8a68c784b2cc73c76b15748f820efa0156be2a112b2f1c",

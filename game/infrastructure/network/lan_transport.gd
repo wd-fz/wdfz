@@ -13,6 +13,16 @@ var peer: ENetMultiplayerPeer
 var serving := false
 var bytes_sent := 0
 var bytes_received := 0
+var wire_sent := 0
+var wire_received := 0
+var packets_sent := 0
+var packets_received := 0
+var endpoint := ""
+var role := ""
+var local_port := 0
+var last_state := "idle"
+var last_error := ""
+var _stats_time := 0.0
 var _budgets: Dictionary = {}
 var _budget_time := 0.0
 enum Packet { CONTROL, INPUT, CHUNK, MOTION }
@@ -39,8 +49,9 @@ func _ready() -> void:
 
 func host(port: int) -> String:
 	close()
-	bytes_sent = 0
-	bytes_received = 0
+	reset_diagnostics()
+	role = "host"
+	endpoint = "0.0.0.0:%d" % port
 	peer = ENetMultiplayerPeer.new()
 	# Discovery and direct join both use IPv4. Do not rely on an Android
 	# dual-stack wildcard accepting IPv4 on every Wi-Fi / tethering interface.
@@ -50,35 +61,84 @@ func host(port: int) -> String:
 	var error := peer.create_server(port, 6, LanProtocol.CHANNELS)
 	if error != OK:
 		peer = null
-		return "无法创建房间，端口可能被占用（%d）。" % error
+		last_error = "无法创建房间，端口可能被占用（%d）。" % error
+		return last_error
 	serving = true
+	# Godot 4.6.3 create_server passes max_channels + SYSCH_MAX as incoming
+	# bandwidth (7 B/s here). Restore unlimited bandwidth before the first poll;
+	# otherwise healthy clients lose most of their unreliable input packets.
+	peer.host.bandwidth_limit(0, 0)
 	# Compressed ENet datagrams leave space for EasyTier's tunnel headers.
 	# Uncompressed fragmented snapshots otherwise stall across its UDP forwarding path.
 	peer.host.compress(ENetConnection.COMPRESS_RANGE_CODER)
 	api.multiplayer_peer = peer
+	sample_network()
 	return ""
 
 
-func join(ip: String, port: int) -> String:
+func join(ip: String, port: int, reset_stats: bool = true) -> String:
 	close()
-	bytes_sent = 0
-	bytes_received = 0
+	if reset_stats: reset_diagnostics()
+	role = "client"
+	endpoint = "%s:%d" % [ip, port]
 	peer = ENetMultiplayerPeer.new()
 	var error := peer.create_client(ip, port, LanProtocol.CHANNELS)
 	if error != OK:
 		peer = null
-		return "无法连接房间（%d）。" % error
+		last_error = "无法连接房间（%d）。" % error
+		return last_error
 	peer.host.compress(ENetConnection.COMPRESS_RANGE_CODER)
 	api.multiplayer_peer = peer
+	sample_network()
 	return ""
 
 
 func close() -> void:
+	sample_network()
 	if peer != null: peer.close()
 	peer = null
 	serving = false
 	api.multiplayer_peer = OfflineMultiplayerPeer.new()
 	_budgets.clear()
+
+
+func reset_diagnostics() -> void:
+	bytes_sent = 0
+	bytes_received = 0
+	wire_sent = 0
+	wire_received = 0
+	packets_sent = 0
+	packets_received = 0
+	endpoint = ""
+	role = ""
+	local_port = 0
+	last_state = "idle"
+	last_error = ""
+	_stats_time = 0.0
+
+
+func sample_network() -> void:
+	if peer == null: return
+	var state := peer.get_connection_status()
+	# A failed poll can already have destroyed the host before its signal runs.
+	if state == MultiplayerPeer.CONNECTION_DISCONNECTED: return
+	var socket := peer.host
+	wire_sent += int(socket.pop_statistic(ENetConnection.HOST_TOTAL_SENT_DATA))
+	wire_received += int(socket.pop_statistic(ENetConnection.HOST_TOTAL_RECEIVED_DATA))
+	packets_sent += int(socket.pop_statistic(ENetConnection.HOST_TOTAL_SENT_PACKETS))
+	packets_received += int(socket.pop_statistic(ENetConnection.HOST_TOTAL_RECEIVED_PACKETS))
+	local_port = socket.get_local_port()
+	last_state = "listening" if serving else "connected" if state == MultiplayerPeer.CONNECTION_CONNECTED else "connecting"
+	if not serving:
+		var remotes := socket.get_peers()
+		if not remotes.is_empty(): last_state += " / peer=%d" % remotes[0].get_state()
+
+
+func _process(dt: float) -> void:
+	_stats_time += dt
+	if _stats_time >= 0.25:
+		_stats_time = 0.0
+		sample_network()
 
 
 func expire_peer(id: int) -> void:
