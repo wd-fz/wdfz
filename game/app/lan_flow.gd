@@ -40,6 +40,11 @@ var remote := TerracottaSession.new()
 var _remote_mode := false
 var _remote_token := ""
 var _diagnostic_timer := 0.0
+var history := CooperativeConnectionHistory.new()
+var _room_phase := ""
+var _display_addresses := ""
+var _network_hint: Label
+var _rescan_timer := 0.0
 
 
 func _ready() -> void:
@@ -61,7 +66,7 @@ func _ready() -> void:
 	panel.start_requested.connect(func() -> void:
 		if _remote_mode and not remote.available: return
 		var error := network.start()
-		if error != "": panel.status.text = error)
+		if error != "": panel.feedback(error))
 	panel.close_requested.connect(func() -> void:
 		if _lost: app.return_to_menu()
 		elif playing(): resume()
@@ -88,21 +93,25 @@ func _ready() -> void:
 	network.discovery.found.connect(panel.found)
 	network.discovery.scanning_changed.connect(panel.scanning)
 	network.room_changed.connect(_room_changed)
-	network.connection_changed.connect(func(text: String) -> void: panel.status.text = text)
+	network.connection_changed.connect(func(text: String) -> void: panel.feedback(text, 0))
 	network.snapshot_received.connect(_snapshot)
 	network.motion_received.connect(_motion)
 	network.notice.connect(func(text: String) -> void:
 		app.ui.show_notice(text)
-		if panel.visible: panel.status.text = text)
+		if panel.visible: panel.feedback(text))
 	network.closed.connect(func(reason: String) -> void:
 		_cancel_preparation()
 		if _remote_mode: remote.stop()
 		_lost = true
+		_reset_local_modals()
 		app.player.enabled = false
 		app.player.clear_input()
+		app.ui.clear_touch()
+		_watch.hide()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		panel.show_room({}, "", "")
 		panel.set_busy(false)
+		_refresh_history()
 		panel.connection_info.text = network.connection_details()
 		panel.show()
 		panel.show_connection_error(reason))
@@ -122,13 +131,13 @@ func _ready() -> void:
 			var error := network.join(target, panel.nickname.text, _remote_token)
 			if error != "":
 				remote.stop()
-				panel.status.text = error)
+				panel.feedback(error))
 	remote.stopped.connect(func() -> void: panel.set_busy(false))
 	remote.failed.connect(func(reason: String) -> void:
 		if network.active(): network._lost(reason)
 		else:
 			panel.show_room({}, "", "")
-			panel.status.text = reason)
+			panel.show_connection_error(reason))
 	_team = Button.new()
 	_team.text = "队伍"
 	_team.position = Vector2(16, 64)
@@ -136,11 +145,19 @@ func _ready() -> void:
 	_team.visible = false
 	_team.pressed.connect(open)
 	app.ui.hud.add_child(_team)
+	_network_hint = Label.new()
+	_network_hint.position = Vector2(16, 112)
+	_network_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_network_hint.add_theme_font_size_override("font_size", 14)
+	_network_hint.add_theme_color_override("font_color", UISkin.MUTED)
+	_network_hint.hide()
+	app.ui.hud.add_child(_network_hint)
 	_watch = Button.new()
 	_watch.text = "观战存活队友"
-	_watch.custom_minimum_size = Vector2(190, 52)
+	_watch.custom_minimum_size = Vector2(230, 52)
+	_watch.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_watch.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	_watch.position = Vector2(-210, 20)
+	_watch.position = Vector2(-246, 80)
 	_watch.visible = false
 	_watch.pressed.connect(func() -> void:
 		_spectating = true
@@ -150,13 +167,10 @@ func _ready() -> void:
 		if not ids.is_empty(): send("spectate", {"target": ids[(ids.find(_observing) + 1) % ids.size()]})
 		_watch.text = "切换观战队友")
 	app.ui.get_node("Root").add_child(_watch)
-	var file := FileAccess.open("user://cooperative/connection.json", FileAccess.READ)
-	if file != null and file.get_length() < 2048:
-		var data: Variant = JSON.parse_string(file.get_as_text())
-		if data is Dictionary:
-			_last_connection = data
-			if data.get("mode", "lan") == "lan": panel.address.text = String(data.get("address", ""))
-			panel.nickname.text = String(data.get("name", "同学"))
+	history.load_file()
+	_last_connection = history.get_entry("lan")
+	panel.address.text = String(_last_connection.get("address", ""))
+	panel.nickname.text = String(_last_connection.get("name", "同学"))
 	_refresh_history()
 
 
@@ -166,7 +180,7 @@ func active() -> bool:
 
 func _open_mode(value: bool) -> void:
 	if active() and not _lost:
-		if value != _remote_mode: panel.status.text = "请先离开当前房间。"
+		if value != _remote_mode: panel.feedback("请先离开当前房间。")
 		open()
 		return
 	var route_error := network.stop()
@@ -175,18 +189,22 @@ func _open_mode(value: bool) -> void:
 		open()
 		return
 	_remote_mode = value
+	_display_addresses = ""
+	_last_connection = history.get_entry("remote" if value else "lan")
 	network.direct_lan = not value
 	panel.set_remote(value)
 	if _last_connection.get("mode", "lan") == ("remote" if value else "lan"):
 		panel.address.text = String(_last_connection.get("code" if value else "address", ""))
+		panel.nickname.text = String(_last_connection.get("name", panel.nickname.text))
 	open()
 
 
 func _host(room_name: String, nick: String, port: int, restore: bool) -> void:
 	if remote.phase != "idle":
 		panel.set_busy(false)
-		panel.status.text = "请等待远程连接关闭。"
+		panel.feedback("请等待远程连接关闭。")
 		return
+	_display_addresses = ""
 	network.direct_lan = not _remote_mode
 	var error := network.host(room_name, nick, port, restore)
 	if error == "" and _remote_mode:
@@ -196,7 +214,7 @@ func _host(room_name: String, nick: String, port: int, restore: bool) -> void:
 	if error != "":
 		panel.set_busy(false)
 		panel.show_room({}, "", "")
-		panel.status.text = error
+		panel.show_connection_error(error)
 
 
 func _join(target: String, nick: String) -> void:
@@ -207,6 +225,7 @@ func _join(target: String, nick: String) -> void:
 		_epoch = ""
 	if network.active() or remote.phase != "idle": return
 	_lost = false
+	_display_addresses = ""
 	panel.set_busy(true)
 	network.direct_lan = not _remote_mode
 	if _remote_mode:
@@ -215,31 +234,32 @@ func _join(target: String, nick: String) -> void:
 			panel.set_busy(false)
 			panel.show_connection_error(route_error)
 			return
-		_remote_token = String(_last_connection.get("token", "")) if _last_connection.get("mode") == "remote" else ""
+		_remote_token = String(_last_connection.get("token", "")) if _last_connection.get("mode") == "remote" and _last_connection.get("code") == target.strip_edges() else ""
 		panel.set_busy(true)
 		var error := remote.begin(false, nick, target)
 		if error != "":
 			panel.set_busy(false)
-			panel.status.text = error
+			panel.show_connection_error(error)
 	else:
 		var error := network.join(target, nick)
 		if error != "":
 			panel.set_busy(false)
-			panel.status.text = error
+			panel.show_connection_error(error)
 
 
 func _cancel_connection() -> void:
 	network.stop()
 	remote.stop()
 	_lost = false
+	_display_addresses = ""
 	panel.show_room({}, "", "")
 	panel.set_busy(remote.phase != "idle")
-	panel.status.text = "已取消连接。" if remote.phase == "idle" else "正在关闭远程连接……"
+	panel.feedback("已取消连接。" if remote.phase == "idle" else "正在关闭远程连接……")
 	_refresh_history()
 
 
 func _refresh_history() -> void:
-	panel.set_history(not _last_connection.is_empty(), FileAccess.file_exists(network.store.path) or FileAccess.file_exists(network.store.path + ".bak"))
+	panel.set_history(not _last_connection.is_empty(), FileAccess.file_exists(network.store.path) or FileAccess.file_exists(network.store.path + ".bak"), String(_last_connection.get("address", "")))
 
 
 func playing() -> bool:
@@ -248,6 +268,11 @@ func playing() -> bool:
 
 func open() -> void:
 	if playing(): pause()
+	if network.room != null:
+		panel.show_room(network.room.public_state(), network.local_id, _room_addresses())
+	if playing():
+		panel.inventory(app._bag_entries())
+		panel.show_team(current.get("team", {}))
 	panel.show()
 	_refresh_history()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -256,14 +281,19 @@ func open() -> void:
 
 func reconnect() -> void:
 	if _last_connection.is_empty():
-		panel.status.text = "没有原成员重连信息。请先加入一个房间。"
+		panel.feedback("没有原成员重连信息。请先加入一个房间。")
 		return
 	_epoch = ""
 	_installed = false
+	_cancel_preparation()
+	_reset_local_modals()
+	prediction.clear()
+	_view_scene = -1
+	_display_addresses = ""
 	_lost = false
 	network.stop()
 	if remote.phase != "idle":
-		panel.status.text = "远程连接正在关闭，请稍后再试。"
+		panel.feedback("远程连接正在关闭，请稍后再试。")
 		return
 	panel.show_room({}, "", "")
 	if _last_connection.get("mode") == "remote":
@@ -278,8 +308,10 @@ func reconnect() -> void:
 	panel.set_remote(false)
 	panel.set_busy(true)
 	var error := network.join(String(_last_connection["address"]), String(_last_connection["name"]), String(_last_connection["token"]))
-	if error != "": panel.set_busy(false)
-	panel.status.text = error if error != "" else "正在恢复原角色……"
+	if error != "":
+		panel.set_busy(false)
+		panel.show_connection_error(error)
+	else: panel.feedback("正在恢复原角色……", 0)
 
 
 func _addresses() -> String:
@@ -291,18 +323,23 @@ func _addresses() -> String:
 	return " / ".join(list)
 
 
+func _room_addresses() -> String:
+	if _display_addresses.is_empty(): _display_addresses = _addresses() if network.transport.serving else network.address
+	return _display_addresses
+
+
 func _room_changed(state: Dictionary) -> void:
-	panel.show_room(state, network.local_id, _addresses() if network.transport.serving else network.address)
-	panel.connection_info.text = network.connection_details()
+	var phase := String(state.get("phase", ""))
+	if panel.visible or phase != _room_phase or phase != "playing": panel.show_room(state, network.local_id, _room_addresses())
+	_room_phase = phase
 	if not network.transport.serving and network.reconnect_token != "" and network.address != "":
 		_last_connection = {"address": network.address, "name": network.nickname, "token": network.reconnect_token}
 		if _remote_mode:
 			_last_connection["mode"] = "remote"
 			_last_connection["code"] = remote.code
 			_last_connection.erase("address")
-		DirAccess.make_dir_recursive_absolute("user://cooperative")
-		var file := FileAccess.open("user://cooperative/connection.json", FileAccess.WRITE)
-		if file != null: file.store_string(JSON.stringify(_last_connection))
+		var error := history.remember("remote" if _remote_mode else "lan", _last_connection)
+		if not error.is_empty(): app.ui.show_notice(error)
 	if state.get("phase") == "playing" and _installed and not _paused and not _lost:
 		panel.hide()
 		_sync_input()
@@ -360,6 +397,7 @@ func resume() -> void:
 
 func stop() -> void:
 	_cancel_preparation()
+	_reset_local_modals()
 	remote.stop()
 	network.stop()
 	if is_instance_valid(avatars): avatars.queue_free()
@@ -383,6 +421,11 @@ func stop() -> void:
 	_ending_prompt = ""
 	_board_prompt = ""
 	_recorded = false
+	_input_timer = 0.0
+	_input_seq = 0
+	_remote_token = ""
+	_room_phase = ""
+	_display_addresses = ""
 	if is_instance_valid(_mic): _mic.hide()
 	if is_instance_valid(_watch): _watch.hide()
 	if is_instance_valid(panel):
@@ -390,6 +433,22 @@ func stop() -> void:
 		panel.show_room({}, "", "")
 		panel.set_busy(false)
 	if is_instance_valid(_team): _team.hide()
+	if is_instance_valid(_network_hint): _network_hint.hide()
+
+
+func _reset_local_modals() -> void:
+	_manual = false
+	_special_choice = ""
+	_shown_choice = -1
+	_time_prompt = ""
+	_ending_prompt = ""
+	_board_prompt = ""
+	app.ui.hide_choice()
+	app.ui.hide_bag()
+	app.ui.hide_terminal()
+	app._close_phone()
+	for view: Control in [app.ui.map_panel, app.ui.notes_panel, _mic]:
+		if is_instance_valid(view): view.hide()
 
 
 func _snapshot(data: Dictionary) -> void:
@@ -524,7 +583,9 @@ func _snapshot(data: Dictionary) -> void:
 	_update_offers()
 	app._sync_world()
 	if app.ui.bag_open(): app.ui.show_bag(app._bag_entries(), app.items().capacity())
-	panel.inventory(app._bag_entries())
+	if panel.visible:
+		panel.inventory(app._bag_entries())
+		panel.show_team(data.get("team", {}))
 	_sync_input()
 	if app.phone_open(): app._phone_paint()
 
@@ -555,7 +616,9 @@ func loaded() -> void:
 
 func _event(e: Dictionary) -> void:
 	match e["kind"]:
-		"notice", "wake": app.ui.show_notice(String(e.get("text", "")))
+		"notice", "wake":
+			app.ui.show_notice(String(e.get("text", "")))
+			if panel.visible: panel.feedback(String(e.get("text", "")))
 		"phone": app._open_phone()
 		"mic": open_mic()
 
@@ -607,23 +670,38 @@ func _motion(data: Dictionary) -> void:
 	prediction.reconcile(app.player, position, int(own["ack"]), app.player.enabled and not app.player.seated and not app.player.hiding)
 
 
-func _remote_step(at: Vector3, running: bool) -> void:
+func _remote_step(at: Vector3, running: bool, world: String) -> void:
 	if not playing() or _lost or app.story().over() or network.room.paused_left > 0.0: return
 	if at.distance_to(app.player.global_position) > 12.0: return
-	var world := app.session.world_id
-	var local := app.router.coordinate_frame.to_local(at)
+	var frame := avatars.space.frame(world) if avatars != null and avatars.space != null else app.router.coordinate_frame.global_transform
+	var local := frame.affine_inverse() * at
 	var location := CampusGeometry.to_world(CampusData.rooms().get(world), local.x, local.z)
 	var outdoor := CampusData.layout("out")
-	var surface := AudioFx.surface(world, world == "bell1" and at.y > 0.4, location, outdoor.get("objects", []), float(outdoor.get("SC", 1.0)))
+	var surface := AudioFx.surface(world, world == "bell1" and local.y > 0.4, location, outdoor.get("objects", []), float(outdoor.get("SC", 1.0)))
 	# Player footsteps must not produce the patrol's threat captions.
 	app.audio.step_on(surface, 0.8 if running else 0.55, {"pos": at, "world_pos": true, "self_step": true})
 
 
 func _process(dt: float) -> void:
+	if is_instance_valid(panel) and panel.is_visible_in_tree() and panel.page == "join" and not panel.busy and not _remote_mode and not active():
+		if network.discovery.scanning: _rescan_timer = 0.0
+		else:
+			_rescan_timer += dt
+			if _rescan_timer >= 5.0:
+				_rescan_timer = 0.0
+				network.discover(true)
+	else: _rescan_timer = 0.0
 	_diagnostic_timer += dt
-	if _diagnostic_timer >= 0.5 and is_instance_valid(panel) and panel.visible:
+	if _diagnostic_timer >= 0.5:
 		_diagnostic_timer = 0.0
-		panel.connection_info.text = network.connection_details()
+		if is_instance_valid(panel) and panel.is_visible_in_tree() and panel._details.is_visible_in_tree():
+			panel.connection_info.text = network.connection_details()
+			panel.metrics.text = "%s · 延迟 %.0f ms · 抖动 %.0f ms\n发送 %.1f KiB / 接收 %.1f KiB · 校正误差 %.2f m" % ["房主" if network.transport.serving else "客户端", network.rtt_ms, network.jitter_ms, network.transport.bytes_sent / 1024.0, network.transport.bytes_received / 1024.0, prediction.error_metres]
+		if playing():
+			var silence := Time.get_ticks_msec() / 1000.0 - network._last_heard
+			_network_hint.text = "连接不稳定 · 等待房主回应" if not network.transport.serving and silence > 3.0 else "网络延迟较高" if network.rtt_ms > 350 else ""
+			if network.room.paused_left > 0: _network_hint.text = "全队暂停 · %d 秒后继续" % ceili(network.room.paused_left)
+			_network_hint.visible = not _network_hint.text.is_empty() and not _lost
 
 
 func _physics_process(dt: float) -> void:
@@ -672,6 +750,7 @@ func _physics_process(dt: float) -> void:
 
 
 func _present(dt: float) -> void:
+	if is_instance_valid(avatars): avatars.frozen = network.room.paused_left > 0 or network.room.phase != "playing"
 	var school := app.school()
 	var world := app._campus_world()
 	var pose := app.player.capture_pose()
@@ -723,11 +802,10 @@ func _present(dt: float) -> void:
 			app._stop_death_cg()
 			app.ui.show_death_card(app.story().death_msg, app.story().epitaph(), app.story().cause(), PackedStringArray(), PackedStringArray(), "队友仍在继续；可从队伍窗口查看状态。", app.story().death_source)
 			_watch.visible = not network.room.alive_ids().is_empty()
-	if panel.visible:
-		panel.metrics.text = "%s · RTT %.0f ms · 抖动 %.0f ms · 输入 %d · 确认帧 %d\n已发送 %.1f KiB / 接收 %.1f KiB · 校正误差 %.2f m" % ["房主" if network.transport.serving else "客机", network.rtt_ms, network.jitter_ms, _input_seq, _last_motion, network.transport.bytes_sent / 1024.0, network.transport.bytes_received / 1024.0, prediction.error_metres]
-		if network.simulation != null: panel.metrics.text += "\n活动区域 %d · 巡察目标 %s · 待确认快照 %d" % [network.simulation.physics.zones.size(), network.simulation.patrol.target, network._awaiting.size()]
-	_team.text = "队伍 %d/%d%s" % [network.room.members.size(), network.room.capacity, " · 全队暂停" if network.room.paused_left > 0 else ""]
+	var online := network.room.members.values().filter(func(m: Dictionary) -> bool: return m["connected"] and m["state"] != "departed").size()
+	_team.text = "队伍 %d/%d%s" % [online, network.room.capacity, " · 全队暂停" if network.room.paused_left > 0 else ""]
 	if _spectating: _team.text = "观战 · " + String(network.room.members.get(_observing, {}).get("name", "队友"))
+	if _spectating: _watch.text = "正在观战 %s\n切换队友" % String(network.room.members.get(_observing, {}).get("name", "队友")).left(12)
 
 
 func _sync_input() -> void:

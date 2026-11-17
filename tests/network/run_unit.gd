@@ -93,7 +93,7 @@ func run() -> void:
 	root.add_child(figures)
 	figures.set_process(false)
 	var steps := {"count": 0}
-	figures.stepped.connect(func(_at: Vector3, _running: bool) -> void: steps["count"] += 1)
+	figures.stepped.connect(func(_at: Vector3, _running: bool, _world: String) -> void: steps["count"] += 1)
 	var remote := {"world": "teach1", "scene": 1, "dead": false, "hiding": false, "seated": false, "running": false, "moving": true, "pose": {"position": [1.0, 0.0, 2.0], "yaw": 0.0}}
 	figures.receive({"players": {"b": remote}}, "a", "teach1", {"b": {"name": "队友"}})
 	figures._process(0.1)

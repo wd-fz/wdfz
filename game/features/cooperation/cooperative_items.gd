@@ -95,13 +95,14 @@ func recover(a: CooperativeActor) -> void:
 		revision += 1
 
 
-func transfer(a: CooperativeActor, b: CooperativeActor, item: String) -> bool:
+func transfer(a: CooperativeActor, b: CooperativeActor, item: String, reachable: Callable = Callable()) -> bool:
 	reconcile(a)
 	reconcile(b)
-	if a.id == b.id or a.location() != b.location() or b.fate().over() or not a.bag().has(item) or b.bag().has(item): return false
+	if a.id == b.id or a.fate().over() or b.fate().over() or not a.bag().has(item) or b.bag().has(item): return false
 	var p: Array = a.pose["position"]
 	var q: Array = b.pose["position"]
-	if Vector3(p[0], p[1], p[2]).distance_to(Vector3(q[0], q[1], q[2])) > 2.0 or not b.bag().add(item): return false
+	var near: bool = reachable.call(a, b) if reachable.is_valid() else a.location() == b.location() and Vector3(p[0], p[1], p[2]).distance_to(Vector3(q[0], q[1], q[2])) <= 2.0
+	if not near or not b.bag().add(item): return false
 	owners[b.id][item] = owners[a.id][item]
 	owners[a.id].erase(item)
 	a.bag().remove(item)

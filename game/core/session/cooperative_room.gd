@@ -13,6 +13,7 @@ var host_id := ""
 var capacity := MAX_MEMBERS
 var minimum_loaded := 2
 var difficulty := "easy"
+var title := "好友的校园"
 var tick := 0
 var revision := 0
 var paused_left := 0.0
@@ -26,7 +27,9 @@ func add_member(id: String, nickname: String, is_host: bool = false) -> String:
 	if phase != "lobby": return "游戏已开始，仅原成员可以重连。"
 	if id.is_empty() or members.has(id): return "成员身份重复。"
 	if members.size() >= capacity: return "房间已满。"
-	members[id] = {"name": nickname.strip_edges().left(24), "ready": false, "talent": "none", "state": "lobby", "connected": true, "remaining": RESERVATION_SECONDS}
+	var display_name := nickname.strip_edges().left(24)
+	if display_name.is_empty(): display_name = "同学"
+	members[id] = {"name": display_name, "ready": false, "talent": "none", "state": "lobby", "connected": true, "remaining": RESERVATION_SECONDS}
 	if is_host: host_id = id
 	return ""
 
@@ -134,6 +137,9 @@ func elapsed(dt: float) -> Array:
 		if m["remaining"] <= 0.0:
 			m["state"] = "departed"
 			departed.append(id)
+	if not departed.is_empty():
+		ending_offer.clear()
+		check_loaded()
 	if phase == "playing" and alive_ids().is_empty(): phase = "ended"
 	return departed
 
@@ -185,4 +191,4 @@ func remember(id: String, sequence: int, result: Dictionary) -> void:
 
 
 func public_state() -> Dictionary:
-	return {"revision": revision, "epoch": epoch, "phase": phase, "members": members.duplicate(true), "host": host_id, "capacity": capacity, "difficulty": difficulty, "tick": tick, "paused": paused_left, "ending": ending, "offer": ending_offer.duplicate(true), "debug": debug_run}
+	return {"revision": revision, "epoch": epoch, "phase": phase, "members": members.duplicate(true), "host": host_id, "title": title, "minimum_loaded": minimum_loaded, "capacity": capacity, "difficulty": difficulty, "tick": tick, "paused": paused_left, "ending": ending, "offer": ending_offer.duplicate(true), "debug": debug_run}

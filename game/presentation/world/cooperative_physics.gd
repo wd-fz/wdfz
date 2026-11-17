@@ -125,6 +125,26 @@ func maintain(dt: float, active: Array) -> void:
 			_last_seen.erase(key)
 
 
+func actor_position(a: CooperativeActor) -> Vector3:
+	var p: Array = a.pose["position"]
+	var local := Vector3(p[0], p[1], p[2])
+	return space.frame(a.location()) * local if space != null and space.contains(a.location()) else local
+
+
+func actor_distance(a: CooperativeActor, b: CooperativeActor) -> float:
+	if a.location() != b.location() and (space == null or not space.contains(a.location()) or not space.contains(b.location())): return INF
+	return actor_position(a).distance_to(actor_position(b))
+
+
+func can_exchange(a: CooperativeActor, b: CooperativeActor) -> bool:
+	if actor_distance(a, b) > 2.0: return false
+	var from := actor_position(a) + Vector3.UP * 1.1
+	var to := actor_position(b) + Vector3.UP * 1.1
+	if from.distance_squared_to(to) < .0001: return true
+	var query := PhysicsRayQueryParameters3D.create(from, to, 3)
+	return zone(a.location()).find_world_3d().direct_space_state.intersect_ray(query).is_empty()
+
+
 func remove_actor(id: String) -> void:
 	if bodies.has(id):
 		bodies[id].queue_free()

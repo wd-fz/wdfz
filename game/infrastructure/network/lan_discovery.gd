@@ -26,6 +26,7 @@ var _elapsed := 0.0
 var _until := 0.0
 var _replies: Dictionary = {}
 var _reply_window := 0.0
+var _refresh_at := 0.0
 
 
 func serve(info: Dictionary) -> String:
@@ -42,15 +43,17 @@ func serve(info: Dictionary) -> String:
 	return ""
 
 
-func discover() -> void:
-	close()
-	socket = PacketPeerUDP.new()
-	if socket.bind(0, "0.0.0.0") != OK:
-		socket = null
-		scanning_changed.emit(false)
-		return
+func discover(preserve: bool = false) -> void:
+	if not preserve or socket == null or not advertisement.is_empty():
+		close()
+		socket = PacketPeerUDP.new()
+		if socket.bind(0, "0.0.0.0") != OK:
+			socket = null
+			scanning_changed.emit(false)
+			return
 	socket.set_broadcast_enabled(true)
-	_until = Time.get_ticks_msec() / 1000.0 + SCAN_TIME
+	_refresh_at = Time.get_ticks_msec() / 1000.0
+	_until = _refresh_at + SCAN_TIME
 	_elapsed = PROBE_EVERY
 	scanning = true
 	scanning_changed.emit(true)
@@ -83,7 +86,7 @@ func _process(dt: float) -> void:
 		# Rooms only expire while probing; once the scan ends the last list stays for the player to pick.
 		var expired := false
 		for key: String in rooms.keys():
-			if now - float(rooms[key]["seen"]) > ROOM_TTL:
+			if now - maxf(float(rooms[key]["seen"]), _refresh_at) > ROOM_TTL:
 				rooms.erase(key)
 				expired = true
 		if expired: found.emit(rooms.values())

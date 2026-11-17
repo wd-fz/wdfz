@@ -9,6 +9,8 @@ static func validate(data: Dictionary) -> String:
 		if not data.get(key) is Dictionary: return "合作存档缺少 " + key
 	var room: Dictionary = data["room"]
 	var actors: Dictionary = data["actors"]
+	if room.has("title") and (not room["title"] is String or String(room["title"]).length() > 32): return "合作房间名称无效。"
+	if room.has("minimum_loaded") and not SaveSchema.is_integer(room["minimum_loaded"], 1, 2): return "合作加载人数无效。"
 	if not room.get("members") is Dictionary or actors.size() < 2 or actors.size() > 4 or actors.size() != room["members"].size() or not actors.has(room.get("host")): return "合作成员表无效。"
 	if room.get("difficulty") not in StoryModule.DIFFICULTIES or not room.get("epoch") is String: return "合作规则无效。"
 	if room.get("phase") not in ["loading", "playing", "ended"] or not SaveSchema.is_integer(room.get("capacity"), 2, 4): return "合作房间阶段无效。"

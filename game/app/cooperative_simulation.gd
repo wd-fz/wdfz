@@ -223,6 +223,7 @@ func state_for(id: String) -> Dictionary:
 	data["time_offer"] = gameplay._time_offer.duplicate(true)
 	data["driver"] = gameplay.driver
 	data["boarding"] = gameplay.boarding.duplicate(true)
+	data["team"] = team_for(a)
 	var radio: BroadcastModule = shared[&"story.broadcast"]
 	data["radio_live"] = {"held": radio.held, "progress": radio.progress}
 	var observing := observed(id)
@@ -230,6 +231,19 @@ func state_for(id: String) -> Dictionary:
 		data["observed"] = actor(observing).capture()
 		data["observed"]["id"] = observing
 	return data
+
+
+## Small, reliable team summaries stay out of the MTU-limited motion stream.
+func team_for(viewer: CooperativeActor) -> Dictionary:
+	var team := {}
+	for id: String in actors:
+		if room.members[id]["state"] == "departed": continue
+		var other := actor(id)
+		var distance := physics.actor_distance(viewer, other)
+		team[id] = {"place": other.school().place_name(other.location(), float(other.pose["position"][1])),
+			"distance": snappedf(distance, .1) if is_finite(distance) else -1.0,
+			"can_give": id != viewer.id and room.members[id]["connected"] and not viewer.fate().over() and not other.fate().over() and physics.can_exchange(viewer, other)}
+	return team
 
 
 func observed(id: String) -> String:

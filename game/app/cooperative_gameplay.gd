@@ -232,7 +232,12 @@ func command(a: CooperativeActor, data: Dictionary) -> Dictionary:
 			if not sim.inventory.pickup(a, String(data.get("uid", "")), sim.reachable): return {"ok": false, "error": "物品已被拿走、无法触及或背包已满。"}
 		"give":
 			var other := sim.actor(String(data.get("to", "")))
-			if other == null or other.id not in sim.room.alive_ids() or not sim.room.members[other.id]["connected"] or not sim.reachable(a, {"x": other.pose["position"][0], "y": other.pose["position"][1], "z": other.pose["position"][2]}) or not sim.inventory.transfer(a, other, String(data.get("item", ""))): return {"ok": false, "error": "请靠近队友并确认对方背包有空位。"}
+			if other == null or other.id not in sim.room.alive_ids() or not sim.room.members[other.id]["connected"]: return {"ok": false, "error": "这位队友暂时无法接收物品。"}
+			if not sim.physics.can_exchange(a, other): return {"ok": false, "error": "请走到队友身边（2 米内），并打开中间的门。"}
+			var item := String(data.get("item", ""))
+			if not sim.inventory.transfer(a, other, item, sim.physics.can_exchange): return {"ok": false, "error": "交付失败：请确认物品仍在背包，对方有空位且没有同类物品。"}
+			a.event("notice", {"text": "已将「%s」交给 %s。" % [a.bag().item_name(item), sim.room.members[other.id]["name"]]})
+			other.event("notice", {"text": "%s 交给你「%s」。" % [sim.room.members[a.id]["name"], other.bag().item_name(item)]})
 		"hot":
 			if not SaveSchema.is_integer(data.get("index"), 0, 1): return {"ok": false, "error": "快捷栏无效。"}
 			a.bag().set_hot(int(data["index"]), data.get("item"))

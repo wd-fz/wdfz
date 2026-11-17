@@ -79,6 +79,22 @@ var _debug_target: OptionButton
 var _room_buttons: Dictionary = {}
 var _keyboard_height := 0
 var _keyboard_timer := 0.0
+var _feedback_until := 0
+var _default_status := ""
+var _team: Dictionary = {}
+var _gift_buttons: Dictionary = {}
+var _talent_info: HBoxContainer
+var _talent_image: TextureRect
+var _talent_text: Label
+var _retry: Button
+var _can_reconnect := false
+var _reconnect_address := ""
+var _connection_failed := false
+var _confirmation: Dictionary = {}
+var _confirm_box: VBoxContainer
+var _confirm_text: Label
+var _confirm_button: Button
+var _help_button: Button
 
 
 func _ready() -> void:
@@ -110,6 +126,12 @@ func _ready() -> void:
 	# its viewport into the fixed tabs/footer on a short landscape screen.
 	status = _label(content, "2–4 人合作 · 一人建房，好友加入")
 	status.add_theme_color_override("font_color", UISkin.MUTED)
+	_retry = _button(content, "重连原角色", func() -> void: reconnect_requested.emit(), "RetryConnection")
+	_retry.hide()
+	_confirm_box = VBoxContainer.new()
+	content.add_child(_confirm_box)
+	_confirm_text = _label(_confirm_box, "")
+	_confirm_box.hide()
 	host_form = VBoxContainer.new()
 	host_form.add_theme_constant_override("separation", 10)
 	content.add_child(host_form)
@@ -200,7 +222,7 @@ func _ready() -> void:
 	_invitation.editable = false
 	_copy_code = _button(invitation_row, "复制", func() -> void:
 		DisplayServer.clipboard_set(_invitation.text)
-		status.text = "邀请码已复制，发给好友即可加入。", "CopyInvitation")
+		feedback("邀请码已复制，发给好友即可加入。"), "CopyInvitation")
 	members = VBoxContainer.new()
 	lobby.add_child(members)
 	talent = OptionButton.new()
@@ -210,15 +232,24 @@ func _ready() -> void:
 		_gifts.append(key)
 		talent.add_item("天赋 · " + String(TalentModule.DEF[key]["n"]))
 	lobby.add_child(talent)
+	_talent_info = HBoxContainer.new()
+	lobby.add_child(_talent_info)
+	_talent_image = TextureRect.new()
+	_talent_image.custom_minimum_size = Vector2(72, 72)
+	_talent_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_talent_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_talent_info.add_child(_talent_image)
+	_talent_text = _label(_talent_info, "", 16)
 	talent.item_selected.connect(func(_index: int) -> void:
 		ready_button.set_pressed_no_signal(false)
+		_update_talent()
 		ready_requested.emit(false, String(_gifts[talent.selected])))
 	_team_actions = _fold(lobby, "队伍操作", "TeamActions")
 	var pause_row := HBoxContainer.new()
 	pause_row.name = "PauseRow"
 	_team_actions.add_child(pause_row)
 	_button(pause_row, "全队暂停", func() -> void: pause_requested.emit(true)).name = "PauseTeam"
-	_button(pause_row, "继续游戏", func() -> void: pause_requested.emit(false))
+	_button(pause_row, "恢复全队", func() -> void: pause_requested.emit(false), "ResumeTeam")
 	_button(_team_actions, "共同逃离", func() -> void: ending_requested.emit(), "EscapeTeam")
 	_button(_team_actions, "保存进度", func() -> void: save_requested.emit()).name = "SaveTeam"
 	transfer = OptionButton.new()
@@ -235,7 +266,7 @@ func _ready() -> void:
 	_copy_address = _button(_network_details, "复制连接地址", func() -> void:
 		if address_options.selected >= 0:
 			DisplayServer.clipboard_set(address_options.get_item_text(address_options.selected))
-			status.text = "地址已复制，让好友在“直接连接”中粘贴。")
+			feedback("地址已复制，让好友在“直接连接”中粘贴。"))
 	_label(_details, "双方使用同一版本，连接同一 Wi-Fi 或房主热点，并保持游戏前台。\n能发现房间但加入失败时，请复制房主与客户端两端的诊断；发现房间与游戏连接使用不同端口。")
 	connection_info = _label(_details, "")
 	connection_info.add_theme_font_size_override("font_size", 14)
@@ -243,7 +274,7 @@ func _ready() -> void:
 	metrics.add_theme_font_size_override("font_size", 14)
 	_button(_details, "复制诊断信息", func() -> void:
 		DisplayServer.clipboard_set(connection_info.text + "\n" + metrics.text)
-		status.text = "诊断信息已复制。", "CopyDiagnostics")
+		feedback("诊断信息已复制。"), "CopyDiagnostics")
 	var debug := _fold(_details, "房主调试工具", "HostDebug")
 	_button(debug, "恢复本人状态（标记整局）", func() -> void: debug_requested.emit("debug_recover", {}))
 	_debug_target = OptionButton.new()
@@ -265,11 +296,12 @@ func _ready() -> void:
 	var footer := HBoxContainer.new()
 	column.add_child(footer)
 	_back = _button(footer, "返回", _go_back, "Back")
-	_leave = _button(footer, "离开房间", func() -> void: leave_requested.emit(), "LeaveRoom")
+	_confirm_button = _button(footer, "确认", _confirm_action, "ConfirmRoomAction")
+	_leave = _button(footer, "离开房间", _ask_leave, "LeaveRoom")
 	_settings_button.reparent(footer)
-	var help_button: Button = _details.get_parent().get_child(0)
-	help_button.text = "连接帮助"
-	help_button.reparent(footer)
+	_help_button = _details.get_parent().get_child(0)
+	_help_button.text = "连接帮助"
+	_help_button.reparent(footer)
 	var manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/lan_manifest.json"))
 	if manifest is Dictionary: _local_content = String(manifest.get("digest", ""))
 	get_viewport().size_changed.connect(refit)
@@ -290,22 +322,28 @@ func select_page(value: String) -> void:
 
 
 func show_connection_error(reason: String) -> void:
-	status.text = reason
+	_connection_failed = true
+	feedback(reason, 0)
 	_details.show()
+	_update_layout()
 	_scroll.stop_motion()
 	_scroll.scroll_vertical = 0
 	refit.call_deferred()
 
 
 func _go_back() -> void:
-	if busy:
+	if not _confirmation.is_empty(): _cancel_confirmation()
+	elif busy:
 		cancel_requested.emit()
 	elif _state.is_empty() and page != "home": select_page("home")
+	elif not _state.is_empty() and _state.get("phase") not in ["playing", "ended"]: _ask_leave()
 	else: close_requested.emit()
 
 
 func _create(restore: bool) -> void:
 	if busy or not _state.is_empty(): return
+	_connection_failed = false
+	_feedback_until = 0
 	var nick := nickname.text.strip_edges()
 	if nick == "": nick = "同学"
 	var title := room_name.text.strip_edges()
@@ -317,6 +355,8 @@ func _create(restore: bool) -> void:
 
 func request_join(target: String) -> void:
 	if busy or not _state.is_empty(): return
+	_connection_failed = false
+	_feedback_until = 0
 	address.text = target.strip_edges()
 	var nick := nickname.text.strip_edges()
 	if nick == "": nick = "同学"
@@ -324,9 +364,12 @@ func request_join(target: String) -> void:
 	join_requested.emit(address.text, nick)
 
 
-func set_history(reconnect: bool, restore: bool) -> void:
+func set_history(reconnect: bool, restore: bool, endpoint: String = "") -> void:
+	_can_reconnect = reconnect
+	_reconnect_address = endpoint
 	_reconnect.visible = reconnect
 	_restore.visible = restore
+	_retry.visible = reconnect and _connection_failed and not busy
 
 
 func set_remote(value: bool) -> void:
@@ -334,14 +377,20 @@ func set_remote(value: bool) -> void:
 	_remote_status = ""
 	_remote_connected = false
 	_scanned = false
+	_connection_failed = false
+	_feedback_until = 0
+	_confirmation.clear()
+	_team.clear()
 	address.text = ""
 	address.placeholder_text = "粘贴好友的邀请码 U/…" if value else "粘贴房主地址，例如 192.168.1.2"
 	_invitation.text = ""
 	_copy_code.disabled = true
 	page = "home"
 	_settings.hide()
+	_details.hide()
 	_direct.visible = value
-	status.text = "好友不在身边？创建房间后分享邀请码。" if value else "2–4 人合作 · 一人建房，好友加入"
+	_default_status = "好友不在身边？创建房间后分享邀请码。" if value else "2–4 人合作 · 一人建房，好友加入"
+	status.text = _default_status
 	_update_layout()
 
 
@@ -356,6 +405,9 @@ func remote_status(text: String, invitation: String = "", connected: bool = fals
 
 func set_busy(value: bool) -> void:
 	busy = value
+	if value:
+		_connection_failed = false
+		_feedback_until = 0
 	_update_layout()
 
 
@@ -363,13 +415,20 @@ func _update_layout() -> void:
 	var in_room := not _state.is_empty()
 	var hosting: bool = in_room and _state.get("host") == _local_id
 	var playing: bool = in_room and _state.get("phase") in ["playing", "ended"]
+	var running: bool = in_room and _state.get("phase") == "playing"
 	var waiting: bool = in_room and _state.get("phase") == "lobby"
+	var confirming := not _confirmation.is_empty()
 	_heading.text = ("远程联机" if remote_mode else "附近联机") + (" · 队伍" if playing else " · 房间" if in_room else "")
-	_modes.visible = not in_room and not busy
+	if in_room: _heading.text = String(_state.get("title", _heading.text)) + (" · 困难" if _state.get("difficulty") == "hard" else " · 普通")
+	_confirm_box.visible = confirming
+	_confirm_button.visible = confirming
+	_help_button.visible = not confirming
+	_retry.visible = _connection_failed and _can_reconnect and not busy
+	_modes.visible = not in_room and not busy and not confirming
 	for button: Button in _modes.get_children():
 		button.toggle_mode = true
 		button.set_pressed_no_signal((button.name == "RemoteMode") == remote_mode)
-	host_form.visible = not in_room and not busy
+	host_form.visible = not in_room and not busy and not confirming
 	for key: String in _pages: _pages[key].visible = page == key
 	_settings_button.visible = not in_room and not busy
 	_settings_button.text = "收起设置" if _settings.visible else "设置"
@@ -381,86 +440,181 @@ func _update_layout() -> void:
 	discovered.visible = not remote_mode
 	search_note.visible = not remote_mode
 	_progress.visible = busy and not in_room
-	lobby.visible = in_room
+	lobby.visible = in_room and not confirming
 	_remote_info.visible = remote_mode and hosting
 	_network_details.visible = not remote_mode and in_room
 	_team_actions.get_parent().visible = in_room and (hosting or playing)
-	_team_actions.get_node("PauseRow").visible = playing
+	_team_actions.get_node("PauseRow").visible = running
 	_team_actions.find_child("PauseTeam", true, false).visible = hosting
-	_team_actions.get_node("SaveTeam").visible = hosting and playing
-	_team_actions.get_node("EscapeTeam").visible = playing
-	transfer.visible = playing
-	_details.get_node("HostDebug").visible = hosting and playing
+	_team_actions.get_node("SaveTeam").visible = hosting and running
+	_team_actions.get_node("EscapeTeam").visible = running
+	transfer.visible = running
+	_details.get_node("HostDebug").visible = hosting and running
 	talent.visible = waiting
-	_actions.visible = waiting
+	_talent_info.visible = waiting
+	_actions.visible = waiting and not confirming
 	ready_button.visible = waiting
 	start_button.visible = waiting and hosting
-	start_button.disabled = remote_mode and not _remote_connected
+	_update_readiness()
 	ready_button.disabled = remote_mode and not _remote_connected
-	_back.text = "取消连接" if busy else "返回游戏" if playing else "关闭房间" if hosting else "离开房间" if in_room else "返回"
-	_leave.visible = playing
+	_back.text = "取消" if confirming else "取消连接" if busy else "返回游戏" if playing else "关闭房间" if hosting else "离开房间" if in_room else "返回"
+	_leave.visible = playing and not confirming
+	_details.get_parent().visible = not confirming
+	_update_talent()
 	refit.call_deferred()
 
 
 func show_room(state: Dictionary, local_id: String, addresses: String) -> void:
+	var old_phase := String(_state.get("phase", ""))
 	_state = state
 	_local_id = local_id
 	if not is_node_ready(): return
-	if not state.is_empty(): busy = false
+	if not state.is_empty():
+		busy = false
+		_connection_failed = false
+		if old_phase.is_empty(): _details.hide()
 	if addresses != "" and addresses != String(address_options.get_meta("list", "")):
 		address_options.set_meta("list", addresses)
 		address_options.clear()
 		for value: String in addresses.split(" / "): address_options.add_item(value)
 	if state.is_empty():
 		_member_key = ""
+		_team.clear()
+		_confirmation.clear()
+		_default_status = "好友不在身边？创建房间后分享邀请码。" if remote_mode else "2–4 人合作 · 一人建房，好友加入"
+		if _feedback_until == 0: status.text = _default_status
 		_update_layout()
 		return
+	if _confirmation.get("kind") == "remove" and state.get("members", {}).get(_confirmation.get("id"), {}).get("state", "departed") == "departed":
+		_cancel_confirmation()
 	var hosting: bool = state.get("host") == local_id
-	var playing: bool = state.get("phase") in ["playing", "ended"]
-	status.text = "个人菜单不会暂停队友。" if playing else "选择天赋并准备，房主开始游戏。"
-	if remote_mode and not _remote_connected: status.text = _remote_status
-	var structural := [str(playing), local_id, String(state.get("host", ""))]
-	for id: String in state["members"]: structural.append(id + String(state["members"][id]["state"]))
+	_default_status = LanRoomView.summary(state)
+	if remote_mode and not _remote_connected: _default_status = _remote_status
+	if old_phase != String(state.get("phase", "")): _feedback_until = 0
+	if _feedback_until == 0: status.text = _default_status
+	var structural := [String(state.get("phase", "")), local_id, String(state.get("host", ""))]
+	var ids := LanRoomView.ordered_ids(state, local_id)
+	for id: String in ids: structural.append(id + String(state["members"][id]["state"]))
 	var member_key := "|".join(PackedStringArray(structural))
+	var changed := _member_key != member_key
 	if _member_key != member_key:
 		_member_key = member_key
 		_member_labels.clear()
+		_gift_buttons.clear()
 		_clear(members)
 		_clear(_management)
 		_debug_target.clear()
-		for id: String in state["members"]:
+		for id: String in ids:
 			_member_labels[id] = _label(UISkin.card(members), "")
+			_member_labels[id].add_theme_color_override("font_color", LanRoomView.color(id))
 			var m: Dictionary = state["members"][id]
-			if id == local_id: continue
+			if id == local_id or m["state"] == "departed": continue
 			_debug_target.add_item(String(m["name"]))
 			_debug_target.set_item_metadata(_debug_target.item_count - 1, id)
 			var row := HBoxContainer.new()
 			_management.add_child(row)
 			_label(row, String(m["name"]))
-			if playing and m["state"] == "alive":
-				_button(row, "交付物品", func() -> void:
-					if transfer.selected >= 0: give_requested.emit(id, String(transfer.get_item_metadata(transfer.selected))))
-			if hosting: _button(row, "移除", func() -> void: remove_requested.emit(id))
-	for id: String in state["members"]:
-		var m: Dictionary = state["members"][id]
-		var role := " · 房主" if id == state.get("host") else ""
-		var detail := "已离队" if m["state"] == "departed" else "观战中" if m["state"] == "dead" else "暂时断线" if not m["connected"] else "已准备" if m["ready"] and not playing else "探索中" if playing else "未准备"
-		_member_labels[id].text = "%s%s%s    %s" % [m["name"], "（你）" if id == local_id else "", role, detail]
+			if state.get("phase") == "playing" and m["state"] == "alive":
+				_gift_buttons[id] = _button(row, "交付物品", func() -> void:
+					if transfer.selected >= 0 and transfer.get_item_metadata(transfer.selected) != null: give_requested.emit(id, String(transfer.get_item_metadata(transfer.selected))))
+			if hosting: _button(row, "移除", func() -> void: _ask_remove(id))
+	_update_members()
 	if state["members"].has(local_id):
 		ready_button.set_pressed_no_signal(state["members"][local_id]["ready"])
 		var chosen := _gifts.find(state["members"][local_id]["talent"])
 		if chosen >= 0: talent.select(chosen)
-	_update_layout()
+	if changed or old_phase != String(state.get("phase", "")): _update_layout()
+	else:
+		_update_readiness()
+		_update_talent()
 
 
 func inventory(entries: Array) -> void:
-	var wanted := "|".join(PackedStringArray(entries.map(func(e: Dictionary) -> String: return String(e["id"]))))
+	var wanted := JSON.stringify(entries.map(func(e: Dictionary) -> Array: return [e["id"], e.get("name", e["id"])]))
 	if wanted == String(transfer.get_meta("items", "")): return
+	var selected: Variant = transfer.get_item_metadata(transfer.selected) if transfer.selected >= 0 else null
 	transfer.set_meta("items", wanted)
 	transfer.clear()
 	for entry: Dictionary in entries:
 		transfer.add_item(String(entry.get("name", entry["id"])))
 		transfer.set_item_metadata(transfer.item_count - 1, entry["id"])
+		if selected == entry["id"]: transfer.select(transfer.item_count - 1)
+	if entries.is_empty(): transfer.add_item("背包里暂无可交付物品")
+	transfer.disabled = entries.is_empty()
+	_update_members()
+
+
+func feedback(text: String, seconds: float = 5.0) -> void:
+	status.text = text
+	_feedback_until = Time.get_ticks_msec() + int(seconds * 1000) if seconds > 0 else -1
+
+
+func show_team(details: Dictionary) -> void:
+	_team = details
+	_update_members()
+
+
+func _update_members() -> void:
+	for id: String in _member_labels:
+		var member: Dictionary = _state.get("members", {}).get(id, {})
+		_member_labels[id].text = LanRoomView.member_text(id, member, _state, _local_id, _team.get(id, {}))
+	for id: String in _gift_buttons:
+		var near: bool = _team.get(id, {}).get("can_give", false)
+		var online: bool = _state.get("members", {}).get(id, {}).get("connected", false)
+		var button: Button = _gift_buttons[id]
+		button.disabled = transfer.disabled or not online or not near or _state.get("phase") != "playing"
+		button.text = "等待重连" if not online else "靠近并开门" if not near else "交付物品"
+
+
+func _update_readiness() -> void:
+	var hint := LanRoomView.start_hint(_state)
+	start_button.disabled = _state.get("phase") != "lobby" or not hint.is_empty() or (remote_mode and not _remote_connected)
+	start_button.text = "等待远程连接" if remote_mode and not _remote_connected else hint if not hint.is_empty() else "开始合作"
+	var paused: bool = float(_state.get("paused", 0)) > 0
+	(_team_actions.get_node("PauseRow/PauseTeam") as Button).disabled = paused
+	(_team_actions.get_node("PauseRow/ResumeTeam") as Button).disabled = not paused
+
+
+func _update_talent() -> void:
+	var id := String(_gifts[talent.selected]) if talent.selected >= 0 else "none"
+	if _talent_info.get_meta("gift", "") == id: return
+	_talent_info.set_meta("gift", id)
+	var data: Dictionary = TalentModule.DEF.get(id, {})
+	_talent_image.texture = UIArt.talent(id) if not data.is_empty() else null
+	_talent_image.visible = _talent_image.texture != null
+	_talent_text.text = String(data.get("does", "不选择天赋也可以开始。每位队员独立选择。"))
+	if not data.is_empty(): _talent_text.text += "\n" + String(data["limit"])
+
+
+func _ask_leave() -> void:
+	if _state.is_empty(): close_requested.emit(); return
+	var hosting: bool = _state.get("host") == _local_id
+	_confirmation = {"kind": "leave"}
+	_confirm_text.text = "关闭房间会断开所有队友。合作进度由房主保管，可先保存。" if hosting else "离开后将断开连接。角色暂时保留，可使用本机重连记录回来。"
+	_confirm_button.text = "确认关闭房间" if hosting else "确认离开"
+	_scroll.scroll_vertical = 0
+	_update_layout()
+
+
+func _ask_remove(id: String) -> void:
+	if not _state.get("members", {}).has(id): return
+	_confirmation = {"kind": "remove", "id": id}
+	_confirm_text.text = "将 %s 移出本局？该角色无法再重连，携带物品会留在校园。" % _state["members"][id]["name"]
+	_confirm_button.text = "确认移除"
+	_scroll.scroll_vertical = 0
+	_update_layout()
+
+
+func _cancel_confirmation() -> void:
+	_confirmation.clear()
+	_update_layout()
+
+
+func _confirm_action() -> void:
+	var action := _confirmation.duplicate()
+	_cancel_confirmation()
+	if action.get("kind") == "leave": leave_requested.emit()
+	elif action.get("kind") == "remove": remove_requested.emit(String(action["id"]))
 
 
 func scanning(active: bool) -> void:
@@ -483,16 +637,21 @@ func found(list: Array) -> void:
 		var incompatible: bool = entry.has("content") and entry["content"] != _local_content
 		var full := int(entry.get("count", 0)) >= int(entry.get("capacity", 4))
 		var phase := String(entry.get("phase", "lobby"))
-		var note := "版本不同，请双方更新" if incompatible else "房间已满" if full else "游戏进行中" if phase != "lobby" else "点击加入"
+		var remembered := LanProtocol.address(_reconnect_address)
+		var rejoin := _can_reconnect and not remembered.is_empty() and remembered == LanProtocol.address(target) and phase != "ended"
+		var note := "版本不同，请双方更新" if incompatible else "恢复原角色" if rejoin else "房间已满" if full else "游戏进行中" if phase != "lobby" else "点击加入"
 		# Discovery replies arrive several times per second. Replacing a button
 		# under a pressed finger loses the release and silently drops the join.
 		if not _room_buttons.has(key):
 			_room_buttons[key] = _button(discovered, "", func() -> void:
-				if _room_buttons.has(key): request_join(String(_room_buttons[key].get_meta("address"))))
+				if not _room_buttons.has(key) or busy: return
+				if _room_buttons[key].get_meta("rejoin", false): reconnect_requested.emit()
+				else: request_join(String(_room_buttons[key].get_meta("address"))))
 		var button: Button = _room_buttons[key]
 		button.text = "%s    %d/%d 人\n%s" % [entry["name"], int(entry.get("count", 0)), int(entry.get("capacity", 4)), note]
 		button.set_meta("address", target)
-		button.disabled = incompatible or full or phase != "lobby"
+		button.set_meta("rejoin", rejoin)
+		button.disabled = incompatible or (not rejoin and (full or phase != "lobby"))
 		button.custom_minimum_size.y = 68
 	for key: String in _room_buttons.keys():
 		if wanted.has(key): continue
@@ -567,6 +726,9 @@ func refit() -> void:
 
 
 func _process(dt: float) -> void:
+	if _feedback_until > 0 and Time.get_ticks_msec() >= _feedback_until:
+		_feedback_until = 0
+		status.text = _default_status
 	if not is_visible_in_tree() or not DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD): return
 	_keyboard_timer += dt
 	if _keyboard_timer < 0.15: return

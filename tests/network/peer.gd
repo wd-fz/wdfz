@@ -193,16 +193,22 @@ func _process(dt: float) -> bool:
 	if network == null: return false
 	if reconnecting and startup - disconnected_at > (3.0 if restore_test else 1.5):
 		reconnecting = false
-		check(network.join("127.0.0.1:%d" % port, role, token).is_empty(), "reconnect socket")
+		if ui_mode:
+			app.lan.reconnect()
+			check(network.transport.peer != null and not app.lan._lost, "original-character retry starts through the actual UI flow")
+		else: check(network.join("127.0.0.1:%d" % port, role, token).is_empty(), "reconnect socket")
 	if role == "guest-1" and not restore_test and elapsed > 7.5 and disconnected_at < 0:
 		saved_identity = network.local_id
 		token = network.reconnect_token
 		disconnected_at = startup
 		reconnecting = true
-		network.stop()
 		if ui_mode:
-			app.lan._installed = false
-			app.lan._lost = true
+			app.lan.manual()
+			check(app.ui.choice_open(), "cooperation manual is open before link failure")
+			network._lost("测试连接中断")
+			check(not app.ui.choice_open() and not app.lan._manual and not app.player.enabled, "connection failure closes stale menus and clears local control")
+			check(app.lan.panel.visible and app.lan.panel._retry.visible, "connection failure exposes original-character retry without returning to main menu")
+		else: network.stop()
 		return false
 
 	if restore_test and role == "host" and stage == 2 and startup - disconnected_at > 2.0:

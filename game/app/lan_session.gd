@@ -35,6 +35,7 @@ var _loading_deadline := 0.0
 var _last_heard := 0.0
 var _heartbeat := 0.0
 var _queued_save := false
+var _manual_save := false
 var _resume: Dictionary = {}
 var _fingerprint := ""
 var _peers_waiting: Dictionary = {}
@@ -97,6 +98,7 @@ func host(name: String, who: String, requested_port: int, resume: bool = false) 
 	if not error.is_empty(): route.release()
 	if not error.is_empty(): return error
 	room = CooperativeRoom.new()
+	room.title = room_name if not room_name.is_empty() else "好友的校园"
 	local_id = "p-" + LanProtocol.token().left(12)
 	reconnect_token = LanProtocol.token()
 	room.add_member(local_id, nickname, true)
@@ -122,6 +124,7 @@ func host(name: String, who: String, requested_port: int, resume: bool = false) 
 		room.members = prior["members"].duplicate(true)
 		room.difficulty = String(prior["difficulty"])
 		room.capacity = int(prior["capacity"])
+		room.title = String(prior.get("title", room.title))
 		for id: String in room.members:
 			if room.members[id]["state"] == "departed": continue
 			room.members[id].merge({"ready": id == local_id, "connected": id == local_id, "state": "lobby"}, true)
@@ -130,7 +133,7 @@ func host(name: String, who: String, requested_port: int, resume: bool = false) 
 	connections[1] = local_id
 	connection_stage = "hosting"
 	_trace_event("IPv4 host listening")
-	var discovery_error := discovery.serve({"name": room_name, "port": port, "count": room.members.size(), "capacity": room.capacity, "phase": "lobby", "content": _fingerprint})
+	var discovery_error := discovery.serve({"name": room.title, "port": port, "count": room.members.size(), "capacity": room.capacity, "phase": "lobby", "content": _fingerprint})
 	if not discovery_error.is_empty(): notice.emit(discovery_error)
 	_publish_room()
 	return ""
@@ -167,8 +170,11 @@ func _prepare_route(target: String = "") -> String:
 	return error
 
 
-func discover() -> void:
+func discover(preserve: bool = false) -> void:
 	if not direct_lan or active(): return
+	if preserve and discovery.socket != null and discovery.advertisement.is_empty():
+		discovery.discover(true)
+		return
 	discovery.close()
 	var error := route.release()
 	if error.is_empty(): error = _prepare_route()
@@ -257,6 +263,8 @@ func remove(id: String) -> void:
 		if connections[peer_id] == id:
 			transport.send_control(peer_id, {"kind": "reject", "text": "房主已将你移出本局。"})
 			connections.erase(peer_id)
+			_awaiting.erase(peer_id)
+			_welcomes.erase(peer_id)
 	_publish_room()
 
 
@@ -291,9 +299,9 @@ func _control(peer_id: int, data: Dictionary) -> void:
 				if not data.get("ok", false): notice.emit(String(data.get("error", "操作失败。")))
 			"notice": notice.emit(String(data.get("text", "")))
 			"pong":
-				if SaveSchema.number_in(data.get("time"), 0, _clock):
-					var sample := (_clock - float(data["time"])) * 1000.0
-					jitter_ms = lerpf(jitter_ms, absf(sample - rtt_ms), 0.2)
+				if SaveSchema.number_in(data.get("time"), 0, _last_heard):
+					var sample := (_last_heard - float(data["time"])) * 1000.0
+					jitter_ms = lerpf(jitter_ms, absf(sample - rtt_ms), 0.2) if rtt_ms > 0 else 0.0
 					rtt_ms = sample
 		return
 	if data["kind"] == "hello":
@@ -328,7 +336,9 @@ func _control(peer_id: int, data: Dictionary) -> void:
 			if not data.get("value") is bool: return
 			if room.pause(id, bool(data.get("value", false))): _publish_room()
 		"save":
-			if id == room.host_id: _queued_save = true
+			if id == room.host_id:
+				_queued_save = true
+				_manual_save = true
 		"state_ack":
 			if _awaiting.has(peer_id) and data.get("snapshot") == _awaiting[peer_id]["snapshot"]: _awaiting.erase(peer_id)
 		"ping":
@@ -424,6 +434,8 @@ func _receive_room(state: Dictionary) -> void:
 	room.members = state["members"].duplicate(true)
 	room.host_id = String(state.get("host", ""))
 	room.capacity = int(state.get("capacity", 4))
+	room.title = String(state.get("title", "好友的校园"))
+	room.minimum_loaded = int(state.get("minimum_loaded", 2))
 	room.difficulty = String(state.get("difficulty", "easy"))
 	room.paused_left = float(state.get("paused", 0))
 	room.ending = String(state.get("ending", ""))
@@ -577,6 +589,8 @@ func _process(dt: float) -> void:
 			_queued_save = false
 			var error := store.write(simulation.capture(), credentials)
 			if not error.is_empty(): notice.emit(error)
+			elif _manual_save: notice.emit("合作进度已保存。房主可从「继续上次合作」恢复，好友使用原角色重连。")
+			_manual_save = false
 
 
 func _lost(reason: String) -> void:
@@ -653,6 +667,11 @@ func stop() -> String:
 	_last_snapshot = -1
 	_hello_deadline = 0.0
 	_queued_save = false
+	_manual_save = false
+	rtt_ms = 0.0
+	jitter_ms = 0.0
+	_motion_timer = 0.0
+	_state_timer = 0.0
 	_peers_waiting.clear()
 	_peer_heard.clear()
 	_hello_again_at = 0.0
