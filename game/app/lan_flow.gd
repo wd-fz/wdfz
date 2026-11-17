@@ -14,6 +14,10 @@ var _seen_event := 0
 var _shown_choice := -1
 var _last_motion := -1
 var _special_choice := ""
+var _game_id := ""
+var _maze_fx: MazeFx
+var _snake_direction := Vector2i.ZERO
+var _special_id := ""
 var _paused := false
 var _lost := false
 var _installed := false
@@ -78,6 +82,10 @@ func _ready() -> void:
 	panel.reconnect_requested.connect(reconnect)
 	panel.pause_requested.connect(network.pause)
 	panel.remove_requested.connect(network.remove)
+	panel.rules_requested.connect(func(enabled: bool) -> void:
+		if network.room != null and network.transport.serving and network.room.phase == "lobby":
+			network.room.rules_dlc = enabled
+			network._publish_room())
 	panel.configure_requested.connect(func(capacity: int, difficulty: String) -> void:
 		if network.transport.serving and network.room != null and network.room.phase == "lobby":
 			network.room.capacity = capacity
@@ -348,6 +356,9 @@ func _room_changed(state: Dictionary) -> void:
 func send(action: String, fields: Dictionary = {}) -> void:
 	if not playing() or _lost: return
 	fields["scene"] = _scene
+	if action in ["cancel", "terminal", "mic"] and not fields.has("operation_id"): fields["operation_id"] = current.get("operation_id", "")
+	if action in ["choice", "cancel"] and not fields.has("choice_id"): fields["choice_id"] = _shown_choice
+	if action in ["board_confirm", "time_confirm", "ending_confirm"] and not fields.has("offer_id"): fields["offer_id"] = _special_id
 	network.command(action, fields)
 
 
@@ -365,6 +376,7 @@ func choice(index: int) -> void:
 	if _special_choice != "":
 		send(_special_choice, {"accept": index == 0})
 		_special_choice = ""
+		_special_id = ""
 	else: send("choice", {"index": index})
 	app.ui.hide_choice()
 	resume()
@@ -396,6 +408,7 @@ func resume() -> void:
 
 
 func stop() -> void:
+	_clear_maze_fx()
 	_cancel_preparation()
 	_reset_local_modals()
 	remote.stop()
@@ -439,10 +452,12 @@ func stop() -> void:
 func _reset_local_modals() -> void:
 	_manual = false
 	_special_choice = ""
+	_special_id = ""
 	_shown_choice = -1
 	_time_prompt = ""
 	_ending_prompt = ""
 	_board_prompt = ""
+	if not is_instance_valid(app.ui) or not app.ui.is_inside_tree(): return
 	app.ui.hide_choice()
 	app.ui.hide_bag()
 	app.ui.hide_terminal()
@@ -467,6 +482,7 @@ func _snapshot(data: Dictionary) -> void:
 		return
 	if first:
 		var candidate := SessionFactory.create()
+		for c in range(49, 52): (candidate.modules.get_module(&"school.day") as SchoolModule).assign_own_seat("teach1:%d:11" % c)
 		(candidate.modules.get_module(&"school.day") as SchoolModule).assign_own_seat(String(view["seat"]))
 		var why := candidate.validate(source, app.router.known_ids())
 		if why != "":
@@ -481,6 +497,7 @@ func _snapshot(data: Dictionary) -> void:
 		_epoch = network.room.epoch
 		_lost = false
 		app._install_session(candidate, source["player"])
+		_load_album()
 		if is_instance_valid(avatars): avatars.queue_free()
 		avatars = RemoteStudents.new()
 		avatars.name = "RemoteStudents"
@@ -497,7 +514,12 @@ func _snapshot(data: Dictionary) -> void:
 		network._command_seq = int(data.get("command_seq", 0)) + 1
 		loaded.call_deferred()
 	else:
+		var album := app.camera().capture()
+		var phone_page := app.phone().page
+		var same_phone: bool = data.get("phone_uid", "") == current.get("phone_uid", "")
 		app.session.modules.restore(source["modules"])
+		app.camera().restore(album)
+		app.phone().page = phone_page if same_phone else "home"
 		app.session.clock.restore(source["clock"])
 	current = data
 	if network.room.phase == "ended" and not _recorded:
@@ -510,6 +532,16 @@ func _snapshot(data: Dictionary) -> void:
 		for property: String in view["runtime"][key]:
 			if property in CooperativeActor.RUNTIME_FIELDS[key]: module.set(property, view["runtime"][key][property])
 	app.school().assign_own_seat(String(view["seat"]))
+	app.campus().seat_query = func(world: String, c: int, r: int) -> Dictionary:
+		var key := "%s:%d:%d" % [world, c, r]
+		for member: Dictionary in network.room.members.values():
+			if member.get("seat") != key: continue
+			var occupied := false
+			for id: String in current.get("team", {}):
+				var person: Dictionary = current["team"][id]
+				occupied = occupied or (id != network.local_id and person.get("seated", false) and person.get("seat_id") == key)
+			return {"own": app.school()._campus["own_seat"]["seatId"] == key, "occupied": occupied}
+		return {}
 	app.campus().desk_taken = func(world: String, c: int, r: int) -> bool:
 		var seat := "%s:%d:%d" % [world, c, r]
 		for member: Dictionary in network.room.members.values():
@@ -539,6 +571,7 @@ func _snapshot(data: Dictionary) -> void:
 			app.session.world_id = String(source["world_id"])
 		if continuous: app.player.place(source["player"], false)
 		else: app.player.restore_pose(source["player"])
+		app.inception_flow.changed_world()
 		app._sync_world()
 	if app.story().dead and not _death_seen:
 		_death_seen = true
@@ -587,6 +620,14 @@ func _snapshot(data: Dictionary) -> void:
 		panel.inventory(app._bag_entries())
 		panel.show_team(data.get("team", {}))
 	_sync_input()
+	var activity: Dictionary = data.get("activities", {})
+	if not activity.is_empty():
+		var id := String(activity["id"])
+		if activity["game"] == "snake" and id != _game_id: app._start_snake()
+		elif activity["game"] != "snake" and app.snake_open(): app._stop_snake(true)
+		_game_id = id
+		CooperativeActivities.display(activity, app.phone().plane, app._snake)
+		if app._snake_panel != null: app._snake_panel.board.queue_redraw()
 	if app.phone_open(): app._phone_paint()
 
 
@@ -616,9 +657,37 @@ func loaded() -> void:
 
 func _event(e: Dictionary) -> void:
 	match e["kind"]:
+		"invert", "invert_end", "shadow_show", "shadow_hide":
+			_sync_maze_fx()
+			if is_instance_valid(_maze_fx): _maze_fx.event(e)
 		"notice", "wake":
 			app.ui.show_notice(String(e.get("text", "")))
 			if panel.visible: panel.feedback(String(e.get("text", "")))
+		"sound": app.audio.play(String(e.get("cue", "dread.steps")), e.get("options", {}))
+		"steps": app.audio.play("dread.steps", {"k": 1.0})
+		"garage_step":
+			if app.session.world_id == GarageModule.ROOM:
+				var p := CampusGeometry.to_scene(CampusData.rooms()[GarageModule.ROOM], Vector2(e["x"], e["y"]))
+				app.audio.step_on("garage", 1.1, {"pos": Vector3(p.x, app.player.position.y + .2, p.y)})
+		"gaze_pull":
+			app.player.rotation.y = wrapf(app.player.rotation.y - float(e["yaw"]), -PI, PI)
+			app.player._look_pitch = clampf(app.player._look_pitch + float(e["pitch"]), -1.4, 1.4)
+		"smile":
+			var world := app._campus_world()
+			if world != null and world.phantoms != null:
+				world.phantoms.reduce_flash = app.settings.get_int("reduce_flash") == 1
+				world.phantoms.show_smile(String(e["mode"]), app.player.scene_camera_transform().origin, CampusGeometry.ang_from_yaw(app.player.rotation.y))
+				if e["mode"] == "jump": app.ui.flash_hurt(.6)
+			app.audio.play("threat.smileJump" if e["mode"] == "jump" else "threat.smileBack")
+		"locker":
+			match e["beat"]:
+				"knock":
+					app.audio.play("dread.knock", {"k": 0.7, "caption": "铁皮从柜子里面被敲了两下"})
+					app.ui.show_notice("我：……不是外面，是柜子里面。")
+				"breath":
+					app.audio.play("threat.breath", {"k": 0.7, "caption": "柜子里还有别人的呼吸"})
+					app.ui.show_notice("我：耳朵后面有呼吸声。")
+				"push": app.ui.show_notice("我撞开柜门跌了出来——柜子里什么也没有。")
 		"phone": app._open_phone()
 		"mic": open_mic()
 
@@ -632,9 +701,10 @@ func _update_offers() -> void:
 	var live := false
 	for offer: Array in offers:
 		var info: Dictionary = offer[1]
-		if offer[0] == _special_choice and not info.is_empty(): live = true
+		if offer[0] == _special_choice and info.get("id") == _special_id: live = true
 	if not _special_choice.is_empty() and not live:
 		_special_choice = ""
+		_special_id = ""
 		app.ui.hide_choice()
 	if _manual or not current.get("choice", {}).is_empty() or app.ui.choice_open() or app.ui.terminal_open(): return
 	for offer: Array in offers:
@@ -647,6 +717,7 @@ func _update_offers() -> void:
 		elif offer[0] == "time_confirm": _time_prompt = key
 		else: _board_prompt = key
 		_special_choice = offer[0]
+		_special_id = String(info.get("id", ""))
 		app.ui.hide_bag()
 		app._close_phone()
 		app.ui.show_choice(offer[2], offer[3], false)
@@ -719,12 +790,12 @@ func _physics_process(dt: float) -> void:
 		if (app.player.enabled or bool(current.get("vehicle", false))) and not app.player.editing_text() and not _paused:
 			axis = (Input.get_vector("move_left", "move_right", "move_forward", "move_back") + app.ui.movement_touch()).limit_length()
 			run = Input.is_action_pressed("sprint") or app.player._touch_sprint
-		network.input({"seq": _input_seq, "scene": _scene, "x": axis.x, "y": axis.y, "yaw": wrapf(app.player.rotation.y, -PI, PI), "pitch": app.player._look_pitch, "run": run})
-	if app.player.enabled and not app.player.editing_text():
+		network.input({"seq": _input_seq, "scene": _scene, "x": axis.x, "y": axis.y, "yaw": wrapf(app.player.rotation.y, -PI, PI), "pitch": app.player._look_pitch, "run": run, "vault": app.player.enabled and not app.player.editing_text() and Input.is_physical_key_pressed(KEY_SPACE), "steer": app._paper_steer() if app._paper_owns_input() and not _paused and not _spectating else {}})
+	if (app.player.enabled or app.knife_flow.captured()) and not app.player.editing_text():
 		if Input.is_action_just_pressed("bag"): app._open_bag()
 		if Input.is_action_just_pressed("torch"): send("item", {"item": "torch"})
 		for i in 2:
-			if Input.is_action_just_pressed("hot_%d" % (i + 1)) and app.items().hot[i] != null: send("item", {"item": app.items().hot[i]})
+			if Input.is_action_just_pressed("hot_%d" % (i + 1)) and app.items().hot[i] != null: send("item", {"item": app.items().hot[i], "source": "hot"})
 		if Input.is_action_just_pressed("lift_close"): send("lift_close")
 	_present(dt)
 	if is_instance_valid(_mic) and _mic.visible:
@@ -749,23 +820,52 @@ func _physics_process(dt: float) -> void:
 	elif app._drive_view != null: app._leave_drive()
 
 
+func _clear_maze_fx() -> void:
+	if is_instance_valid(_maze_fx):
+		_maze_fx.clear_effects()
+		_maze_fx.queue_free()
+	_maze_fx = null
+
+
+func _sync_maze_fx() -> void:
+	if app.session == null or app.session.world_id != MazeModule.ROOM or app.story().over():
+		_clear_maze_fx()
+		return
+	if not is_instance_valid(_maze_fx):
+		_maze_fx = MazeFx.new()
+		add_child(_maze_fx)
+		_maze_fx.setup(app.player, app.audio)
+
+
 func _present(dt: float) -> void:
+	_sync_maze_fx()
+	if is_instance_valid(_maze_fx): _maze_fx.advance(dt, app.settings.get_int("shake") == 0 or app.settings.get_int("reduce_flash") != 0)
 	if is_instance_valid(avatars): avatars.frozen = network.room.paused_left > 0 or network.room.phase != "playing"
 	var school := app.school()
 	var world := app._campus_world()
 	var pose := app.player.capture_pose()
 	var room: Variant = app.campus().room(app.session.world_id)
+	app.phone().set_context(app._phone_context())
 	app.patrol().set_context(app._patrol_context(room, pose))
 	app.anomaly().set_context(app._anomaly_context(room, pose))
 	app.ui.show_status(school.place_name(app.session.world_id, float(pose["position"][1])), school.period_text(false), school.period_class(false), school.clock_text(app.items().has_clock() or app.talent().has("watch")))
 	app.ui.show_stamina(school.stam, school.stamina_max(), school.tired)
 	app.ui.show_sprint_available(app.player.can_sprint)
 	app.ui.show_runtime(app.session.clock.active_seconds)
-	app.ui.show_search(float(current.get("search", {}).get("t", 0)) / InventoryModule.SEARCH_SECONDS)
+	var work: Dictionary = current.get("car_job", {})
+	app.ui.show_search(float(work.get("t", 0)) / maxf(.001, float(work.get("dur", 1))) if not work.is_empty() else float(current.get("search", {}).get("t", 0)) / InventoryModule.SEARCH_SECONDS)
 	app.ui.show_hiding(app.player.hiding)
 	app.player.camera.get_node("Torch").visible = app.items().torch_on
 	var hot_names := [app.items().item_name(String(app.items().hot[0])) if app.items().hot[0] != null else "空", app.items().item_name(String(app.items().hot[1])) if app.items().hot[1] != null else "空"]
 	app.ui.show_hot("1 · %s    2 · %s" % hot_names, app.items().hot, hot_names)
+	if app.phone_open() and (not app.phone().available() or school.inspection_active() or app.story().over() or app.ui.terminal_open() or app.ui.choice_open() or app._phone_danger()): app._close_phone()
+	if app._chalk_step(dt, app.anomaly(), school, room, pose) and app.anomaly().warning_visible() and not app.anomaly().pre_told: send("warning_seen")
+	app._phantom_step(dt, school, room, pose, app.anomaly())
+	app._show_plane(app.paper())
+	app._show_gaze(app.gaze())
+	if world != null: world.show_checkup(app.tales().checkup_today() and app.session.world_id == TalesModule.CHECKUP["room"], app.tales().queue_on(), app.tales().chart_line())
+	CampusWorld.pending_traces = app.anomaly().traces
+	if world != null: world.sync_traces(app.anomaly().traces)
 	app._refresh_interaction_prompt()
 	app._show_classmates(app.classmates(), room, CampusGeometry.to_world(room, float(pose["position"][0]), float(pose["position"][2])), dt)
 	app.broadcast().set_context(app._broadcast_context())
@@ -774,6 +874,7 @@ func _present(dt: float) -> void:
 	app._show_marks()
 	app._ground_step(app.items())
 	app.ui.set_lift_close(app.elevator().show_close_button(app.session.world_id, pose))
+	if app.snake_open(): app._snake_step(dt)
 	app._sensory_step(dt)
 	app._audio_step(dt, app.patrol(), school, room, pose["position"])
 	if world != null:
@@ -784,11 +885,10 @@ func _present(dt: float) -> void:
 		world.show_garage_shadow(shadow, shadow_at, float(pose["position"][1]))
 		world.show_silhouettes(school.inspection_points(), room, float(pose["position"][1]))
 		world.update_lighting(dt, school.tsec, app.player.camera, app.patrol().flick, app.patrol().red, app.anomaly().blackout_now(), app.anomaly().overcast_target())
-		if app.patrol().figure_visible():
-			var pos := CampusGeometry.to_scene(room, Vector2(float(app.patrol().pat["x"]), float(app.patrol().pat["y"])))
-			var look := app.patrol().look_point()
-			var at := CampusGeometry.to_scene(room, Vector2(float(look["x"]), float(look["y"])))
-			world.show_patrol(true, pos, float(app.patrol().pat["fy"]), Vector3(at.x, float(app.patrol().pat["fy"]), at.y))
+		var patrol_view := visible_patrol()
+		if not patrol_view.is_empty():
+			var at: Vector3 = patrol_view["position"]
+			world.show_patrol(true, Vector2(at.x, at.z), at.y, patrol_view["look"])
 		else: world.show_patrol(false, Vector2.ZERO, 0, Vector3.ZERO)
 		world.show_portal(bool(app.facilities().portal["open"]), bool(app.facilities().portal["sketch"]))
 		if world.anomaly_fx != null:
@@ -811,7 +911,7 @@ func _present(dt: float) -> void:
 func _sync_input() -> void:
 	if not playing(): return
 	var blocked: bool = _paused or _lost or _spectating or network.room.phase != "playing" or network.room.paused_left > 0 or app.story().over() or app.ui._mode != "play"
-	blocked = blocked or app.ui.bag_open() or app.ui.choice_open() or app.ui.terminal_open() or app.phone_open() or not current.get("choice", {}).is_empty() or bool(current.get("terminal", false)) or bool(current.get("vehicle", false)) or app.body().fall != null
+	blocked = blocked or app.ui.bag_open() or app.ui.choice_open() or app.ui.terminal_open() or app.phone_open() or app.snake_open() or app.knife_flow.captured() or app._paper_owns_input() or not current.get("choice", {}).is_empty() or bool(current.get("terminal", false)) or bool(current.get("vehicle", false)) or app.body().fall != null
 	for view: Control in [app.ui.map_panel, app.ui.notes_panel, _mic]:
 		if is_instance_valid(view) and view.visible: blocked = true
 	if blocked and app.player.enabled:
@@ -837,9 +937,64 @@ func open_mic() -> void:
 		_mic.hold_changed.connect(func(on: bool) -> void: send("mic", {"held": on}))
 		_mic.closed.connect(func() -> void:
 			send("mic", {"held": false})
+			send("cancel")
 			_mic.hide()
 			resume())
 	_mic.show()
 	app.player.clear_input()
 	app.player.enabled = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func ground_entries() -> Array:
+	var space: CampusSpace = app.router.resident.space if is_instance_valid(app.router.resident) else null
+	return CooperativeGround.local_entries(app.items().ground, app.session.world_id, space)
+
+func ground_target() -> int:
+	var eye := app.player.scene_camera_transform()
+	return CooperativeGround.target(ground_entries(), app.player.position, eye.origin, -eye.basis.z)
+
+
+func visible_patrol() -> Dictionary:
+	var watcher := app.patrol()
+	if watcher.pat["state"] != "walk" or watcher.pat["transition"] != null: return {}
+	var source := String(watcher.pat["room"])
+	var viewer := app.session.world_id
+	var frame := Transform3D.IDENTITY
+	if source != viewer:
+		if not app.router.same_space(source, viewer): return {}
+		var space: CampusSpace = app.router.resident.space
+		frame = space.frame(viewer).affine_inverse() * space.frame(source)
+	var room: Variant = CampusData.rooms().get(source)
+	var p := CampusGeometry.to_scene(room, Vector2(float(watcher.pat["x"]), float(watcher.pat["y"])))
+	var at := frame * Vector3(p.x, float(watcher.pat["fy"]), p.y)
+	var look := watcher.look_point()
+	var q := CampusGeometry.to_scene(room, Vector2(float(look["x"]), float(look["y"])))
+	var eye := app.player.camera.global_position
+	var world := app._campus_world()
+	if world == null or at.distance_to(app.player.position) > 70: return {}
+	var query := PhysicsRayQueryParameters3D.create(eye, world.to_global(at + Vector3.UP * 1.4), 3)
+	if not app.player.get_world_3d().direct_space_state.intersect_ray(query).is_empty(): return {}
+	return {"position": at, "look": frame * Vector3(q.x, float(watcher.pat["fy"]), q.y)}
+
+
+func game_input(operation: String, data: Dictionary = {}) -> void:
+	if _game_id.is_empty(): return
+	data["game_id"] = _game_id
+	data["operation"] = operation
+	send("game_input", data)
+
+func close_game() -> void:
+	if not _game_id.is_empty(): send("game_close", {"game_id": _game_id})
+
+func snake_turn(direction: Vector2i) -> void:
+	if direction == Vector2i.ZERO: return
+	game_input("turn", {"x": direction.x, "y": direction.y})
+
+func _load_album() -> void:
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string("user://cooperative-album.json")) if FileAccess.file_exists("user://cooperative-album.json") else null
+	if parsed is Dictionary and app.camera().validate(parsed).is_empty(): app.camera().restore(parsed)
+
+func save_album() -> void:
+	var file := FileAccess.open("user://cooperative-album.json", FileAccess.WRITE)
+	if file != null: file.store_string(JSON.stringify(app.camera().capture()))

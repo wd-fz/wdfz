@@ -151,6 +151,9 @@ func supply_offer(room: String) -> bool:
 
 
 func _take(pay: bool) -> void:
+	if supply.get("taken", false):
+		_emit("say", {"text": "箱里的补给已经被领走了。"})
+		return
 	if bool(_c.get("bag_full", false)) or bool(_c.get("has_pill", false)):
 		_emit("say", {"text": "我：先腾个位置。药片会留在箱里。"})
 		return

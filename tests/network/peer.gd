@@ -152,6 +152,7 @@ func run() -> void:
 		if role == "host":
 			app.lan.panel.port.value = port
 			app.lan.panel.select_page("create")
+			app.lan.panel.rules_dlc.button_pressed = true
 			await _tap(app.lan.panel.find_child("CreateRoom", true, false))
 		else:
 			app.lan.panel.select_page("join")
@@ -261,10 +262,12 @@ func _host_scenario() -> void:
 		tick_samples.append(cost / 1000.0)
 		if tick_samples.size() > 5000: tick_samples.pop_front()
 	if stage == 0 and elapsed > 3.0:
+		stage = -10 # The async UI activity checks must not be entered again next frame.
 		check(sim.actors.size() == count, "one authoritative actor per process")
 		var id := String(sim.actors.keys()[1])
 		sim.travel(sim.actor(id), "lab3", sim.spawn("lab3"))
 		check(sim.actor(network.local_id).location() == "teach1", "guest travel does not switch host room")
+		if ui_mode: await _personal_activity_ui()
 		stage = 1
 	elif stage == 1 and elapsed > 4.0:
 		check(sim.physics.zones.size() >= 2 and sim.physics.zone("teach1") == sim.physics.zone("lab3"), "separate region adapters share the school physics world")
@@ -332,7 +335,40 @@ func _touch_panel() -> void:
 	var view := root.get_visible_rect()
 	check(view.encloses(panel_rect), "landscape touch room panel stays within the viewport")
 	check(not app.player.enabled and not paused, "touch room panel blocks only its own controls")
+	check(network.room.rules_dlc and app.rules_dlc_flow.module().active(), "guest receives host-selected rules mode with its own module")
 	app.lan.resume()
+
+
+func _personal_activity_ui() -> void:
+	print("CASE: cooperative phone and DLC")
+	var actor := network.simulation.actor(network.local_id)
+	check(network.room.rules_dlc and app.rules_dlc_flow.module().active(), "host creation checkbox enables authoritative DLC")
+	actor.bag().add("phone") # Controlled item setup; all activity actions use the real app.
+	network.simulation.inventory.reconcile(actor)
+	network.simulation.gameplay.prepare(actor)
+	(actor.feature(&"phone.network") as PhoneModule).acquire()
+	await create_timer(.35).timeout
+	print("CASE: cooperative phone open")
+	app._open_phone()
+	check(app.phone_open(), "cooperative phone opens through the real app")
+	app._phone_select("plane")
+	await create_timer(.3).timeout
+	check(actor.activities.game == "plane", "phone game selection starts an authoritative personal round")
+	app._phone_flap()
+	await create_timer(.15).timeout
+	check(actor.activities.plane.st == "fly", "real UI flap reaches the host's round")
+	app._close_phone()
+	await create_timer(.3).timeout
+	print("CASE: cooperative phone closed")
+	check(actor.activities.game.is_empty() and app.player.enabled, "closing phone releases game and local controls")
+	if DisplayServer.get_name() != "headless":
+		app._open_phone()
+		app._phone_select("camera")
+		await app._shoot()
+		await create_timer(.3).timeout
+		check(not app.camera().photos.is_empty() and FileAccess.file_exists("user://cooperative-album.json"), "real rendered photo survives baselines and saves locally")
+		check((actor.feature(&"phone.camera") as CameraModule).photos.is_empty(), "local photo pixels never enter the authority snapshot")
+		app._close_phone()
 
 
 func _restore_host() -> void:
@@ -413,9 +449,9 @@ func _ending_member(dt: float) -> void:
 		var route: Dictionary = state["session"]["modules"]["story.routes"]["data"]
 		var quiz: Dictionary = route["face_quiz"]
 		var answer := 0 if int(quiz["done"]) == 3 else int(RoutesModule.QUESTIONS[quiz["order"][int(quiz["done"])]] ["answer"])
-		network.command("choice", {"scene": state["scene"], "index": answer})
+		network.command("choice", {"scene": state["scene"], "choice_id": choice["id"], "index": answer})
 	if not network.room.ending_offer.is_empty() and network.local_id not in network.room.ending_offer["confirmed"]:
-		network.command("ending_confirm", {"scene": state["scene"], "accept": true})
+		network.command("ending_confirm", {"scene": state["scene"], "offer_id": network.room.ending_offer.get("id", ""), "accept": true})
 
 
 func _soak_scenario() -> void:

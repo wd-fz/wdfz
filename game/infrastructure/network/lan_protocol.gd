@@ -45,7 +45,10 @@ static func safe(value: Variant, depth: int = 0) -> bool:
 
 
 static func input_valid(data: Dictionary) -> bool:
-	return SaveSchema.is_integer(data.get("seq"), 0, 2147483647) and SaveSchema.is_integer(data.get("scene"), 0, 2147483647) and SaveSchema.number_in(data.get("x"), -1, 1) and SaveSchema.number_in(data.get("y"), -1, 1) and SaveSchema.number_in(data.get("yaw"), -PI, PI) and SaveSchema.number_in(data.get("pitch"), -1.4, 1.4) and data.get("run") is bool
+	if not data.get("steer", {}) is Dictionary: return false
+	for key: String in data.get("steer", {}):
+		if key not in ["l", "r", "u", "d"] or not SaveSchema.number_in(data["steer"][key], 0, 1): return false
+	return SaveSchema.is_integer(data.get("seq"), 0, 2147483647) and SaveSchema.is_integer(data.get("scene"), 0, 2147483647) and SaveSchema.number_in(data.get("x"), -1, 1) and SaveSchema.number_in(data.get("y"), -1, 1) and SaveSchema.number_in(data.get("yaw"), -PI, PI) and SaveSchema.number_in(data.get("pitch"), -1.4, 1.4) and data.get("run") is bool and data.get("vault", false) is bool
 
 
 static func address(text: String) -> Dictionary:

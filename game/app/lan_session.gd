@@ -123,6 +123,7 @@ func host(name: String, who: String, requested_port: int, resume: bool = false) 
 		room.minimum_loaded = 1
 		room.members = prior["members"].duplicate(true)
 		room.difficulty = String(prior["difficulty"])
+		room.rules_dlc = bool(prior.get("rules_dlc", false))
 		room.capacity = int(prior["capacity"])
 		room.title = String(prior.get("title", room.title))
 		for id: String in room.members:
@@ -400,6 +401,7 @@ func _receive_input(peer_id: int, data: Dictionary) -> void:
 
 
 func _publish_room() -> void:
+	if simulation != null: simulation.normalize_members()
 	if room == null: return
 	room.revision += 1
 	var state := room.public_state()
@@ -437,6 +439,7 @@ func _receive_room(state: Dictionary) -> void:
 	room.title = String(state.get("title", "好友的校园"))
 	room.minimum_loaded = int(state.get("minimum_loaded", 2))
 	room.difficulty = String(state.get("difficulty", "easy"))
+	room.rules_dlc = bool(state.get("rules_dlc", false))
 	room.paused_left = float(state.get("paused", 0))
 	room.ending = String(state.get("ending", ""))
 	room.ending_offer = state.get("offer", {}).duplicate(true)

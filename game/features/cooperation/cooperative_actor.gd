@@ -2,7 +2,7 @@ class_name CooperativeActor
 extends RefCounted
 ## One personal rule session and pose. No device input, rendering, or transport.
 const RUNTIME_FIELDS := {
-	"phone.network": ["connection"], "school.days": ["lesson_key"], "body.injury": ["fall", "treat"],
+	"phone.network": ["connection"], "story.paper_plane": ["s"], "story.window_gaze": ["s"], "campus.tales": ["_pending"], "dlc.campus_rules": ["_pending", "_knock_elapsed", "records"], "school.days": ["lesson_key"], "body.injury": ["fall", "treat"],
 	"campus.facilities": ["_pending"], "story.routes": ["_pending"], "garage.world": ["_pending"],
 	"story.broadcast": ["_pending"], "story.exchange": ["_pending"], "story.investigation": ["_pending"],
 	"school.classmates": ["state"], "campus.marks": ["_pending"],
@@ -20,6 +20,13 @@ var moving := false
 var running := false
 var choice: Dictionary = {}
 var terminal := false
+var mic := false
+var phone_uid := ""
+var tunnel_return: Dictionary = {}
+var special_return: Dictionary = {}
+var hidden_history: Dictionary = {}
+var locker := LockerOverstay.new()
+var activities := CooperativeActivities.new()
 var vehicle := false
 var own_seat := ""
 var events: Array = []
@@ -76,6 +83,8 @@ func clear_input() -> void:
 	input["x"] = 0.0
 	input["y"] = 0.0
 	input["run"] = false
+	input["vault"] = false
+	input["steer"] = {}
 	moving = false
 	running = false
 
@@ -84,7 +93,7 @@ func accept_input(data: Dictionary) -> bool:
 	if int(data.get("scene", -1)) != scene_version or int(data.get("seq", -1)) <= input_sequence: return false
 	input_sequence = int(data["seq"])
 	input_age = 0.0
-	input = {"x": float(data["x"]), "y": float(data["y"]), "yaw": float(data["yaw"]), "pitch": float(data["pitch"]), "run": bool(data["run"])}
+	input = {"x": float(data["x"]), "y": float(data["y"]), "yaw": float(data["yaw"]), "pitch": float(data["pitch"]), "run": bool(data["run"]), "vault": bool(data.get("vault", false)), "steer": data.get("steer", {}).duplicate()}
 	return true
 
 
@@ -110,7 +119,7 @@ func capture() -> Dictionary:
 		if not extra.is_empty(): runtime[String(key)] = extra
 	return {"session": session.capture(pose), "scene": scene_version, "seat": own_seat, "input_seq": input_sequence, "command_seq": command_sequence,
 		"life": {"dead": fate().dead, "ended": fate().ended, "fx": fate().death_fx, "msg": fate().death_msg, "source": fate().death_source, "wake": fate().wake_pending, "elapsed": death_elapsed},
-		"choice": choice.duplicate(true), "terminal": terminal, "vehicle": vehicle, "events": events.duplicate(true), "event_seq": event_sequence,
+		"choice": choice.duplicate(true), "terminal": terminal, "mic": mic, "activities": activities.capture(), "phone_uid": phone_uid, "special_return": special_return.duplicate(true), "hidden_history": hidden_history.duplicate(), "tunnel_return": tunnel_return.duplicate(true), "locker": {"t": locker.t, "stage": locker.stage}, "vehicle": vehicle, "events": events.duplicate(true), "event_seq": event_sequence,
 		"search": bag()._job.duplicate(true), "pending": pending.duplicate(true), "runtime": runtime.duplicate(true)}
 
 
@@ -130,6 +139,14 @@ func restore(data: Dictionary) -> void:
 	death_elapsed = float(life["elapsed"])
 	choice = data.get("choice", {}).duplicate(true)
 	terminal = bool(data.get("terminal", false))
+	mic = bool(data.get("mic", false))
+	activities.restore(data.get("activities", {}))
+	phone_uid = String(data.get("phone_uid", ""))
+	special_return = data.get("special_return", {}).duplicate(true)
+	hidden_history = data.get("hidden_history", {}).duplicate()
+	tunnel_return = data.get("tunnel_return", {}).duplicate(true)
+	locker.t = float(data.get("locker", {}).get("t", 0))
+	locker.stage = int(data.get("locker", {}).get("stage", 0))
 	vehicle = bool(data.get("vehicle", false))
 	events = data.get("events", []).duplicate(true)
 	event_sequence = int(data.get("event_seq", 0))

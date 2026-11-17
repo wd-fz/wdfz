@@ -36,6 +36,11 @@ func fresh() -> void:
 
 
 func command(a: CooperativeActor, action: String, fields: Dictionary = {}) -> Dictionary:
+	if action in ["cancel", "terminal", "mic"] and not fields.has("operation_id"): fields["operation_id"] = sim.gameplay.operation_id(a)
+	if action in ["choice", "cancel"] and not fields.has("choice_id"): fields["choice_id"] = a.choice.get("id", -1)
+	if action in ["board_confirm", "time_confirm", "ending_confirm"] and not fields.has("offer_id"):
+		var offer: Dictionary = sim.gameplay.boarding if action == "board_confirm" else sim.gameplay._time_offer if action == "time_confirm" else sim.room.ending_offer
+		fields["offer_id"] = offer.get("id", "")
 	var packet := {"epoch": sim.room.epoch, "scene": a.scene_version, "seq": a.command_sequence + 1, "action": action}
 	packet.merge(fields, true)
 	return sim.command(a.id, packet)

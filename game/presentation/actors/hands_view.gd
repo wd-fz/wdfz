@@ -58,7 +58,7 @@ func _make(item: String, side: String) -> Node3D:
 				mat.no_depth_test = true
 				mat.render_priority = 20
 				mat.disable_fog = true
-				m.set_surface_override_material(s, mat)
+				RenderMaterials.set_surface_override(m, s, mat)
 				if item == "torch" and mat.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and not mat.vertex_color_use_as_albedo:
 					_lens.append(mat)     # the lens (m3, 0xfff2c8) and the bulb (m4, white) are the unshaded ones
 	return root
@@ -109,6 +109,7 @@ func update(delta: float, torch_on: bool, brolly_up: bool, phone_open: bool, sho
 		var item := String(u[side])
 		if item != String(_holding[side]):
 			if _hands.has(side) and is_instance_valid(_hands[side]):
+				_release_materials(_hands[side])
 				(_hands[side] as Node3D).queue_free()
 				_hands.erase(side)
 			_holding[side] = item
@@ -131,3 +132,16 @@ func update(delta: float, torch_on: bool, brolly_up: bool, phone_open: bool, sho
 
 func held(side: String) -> String:
 	return String(_holding.get(side, ""))
+
+
+func _release_materials(hand: Node3D) -> void:
+	# Keep each old material alive until the renderer drops the surface dependency.
+	for node: Node in hand.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		for surface in mesh.get_surface_override_material_count():
+			RenderMaterials.set_surface_override(mesh, surface, null)
+
+
+func _exit_tree() -> void:
+	for hand: Node3D in _hands.values():
+		if is_instance_valid(hand): _release_materials(hand)

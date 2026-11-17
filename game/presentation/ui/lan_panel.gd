@@ -14,6 +14,7 @@ signal pause_requested(value: bool)
 signal reconnect_requested
 signal remove_requested(id: String)
 signal configure_requested(capacity: int, difficulty: String)
+signal rules_requested(enabled: bool)
 signal save_requested
 signal ending_requested
 signal give_requested(target: String, item: String)
@@ -31,6 +32,7 @@ var start_button: Button
 var host_form: VBoxContainer
 var lobby: VBoxContainer
 var capacity: OptionButton
+var rules_dlc: CheckButton
 var difficulty: OptionButton
 var transfer: OptionButton
 var metrics: Label
@@ -162,6 +164,10 @@ func _ready() -> void:
 	difficulty.custom_minimum_size.y = 48
 	difficulty.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	rules.add_child(difficulty)
+	rules_dlc = CheckButton.new()
+	rules_dlc.text = "规则怪谈 DLC（全队统一）"
+	rules_dlc.custom_minimum_size.y = 48
+	create.add_child(rules_dlc)
 	_button(create, "创建并等待好友", func() -> void: _create(false), "CreateRoom")
 	_restore = _button(create, "继续上次合作", func() -> void: _create(true), "RestoreRoom")
 	_restore.visible = false
@@ -283,7 +289,7 @@ func _ready() -> void:
 	_button(debug, "传送到队友（标记整局）", func() -> void:
 		if _debug_target.selected >= 0: debug_requested.emit("debug_teleport", {"to": _debug_target.get_item_metadata(_debug_target.selected)}))
 	_button(_details, "Terracotta · 开源许可", func() -> void: OS.shell_open("https://github.com/burningtnt/Terracotta/tree/v0.4.2"))
-	_label(_details, "支持六条公开结局。隐藏路线、特殊空间、DLC、手机小游戏与相册暂仅支持单人。")
+	_label(_details, "公开路线与隐藏逃离均需全队确认。梦境和特殊电梯只影响进入者；小游戏独立进行，照片只留本机。规则怪谈由房主建房时选择。")
 	_actions = HBoxContainer.new()
 	column.add_child(_actions)
 	ready_button = CheckButton.new()
@@ -350,7 +356,9 @@ func _create(restore: bool) -> void:
 	if title == "": title = nick + "的校园"
 	set_busy(true)
 	host_requested.emit(title, nick, int(port.value), restore)
-	if not restore: configure_requested.emit(capacity.get_selected_id(), "hard" if difficulty.selected == 1 else "easy")
+	if not restore:
+		configure_requested.emit(capacity.get_selected_id(), "hard" if difficulty.selected == 1 else "easy")
+		rules_requested.emit(rules_dlc.button_pressed)
 
 
 func request_join(target: String) -> void:
@@ -419,7 +427,7 @@ func _update_layout() -> void:
 	var waiting: bool = in_room and _state.get("phase") == "lobby"
 	var confirming := not _confirmation.is_empty()
 	_heading.text = ("远程联机" if remote_mode else "附近联机") + (" · 队伍" if playing else " · 房间" if in_room else "")
-	if in_room: _heading.text = String(_state.get("title", _heading.text)) + (" · 困难" if _state.get("difficulty") == "hard" else " · 普通")
+	if in_room: _heading.text = String(_state.get("title", _heading.text)) + (" · 困难" if _state.get("difficulty") == "hard" else " · 普通") + (" · 规则怪谈" if _state.get("rules_dlc", false) else "")
 	_confirm_box.visible = confirming
 	_confirm_button.visible = confirming
 	_help_button.visible = not confirming

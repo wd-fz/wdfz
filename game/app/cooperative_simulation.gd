@@ -11,6 +11,9 @@ var patrol := CooperativePatrol.new()
 var physics := CooperativePhysics.new()
 var gameplay: CooperativeGameplay
 var leases: Dictionary = {}
+var lease_info: Dictionary = {}
+var _lease_generation := 0
+var _departed: Dictionary = {}
 var _seconds := 0.0
 var _last_save := 0.0
 var timings: Dictionary = {}
@@ -52,15 +55,49 @@ func actor(id: String) -> CooperativeActor:
 	return actors.get(id)
 
 
+func is_participating(id: String) -> bool:
+	return actors.has(id) and room.members.has(id) and room.members[id]["state"] != "departed"
+
+
+func active_actors() -> Array:
+	return actors.values().filter(func(a: CooperativeActor) -> bool: return is_participating(a.id))
+
+
+func normalize_members() -> void:
+	if room == null or room.phase != "playing": return
+	for a: CooperativeActor in active_actors():
+		room.members[a.id]["state"] = "dead" if a.fate().dead and not a.fate().wake_pending else "alive"
+	if room.alive_ids().is_empty(): room.phase = "ended"
+
+
 func lease(key: String, id: String) -> bool:
 	if leases.has(key) and leases[key] != id: return false
+	if not leases.has(key):
+		_lease_generation += 1
+		lease_info[key] = {"resource_id": key, "owner_member_id": id, "generation": _lease_generation, "operation_id": "%s:%d" % [room.epoch, _lease_generation], "expires": calendar.seconds + 120.0}
 	leases[key] = id
+	lease_info[key]["expires"] = calendar.seconds + 120.0
 	return true
+
+
+func lease_owner(source: String) -> String:
+	for key: String in leases:
+		if key == source or key.begins_with(source + "|"): return String(leases[key])
+	return ""
+
+
+func release_source(source: String, id: String) -> void:
+	for key: String in leases.keys():
+		if leases[key] == id and (key == source or key.begins_with(source + "|")):
+			leases.erase(key)
+			lease_info.erase(key)
 
 
 func release(id: String) -> void:
 	for key: String in leases.keys():
-		if leases[key] == id: leases.erase(key)
+		if leases[key] == id:
+			leases.erase(key)
+			lease_info.erase(key)
 	inventory.release(id)
 	if actors.has(id):
 		actors[id].bag().cancel_search()
@@ -68,6 +105,7 @@ func release(id: String) -> void:
 			(actors[id].feature(&"school.days") as DayModule).answer(-1, CooperativeContext.base(actors[id]))
 		actors[id].choice.clear()
 		actors[id].terminal = false
+		actors[id].mic = false
 		actors[id].clear_input()
 
 
@@ -76,16 +114,38 @@ func disconnect_member(id: String) -> void:
 
 
 func departed(id: String) -> void:
-	if not actors.has(id): return
+	if not actors.has(id) or _departed.has(id): return
+	_departed[id] = true
 	var a: CooperativeActor = actors[id]
+	gameplay.disconnected(id)
+	gameplay.departed(id)
 	release(id)
 	inventory.recover(a)
 	physics.remove_actor(id)
 
 
 func tick(dt: float) -> void:
+	normalize_members()
 	if room == null or room.phase != "playing" or room.paused_left > 0.0: return
+	for i in 6 if gameplay.studying() else 1:
+		if room.phase != "playing": break
+		if i > 0 and not gameplay.studying(): break
+		_step(dt)
+
+
+func _step(dt: float) -> void:
 	var started := Time.get_ticks_usec()
+	for key: String in lease_info.keys():
+		if not lease_info.has(key): continue
+		var holder := String(lease_info[key]["owner_member_id"])
+		var source := key.get_slice("|", 0)
+		var working: bool = (source == "garage" and gameplay.garage_jobs.has(holder)) or (source == "broadcast" and (gameplay._radio_job.get("owner") == holder or (actor(holder).mic and (shared[&"story.broadcast"] as BroadcastModule).held))) or (source == "exchange" and (shared[&"story.exchange"] as ExchangeModule).s["phase"] == "escort")
+		if working and is_participating(holder) and room.members[holder]["connected"]: lease_info[key]["expires"] = calendar.seconds + 120.0
+		if float(lease_info[key]["expires"]) <= calendar.seconds:
+			var owner := actor(String(lease_info[key]["owner_member_id"]))
+			if owner != null:
+				gameplay.cancel_actor_jobs(owner)
+				owner.event("notice", {"text": "操作等待过久，已释放占用；可以重新使用。"})
 	_seconds += dt
 	room.tick += 1
 	room.record_participation(dt)
@@ -104,9 +164,9 @@ func tick(dt: float) -> void:
 			var stood := a.school().stand_up()
 			if stood.has("pose"): a.pose = stood["pose"]
 		physics.advance(a, dt)
-		active.append(a.location())
+		active.append(CooperativePhysics.instance_key(a))
 		gameplay.personal(a, dt)
-		contexts[id] = CooperativeContext.patrol(a)
+		if not CooperativePhysics.private_world(a.location()): contexts[id] = CooperativeContext.patrol(a)
 	var personal_end := Time.get_ticks_usec()
 	for e: Dictionary in patrol.step(dt, actors, contexts):
 		if actors.has(e["member"]): gameplay.apply_event(actors[e["member"]], "patrol", e)
@@ -140,6 +200,15 @@ func spawn(world: String) -> Dictionary:
 
 func travel(a: CooperativeActor, world: String, pose: Dictionary, continuous: bool = false) -> void:
 	if not campus().knows(world) or not pose.get("position") is Array or pose["position"].size() != 3 or not pose.has("yaw") or not pose.has("pitch"): return
+	if world == "portal_tunnel" and a.location() != world:
+		a.tunnel_return = {"world": a.location(), "pose": a.pose.duplicate(true)}
+	elif a.location() == "portal_tunnel" and world == "lab1" and not a.tunnel_return.is_empty():
+		world = String(a.tunnel_return["world"])
+		pose = a.tunnel_return["pose"].duplicate(true)
+		a.tunnel_return.clear()
+	if a.id == patrol.target and CooperativePhysics.private_world(world):
+		patrol.main.clear_chase()
+		patrol.target = ""
 	if a.id == patrol.target:
 		patrol.main.set_context(CooperativeContext.patrol(a))
 		patrol.main.left_scene(a.location(), world)
@@ -154,7 +223,7 @@ func travel(a: CooperativeActor, world: String, pose: Dictionary, continuous: bo
 
 
 func command(id: String, data: Dictionary) -> Dictionary:
-	if not actors.has(id) or data.get("epoch") != room.epoch: return {"ok": false, "error": "会话已失效。"}
+	if not is_participating(id) or data.get("epoch") != room.epoch: return {"ok": false, "error": "会话已失效。"}
 	var a: CooperativeActor = actors[id]
 	var sequence := int(data.get("seq", -1))
 	var cached: Variant = room.cached(id, sequence)
@@ -180,9 +249,15 @@ func input(id: String, data: Dictionary) -> void:
 
 
 func reachable(a: CooperativeActor, entry: Dictionary) -> bool:
-	var p := a.point(CampusData.rooms())
-	var q := CampusGeometry.to_world(CampusData.rooms().get(a.location()), float(entry["x"]), float(entry["z"]))
-	return patrol.main.nav.los(PatrolNav.point(a.location(), p.x, p.y, float(a.pose["position"][1])), PatrolNav.point(a.location(), q.x, q.y, float(entry["y"])))
+	var entries := CooperativeGround.local_entries([entry], a.location(), physics.space)
+	if entries.is_empty(): return false
+	var e: Dictionary = entries[0]
+	var local := Vector3(e["x"], e["y"], e["z"])
+	var p: Array = a.pose["position"]
+	if Vector2(local.x - p[0], local.z - p[2]).length() > InventoryModule.PICK_REACH or absf(local.y - p[1]) > InventoryModule.PICK_RISE: return false
+	var target := physics.space.frame(a.location()) * local if physics.space.contains(a.location()) else local
+	var query := PhysicsRayQueryParameters3D.create(physics.actor_position(a) + Vector3.UP * 1.1, target + Vector3.UP * 0.2, 3)
+	return physics.zone(a.location()).find_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
 
 func motion(for_id: String) -> Dictionary:
@@ -195,6 +270,7 @@ func motion(for_id: String) -> Dictionary:
 		var a: CooperativeActor = actors[id]
 		if room.members[id]["state"] == "departed": continue
 		var common := physics.space != null and physics.space.contains(a.location()) and physics.space.contains(viewer.location())
+		if id != viewer.id and (CooperativePhysics.private_world(a.location()) or CooperativePhysics.private_world(viewer.location())): continue
 		if id != for_id and a.location() != viewer.location() and not common: continue
 		if id != viewer.id and bool(a.watcher().hide["on"]): continue
 		var school_pose := common and id != viewer.id
@@ -223,6 +299,8 @@ func state_for(id: String) -> Dictionary:
 	data["time_offer"] = gameplay._time_offer.duplicate(true)
 	data["driver"] = gameplay.driver
 	data["boarding"] = gameplay.boarding.duplicate(true)
+	data["car_job"] = gameplay.garage_jobs.get(id, {}).duplicate(true)
+	data["operation_id"] = gameplay.operation_id(a)
 	data["team"] = team_for(a)
 	var radio: BroadcastModule = shared[&"story.broadcast"]
 	data["radio_live"] = {"held": radio.held, "progress": radio.progress}
@@ -240,7 +318,7 @@ func team_for(viewer: CooperativeActor) -> Dictionary:
 		if room.members[id]["state"] == "departed": continue
 		var other := actor(id)
 		var distance := physics.actor_distance(viewer, other)
-		team[id] = {"place": other.school().place_name(other.location(), float(other.pose["position"][1])),
+		team[id] = {"seated": other.school().seated, "seat_id": other.school().seat_id, "place": other.school().place_name(other.location(), float(other.pose["position"][1])),
 			"distance": snappedf(distance, .1) if is_finite(distance) else -1.0,
 			"can_give": id != viewer.id and room.members[id]["connected"] and not viewer.fate().over() and not other.fate().over() and physics.can_exchange(viewer, other)}
 	return team
@@ -257,10 +335,11 @@ func observed(id: String) -> String:
 
 
 func capture() -> Dictionary:
+	for a: CooperativeActor in actors.values(): inventory.reconcile(a)
 	var people := {}
 	for id: String in actors: people[id] = actors[id].capture()
 	return {"format": "wdfz-godot-coop", "version": 1, "room": room.public_state(), "calendar": calendar.capture(), "actors": people,
-		"items": inventory.capture(), "patrol": patrol.capture(), "gameplay": gameplay.capture(), "leases": leases.duplicate(), "seconds": _seconds}
+		"items": inventory.capture(), "patrol": patrol.capture(), "gameplay": gameplay.capture(), "leases": leases.duplicate(), "lease_info": lease_info.duplicate(true), "seconds": _seconds}
 
 
 ## Caller validates the entire candidate before setup/restore; keep the new room epoch.
@@ -269,12 +348,25 @@ func restore(data: Dictionary) -> void:
 	for id: String in actors:
 		actors[id].restore(data["actors"][id])
 		room.members[id]["seat"] = actors[id].own_seat
-		physics.place(actors[id])
+		if is_participating(id): physics.place(actors[id])
+		else: physics.remove_actor(id)
 	inventory.restore(data["items"])
 	patrol.restore(data["patrol"])
 	patrol.synchronize(actors)
 	leases = data["leases"].duplicate()
+	lease_info.clear()
+	for key: String in leases.keys():
+		var id := String(leases[key])
+		leases.erase(key)
+		if is_participating(id) and not actor(id).fate().over(): lease(key, id)
 	gameplay.restore(data["gameplay"])
+	for key: String in leases.keys():
+		if not leases.has(key): continue
+		var owner := actor(String(leases[key]))
+		var source := key.get_slice("|", 0)
+		var active: bool = owner.choice.get("source") == source or gameplay._time_offer.get("owner") == owner.id or (source == "terminal" and owner.terminal) or (source == "broadcast" and (owner.mic or gameplay._radio_job.get("owner") == owner.id)) or (source == "garage" and gameplay.garage_jobs.has(owner.id)) or (source == "exchange" and (shared[&"story.exchange"] as ExchangeModule).s["phase"] == "escort")
+		var expired := float(data.get("lease_info", {}).get(key, {}).get("expires", calendar.seconds + 1)) <= calendar.seconds
+		if not active or expired: release_source(source, owner.id)
 	physics.sync_doors(campus(),gameplay.lifts,gameplay.lift_engines)
 	_seconds = float(data.get("seconds", 0))
 	room.tick = int(data["room"]["tick"])
@@ -297,6 +389,8 @@ func _exit_tree() -> void:
 		patrol.main.elevator = null
 		patrol.main.camouflage = Callable()
 	if gameplay != null:
+		gameplay.stories.game = null
+		gameplay.stories.sim = null
 		for engine: ElevatorModule in gameplay.lift_engines.values():
 			engine.closed_hook = Callable()
 			engine.unsafe_check = Callable()

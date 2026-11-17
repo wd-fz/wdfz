@@ -108,7 +108,7 @@ func _ready() -> void:
 	ui.bag_closed.connect(_close_bag)
 	ui.debug_requested.connect(_toggle_debug)
 	ui.dlc_requested.connect(func() -> void:
-		if is_instance_valid(lan) and lan.active(): ui.show_notice("合作模式暂不开放 DLC；可回主菜单进入单人体验。")
+		if is_instance_valid(lan) and lan.active(): ui.show_notice("合作规则由房主在创建房间时统一选择；本局保持建房时的规则。")
 		else: rules_dlc_flow.menu())
 	ui.fullscreen_requested.connect(func() -> void: _setting_changed("full_screen", 1 - settings.get_int("full_screen")))
 	ui.notes_requested.connect(_show_notes)
@@ -1676,7 +1676,7 @@ func _touch_torch() -> void:
 
 func _touch_hot(index: int) -> void:
 	if is_instance_valid(lan) and lan.playing():
-		if index in [0, 1] and items().hot[index] != null: lan.send("item", {"item": items().hot[index]})
+		if index in [0, 1] and items().hot[index] != null: lan.send("item", {"item": items().hot[index], "source": "hot"})
 		return
 	if is_instance_valid(debug_flow) and debug_flow.blocks_simulation(): return
 	if session==null or get_tree().paused or story().over() or (not player.enabled and not knife_flow.captured()):
@@ -1794,6 +1794,7 @@ func _ground_pick_index() -> int:
 	var bag := items()
 	if bag == null or bag.ground.is_empty() or not _ground_allowed() or _dead():
 		return -1
+	if is_instance_valid(lan) and lan.playing(): return lan.ground_target()
 	var eye := player.scene_camera_transform()
 	return bag.ground_target(session.world_id, player.position, eye.origin, -eye.basis.z)
 
@@ -1802,6 +1803,13 @@ func _ground_step(bag: InventoryModule) -> void:
 	_ground_target = _ground_pick_index()
 	var world := _campus_world()
 	if world == null:
+		return
+	if is_instance_valid(lan) and lan.playing():
+		var entries := lan.ground_entries()
+		var selected := -1
+		for i in entries.size():
+			if entries[i]["index"] == _ground_target: selected = i
+		world.sync_ground_items(entries if _ground_allowed() else [], selected)
 		return
 	var local := -1
 	var n := 0
@@ -2199,6 +2207,9 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 		near = clampf(1.0 - dist / 360.0, 0.0, 1.0)
 		var fs := CampusGeometry.to_scene(room, Vector2(float(watcher.pat["x"]), float(watcher.pat["y"])))
 		patrol_pos = Vector3(fs.x, float(watcher.pat["fy"]) + 0.2, fs.y)
+	if is_instance_valid(lan) and lan.playing():
+		var visible := lan.visible_patrol()
+		patrol_pos = visible["position"] + Vector3.UP * 0.2 if not visible.is_empty() else null
 	var scene := session.world_id
 	var w_here := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
 	var out_room := CampusData.layout("out")
@@ -3102,6 +3113,7 @@ func _close_phone(dark: bool = false) -> void:
 	if not phone_open():
 		return
 	_phone_panel.visible = false
+	if is_instance_valid(lan) and lan.playing() and phone().page == "plane": lan.close_game()
 	if dark and not story().dead:
 		ui.show_notice("我：屏幕一下子黑了。我抬起头。")
 	if session != null and session.running and not get_tree().paused and not story().dead and not ui.choice_open() and not ui.terminal_open():
@@ -3116,9 +3128,9 @@ func _phone_danger() -> bool:
 
 
 func _phone_select(app: String) -> void:
-	if is_instance_valid(lan) and lan.playing() and app in ["plane", "camera", "album"]:
-		ui.show_notice("手机小游戏与相册暂仅支持单人；合作中可使用网络与终端。")
-		app = "home"
+	if is_instance_valid(lan) and lan.playing():
+		if phone().page == "plane" and app != "plane": lan.close_game()
+		if app == "plane": lan.send("game_start", {"game": "plane"})
 	var net := phone()
 	if app == "plane" and _phone_danger():
 		ui.show_notice("遇险时不能玩纸飞机")
@@ -3163,7 +3175,6 @@ func _camera_context() -> Dictionary:
 
 ## camera.js shoot: the lens image without the interface, the flash, the extra layer, then the album.
 func _shoot() -> void:
-	if is_instance_valid(lan) and lan.playing(): return
 	var cam := camera()
 	if cam == null or _shooting or not phone_open() or story().dead:
 		return
@@ -3188,13 +3199,15 @@ func _shoot() -> void:
 	var seen := false
 	if bool(plan["flash"]):
 		ui.flash_screen(settings.get_int("reduce_flash") == 1)
-		if patrol() != null:
+		if is_instance_valid(lan) and lan.playing(): lan.send("camera_flash")
+		elif patrol() != null:
 			patrol().set_context(_patrol_context(campus().room(session.world_id), player.capture_pose()))
 			seen = patrol().camera_flash(CameraModule.FLASH_SEE, CameraModule.FLASH_LOCK)
 			for e: Dictionary in patrol().take_events():
 				ui.show_notice(String(e["text"]))
 	cam.set_context(_camera_context())
 	cam.add_photo(plan, b64, seen)
+	if is_instance_valid(lan) and lan.playing(): lan.save_album()
 	audio.play("ui.click")
 	for e: Dictionary in cam.take_events():
 		match e["kind"]:
@@ -3208,6 +3221,9 @@ func _shoot() -> void:
 
 
 func _phone_flap() -> void:
+	if is_instance_valid(lan) and lan.playing():
+		lan.game_input("flap")
+		return
 	var net := phone()
 	if net != null and phone_open() and net.page == "plane":
 		if net.plane.flap():
@@ -3317,7 +3333,9 @@ func snake_open() -> bool:
 func _start_snake() -> void:
 	if _snake_panel == null:
 		_snake_panel = SnakePanel.new()
-		_snake_panel.turned.connect(func(d: Vector2i) -> void: _snake.turn(d))
+		_snake_panel.turned.connect(func(d: Vector2i) -> void:
+			if is_instance_valid(lan) and lan.playing(): lan.snake_turn(d)
+			else: _snake.turn(d))
 		_snake_panel.closed.connect(_stop_snake)
 		ui.get_node("Root").add_child(_snake_panel)
 		_snake_panel.board.game = _snake
@@ -3334,6 +3352,12 @@ func _start_snake() -> void:
 ## Leaving the game (Esc, the exit button): the score earns rest. cancelled: a session end, no reward.
 func _stop_snake(cancelled: bool = false) -> void:
 	if not _snake.on:
+		return
+	if is_instance_valid(lan) and lan.playing():
+		if not cancelled: lan.close_game()
+		_snake.cancel()
+		if _snake_panel != null: _snake_panel.hide()
+		lan._sync_input()
 		return
 	var gain := _snake.gain(float(school().pressure()["rest"])) if not cancelled and school() != null else 0.0
 	var score := _snake.score
@@ -3366,7 +3390,11 @@ func _snake_step(delta: float) -> void:
 		key = Vector2i(-1, 0)
 	elif Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
 		key = Vector2i(1, 0)
-	_snake.tick(delta, key, func() -> float: return _snake_random.randf())
+	if is_instance_valid(lan) and lan.playing():
+		if key != lan._snake_direction:
+			lan._snake_direction = key
+			lan.snake_turn(key)
+	else: _snake.tick(delta, key, func() -> float: return _snake_random.randf())
 	if _snake_panel != null:
 		_snake_panel.board.queue_redraw()
 

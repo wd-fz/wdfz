@@ -248,6 +248,9 @@ func _drive() -> void:
 	if bool(_c.get("busy", false)):
 		_say("我：现在走不开，先解决眼前的事。")
 		return
+	if bool(_c.get("cooperative", false)):
+		_emit("car_ready")
+		return
 	_emit("fact", {"what": "drive", "tried": car_tried.size()})
 	_say("我：引擎着了。车往前冲了出去。")
 	start_chase()
@@ -280,6 +283,7 @@ func _reset_roam() -> void:
 
 
 func lit() -> bool:
+	if _c.has("coop_lit"): return bool(_c["coop_lit"])
 	if not bool(_c.get("torch", false)):
 		return false
 	var d := Vector2(float(roam["x"]), float(roam["y"])) - _here()
@@ -349,7 +353,7 @@ func tick(dt: float) -> void:
 			roam["lureTold"] = true
 			_say("我：那东西停了一下，脚步朝硬币落地的方向去了。")
 	var dist := me.distance_to(Vector2(float(roam["x"]), float(roam["y"])))
-	if dist < 150.0:
+	if dist < 150.0 and not _c.get("coop_pressure", false):
 		_emit("san", {"amount": -1.1 * dt * float(_c.get("drain_mul", 1.0)), "min": 0.0})
 		if not bool(roam["seen"]):
 			roam["seen"] = true
@@ -357,7 +361,7 @@ func tick(dt: float) -> void:
 	if dist < 230.0 and not bool(roam["toldSpot"]):
 		roam["toldSpot"] = true
 		_say("我：车道中间有个高的东西站着。它没在动。")
-	if dist < REACH and not is_lit and float(roam["litAcc"]) < LIT_NEED * 0.5 and float(_c.get("enter_cool", 0.0)) <= 0.0:
+	if not _c.get("coop_pressure", false) and dist < REACH and not is_lit and float(roam["litAcc"]) < LIT_NEED * 0.5 and float(_c.get("enter_cool", 0.0)) <= 0.0:
 		_emit("kill", {"msg": "你在黑暗里撞上了它。它很高，很冷，一直站在车道中间，等你自己走过去。", "fx": "grip", "source": "garage"})
 
 

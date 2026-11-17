@@ -39,6 +39,7 @@ var rest_out: Callable
 var door_blocked: Callable
 ## Whether a desk is occupied by a classmate (no searching it).
 var desk_taken: Callable
+var seat_query: Callable
 const FACILITY := "ZCNYKQujxUABGMpbktwn"
 ## Inventory query (items.js hasItem), wired by the app to the bag module.
 var has_item := func(_id: String) -> bool: return false
@@ -316,6 +317,9 @@ func hint(world_id: String, pose: Dictionary) -> String:
 	if hit.is_empty():
 		return ""
 	var ch := String(hit["ch"])
+	if ch in ["P", "d"] and seat_query.is_valid():
+		var seat: Dictionary = seat_query.call(world_id, int(hit["c"]), int(hit["r"]))
+		if not seat.is_empty(): return "座位有人" if seat["occupied"] else ("坐到自己的座位" if seat["own"] else "坐下（队友座位）")
 	if FACILITY.contains(ch) and facility_hint.is_valid():
 		var fh := String(facility_hint.call(r, ch))
 		if fh != "":
@@ -392,6 +396,9 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 	var hit := CampusGeometry.near_tile(r, me_in, ang, CampusGeometry.NEAR_ROOM, _open_doors)
 	if hit.is_empty():
 		return {"notice": "我：这里什么都没有。"}
+	if hit["ch"] in ["P", "d"] and seat_query.is_valid():
+		var seat: Dictionary = seat_query.call(world_id, int(hit["c"]), int(hit["r"]))
+		if not seat.is_empty(): return {"notice": "这个座位已经有人了。"} if seat["occupied"] else {"seat": [hit["c"], hit["r"]]}
 	match hit["ch"]:
 		"=":
 			return _toggle_door(r, hit, me_in)

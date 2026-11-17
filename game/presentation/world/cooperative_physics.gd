@@ -22,8 +22,15 @@ func _view(id: String) -> SubViewport:
 	return view
 
 
-func zone(id: String) -> SubViewport:
-	if zones.has(id): return zones[id]
+static func private_world(id: String) -> bool:
+	return id in [MazeModule.ROOM, InceptionModule.ROOM]
+
+static func instance_key(a: CooperativeActor) -> String:
+	return a.location() + "@" + a.id if private_world(a.location()) else a.location()
+
+func zone(id: String, instance: String = "") -> SubViewport:
+	var key := id + "@" + instance if private_world(id) and not instance.is_empty() else id
+	if zones.has(key): return zones[key]
 	if space == null: space = CampusSpace.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
 	if space.contains(id):
 		if school_view == null:
@@ -40,20 +47,20 @@ func zone(id: String) -> SubViewport:
 				school_view.add_child(world)
 		zones[id] = school_view
 	else:
-		var view := _view(id)
+		var view := _view(key)
 		var world := CampusWorld.new()
 		world.name = "Geometry"
 		world.scene_id = id
 		world.collision_only = true
-		geometry[id] = world
+		geometry[key] = world
 		view.add_child(world)
-		zones[id] = view
-	return zones[id]
+		zones[key] = view
+	return zones[key]
 
 
 func place(a: CooperativeActor, preserve_motion: bool = false) -> CharacterBody3D:
-	zone(a.location())
-	var frame: Node3D = geometry[a.location()]
+	zone(a.location(), a.id)
+	var frame: Node3D = geometry[instance_key(a)]
 	var body: CharacterBody3D = bodies.get(a.id)
 	if body == null:
 		body = CharacterBody3D.new()
@@ -76,7 +83,7 @@ func place(a: CooperativeActor, preserve_motion: bool = false) -> CharacterBody3
 	body_worlds[a.id] = a.location()
 	var p: Array = a.pose["position"]
 	body.position = Vector3(float(p[0]), float(p[1]), float(p[2]))
-	_last_seen[a.location()] = _time
+	_last_seen[instance_key(a)] = _time
 	return body
 
 
@@ -85,7 +92,7 @@ func advance(a: CooperativeActor, dt: float) -> void:
 	a.processed_sequence = a.input_sequence
 	a.pose["yaw"] = a.input["yaw"]
 	a.pose["pitch"] = a.input["pitch"]
-	var blocked := a.vehicle or a.fate().over() or a.school().seated or bool(a.watcher().hide["on"]) or not a.choice.is_empty() or a.terminal or (a.feature(&"body.injury") as BodyModule).fall != null
+	var blocked := (a.feature(&"story.knife") as KnifeModule).captured() or (a.feature(&"story.paper_plane") as PaperPlaneModule).phase() in ["read", "flight"] or not a.activities.game.is_empty() or a.vehicle or a.fate().over() or a.school().seated or bool(a.watcher().hide["on"]) or not a.choice.is_empty() or a.terminal or (a.feature(&"body.injury") as BodyModule).fall != null
 	if blocked:
 		body.velocity = Vector3.ZERO
 		a.moving = false
@@ -97,7 +104,9 @@ func advance(a: CooperativeActor, dt: float) -> void:
 	if limbs != null: a.running = a.running and limbs.can_run()
 	var multiplier := (1.5 if a.bag().snack_active() else 1.0) * (limbs.speed_mul() if limbs != null else 1.0)
 	var before := body.position
-	CharacterMotor.advance(body, axis, float(a.pose["yaw"]) + body.get_parent().global_rotation.y, a.running, multiplier, dt)
+	var maze: MazeModule = a.feature(&"campus.maze") if a.location() == MazeModule.ROOM else null
+	body.floor_snap_length = float(maze.geometry.cfg["snap"]) if maze != null else 0.25
+	CharacterMotor.advance(body, axis, float(a.pose["yaw"]) + body.get_parent().global_rotation.y, a.running, multiplier, dt, float(maze.geometry.cfg["gravity"]) if maze != null else 9.8, float(maze.geometry.cfg["maxFall"]) if maze != null else INF)
 	a.moving = Vector2(body.position.x - before.x, body.position.z - before.z).length() > 0.0001 / 9.0
 	if not a.moving: a.running = false
 	a.pose["position"] = [body.position.x, body.position.y, body.position.z]
@@ -132,6 +141,7 @@ func actor_position(a: CooperativeActor) -> Vector3:
 
 
 func actor_distance(a: CooperativeActor, b: CooperativeActor) -> float:
+	if a.id != b.id and (private_world(a.location()) or private_world(b.location())): return INF
 	if a.location() != b.location() and (space == null or not space.contains(a.location()) or not space.contains(b.location())): return INF
 	return actor_position(a).distance_to(actor_position(b))
 
@@ -143,6 +153,17 @@ func can_exchange(a: CooperativeActor, b: CooperativeActor) -> bool:
 	if from.distance_squared_to(to) < .0001: return true
 	var query := PhysicsRayQueryParameters3D.create(from, to, 3)
 	return zone(a.location()).find_world_3d().direct_space_state.intersect_ray(query).is_empty()
+
+
+func sees_point(a: CooperativeActor, point: Dictionary, radius: float) -> bool:
+	var region := String(point.get("scene", ""))
+	if space == null or not space.contains(a.location()) or not space.contains(region): return false
+	var local := CampusGeometry.to_scene(CampusData.rooms().get(region), Vector2(point["x"], point["y"]))
+	var target := space.frame(region) * Vector3(local.x, float(point.get("fy", 0)), local.y) + Vector3.UP * 1.1
+	var origin := actor_position(a) + Vector3.UP * 1.1
+	if origin.distance_to(target) > radius: return false
+	if origin.distance_squared_to(target) < .0001: return true
+	return school_view.find_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(origin, target, 3)).is_empty()
 
 
 func remove_actor(id: String) -> void:

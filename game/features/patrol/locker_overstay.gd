@@ -8,7 +8,7 @@ extends RefCounted
 ##   65 s  a breath on the neck: SAN −4 and the player stumbles out.
 ## The clock only runs while there is no threat (no chase, the patroller not hunting this locker and not
 ## within hearing): it never pushes the player out into danger, and hiding when it is needed is untouched.
-## Leaving resets it. Single player only (the cooperative mode keeps its own hiding rules).
+## Leaving resets it. Cooperation owns a separate instance and local threat check for each player.
 
 const KNOCK := 45.0
 const BREATH := 55.0

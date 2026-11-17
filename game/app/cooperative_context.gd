@@ -10,13 +10,13 @@ static func base(a: CooperativeActor) -> Dictionary:
 	var meal := false
 	for m: Array in CampusData.campus().get("meals", []):
 		if s.tsec >= float(m[0]) and s.tsec < float(m[1]): meal = true
-	var ctx := {"scene": a.location(), "world_id": a.location(), "x": w.x, "y": w.y, "w": w, "height": float(a.pose["position"][1]),
+	var ctx := {"cooperative": true, "scene": a.location(), "world_id": a.location(), "x": w.x, "y": w.y, "w": w, "height": float(a.pose["position"][1]),
 		"ang": CampusGeometry.ang_from_yaw(float(a.pose["yaw"])), "pitch": float(a.pose["pitch"]), "tsec": s.tsec, "day": s.day,
 		"clock": s.game_clock(), "game_clock": s.game_clock(), "dead": a.fate().dead, "diff": a.fate().diff,
 		"moving": a.moving, "running": a.running, "run": a.running, "seated": s.seated, "san": s.san, "viol": s.viol,
 		"hiding": bool(a.watcher().hide["on"]), "night": SchoolClock.is_night(s.tsec), "need_where": SchoolClock.need_where(s.tsec),
 		"meal": meal, "rest_mul": float(s.pressure()["rest"]), "pressure_anomaly": float(s.pressure()["anomaly"]), "exam": s.exam,
-		"held": a.bag().has("phone"), "tech": a.talent().has("tech"), "classroom": s.in_classroom_here(a.location(), w),
+		"held": a.bag().has("phone"), "tech": a.talent().has("tech"), "classroom": a.location() == a.own_seat.get_slice(":", 0) and s.in_classroom_here(a.location(), w),
 		"has": a.bag().has, "add": a.bag().add, "remove": a.bag().remove,
 		"busy": weird.is_active() or s.inspection_pending() or a.watcher().local_chase(),
 		"anomaly": weird.pendulum_info(), "anomaly_active": weird.is_active(), "anomaly_id": weird.active_id(), "brolly": a.bag().brolly_up,
@@ -28,7 +28,7 @@ static func base(a: CooperativeActor) -> Dictionary:
 		"on_field": s.on_field(a.location(), w), "in_classroom": s.in_classroom_here(a.location(), w), "in_lift": a.location() in ElevatorModule.RIDE_ROOMS,
 		"fence_x": float(CampusData.layout("out")["bound"]["x1"]) * 2 - 6, "bag": a.bag().bag, "item_names": {},
 		"available": s.seated and s.at_my_seat(a.location(), w) and not s.inspection_pending() and not s.inspection_upcoming() and not weird.is_active(),
-		"quiet": s.inspection_pending() or s.inspection_upcoming(), "room": a.location(), "stam": s.stam, "space": false,
+		"quiet": s.inspection_pending() or s.inspection_upcoming(), "room": a.location(), "stam": s.stam, "space": bool(a.input.get("vault", false)),
 		"locked": bool(a.watcher().pat["locked"])}
 	for id: String in a.bag().bag: ctx["item_names"][id] = a.bag().item_name(id)
 	var nav := a.watcher().nav

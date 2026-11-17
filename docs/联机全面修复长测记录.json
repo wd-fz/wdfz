@@ -1,0 +1,95 @@
+{
+  "base_revision": "a0d5ee0",
+  "date": "2026-11-17",
+  "engine": "4.6.3.stable.official",
+  "command": "python tools/test_lan.py --players 4 --faults --soak --seconds 1800",
+  "scope": "Implementation worktree after core cooperative fixes; later operation-ID, private-space recovery, minigame validation and UI cleanup changes are covered by separate final tests. This is a protected-state loopback stability fixture, not natural play or GPU measurement.",
+  "result": "passed, no engine errors or failed assertions",
+  "peers": [
+    {
+      "bytes_received": 20670357,
+      "bytes_sent": 219102926,
+      "checks": 9,
+      "elapsed_seconds": 1820.00136633224,
+      "failures": 0,
+      "memory_baseline": 373769581,
+      "memory_end": 395747753,
+      "memory_peak": 403716677,
+      "motions": 33054,
+      "nodes_peak": 26110,
+      "regions_peak": 5,
+      "role": "host",
+      "snapshots": 8199,
+      "soak": true,
+      "tick_p95_ms": 8.397
+    },
+    {
+      "bytes_received": 70134320,
+      "bytes_sent": 7206255,
+      "checks": 7,
+      "elapsed_seconds": 1800.01248333238,
+      "failures": 0,
+      "memory_baseline": 0,
+      "memory_end": 211896559,
+      "memory_peak": 0,
+      "motions": 27810,
+      "nodes_peak": 0,
+      "regions_peak": 0,
+      "role": "guest-1",
+      "snapshots": 6101,
+      "soak": true,
+      "tick_p95_ms": 0
+    },
+    {
+      "bytes_received": 71449724,
+      "bytes_sent": 7226662,
+      "checks": 5,
+      "elapsed_seconds": 1800.00650799907,
+      "failures": 0,
+      "memory_baseline": 0,
+      "memory_end": 211898735,
+      "memory_peak": 0,
+      "motions": 27812,
+      "nodes_peak": 0,
+      "regions_peak": 0,
+      "role": "guest-2",
+      "snapshots": 6196,
+      "soak": true,
+      "tick_p95_ms": 0
+    },
+    {
+      "bytes_received": 72085483,
+      "bytes_sent": 7223206,
+      "checks": 5,
+      "elapsed_seconds": 1800.00980866562,
+      "failures": 0,
+      "memory_baseline": 0,
+      "memory_end": 211898787,
+      "memory_peak": 0,
+      "motions": 27905,
+      "nodes_peak": 0,
+      "regions_peak": 0,
+      "role": "guest-3",
+      "snapshots": 6126,
+      "soak": true,
+      "tick_p95_ms": 0
+    }
+  ],
+  "impairment": [
+    {
+      "forwarded": 145270,
+      "dropped": 4436,
+      "duplicated": 1427
+    },
+    {
+      "forwarded": 146076,
+      "dropped": 4481,
+      "duplicated": 1451
+    },
+    {
+      "forwarded": 147132,
+      "dropped": 4449,
+      "duplicated": 1423
+    }
+  ]
+}

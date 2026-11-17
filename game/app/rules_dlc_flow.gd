@@ -20,7 +20,7 @@ func context() -> Dictionary:
 
 func install() -> void:
 	var rules:=module()
-	var raw: Variant=app._read_side("rules_records.json")
+	var raw: Variant={} if is_instance_valid(app.lan) and app.lan.active() else app._read_side("rules_records.json")
 	rules.load_records(raw if raw is Dictionary else {})
 	rules.set_context(context())
 	app.paper().text_override=rules.paper_text
@@ -42,6 +42,9 @@ func cancel() -> void:
 	_world_id=0
 
 func _process(dt: float) -> void:
+	if is_instance_valid(app.lan) and app.lan.playing():
+		show_props()
+		return
 	if module()==null or not module().active() or not app.session.running or app._dead(): return
 	module().set_context(context())
 	module().advance_cues(dt)

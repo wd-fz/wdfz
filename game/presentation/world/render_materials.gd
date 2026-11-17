@@ -11,3 +11,10 @@ static func set_override(instance: GeometryInstance3D, material: Material) -> vo
 	instance.material_override = material
 	# Release after the setter, without a GPU flush or retaining resources across frames.
 	previous = null
+
+
+static func set_surface_override(instance: MeshInstance3D, surface: int, material: Material) -> void:
+	var previous := instance.get_surface_override_material(surface)
+	if previous == material: return
+	instance.set_surface_override_material(surface, material)
+	previous = null

@@ -16,6 +16,7 @@ static func actor(id: String, slot: int, difficulty: String, gift: String, seed_
 	var selected := own
 	if slot > 0:
 		selected = "teach1:%d:11" % (48 + slot)
+	for c in range(49, 52): a.school().assign_own_seat("teach1:%d:11" % c)
 	a.own_seat = selected
 	a.school().assign_own_seat(selected)
 	a.pose = a.school().start_seated("teach1")

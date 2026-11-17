@@ -5,13 +5,14 @@ extends RefCounted
 const MAX_MEMBERS := 4
 const RESERVATION_SECONDS := 60.0
 const PAUSE_SECONDS := 120.0
-const ENDINGS := ["face", "car", "portal", "dismissal", "cyber", "international"]
+const ENDINGS := ["face", "car", "portal", "dismissal", "cyber", "international", "beast", "inception"]
 var epoch := ""
 var phase := "lobby"
 var members: Dictionary = {}
 var host_id := ""
 var capacity := MAX_MEMBERS
 var minimum_loaded := 2
+var rules_dlc := false
 var difficulty := "easy"
 var title := "好友的校园"
 var tick := 0
@@ -191,4 +192,4 @@ func remember(id: String, sequence: int, result: Dictionary) -> void:
 
 
 func public_state() -> Dictionary:
-	return {"revision": revision, "epoch": epoch, "phase": phase, "members": members.duplicate(true), "host": host_id, "title": title, "minimum_loaded": minimum_loaded, "capacity": capacity, "difficulty": difficulty, "tick": tick, "paused": paused_left, "ending": ending, "offer": ending_offer.duplicate(true), "debug": debug_run}
+	return {"revision": revision, "epoch": epoch, "phase": phase, "members": members.duplicate(true), "host": host_id, "title": title, "minimum_loaded": minimum_loaded, "capacity": capacity, "difficulty": difficulty, "rules_dlc": rules_dlc, "tick": tick, "paused": paused_left, "ending": ending, "offer": ending_offer.duplicate(true), "debug": debug_run}

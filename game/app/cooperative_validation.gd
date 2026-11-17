@@ -13,6 +13,7 @@ static func validate(data: Dictionary) -> String:
 	if room.has("minimum_loaded") and not SaveSchema.is_integer(room["minimum_loaded"], 1, 2): return "合作加载人数无效。"
 	if not room.get("members") is Dictionary or actors.size() < 2 or actors.size() > 4 or actors.size() != room["members"].size() or not actors.has(room.get("host")): return "合作成员表无效。"
 	if room.get("difficulty") not in StoryModule.DIFFICULTIES or not room.get("epoch") is String: return "合作规则无效。"
+	if not room.get("rules_dlc", false) is bool: return "合作规则怪谈开关无效。"
 	if room.get("phase") not in ["loading", "playing", "ended"] or not SaveSchema.is_integer(room.get("capacity"), 2, 4): return "合作房间阶段无效。"
 	if not SaveSchema.is_integer(room.get("tick"), 0, 2147483647): return "合作模拟时钟无效。"
 	var calendar: Dictionary = data["calendar"]
@@ -21,6 +22,7 @@ static func validate(data: Dictionary) -> String:
 	var candidate := SessionFactory.create()
 	var known := PackedStringArray(CampusData.rooms().keys())
 	known.append("out")
+	for c in range(49, 52): (candidate.modules.get_module(&"school.day") as SchoolModule).assign_own_seat("teach1:%d:11" % c)
 	var common := {}
 	for id: String in actors:
 		var actor_data: Variant = actors[id]
@@ -43,6 +45,8 @@ static func validate(data: Dictionary) -> String:
 		var error := candidate.validate(actor_data["session"], known)
 		if not error.is_empty(): return "合作角色校验失败：" + error
 		if not SaveSchema.is_integer(actor_data.get("scene"), 1, 2147483646) or not actor_data["life"].get("dead") is bool or not actor_data["life"].get("wake") is bool or not SaveSchema.number_in(actor_data["life"].get("elapsed"), 0, SaveSchema.MAX_SECONDS): return "合作生死状态无效。"
+		var extension_error := _extensions(actor_data)
+		if not extension_error.is_empty(): return extension_error
 		var extra_error := _runtime(actor_data)
 		if extra_error != "": return extra_error
 		for key: StringName in CooperativeFactory.SHARED:
@@ -52,6 +56,14 @@ static func validate(data: Dictionary) -> String:
 			common[key] = normalized
 	var inventory: Dictionary = data["items"]
 	if not inventory.get("stash") is Array or inventory["stash"].size() > 32 or not inventory.get("ground") is Array or not inventory.get("owners") is Dictionary or not inventory.get("containers") is Dictionary or not inventory.get("searches") is Dictionary: return "合作物品表无效。"
+	if not inventory.get("phones", {}) is Dictionary or inventory.get("phones", {}).size() > 128: return "手机设备表无效。"
+	var phone_validator := candidate.modules.get_module(&"phone.network") as PhoneModule
+	for uid: String in inventory.get("phones", {}):
+		var device: Variant = inventory["phones"][uid]
+		if not device is Dictionary or device.get("deviceId") != uid or not SaveSchema.number_in(device.get("battery"), 0, 100): return "手机实例状态无效。"
+		var probe := phone_validator.capture()
+		probe["device"] = device
+		if not phone_validator.validate(probe).is_empty(): return "手机设备状态无效。"
 	var item_ids := {}
 	if not SaveSchema.is_integer(inventory.get("serial"), 0, 2147483647) or not SaveSchema.is_integer(inventory.get("revision"), 0, 2147483647): return "合作物品版本无效。"
 	var item_types: Dictionary = CampusData.campus()["items"]
@@ -89,6 +101,10 @@ static func validate(data: Dictionary) -> String:
 		if not point.get("scene") in known or not SaveSchema.number_in(point.get("x"), -100000, 100000) or not SaveSchema.number_in(point.get("y"), -100000, 100000): return "合作报点位置无效。"
 	for key: String in inventory["searches"]:
 		if not actors.has(inventory["searches"][key]): return "合作容器操作者不存在。"
+	if not data.get("lease_info", {}) is Dictionary: return "合作占用记录无效。"
+	for key: String in data.get("lease_info", {}):
+		var info: Variant = data["lease_info"][key]
+		if not info is Dictionary or info.get("resource_id") != key or data["leases"].get(key) != info.get("owner_member_id") or not info.get("operation_id") is String or not SaveSchema.is_integer(info.get("generation"), 1, 2147483647) or not SaveSchema.number_in(info.get("expires"), 0, SaveSchema.MAX_SECONDS): return "合作占用代次无效。"
 	for key: String in data["leases"]:
 		if not actors.has(data["leases"][key]): return "合作占用者不存在。"
 	if not SaveSchema.number_in(room.get("paused"), 0, CooperativeRoom.PAUSE_SECONDS) or not room.get("debug") is bool or not room.get("offer") is Dictionary: return "合作暂停或结算状态无效。"
@@ -103,9 +119,13 @@ static func _runtime(a: Dictionary) -> String:
 		for property: String in a["runtime"][key]:
 			if property not in CooperativeActor.RUNTIME_FIELDS[key]: return "合作附加状态字段无效。"
 			var value: Variant = a["runtime"][key][property]
-			if property == "lesson_key":
+			if property == "lesson_key" or (key == "campus.tales" and property == "_pending"):
 				if not value is String: return "课堂任务编号无效。"
+			elif key == "dlc.campus_rules" and property == "_knock_elapsed":
+				if not SaveSchema.number_in(value, -1, 4): return "规则怪谈提示时间无效。"
 			elif value != null and not value is Dictionary: return "合作进行中的操作无效。"
+	var story_error := _personal_stories(a["runtime"])
+	if not story_error.is_empty(): return story_error
 	var phone: Variant = a["runtime"].get("phone.network", {}).get("connection")
 	if phone != null and (not phone is Dictionary or not SaveSchema.number_in(phone.get("x"), -100000, 100000) or not SaveSchema.number_in(phone.get("y"), -100000, 100000)): return "手机连接位置无效。"
 	var body: Dictionary = a["runtime"].get("body.injury", {})
@@ -134,6 +154,42 @@ static func _runtime(a: Dictionary) -> String:
 	return ""
 
 
+static func _personal_stories(runtime: Dictionary) -> String:
+	for key: String in ["story.paper_plane", "story.window_gaze"]:
+		if not runtime.get(key, {}).has("s"): continue
+		var s: Variant = runtime[key]["s"]
+		if not s is Dictionary: return "个人异象状态无效。"
+		if key == "story.paper_plane":
+			if not s.get("used") is bool or not SaveSchema.number_in(s.get("calm_until"), 0, SaveSchema.MAX_SECONDS): return "纸飞机状态无效。"
+			if s.get("roll") != null and (not s["roll"] is Dictionary or not s["roll"].get("hit") is bool or s["roll"].get("kind") not in ["peace", "danger"]): return "纸飞机抽签无效。"
+		else:
+			if not SaveSchema.number_in(s.get("next"), 0, SaveSchema.MAX_SECONDS) or not SaveSchema.is_integer(s.get("n"), 0, 1000000) or not SaveSchema.is_integer(s.get("escaped"), 0, 1000000): return "窗内视线计数无效。"
+		var ev: Variant = s.get("ev")
+		if ev == null: continue
+		if not ev is Dictionary or not CampusData.rooms().has(ev.get("room")): return "个人异象场景无效。"
+		for field: String in ["c", "r"]:
+			if not SaveSchema.is_integer(ev.get(field), 0, 1000): return "个人异象窗口无效。"
+		if not SaveSchema.number_in(ev.get("t"), 0, SaveSchema.MAX_SECONDS): return "个人异象计时无效。"
+		if key == "story.window_gaze":
+			for field: String in ["contact", "pull", "away"]:
+				if not SaveSchema.number_in(ev.get(field), 0, SaveSchema.MAX_SECONDS): return "窗内视线进度无效。"
+			if not ev.get("pulled") is bool or not ev.get("escaped") is bool: return "窗内视线标记无效。"
+		else:
+			if ev.get("kind") not in ["peace", "danger"] or ev.get("phase") not in ["fly", "ground", "wait", "read", "aim", "flight", "hunt"] or not ev.get("text") is String: return "纸飞机阶段无效。"
+			for field: String in ["lx", "ly"]:
+				if not SaveSchema.number_in(ev.get(field), -100000, 100000): return "纸飞机落点无效。"
+			if ev.get("phase") == "flight":
+				if not ev.get("f") is Dictionary or not ev["f"].get("clean") is bool or not SaveSchema.number_in(ev.get("limit"), 0, 1000): return "纸飞机飞行状态无效。"
+				for field: String in ["x", "y", "h", "yaw", "pitch"]:
+					if not SaveSchema.number_in(ev["f"].get(field), -100000, 100000): return "纸飞机飞行坐标无效。"
+	var records: Variant = runtime.get("dlc.campus_rules", {}).get("records", {})
+	if not records is Dictionary or records.size() > 64: return "合作规则怪谈记录无效。"
+	for id: String in records:
+		var record: Variant = records[id]
+		if not id.begins_with("rules.") or not record is Dictionary or not SaveSchema.number_in(record.get("at"), 0, SaveSchema.MAX_SECONDS * 1000) or not record.get("ver") is String: return "合作规则怪谈记录内容无效。"
+	return ""
+
+
 static func _gameplay(g: Dictionary, actors: Dictionary) -> String:
 	for key: String in ["lifts", "lift_engines", "lift_owners", "lift_riders", "radio_job", "pending", "time_offer", "extra"]:
 		if not g.get(key) is Dictionary: return "合作玩法状态缺少 " + key
@@ -159,9 +215,20 @@ static func _gameplay(g: Dictionary, actors: Dictionary) -> String:
 		if not job is Dictionary or not job.get("cell") is String or not job.get("wire") is bool: return "车辆操作无效。"
 		for key: String in ["x", "y", "t", "dur"]:
 			if not SaveSchema.number_in(job.get(key), 0, 100000): return "车辆操作进度无效。"
+	if not extra.get("garage_jobs", {}) is Dictionary: return "个人车辆操作表无效。"
+	for id: String in extra.get("garage_jobs", {}):
+		var work: Variant = extra["garage_jobs"][id]
+		if not actors.has(id) or not work is Dictionary or not work.get("cell") is String or not work.get("wire") is bool: return "个人车辆任务无效。"
+		for key: String in ["x", "y", "t", "dur"]:
+			if not SaveSchema.number_in(work.get(key), 0, 100000): return "个人车辆计时无效。"
+	var study: Variant = extra.get("study_owner", "")
+	if not study is String or (study != "" and not actors.has(study)): return "课堂整理发起者无效。"
+	var wait: Variant = extra.get("study_wait")
+	if wait != null and (not wait is Dictionary or not wait.get("key") is String or not _world(wait.get("room")) or not SaveSchema.number_in(wait.get("until"), 0, 1500)): return "课堂整理进度无效。"
 	var board: Dictionary = extra["boarding"]
 	if not board.is_empty():
 		if not actors.has(board.get("driver")) or not _people(board.get("members"), actors) or not _people(board.get("confirmed"), actors) or not SaveSchema.number_in(board.get("expires"), 0, SaveSchema.MAX_SECONDS): return "上车确认无效。"
+	if not board.is_empty() and board.has("position") and (not _vector(board["position"]) or not _world(board.get("world")) or not board.get("id") is String): return "车辆集合点无效。"
 	var qualified: Dictionary = extra["qualified"]
 	if not qualified.is_empty():
 		if not actors.has(qualified.get("owner")) or qualified.get("route") not in CooperativeRoom.ENDINGS or not _world(qualified.get("world")) or not SaveSchema.number_in(qualified.get("x"), -100000, 100000) or not SaveSchema.number_in(qualified.get("y"), -100000, 100000): return "共同结局条件无效。"
@@ -218,3 +285,43 @@ static func _pose(value: Variant) -> bool:
 
 static func _world(value: Variant) -> bool:
 	return value is String and (value == "out" or CampusData.rooms().has(value))
+
+
+static func _extensions(a: Dictionary) -> String:
+	if not a.get("mic", false) is bool or not a.get("phone_uid", "") is String: return "个人设备归属无效。"
+	for key: String in ["tunnel_return", "special_return", "hidden_history"]:
+		if not a.get(key, {}) is Dictionary: return "个人返程状态无效。"
+	var back: Dictionary = a.get("tunnel_return", {})
+	if not back.is_empty() and (not _world(back.get("world")) or not _pose(back.get("pose"))): return "隧道返程位置无效。"
+	var special: Dictionary = a.get("special_return", {})
+	if not special.is_empty() and (special.get("host") not in ElevatorModule.HOSTS or not SaveSchema.is_integer(special.get("origin"), 1, 5)): return "特殊电梯返程位置无效。"
+	for id: String in a.get("hidden_history", {}):
+		if id not in ["knife", "inception", "beast"] or not a["hidden_history"][id] is bool: return "个人隐藏经历无效。"
+	var locker: Variant = a.get("locker", {"t": 0, "stage": 0})
+	if not locker is Dictionary or not SaveSchema.number_in(locker.get("t"), 0, SaveSchema.MAX_SECONDS) or not SaveSchema.is_integer(locker.get("stage"), 0, 3): return "柜内计时无效。"
+	var games: Variant = a.get("activities", {})
+	if not games is Dictionary: return "个人小游戏无效。"
+	if games.is_empty(): return ""
+	if games.get("game") not in ["", "plane", "snake"] or not games.get("id") is String or not SaveSchema.number_in(games.get("elapsed"), 0, SaveSchema.MAX_SECONDS) or not SaveSchema.number_in(games.get("flash_at"), -100, SaveSchema.MAX_SECONDS) or not RandomState.valid(games.get("random")): return "小游戏会话无效。"
+	var plane: Variant = games.get("plane")
+	var snake: Variant = games.get("snake")
+	if not plane is Dictionary or not snake is Dictionary: return "小游戏画面状态无效。"
+	if plane.get("st") not in ["ready", "fly", "over"] or not plane.get("msg") is String or not plane.get("pipes") is Array or plane["pipes"].size() > 8: return "纸飞机状态无效。"
+	for key: String in ["y", "vy", "t", "gain"]:
+		if not SaveSchema.number_in(plane.get(key), -SaveSchema.MAX_SECONDS, SaveSchema.MAX_SECONDS): return "纸飞机参数无效。"
+	if not SaveSchema.number_in(plane.get("cool"), 0, PlaneGame.COOL) or not SaveSchema.is_integer(plane.get("score"), 0, 100000): return "纸飞机奖励无效。"
+	for pipe: Variant in plane["pipes"]:
+		if not pipe is Dictionary or not SaveSchema.number_in(pipe.get("x"), -100, PlaneGame.W + 20) or not SaveSchema.number_in(pipe.get("gy"), 0, PlaneGame.H) or not pipe.get("pass") is bool: return "纸飞机障碍无效。"
+	if not snake.get("body") is Array or snake["body"].size() > 256 or not snake.get("on") is bool or not snake.get("dead") is bool or not SaveSchema.is_integer(snake.get("score"), 0, 256): return "贪吃蛇状态无效。"
+	if snake["on"] and snake["body"].is_empty(): return "贪吃蛇缺少玩家位置。"
+	if not SaveSchema.number_in(snake.get("t"), 0, SnakeGame.STEP) or not SaveSchema.number_in(snake.get("cd"), -1, SnakeGame.COUNTDOWN): return "贪吃蛇计时无效。"
+	for point: Variant in snake["body"] + [snake.get("food")]:
+		if not _pair(point, 0, SnakeGame.N - 1): return "贪吃蛇位置无效。"
+	for direction: Variant in [snake.get("dir"), snake.get("want")]:
+		if direction == null: continue
+		if not _pair(direction, -1, 1) or absi(int(direction[0])) + absi(int(direction[1])) != 1: return "贪吃蛇方向无效。"
+	if snake.get("dir") == null: return "贪吃蛇缺少前进方向。"
+	return ""
+
+static func _pair(value: Variant, low: int, high: int) -> bool:
+	return value is Array and value.size() == 2 and SaveSchema.is_integer(value[0], low, high) and SaveSchema.is_integer(value[1], low, high)
