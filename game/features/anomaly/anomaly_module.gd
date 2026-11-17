@@ -13,6 +13,7 @@ const SC := 2.0
 const CUP_H := 10.6
 const CUP_R := 0.95
 const CUP_WOB := {"easy": 0.85, "normal": 0.60, "hard": 0.40}
+const FORECAST_LEAD := 8.0
 const COLA_H := 14.0
 const COLA_R := 0.85
 const COLA_WARN := 1.6
@@ -492,7 +493,9 @@ func _schedule_next() -> void:
 func _start() -> void:
 	var id := ""
 	var planned := String(an["pre"])
-	var forced: bool = String(_c.get("diff", "easy")) == "easy" or bool(an["locked"]) or (planned != "" and DEFS[planned].get("warn", false))
+	# Only a real forecast is a promise. Reserving every easy-mode draw 40–64 s
+	# early made ubiquitous events (turn, broad) crowd out newly visited places.
+	var forced: bool = bool(an["locked"]) or (planned != "" and DEFS[planned].get("warn", false))
 	if forced and planned != "":
 		if _allowed(planned):
 			id = planned
@@ -509,9 +512,10 @@ func _start() -> void:
 		_schedule_next()
 		an["next"] = minf(float(an["next"]), 6.0)
 		return
-	if DEFS[id].get("warn", false) and id != planned:
+	var onsite_warning := id == "cup" and id != planned
+	if DEFS[id].get("warn", false) and id != planned and not onsite_warning:
 		an["pre"] = id
-		an["next"] = 8.0
+		an["next"] = FORECAST_LEAD
 		return
 	an["id"] = id
 	an["t"] = 0.0
@@ -531,6 +535,13 @@ func _start() -> void:
 		an["rained"] = true
 	_say(String(DEFS[id]["msg"]))
 	_on(id)
+	if onsite_warning:
+		# A narrow window-side trigger cannot require staying there for another
+		# eight seconds before anything appears. Show the wobbling cup now, keep
+		# the full lead time, and let walking away dodge the fixed landing point.
+		an["data"]["wob"] = float(an["data"]["wob"]) + FORECAST_LEAD
+		an["data"]["warn_x"] = float(_c["x"])
+		an["data"]["warn_y"] = float(_c["y"])
 
 
 ## What an anomaly leaves on the ground (app/traces.js traceAdd): a puddle where the rain fell, stains of the leak, the remains of
@@ -1208,8 +1219,8 @@ func _tick_cup(d: Dictionary, hard: bool) -> void:
 	if int(d["phase"]) == 0 and t >= float(d["wob"]):
 		d["phase"] = 1
 		d["tf"] = t
-		d["lx"] = me.x
-		d["ly"] = me.y
+		d["lx"] = float(d.get("warn_x", me.x))
+		d["ly"] = float(d.get("warn_y", me.y))
 		if not d.get("said", false):
 			d["said"] = true
 			_say("我：它掉下来了——", true)

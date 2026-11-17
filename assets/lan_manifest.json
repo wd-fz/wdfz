@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "digest": "3af3f161b67fdc56a85866cbf51b01f21d3a957b93b10b95db898d52a03d1ee6",
+  "digest": "6666716dfcb495751513837804685246fbbe58f7199a2df381f98953993b0d75",
   "files": {
     "assets/campus/archive.json": "0a3815b54b7591403085c29793d99e08f6f80fd18f7646b7d449a6552709b483",
     "assets/campus/death_geometry.json": "5b7a718919d12b00fa380efc95ffa2ed41262d680d11714d218603053cd52326",
@@ -80,7 +80,7 @@
     "game/core/modules/module_host.gd": "854eb511897686b00300fdf3520d08933ae9bd0c2fc101959744a405524a2c8b",
     "game/core/session/cooperative_room.gd": "73832739216f2efecc9a8db96cbe63a7581782bf740f7d13026433fc1741d095",
     "game/core/session/game_session.gd": "98303b05fe8dcd241bc0f314d04421b1e58389a3e55b9c5c1ee32045b39316de",
-    "game/features/anomaly/anomaly_module.gd": "f0881b959085c49eca2ce01b3fa979e60f3cfeed5ae6307423c7d0b49f166aea",
+    "game/features/anomaly/anomaly_module.gd": "3cc9a3d95d4a1b952624aab73ac8943e46c494d60b929e1e30365c50b92a7cee",
     "game/features/body/body_module.gd": "a152bba1cf7c04a9b026b677e10177b4e98db754d1f0f8ad26a144252bba17ee",
     "game/features/campus/campus_geometry.gd": "2e04425df6b78144a84b801502e9670029e4fdf7259b1206e405b1dbd0992dbb",
     "game/features/campus/campus_module.gd": "4828fe0488e985c716410ee214da60b61f13f268515b718bfa7f9bd5b9c3b4d5",
