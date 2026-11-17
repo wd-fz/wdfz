@@ -50,10 +50,12 @@ var lan: LanFlow
 
 
 func _ready() -> void:
+	router.coordinate_frame = player.get_parent() as Node3D
 	router.world_preparing.connect(_configure_world_rendering)
 	get_viewport().size_changed.connect(_resize_render_target)
 	audio = AudioFx.new()
 	audio.name = "AudioFx"
+	audio.coordinate_frame = router.coordinate_frame
 	add_child(audio)
 	maze_flow = MazeFlow.new()
 	add_child(maze_flow)
@@ -537,6 +539,7 @@ func import_legacy_save(text: String) -> String:
 
 
 var _starting := false
+var _load_generation := 0
 
 
 ## True while the loading screen reads a run's models (the run has not started yet).
@@ -544,42 +547,58 @@ func starting() -> bool:
 	return _starting
 
 
-## The first load prepares the starting region and its nearest exits before control begins.
-## Subsequent walking crossings reuse resident geometry; distant regions stream during exploration.
+## Prepare the ordinary school before control begins. Special/standalone worlds
+## retain the streaming adapter; walking inside the school never builds geometry.
 func _load_then(world_id: String, work: Callable) -> void:
 	if _starting:
 		return
 	_starting = true
+	_load_generation += 1
+	var generation := _load_generation
 	ui.show_loading("读取校园")
 	await get_tree().process_frame
 	await get_tree().process_frame
+	if generation != _load_generation: return
 	if world_id == "out" or CampusData.rooms().has(world_id):
-		var ids := PackedStringArray([world_id])
+		var ids := router.school_ids() if router.continuous_campus else PackedStringArray([world_id])
 		var at := Vector3.ZERO
 		if world_id != "out":
 			var pose := CampusData.rules().start_pose() if world_id == initial_world else CampusData.rules().default_spawn(world_id)
 			var p: Array = pose["position"]
 			at = Vector3(p[0], p[1], p[2])
 		# Real devices warm exits too. Headless tools have no GPU and run deterministic explicit prefetch tests.
-		if router.stream.automatic():
+		if not router.continuous_campus and router.stream.automatic():
 			ids.append_array(CampusConnections.nearby(world_id, at))
 		if ids.has("out"):
 			# Reuse the campus geometry for the classroom's outward view instead of processing it twice.
 			ids.erase("out")
 			ids.insert(0, "out")
 		for i in ids.size():
-			router.prepare(ids[i])
+			ui.set_loading(float(i) / ids.size(), "准备校园")
+			await get_tree().process_frame
+			if generation != _load_generation: return
+			router.prepare_background(ids[i])
 			var waited := 0.0
-			while not router.warm(ids[i]) and router.stream.pending(ids[i]):
+			while not router.warm(ids[i]) and router.pending(ids[i]):
+				router.poll_preparation()
 				ui.set_loading((i + .9 * (1.0 - exp(-waited / 3.0))) / float(ids.size()), "准备校园通道")
 				waited += get_process_delta_time()
 				await get_tree().process_frame
+				if generation != _load_generation: return
 	ui.set_loading(0.95, "进入校园")
 	await get_tree().process_frame
+	if generation != _load_generation: return
 	work.call()
+	if generation != _load_generation: return
 	ui.set_loading(1.0)
 	ui.hide_loading()
 	_starting = false
+
+
+func cancel_loading() -> void:
+	_load_generation += 1
+	_starting = false
+	ui.hide_loading()
 
 
 ## 继续入梦 from the main menu: the same loading screen, then the ordinary load. The pause menu's reload and
@@ -919,6 +938,7 @@ func _cancel_cinematics() -> void:
 
 
 func return_to_menu() -> void:
+	cancel_loading()
 	if is_instance_valid(lan) and lan.active(): lan.stop()
 	_cancel_cinematics()
 	_last_result = {}
@@ -1013,9 +1033,13 @@ func _sync_world() -> void:
 	var world := _campus_world()
 	var rules := campus()
 	if world != null and rules != null:
+		if is_instance_valid(router.resident): router.resident.apply_doors(rules.open_doors(), elevator())
 		world.apply_doors(rules.open_doors())
 		world.set_player_scene(player.position)
 	var lift := elevator()
+	if lift != null and is_instance_valid(router.resident):
+		router.resident.update_lifts(lift)
+		if router.resident.space.contains(session.world_id): router.coordinate_frame.transform = router.resident.space.frame(session.world_id)
 	if world != null and lift != null:
 		world.apply_lift_doors(lift)
 	if world != null and world.broadcast_props != null and broadcast() != null:
@@ -1026,6 +1050,7 @@ func _sync_world() -> void:
 			world.banner.set_on(want)
 
 	_update_campus_lighting(world, 0.0)
+	if is_instance_valid(router.resident) and router.resident.visible: router.resident.update_view(player.camera.global_position)
 
 
 ## Seed the incoming region before its first rendered frame, as well as on every simulation tick.
@@ -1048,6 +1073,8 @@ func _update_campus_lighting(world: CampusWorld, delta: float) -> void:
 
 
 func _door_changed(key: String, open: bool) -> void:
+	if is_instance_valid(router.resident):
+		for region: CampusWorld in router.resident.regions.values(): region.set_door_open(key, open)
 	var world := _campus_world()
 	if world != null:
 		world.set_door_open(key, open)
@@ -1080,6 +1107,9 @@ func _campus_step(delta: float) -> void:
 	var lift := elevator()
 	if lift != null:
 		var stepped := lift.step(delta, session.world_id, player.capture_pose())
+		if is_instance_valid(router.resident):
+			router.resident.update_lifts(lift)
+			if router.resident.space.contains(session.world_id): router.coordinate_frame.transform = router.resident.space.frame(session.world_id)
 		_apply_result(stepped)
 		for text: String in lift.take_notices():
 			ui.show_notice(text)
@@ -1547,8 +1577,8 @@ func _school_step(delta: float, rules: CampusModule, advance_calendar: bool = tr
 				look_scene = CampusGeometry.to_scene(room, Vector2(float(look["x"]), float(look["y"])))
 			lit.show_patrol(watcher.figure_visible(), fig_scene, float(watcher.pat["fy"]), Vector3(look_scene.x, float(watcher.pat["fy"]), look_scene.y))
 		if weird_light != null and lit.anomaly_fx != null:
-			var cam_pos := player.camera.global_position
-			var fwd := -player.camera.global_transform.basis.z
+			var cam_pos := player.scene_camera_transform().origin
+			var fwd := -player.scene_camera_transform().basis.z
 			lit.anomaly_fx.update(delta, weird_light.an, room, session.world_id, Vector3(cam_pos.x, float(p[1]), cam_pos.z), Vector2(fwd.x, fwd.z), cam_pos, story().diff == "hard")
 
 
@@ -1563,7 +1593,7 @@ func _can_stand(w: Vector2, room: Variant, height: float) -> bool:
 	var query := PhysicsShapeQueryParameters3D.new()
 	query.shape = shape
 	query.collision_mask = 1
-	query.transform = Transform3D(Basis(), Vector3(s.x, height + 0.9, s.y))
+	query.transform = Transform3D(Basis(), world.to_global(Vector3(s.x, height + 0.9, s.y)))
 	return world.get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
 
 
@@ -1764,8 +1794,8 @@ func _ground_pick_index() -> int:
 	var bag := items()
 	if bag == null or bag.ground.is_empty() or not _ground_allowed() or _dead():
 		return -1
-	var eye := player.camera.global_transform
-	return bag.ground_target(session.world_id, player.global_position, eye.origin, -eye.basis.z)
+	var eye := player.scene_camera_transform()
+	return bag.ground_target(session.world_id, player.position, eye.origin, -eye.basis.z)
 
 
 func _ground_step(bag: InventoryModule) -> void:
@@ -2178,8 +2208,8 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 		night = 1.0 - float(cw.lighting.sun_at(day_rules.tsec / 60.0)["day"])
 	var behind := false
 	if patrol_pos is Vector3:
-		var to_p: Vector3 = (patrol_pos as Vector3) - player.camera.global_position
-		behind = (-player.camera.global_basis.z).dot(to_p.normalized()) < -0.2
+		var to_p: Vector3 = (patrol_pos as Vector3) - player.scene_camera_transform().origin
+		behind = (-player.scene_camera_transform().basis.z).dot(to_p.normalized()) < -0.2
 	var big := false
 	if room is Dictionary and (room as Dictionary).has("cols"):
 		big = int(room["cols"]) * int(room["rows"]) > 900
@@ -2548,8 +2578,8 @@ func _read_wall_notice() -> void:
 	var at: Variant = cw.wall_text_position()
 	if not (at is Vector3):
 		return
-	var to: Vector3 = (at as Vector3) - player.camera.global_position
-	if to.length() > 2.5 or (-player.camera.global_basis.z).dot(to.normalized()) < 0.75:
+	var to: Vector3 = (at as Vector3) - player.scene_camera_transform().origin
+	if to.length() > 2.5 or (-player.scene_camera_transform().basis.z).dot(to.normalized()) < 0.75:
 		return
 	var parts: PackedStringArray = []
 	for i in (d.notice["lines"] as Array).size():
@@ -2692,6 +2722,7 @@ func _apply_graphics() -> void:
 	RenderQuality.apply(get_viewport(),q,CampusLighting.mobile_renderer,options)
 	_apply_torch_quality(q,options)
 	var cw:=_campus_world()
+	if is_instance_valid(router.resident): router.resident.configure_graphics(options, player.camera)
 	if cw!=null:
 		cw.configure_rendering(options,player.camera)
 		if cw.visual_tier!=CampusData.tier:
@@ -3995,7 +4026,7 @@ func _show_gaze(g: WindowGazeModule) -> void:
 		world.add_child(_gaze_nodes)
 	_gaze_nodes.position = Vector3(sp.x,0,sp.y)
 	# The original uses the standing EYE height, independently of crouch/temporary camera offsets.
-	_gaze_nodes.track(Vector3(player.position.x,CameraMotion.EYE,player.position.z))
+	_gaze_nodes.track(world.to_global(Vector3(player.position.x,CameraMotion.EYE,player.position.z)))
 
 
 func _apply_gaze_events() -> void:
@@ -5207,7 +5238,7 @@ func _phantom_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 		return
 	var ph := world.phantoms
 	var p: Array = pose["position"]
-	var cam := player.camera.global_position
+	var cam := player.scene_camera_transform().origin
 	var ang := CampusGeometry.ang_from_yaw(float(pose["yaw"]))
 	var h := float(p[1])
 	var playing := not story().dead and not get_tree().paused and not opening_busy() and not ui.choice_open() and not ui.terminal_open() and not phone_open() and not driving()
@@ -5255,7 +5286,7 @@ func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 			"smile":
 				var sw := _campus_world()
 				if sw != null and sw.phantoms != null:
-					var cp := player.camera.global_position
+					var cp := player.scene_camera_transform().origin
 					sw.phantoms.reduce_flash = settings.get_int("reduce_flash") == 1
 					sw.phantoms.show_smile(String(e["mode"]), cp, CampusGeometry.ang_from_yaw(player.rotation.y))
 					if e["mode"] == "jump":
@@ -5362,6 +5393,9 @@ func _lift_close() -> void:
 ## Switch scene inside the running session (old doEnterRoom / doExitRoom). Seamless moves keep input.
 func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
 	if is_instance_valid(debug_flow): debug_flow.location_changing()
+	var keep_global := seamless and router.same_space(session.world_id, world_id)
+	var global_pose := router.resident.space.global_pose(session.world_id, player.capture_pose()) if keep_global else {}
+	var velocity_before := player.velocity
 	var error := router.switch_to(world_id)
 	if not error.is_empty():
 		ui.show_notice(error)
@@ -5388,7 +5422,10 @@ func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
 		runscore().enter_room(world_id)
 		_runlog_room(world_id)
 	_enter_cool = 0.0 if seamless else 0.9
-	if seamless:
+	if keep_global:
+		player.place(router.resident.space.local_pose(world_id, global_pose), false)
+		player.velocity = velocity_before
+	elif seamless:
 		player.place(pose, true)
 	else:
 		player.restore_pose(pose)

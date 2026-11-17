@@ -24,6 +24,8 @@ var d: Dictionary = {}                 # per-scene state
 var _player: PlayerController
 var _world: Node3D
 var _world_was_visible := true
+var _hidden_school: CampusResident
+var _school_was_visible := true
 var _sky: MeshInstance3D
 var _camera_transform := Transform3D.IDENTITY
 var _camera_fov := 75.0
@@ -82,7 +84,7 @@ func begin(cause: String, player: PlayerController, world: Node3D, ui: GameUI, d
 	F.name = "DeathFrame"
 	F.rotation_order = EULER_ORDER_YXZ
 	player.get_parent().add_child(F)
-	F.global_position = Vector3(player.global_position.x, player.global_position.y, player.global_position.z)
+	F.position = player.position
 	F.rotation.y = player.rotation.y + PI          # local +z = the gaze
 	veil_mesh = null
 	_build_scene()
@@ -109,6 +111,8 @@ func _restore() -> void:
 	veil_mesh = null
 	if _world != null and is_instance_valid(_world):
 		_world.visible = _world_was_visible
+	if is_instance_valid(_hidden_school): _hidden_school.visible = _school_was_visible
+	_hidden_school = null
 	if F != null and is_instance_valid(F):
 		F.hide()
 		F.queue_free()
@@ -340,6 +344,10 @@ func shade(v: float) -> void:
 func hide_world(sky: Color = Color(0.02, 0.025, 0.03)) -> void:
 	_world_was_visible = _world.visible
 	_world.visible = false
+	_hidden_school = _world.get_parent() as CampusResident
+	if _hidden_school != null:
+		_school_was_visible = _hidden_school.visible
+		_hidden_school.hide()
 	_sky = MeshInstance3D.new()
 	var sm := SphereMesh.new()
 	sm.radius = 60.0

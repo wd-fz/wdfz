@@ -557,7 +557,7 @@ func _clear(parent: Node) -> void:
 
 
 func refit() -> void:
-	if not is_node_ready(): return
+	if not is_node_ready() or not is_inside_tree(): return
 	var keyboard := float(DisplayServer.virtual_keyboard_get_height()) if DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD) else 0.0
 	# Keyboard height is in window pixels; layout uses stretched canvas units.
 	keyboard /= maxf(0.01, get_viewport().get_screen_transform().get_scale().y)

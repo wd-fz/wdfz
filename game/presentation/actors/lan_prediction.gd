@@ -21,7 +21,7 @@ func reconcile(body: CharacterBody3D, authority: Vector3, ack: int, enabled: boo
 			var dt := minf(float(frame["dt"]), 1.0 / 30.0)
 			if replayed + dt > 0.25: break
 			replayed += dt
-			var direction: Vector3 = Basis(Vector3.UP, float(frame["yaw"])) * Vector3(frame["axis"].x, 0, frame["axis"].y)
+			var direction: Vector3 = body.get_parent().global_basis * Basis(Vector3.UP, float(frame["yaw"])) * Vector3(frame["axis"].x, 0, frame["axis"].y)
 			var displacement := direction * (CharacterMotor.RUN if frame["running"] else CharacterMotor.WALK) * float(frame["multiplier"]) * dt
 			for _slide in 3:
 				var collision := body.move_and_collide(displacement)

@@ -209,3 +209,8 @@ func restore_pose(data: Dictionary) -> void:
 	set_pitch(float(data["pitch"]))
 	reset_view()
 	reset_physics_interpolation()
+
+
+## Gameplay effects use the current region's coordinates, like saves and rules.
+func scene_camera_transform() -> Transform3D:
+	return transform * camera.transform

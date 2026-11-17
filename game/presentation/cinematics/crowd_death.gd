@@ -144,8 +144,9 @@ static func update(c: DeathStage, t: float) -> void:
 	(c.d["panel_light"] as OmniLight3D).light_energy=2.5+17.0*float(f["end"])
 	c.d["card"].visible=f["end"]
 	c.d["photo"].visible=f["end"]
-	var base := c.F.to_local(c.cam.global_position)
-	var basis := c.F.global_basis.inverse()*c.cam.global_basis
+	var relative: Transform3D = c.F.transform.affine_inverse() * c._player.transform * c.cam.transform if c.cam.get_parent() == c._player else c.F.global_transform.affine_inverse() * c.cam.global_transform
+	var base := relative.origin
+	var basis := relative.basis
 	var lf := -basis.z
 	var lu := basis.y
 	var lr := basis.x
@@ -171,7 +172,9 @@ static func update(c: DeathStage, t: float) -> void:
 		if not h.visible: continue
 		var g := c.ss(t,at,at+.35)
 		h.position=base+lf*(.24+float(s[2])*.5)+lr*(-float(s[0])*(1.3-.3*g))+lu*(float(s[1])*(1.25-.25*g))
-		h.look_at(c.F.to_global(base+lf*1.2+lu*float(s[1])),Vector3.UP,true)
+		var hand_scale := h.scale
+		h.transform = h.transform.looking_at(base+lf*1.2+lu*float(s[1]),Vector3.UP,true)
+		h.scale = hand_scale
 		# Fingers open as the hand arrives, then close on what they reach (pure function of t).
 		var grab := c.ss(t,at+.45,at+1.3)
 		HorrorKit.pose_hand(h.get_child(0),lerpf(-.1,.75,grab)+.06*sin(t*3.1+i),lerpf(.9,.25,grab))

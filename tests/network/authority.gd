@@ -228,7 +228,7 @@ func mobility() -> void:
 	var b := sim.actor("b")
 	place(a, "lab3", Vector2(500, 500))
 	await physics_frame
-	check(sim.physics.bodies[a.id].get_world_3d() != sim.physics.bodies[b.id].get_world_3d(), "overlapping room coordinates use independent collision spaces")
+	check(sim.physics.bodies[a.id].get_world_3d() == sim.physics.bodies[b.id].get_world_3d() and sim.physics.bodies[a.id].global_position.distance_to(sim.physics.bodies[b.id].global_position) > 3.0, "region-local positions map into one shared school physics space")
 	a.input = {"x": 1.0, "y": 0.0, "yaw": 0.0, "pitch": 0.0, "run": true}
 	a.input_age = 1.0
 	sim.tick(1.0 / 60.0)

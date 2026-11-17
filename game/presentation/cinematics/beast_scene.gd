@@ -55,13 +55,13 @@ func apply(k: float, camera: Camera3D, shake: bool) -> Dictionary:
 	var state := frame(k,room,shake)
 	figure.position = state["figure"]
 	figure.visible = state["visible"]
-	var facing: Vector3 = state["from"] if k<.36 else state["walk_to"]
+	var facing := to_global(state["from"] if k<.36 else state["walk_to"])
 	facing.y = figure.global_position.y
 	if facing.distance_to(figure.global_position)>.001:
 		figure.look_at(facing,Vector3.UP)
 	light.visible = k<.42
 	var material := light.material_override as StandardMaterial3D
 	material.albedo_color.a = state["light"]
-	camera.global_position = state["from"]
-	camera.look_at(state["to"],Vector3.UP)
+	camera.global_position = to_global(state["from"])
+	camera.look_at(to_global(state["to"]),Vector3.UP)
 	return state

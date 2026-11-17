@@ -261,7 +261,7 @@ func _host_scenario() -> void:
 		check(sim.actor(network.local_id).location() == "teach1", "guest travel does not switch host room")
 		stage = 1
 	elif stage == 1 and elapsed > 4.0:
-		check(sim.physics.zones.size() >= 2, "separate physical spaces stay active")
+		check(sim.physics.zones.size() >= 2 and sim.physics.zone("teach1") == sim.physics.zone("lab3"), "separate region adapters share the school physics world")
 		network.pause(true)
 		before_pause = sim.calendar.tsec
 		stage = 2
@@ -275,8 +275,10 @@ func _host_scenario() -> void:
 		check(error.is_empty(), "running world validates: " + error)
 		check(sim.actor(network.local_id).school().tsec == sim.actor(String(sim.actors.keys()[1])).school().tsec, "calendar not multiplied by player count")
 		stage = 4
-	elif stage == 4 and elapsed > 11.0:
-		check(network.connections.size() == count, "original peer restored after transport disconnect")
+	# A missed disconnect can wait for the 12 s heartbeat before admitting the
+	# returning identity. Assert recovery within that bound, not at one instant.
+	elif stage == 4 and elapsed > 11.0 and (_original_guest_connected() or elapsed > 26.0):
+		check(_original_guest_connected(), "original peer restored after transport disconnect")
 		if ui_mode:
 			app.lan.open()
 			stage = 5
@@ -304,6 +306,15 @@ func _host_scenario() -> void:
 	elif stage == 6 and elapsed > 14.0:
 		check(sim.state_for(network.local_id).has("observed"), "dead host receives authorized spectator view")
 		stage = 7
+
+
+func _original_guest_connected() -> bool:
+	# Other guests may finish their own 18 s interval while guest-1 is waiting
+	# for the stale connection's heartbeat. Only guest-1 reconnects in this case.
+	for id: String in network.room.members:
+		if network.room.members[id]["name"] == "guest-1":
+			return network.connections.values().has(id)
+	return false
 
 
 func _touch_panel() -> void:

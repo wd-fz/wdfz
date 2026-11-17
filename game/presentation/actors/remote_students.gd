@@ -1,7 +1,8 @@
 class_name RemoteStudents
 extends Node3D
-## Remote avatars interpolate only within their replicated scene; no physical pushing.
+## Remote avatars interpolate in the common school, or in one isolated special space.
 signal stepped(at: Vector3, running: bool)
+var space: CampusSpace
 var peers: Dictionary = {}
 var samples: Dictionary = {}
 var _steps: Dictionary = {}
@@ -12,7 +13,8 @@ func receive(data: Dictionary, local_id: String, world: String, names: Dictionar
 	var visible_ids: Array = []
 	for id: String in data.get("players", {}):
 		var state: Dictionary = data["players"][id]
-		if id == local_id or state["world"] != world or state["dead"] or state["hiding"]: continue
+		var common := space != null and space.contains(world) and space.contains(String(state["world"]))
+		if id == local_id or (state["world"] != world and not common) or state["dead"] or state["hiding"]: continue
 		visible_ids.append(id)
 		if not peers.has(id):
 			var body := Node3D.new()
@@ -33,8 +35,12 @@ func receive(data: Dictionary, local_id: String, world: String, names: Dictionar
 			_steps[id] = 0.0
 		var sample := state.duplicate(true)
 		sample["at"] = _time
+		if common and not state.get("school",false): sample["pose"] = space.global_pose(String(state["world"]), state["pose"])
 		var history: Array = samples[id]
-		if not history.is_empty() and history.back()["scene"] != state["scene"]: history.clear()
+		if not history.is_empty() and history.back()["scene"] != state["scene"]:
+			var p: Array = history.back()["pose"]["position"]
+			var q: Array = sample["pose"]["position"]
+			if not common or Vector3(p[0],p[1],p[2]).distance_to(Vector3(q[0],q[1],q[2])) > 3.0: history.clear()
 		history.append(sample)
 		while history.size() > 8: history.pop_front()
 	for id: String in peers.keys():

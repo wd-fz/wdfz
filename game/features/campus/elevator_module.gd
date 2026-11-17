@@ -2,9 +2,9 @@ class_name ElevatorModule
 extends FeatureModule
 ## The two elevators (teach, lab), ported from the Web version's elevator.js (reference
 ## wd-fz.github.io@0bf508a). All waiting, door motion and travel use simulation seconds.
-## A floor's cabin is part of that floor scene (behind the J cell); only when the doors close
-## and the car leaves does the player move to the cabin scene (lift_teach / lift_lab), and on
-## arrival back to the same spot behind the target floor's doors.
+## The floor region owns boarding rules until departure; lift_teach / lift_lab then
+## own the ride rules, and the destination floor owns them on arrival. CampusSpace
+## keeps the same physical cabin under those local-coordinate state transitions.
 ##
 ## unsafe() is supplied by the app (anomalies, local chase, pending inspection).
 ## MazeFlow owns the wrong elevator's spatial gameplay and cinematic transitions.

@@ -118,6 +118,7 @@ func test_residency(quality: int = -1) -> void:
 	await _frames(2)
 	if quality >= 0:
 		app._setting_changed("quality", quality)
+	app.router.continuous_campus = false
 	app.router.stream.allow_headless = true
 	app.start_new_game()
 	print("STREAM: starting region built")

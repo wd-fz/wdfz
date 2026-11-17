@@ -17,6 +17,8 @@ var _special_choice := ""
 var _paused := false
 var _lost := false
 var _installed := false
+var _preparing_epoch := ""
+var _loading_snapshot: Dictionary = {}
 var _death_t := 0.0
 var _death_seen := false
 var _ended_seen := false
@@ -93,6 +95,7 @@ func _ready() -> void:
 		app.ui.show_notice(text)
 		if panel.visible: panel.status.text = text)
 	network.closed.connect(func(reason: String) -> void:
+		_cancel_preparation()
 		if _remote_mode: remote.stop()
 		_lost = true
 		app.player.enabled = false
@@ -356,6 +359,7 @@ func resume() -> void:
 
 
 func stop() -> void:
+	_cancel_preparation()
 	remote.stop()
 	network.stop()
 	if is_instance_valid(avatars): avatars.queue_free()
@@ -394,6 +398,14 @@ func _snapshot(data: Dictionary) -> void:
 	_observing = String(view.get("id", "")) if _spectating else ""
 	var source: Dictionary = view["session"]
 	var first := _epoch != network.room.epoch or not _installed
+	if first and (not _preparing_epoch.is_empty() or (app.router.continuous_campus and not app.router.school_ready())):
+		_loading_snapshot = data.duplicate(true)
+		if _preparing_epoch != network.room.epoch:
+			if not _preparing_epoch.is_empty(): app.cancel_loading()
+			_preparing_epoch = network.room.epoch
+			# Yield between regions so ENet keeps polling throughout initial load.
+			app._load_then(String(source["world_id"]),_finish_preparation.bind(_preparing_epoch))
+		return
 	if first:
 		var candidate := SessionFactory.create()
 		(candidate.modules.get_module(&"school.day") as SchoolModule).assign_own_seat(String(view["seat"]))
@@ -413,6 +425,7 @@ func _snapshot(data: Dictionary) -> void:
 		if is_instance_valid(avatars): avatars.queue_free()
 		avatars = RemoteStudents.new()
 		avatars.name = "RemoteStudents"
+		if is_instance_valid(app.router.resident): avatars.space = app.router.resident.space
 		app.get_node("World").add_child(avatars)
 		avatars.stepped.connect(_remote_step)
 		_team.show()
@@ -461,10 +474,12 @@ func _snapshot(data: Dictionary) -> void:
 	if first or next_scene != _view_scene or app.session.world_id != source["world_id"]:
 		_view_scene = next_scene
 		prediction.clear()
+		var continuous: bool = not first and app.session.world_id != source["world_id"] and app.router.same_space(app.session.world_id,String(source["world_id"]))
 		if app.session.world_id != source["world_id"]:
 			app.router.switch_to(String(source["world_id"]))
 			app.session.world_id = String(source["world_id"])
-		app.player.restore_pose(source["player"])
+		if continuous: app.player.place(source["player"], false)
+		else: app.player.restore_pose(source["player"])
 		app._sync_world()
 	if app.story().dead and not _death_seen:
 		_death_seen = true
@@ -512,6 +527,20 @@ func _snapshot(data: Dictionary) -> void:
 	panel.inventory(app._bag_entries())
 	_sync_input()
 	if app.phone_open(): app._phone_paint()
+
+
+func _finish_preparation(epoch: String) -> void:
+	if _preparing_epoch != epoch or network.room == null or network.room.epoch != epoch: return
+	_preparing_epoch = ""
+	var data := _loading_snapshot
+	_loading_snapshot = {}
+	_snapshot(data)
+
+
+func _cancel_preparation() -> void:
+	if not _preparing_epoch.is_empty(): app.cancel_loading()
+	_preparing_epoch = ""
+	_loading_snapshot.clear()
 
 
 func loaded() -> void:
@@ -582,11 +611,12 @@ func _remote_step(at: Vector3, running: bool) -> void:
 	if not playing() or _lost or app.story().over() or network.room.paused_left > 0.0: return
 	if at.distance_to(app.player.global_position) > 12.0: return
 	var world := app.session.world_id
-	var location := CampusGeometry.to_world(CampusData.rooms().get(world), at.x, at.z)
+	var local := app.router.coordinate_frame.to_local(at)
+	var location := CampusGeometry.to_world(CampusData.rooms().get(world), local.x, local.z)
 	var outdoor := CampusData.layout("out")
 	var surface := AudioFx.surface(world, world == "bell1" and at.y > 0.4, location, outdoor.get("objects", []), float(outdoor.get("SC", 1.0)))
 	# Player footsteps must not produce the patrol's threat captions.
-	app.audio.step_on(surface, 0.8 if running else 0.55, {"pos": at, "self_step": true})
+	app.audio.step_on(surface, 0.8 if running else 0.55, {"pos": at, "world_pos": true, "self_step": true})
 
 
 func _process(dt: float) -> void:
@@ -634,7 +664,7 @@ func _physics_process(dt: float) -> void:
 		var chase: Dictionary = app.garage().chase
 		app._drive_view.update(chase)
 		var eye := app._drive_view.position + CarChaseView.eye(chase)
-		app.player.position = eye - Vector3(0, app.player.camera.position.y, 0)
+		app.player.global_position = eye - Vector3(0, app.player.camera.position.y, 0)
 		app.player.rotation.y = 0.0
 		app.player.set_pitch(-0.04)
 		app.ui.show_status("校外道路 · " + ("驾驶" if current.get("driver") == network.local_id else "乘客"), "速度 %d · 车况 %d/3 · %d%%" % [roundi(float(chase["speed"]) * 3.6), int(chase["hp"]), roundi(float(chase["distance"]) / CarChaseRules.DISTANCE * 100.0)], "", "")
@@ -683,8 +713,8 @@ func _present(dt: float) -> void:
 		else: world.show_patrol(false, Vector2.ZERO, 0, Vector3.ZERO)
 		world.show_portal(bool(app.facilities().portal["open"]), bool(app.facilities().portal["sketch"]))
 		if world.anomaly_fx != null:
-			var cam := app.player.camera.global_position
-			var fwd := -app.player.camera.global_basis.z
+			var cam := app.player.scene_camera_transform().origin
+			var fwd := -app.player.scene_camera_transform().basis.z
 			world.anomaly_fx.update(dt, app.anomaly().an, room, app.session.world_id, app.player.position, Vector2(fwd.x, fwd.z), cam, app.story().diff == "hard")
 	if _death_seen and not _spectating and not _ended_seen:
 		_death_t += dt

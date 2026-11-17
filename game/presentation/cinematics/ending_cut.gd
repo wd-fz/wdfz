@@ -66,6 +66,8 @@ var _last_kk := 0.0
 var audio: AudioFx  ## set by the caller before begin(); the scenes' own sounds (engine, hum, the gate's second click, the cyber ending bed)
 var _world: Node3D
 var _world_was_visible := true
+var _school: CampusResident
+var _school_was_visible := true
 var _how := "exam"
 var _st: Array = []
 var _walk: Array = []
@@ -180,6 +182,8 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	_root = Node3D.new()
 	_root.name = "EndingProps"
 	_world = world
+	_school = world.get_parent() as CampusResident
+	if _school != null: _school_was_visible = _school.visible
 	# 《门》 plays in the real lab with the real rig when the player is there (the ending only starts there).
 	var live_portal := id == "portal" and String(world.get("scene_id")) == "lab1"
 	# 《闸门》片头 starts in the real garage (the world stays) and switches to the real outside of the gate halfway.
@@ -192,7 +196,7 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 		# Its own stages far from the real scene: the world is hidden meanwhile.
 		_how = String(opts.get("how", "exam"))
 		_world_was_visible = world.visible
-		world.visible = false
+		_set_world_visible(false)
 		add_child(_root)
 		var env := WorldEnvironment.new()
 		env.environment = Environment.new()
@@ -298,11 +302,18 @@ func snd(sound_id: String, opts: Dictionary = {}) -> void:
 
 
 func _look(from: Vector3, to: Vector3) -> void:
+	from = _root.to_global(from)
+	to = _root.to_global(to)
 	if _sky != null:
 		_sky.global_position = from
 	cam.global_position = from
 	if from.distance_to(to) > 0.01:
 		cam.look_at(to, Vector3.UP)
+
+
+func _set_world_visible(value: bool) -> void:
+	_world.visible = value
+	if is_instance_valid(_school): _school.visible = value
 
 
 func _apply(kk: float) -> void:
@@ -427,6 +438,7 @@ func _finish(skipped: bool, notify: bool) -> void:
 		audio.stop("scene")
 	if STAGED.has(kind) and is_instance_valid(_world):
 		_world.visible = _world_was_visible
+	if is_instance_valid(_school): _school.visible = _school_was_visible
 	if is_instance_valid(_player) and is_instance_valid(_player.camera):
 		_player.camera.current = true
 	if is_instance_valid(_root):
@@ -781,7 +793,7 @@ func _apply_dis(kk: float) -> void:
 			(w.material_override as StandardMaterial3D).albedo_color = Color("#050909") if v > 0.68 + float(i) * 0.055 else Color("#aba17c")
 	# Only the last stage is in the real campus.
 	if is_instance_valid(_world):
-		_world.visible = s == 3
+		_set_world_visible(s == 3)
 	cam.environment = _campus_env if s == 3 else _stage_env
 	for w2: MeshInstance3D in _windows:
 		w2.visible = w2.visible and s == 3
@@ -1245,7 +1257,7 @@ static func car_fade(kk: float) -> float:
 
 ## Headlights in the real garage: the player's spot and facing, the beam on the floor 4.4 m ahead, the thing 6.5 m ahead (cutscene.js car).
 func _setup_live_car(world: Node3D, player: PlayerController) -> void:
-	_car_p = Vector3(player.global_position.x, 0.0, player.global_position.z)
+	_car_p = Vector3(player.global_position.x, world.global_position.y, player.global_position.z)
 	var fwd := -player.global_transform.basis.z
 	_car_f = Vector3(fwd.x, 0.0, fwd.z).normalized()
 	_beam = MeshInstance3D.new()

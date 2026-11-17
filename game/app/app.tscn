@@ -60,9 +60,12 @@ process_mode = 1
 [node name="WorldRouter" type="Node3D" parent="World"]
 unique_name_in_owner = true
 script = ExtResource("2")
+continuous_campus = true
 worlds = Array[ExtResource("6")]([ExtResource("5"), ExtResource("campus_out"), ExtResource("campus_admin1"), ExtResource("campus_admin2"), ExtResource("campus_admin3"), ExtResource("campus_admin4"), ExtResource("campus_admin5"), ExtResource("campus_bell1"), ExtResource("campus_canteen1"), ExtResource("campus_dorm1"), ExtResource("campus_dorm2"), ExtResource("campus_dorm3"), ExtResource("campus_dorm4"), ExtResource("campus_dorm5"), ExtResource("campus_dorm6"), ExtResource("campus_dream_top"), ExtResource("campus_garage1"), ExtResource("campus_gear1"), ExtResource("campus_guard1"), ExtResource("campus_lab1"), ExtResource("campus_lab2"), ExtResource("campus_lab3"), ExtResource("campus_lab4"), ExtResource("campus_lab5"), ExtResource("campus_lift_dream"), ExtResource("campus_lift_lab"), ExtResource("campus_lift_teach"), ExtResource("campus_link1"), ExtResource("campus_link2"), ExtResource("campus_portal_tunnel"), ExtResource("campus_stair_admin"), ExtResource("campus_stair_dormN"), ExtResource("campus_stair_dormS"), ExtResource("campus_stair_garage"), ExtResource("campus_stair_lab"), ExtResource("campus_stair_teach_e"), ExtResource("campus_stair_teach_w"), ExtResource("campus_teach1"), ExtResource("campus_teach2"), ExtResource("campus_teach3"), ExtResource("campus_teach4"), ExtResource("campus_teach5"), ExtResource("campus_teach6"), ExtResource("campus_trash1")])
 
-[node name="Player" parent="World" instance=ExtResource("3")]
+[node name="PlayerFrame" type="Node3D" parent="World"]
+
+[node name="Player" parent="World/PlayerFrame" instance=ExtResource("3")]
 unique_name_in_owner = true
 
 [node name="UI" parent="." instance=ExtResource("4")]

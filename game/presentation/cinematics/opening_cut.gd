@@ -115,7 +115,7 @@ func begin(world: Node3D, room: Dictionary, player: PlayerController, ui: GameUI
 	_root.add_child(cam)
 	cam.current = true
 	# The final view = where the player is looking at the start.
-	_seat_eye = player.camera.global_position
+	_seat_eye = world.to_local(player.camera.global_position)
 	_seat_yaw = player.rotation.y
 	_board = _cell(C0 + 0.05, MID, 1.45)
 	_dust3 = _cell(C0 + 5.5, R0 + 0.7, 1.75)
@@ -191,9 +191,9 @@ func _build_dust() -> void:
 
 
 func _look(from: Vector3, to: Vector3) -> void:
-	cam.global_position = from
+	cam.position = from
 	if from.distance_to(to) > 0.01:
-		cam.look_at(to, Vector3.UP)
+		cam.look_at(_root.to_global(to), Vector3.UP)
 
 
 ## The mates at storyboard time K: still after 0.70 (they sit up straight again), frozen with the dust from 0.455.
@@ -299,8 +299,8 @@ func _apply(kk: float) -> void:
 		var pos := _seat_eye + fwd * 0.28 * (1.0 - t5)
 		pos.y = _seat_eye.y + lerpf(-0.19, 0.0, t5)
 		var pitch := lerpf(-0.62, 0.0, t5)
-		cam.global_position = pos
-		cam.global_rotation = Vector3(pitch, _seat_yaw, 0.0)
+		cam.position = pos
+		cam.rotation = Vector3(pitch, _seat_yaw, 0.0)
 		_ui.cut_fade(1.0 - (kk - 0.76) / 0.06 if kk < 0.82 else 0.0)
 
 

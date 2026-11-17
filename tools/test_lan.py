@@ -81,7 +81,12 @@ def main():
             children.append((process, output, path))
             if index == 0:
                 time.sleep(0.7)
-        deadline = time.monotonic() + args.seconds * 2 + (180 if args.ui else 45)
+        # Two software Vulkan windows now prepare the whole school before the
+        # shared loading barrier. Allow that cold build and the rendered play
+        # interval on a two-core runner; retain a bounded deadline and all
+        # connection/reconnect assertions. Renderless transport keeps its limit.
+        startup_budget = 420 if args.ui and args.renderer else 180 if args.ui else 45
+        deadline = time.monotonic() + args.seconds * 2 + startup_budget
         for process, output, path in children:
             code = process.wait(timeout=max(1, deadline - time.monotonic()))
             output.flush()

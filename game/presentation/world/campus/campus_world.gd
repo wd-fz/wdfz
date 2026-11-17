@@ -43,6 +43,10 @@ var render_options: Dictionary = {}
 var visual_ground:=VisualGround.new()
 ## Authority worlds use exactly the same collision geometry, without loading any meshes.
 var collision_only := false
+var resident := false
+var space: CampusSpace
+var shells: Dictionary = {}
+var runtime_active := false
 var geometry_ready := false
 ## Set by the router: previews are prepared on its worker instead of blocking a movement frame.
 var preview_request: Callable
@@ -52,11 +56,20 @@ var _patrol_asset: PackedScene
 
 
 func _ready() -> void:
+	set_process(false)
 	layout = CampusData.layout(scene_id)
 	if collision_only:
 		_build_collision()
 		return
 	prepare_geometry()
+	if resident: return
+	activate()
+
+
+func activate() -> void:
+	if runtime_active: return
+	runtime_active = true
+	set_process(true)
 	_build_lighting()
 	anomaly_fx = AnomalyFx.new()
 	anomaly_fx.particle_quality=int(render_options.get("particle_detail",-1))
@@ -107,6 +120,26 @@ func _ready() -> void:
 			duty.setup(layout)
 
 
+func deactivate() -> void:
+	if not runtime_active: return
+	runtime_active = false
+	set_process(false)
+	for child: Node in get_children():
+		if child.name not in ["Model", "Collision", "Doors"]:
+			remove_child(child)
+			child.free()
+	for key: String in ["lighting", "anomaly_fx", "chalk", "phantoms", "traces", "ground_items", "broadcast_props", "mirror_view", "canteen_view", "banner", "atmos_fx", "duty",
+		"_silhouettes", "_scatter"]:
+		set(key, null)
+	_silhouette_key = ""
+
+
+func set_collision_enabled(value: bool) -> void:
+	for name: String in ["Collision", "Doors"]:
+		var body := get_node_or_null(name) as CollisionObject3D
+		if body != null: body.collision_layer = 1 if value else 0
+
+
 ## Detached static work only. The stream prepares this before activation; lights, viewports,
 ## effects and other live adapters are created on the main thread by _ready.
 func prepare_geometry() -> void:
@@ -119,6 +152,9 @@ func prepare_geometry() -> void:
 		_patrol_asset = load(PATROL_FIGURE) as PackedScene
 	_build_model()
 	_build_collision()
+	if resident:
+		geometry_ready = true
+		return
 	if is_room():
 		_build_link_preview()
 	_build_stair_preview()
@@ -285,6 +321,7 @@ var _shaft_levels: Dictionary = {}      # level → the preview of the floor bey
 
 ## In a stairwell: the floors beyond the doors of the level you are on and the next one (StairView.refresh). level from the height.
 func update_shaft_previews(height: float) -> void:
+	if resident: return
 	var st: Dictionary = {}
 	for e: Dictionary in CampusData.campus().get("stair_layout", []):
 		if String(e["id"]) == scene_id:
@@ -576,6 +613,11 @@ func reload_models(player_position: Vector3) -> void:
 	_preview_lifts.clear()
 	_lift_amount = -1.0
 	_build_model()
+	if resident:
+		apply_doors(doors)
+		set_lift_doors(maxf(0.0, lift_amount))
+		if lighting != null: lighting.rebind_model(get_node_or_null("Model"))
+		return
 	if is_room():
 		_build_link_preview()
 	_build_stair_preview()
@@ -602,6 +644,17 @@ func _build_model() -> void:
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
 			_to_multimesh(mesh)
+	if resident and scene_id in ["lift_teach", "lift_lab"]:
+		CampusPreview.clip(model, Plane(Vector3.BACK, -1.04))
+		CampusShell.carve_box(model,AABB(Vector3(-.49,0,-1.1),Vector3(.98,2.4,.3)))
+		_car_leaves(model)
+	elif resident and is_room():
+		var cut := space.cabin_cut(scene_id)
+		if cut.has_area(): CampusShell.carve_box(model, AABB(Vector3(cut.position.x,-.4,cut.position.y),Vector3(cut.size.x,space.floor_height(scene_id)+.5,cut.size.y)))
+	if resident and layout.get("flags", {}).get("stairwell", false):
+		CampusPreview.clip(model, Plane(Vector3.BACK, -2.8))
+	if resident and scene_id == "teach6":
+		CampusShell.carve_box(model, AABB(Vector3(-2.85,0,7.5),Vector3(1.7,4,3)))
 	for holder: Node in model.get_children():
 		var extras: Variant = holder.get_meta("extras") if holder.has_meta("extras") else null
 		if extras is Dictionary and extras.get("liftLeaf", false):
@@ -619,8 +672,9 @@ func _build_model() -> void:
 	# showed partitioning/CPU occlusion added overhead there; preserve its batches.
 	if scene_id != "garage1":
 		CampusBatches.optimize(model)
+		if resident and scene_id == "out": shells = CampusShell.partition(model, space)
 		CampusMeshCells.apply(model)
-		CampusBatches.add_occluder(model)
+		if not (resident and scene_id == "out"): CampusBatches.add_occluder(model)
 	visual_ground.set_model(model)
 
 
@@ -689,7 +743,7 @@ func apply_doors(open_doors: Dictionary) -> void:
 
 
 func apply_lift_doors(lift: ElevatorModule) -> void:
-	set_lift_doors(lift.door_amount_in(scene_id))
+	set_lift_doors(float(lift.lifts.get(scene_id.trim_prefix("lift_"), {}).get("door", 0)) if resident and scene_id in ["lift_teach", "lift_lab"] else lift.door_amount_in(scene_id))
 	_preview_lifts = _preview_lifts.filter(func(entry: Dictionary) -> bool: return is_instance_valid(entry["node"]))
 	for entry: Dictionary in _preview_lifts:
 		var leaf: Node3D = entry["node"]
@@ -1051,7 +1105,7 @@ func wall_text_lines() -> Array:
 
 
 func wall_text_position() -> Variant:
-	return _wall_text.global_position if is_instance_valid(_wall_text) and _wall_text.is_inside_tree() else null
+	return _wall_text.position if is_instance_valid(_wall_text) and _wall_text.is_inside_tree() else null
 
 
 func dread_note_text() -> String:
@@ -1122,19 +1176,27 @@ func _build_collision() -> void:
 	if scene_id == "lift_dream":
 		MazePhysics.build(body, CampusData.maze_geometry())
 		return
+	if resident and scene_id in ["lift_teach", "lift_lab"]:
+		_build_resident_car(body)
+		return
 	if rules.is_stairwell(scene_id):
 		_build_stairwell(body, rules.stair_surfaces(scene_id))
 		return
-	_add_box(body, Rect2(extent.position - Vector2.ONE * 2, extent.size + Vector2.ONE * 4), -1.0, 0.0, "floor")
+	var floors: Array[Rect2] = [extent if resident and is_room() else Rect2(extent.position - Vector2.ONE * 2, extent.size + Vector2.ONE * 4)]
+	if resident and scene_id == "out": floors = CampusSpace.subtract_rect(floors[0], space.garage_hole())
+	for floor_rect: Rect2 in floors: _add_box(body, floor_rect, -0.12 if resident else -1.0, 0.0, "floor")
 	if is_room():
+		var cut := space.cabin_cut(scene_id) if resident else Rect2()
 		for b: Dictionary in layout["walls"] + layout["boxes"]:
-			_add_rect(body, b)
+			if cut.has_area():
+				for part: Rect2 in CampusSpace.subtract_rect(_rect_of(b), cut): _add_box(body, part, WALL_BOTTOM, _wall_top(), String(b["k"]))
+			else: _add_rect(body, b)
 		if layout["flags"].get("spiral", false):
 			_build_spiral(body, CampusData.campus()["spiral"])
 		var doorways := rules.stair_doorways(scene_id)
 		for b: Dictionary in layout["stairs"]:
 			for part: Rect2 in _cut_doorways(_rect_of(b), doorways):
-				_add_box(body, part, WALL_BOTTOM, WALL_TOP, "stair")
+				_add_box(body, part, WALL_BOTTOM, _wall_top(), "stair")
 		_room_boundary(body, extent)
 		var doors := StaticBody3D.new()
 		doors.name = "Doors"
@@ -1143,10 +1205,24 @@ func _build_collision() -> void:
 		add_child(doors)
 		for d: Dictionary in layout["doors"]:
 			_door_bodies[String(d["key"])] = _add_rect(doors, d)
-		for r: Rect2 in CampusData.lift_geometry().door_rects(scene_id):
-			_lift_bodies.append(_add_box(doors, r, WALL_BOTTOM, WALL_TOP, "lift_door"))
+		var lift_rects := CampusData.lift_geometry().door_rects(scene_id)
+		if resident and lift_rects.size() > 1: lift_rects.resize(1)
+		for r: Rect2 in lift_rects:
+			_lift_bodies.append(_add_box(doors, r, WALL_BOTTOM, _wall_top(), "lift_door"))
 	else:
 		for b: Dictionary in layout["boxes"]:
+			if resident and ((b.get("k") == "building" and space.has_building(String(b.get("id", "")))) or space.replaces_outside_rect(_rect_of(b))): continue
+			if resident:
+				var clipped := false
+				for bridge: AABB in space.bridge_volumes():
+					var rect := Rect2(Vector2(bridge.position.x,bridge.position.z),Vector2(bridge.size.x,bridge.size.z))
+					var overlap := _rect_of(b).intersection(rect)
+					if not overlap.has_area(): continue
+					for part: Rect2 in CampusSpace.subtract_rect(_rect_of(b),rect): _add_box(body,part,WALL_BOTTOM,WALL_TOP,String(b["k"]))
+					_add_box(body,overlap,WALL_BOTTOM,bridge.position.y,String(b["k"]))
+					clipped = true
+					break
+				if clipped: continue
 			_add_rect(body, b)
 		var bd: Dictionary = layout["bound"]
 		var inner := Rect2(Vector2(bd["x0"], bd["z0"]), Vector2(float(bd["x1"]) - float(bd["x0"]), float(bd["z1"]) - float(bd["z0"])))
@@ -1167,7 +1243,11 @@ func _rect_of(b: Dictionary) -> Rect2:
 
 
 func _add_rect(parent: Node3D, b: Dictionary) -> CollisionShape3D:
-	return _add_box(parent, _rect_of(b), WALL_BOTTOM, WALL_TOP, String(b["k"]))
+	return _add_box(parent, _rect_of(b), WALL_BOTTOM, _wall_top(), String(b["k"]))
+
+
+func _wall_top() -> float:
+	return space.floor_height(scene_id) - 0.15 if resident and scene_id != "out" and scene_id != "bell1" else WALL_TOP
 
 
 ## Old rule (collision.js + StairWorld.doorwayFree): a stair cell is solid except the 1.7 m doorway
@@ -1184,7 +1264,7 @@ func _cut_doorways(r: Rect2, doorways: Array[Dictionary]) -> Array[Rect2]:
 		# In particular, do not cut through the second row of roof stair cells.
 		var radius := CampusGeometry.PRAD * CampusGeometry.U2M
 		var a := c + n * (-0.85 - radius) - lateral * half
-		var b := c + n * (0.5 + radius) + lateral * half
+		var b := c + n * (10.0 if resident else (0.5 + radius)) + lateral * half
 		var cut := Rect2(a.min(b), (b - a).abs())
 		var next: Array[Rect2] = []
 		for q: Rect2 in parts:
@@ -1212,14 +1292,21 @@ func _build_stairwell(body: StaticBody3D, surfaces: Array[Dictionary]) -> void:
 		_add_slab(body, s)
 	var y0 := -1.0
 	var y1 := top + 3.5
-	for r: Rect2 in [
+	var walls: Array[Rect2] = [
 		Rect2(-3.2, -1.2, 1.0, 8.4), Rect2(2.2, -1.2, 1.0, 8.4),          # outer side walls
 		Rect2(-3.2, 7.2, 6.4, 1.0),                                        # back wall
 		Rect2(-3.2, -2.2, 2.35, 1.0), Rect2(0.85, -2.2, 2.35, 1.0),       # front wall beside the corridor
 		Rect2(-1.85, -4.5, 1.0, 3.3), Rect2(0.85, -4.5, 1.0, 3.3),        # corridor walls
 		Rect2(-1.85, -4.5, 3.7, 1.0),                                      # corridor end
 		Rect2(-0.3, 0.8, 0.6, 4.8),                                        # slot between the two flights
-	]:
+	]
+	if resident:
+		# The old 2D adapter inflated outer walls by a metre. That reaches into
+		# the neighbouring bridge in a shared 3D world; use the visible shell.
+		walls = [Rect2(-2.32,-1.2,.12,8.4),Rect2(2.2,-1.2,.12,8.4),
+			Rect2(-2.32,7.2,4.64,.12),Rect2(-2.32,-1.32,1.47,.12),Rect2(.85,-1.32,1.47,.12),
+			Rect2(-.97,-2.8,.12,1.6),Rect2(.85,-2.8,.12,1.6),Rect2(-.3,.8,.6,4.8)]
+	for r: Rect2 in walls:
 		_add_box(body, r, y0, y1, "stairwell")
 	# Under the first upper flight (level 0, x 0.3..2.2) there is no surface at ground height.
 	_add_box(body, Rect2(0.3, 0.8, 1.9, 4.8), y0, 1.4, "stairwell")
@@ -1334,7 +1421,7 @@ func _room_boundary(body: StaticBody3D, extent: Rect2) -> void:
 		var half := CampusGeometry.door_half(d, float(cfg.get("width", 3))) * CampusGeometry.U2M
 		var depth := float(cfg.get("annex", 1.5)) * CampusGeometry.TTILE * CampusGeometry.U2M + CampusGeometry.PRAD * CampusGeometry.U2M
 		gaps.append({"edge": d["edge"], "center": p, "half": half})
-		_annex(body, p, n, half, depth)
+		if not resident: _annex(body, p, n, half, depth)
 	# The cabin behind a floor's elevator doors lies outside the grid (Elevator.annexAt); its walls are
 	# exported props, so only the boundary opens there.
 	var cabin := CampusData.lift_geometry().cabin_gap(scene_id)
@@ -1343,7 +1430,15 @@ func _room_boundary(body: StaticBody3D, extent: Rect2) -> void:
 	# Corridor bridges (campus-link/link.js) open the same kind of gap.
 	for g: Dictionary in CampusData.rules().link_doorways(scene_id):
 		gaps.append(g)
-		_annex(body, g["center"], g["normal"], float(g["half"]), float(g["depth"]) + CampusGeometry.PRAD * CampusGeometry.U2M)
+		if not resident: _annex(body, g["center"], g["normal"], float(g["half"]), float(g["depth"]) + CampusGeometry.PRAD * CampusGeometry.U2M)
+	if resident:
+		for stair: Dictionary in campus.get("stair_layout", []):
+			var level := (stair["rooms"] as Array).find(scene_id)
+			if level < 0: continue
+			var port := CampusPortals.stair_port(stair, level, CampusData.rooms(), CampusData.layout("out"))
+			var normal: Vector2 = port["n"]
+			gaps.append({"edge": "s" if normal.y > 0 else ("n" if normal.y < 0 else ("e" if normal.x > 0 else "w")),
+				"center": CampusGeometry.to_scene(layout, port["p"]), "half": CampusPortals.DOOR_HALF})
 	_ring(body, extent, gaps)
 
 
@@ -1360,7 +1455,7 @@ func _annex(body: StaticBody3D, p: Vector2, n: Vector2, half: float, depth: floa
 
 
 func _ring(body: StaticBody3D, r: Rect2, gaps: Array) -> void:
-	var t := BOUNDARY
+	var t := 0.12 if resident else BOUNDARY
 	var x0 := r.position.x
 	var z0 := r.position.y
 	var x1 := r.end.x
@@ -1393,7 +1488,7 @@ func _edge(body: StaticBody3D, edge: String, a: Vector2, b: Vector2, gaps: Array
 	for s: Array in spans:
 		var rect := Rect2(Vector2(s[0], a.y), Vector2(s[1] - s[0], b.y - a.y)) if horizontal \
 			else Rect2(Vector2(a.x, s[0]), Vector2(b.x - a.x, s[1] - s[0]))
-		_add_box(body, rect, WALL_BOTTOM, WALL_TOP, "boundary")
+		_add_box(body, rect, WALL_BOTTOM, _wall_top(), "boundary")
 
 
 # ---- lighting (lighting.js port in CampusLighting) ----
@@ -1435,3 +1530,35 @@ func _build_placeholder_lighting() -> void:
 	sun.rotation_degrees = Vector3(-55, 30, 0) if not is_room() else Vector3(-90, 0, 0)
 	sun.light_energy = 0.9 if not is_room() else 0.45
 	add_child(sun)
+
+
+func _build_resident_car(body: StaticBody3D) -> void:
+	# Only the car moves. The hallway and landing door belong to each storey.
+	_add_box(body, Rect2(-.85,-1.03,1.7,1.58),-.12,0,"floor")
+	_add_box(body, Rect2(-.85,-1.03,.10,1.58),0,2.65,"car_wall")
+	_add_box(body, Rect2(.75,-1.03,.10,1.58),0,2.65,"car_wall")
+	_add_box(body, Rect2(-.85,.45,1.7,.10),0,2.65,"car_wall")
+	var doors := StaticBody3D.new()
+	doors.name = "Doors"
+	doors.collision_layer = 1
+	doors.collision_mask = 0
+	add_child(doors)
+	_lift_bodies.append(_add_box(doors, Rect2(-.47,-1.07,.94,.08),0,2.4,"car_door"))
+
+
+func _car_leaves(model: Node3D) -> void:
+	for side: int in [-1,1]:
+		var holder := Node3D.new()
+		holder.name = "CarDoorLeft" if side < 0 else "CarDoorRight"
+		holder.position = Vector3(side * .235,1.2,-1.03)
+		holder.set_meta("extras", {"liftLeaf":true,"ox":side * .65,"oz":0.0})
+		var leaf := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(.47,2.4,.06)
+		leaf.mesh = box
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(.22,.25,.27)
+		mat.roughness = .85
+		RenderMaterials.set_override(leaf,mat)
+		holder.add_child(leaf)
+		model.add_child(holder)

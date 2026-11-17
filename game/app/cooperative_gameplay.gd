@@ -343,7 +343,7 @@ func apply_result(a: CooperativeActor, result: Dictionary) -> void:
 		if result.has("ang"):
 			a.pose["yaw"] = CampusGeometry.yaw_from_ang(float(result["ang"]))
 			a.input["yaw"] = a.pose["yaw"]
-	if result.has("travel"): sim.travel(a, String(result["travel"]["world"]), result["travel"]["pose"])
+	if result.has("travel"): sim.travel(a, String(result["travel"]["world"]), result["travel"]["pose"], bool(result["travel"].get("seamless", false)))
 	if result.has("choice"): _choice(a, "lift", result["choice"])
 	if result.has("seat"):
 		var seat: Array = result["seat"]
@@ -752,6 +752,7 @@ func _lift_result(engine: ElevatorModule, host: String, a: CooperativeActor, fro
 	if not result.has("travel"):
 		apply_result(a, result)
 		return
+	if sim.physics.space != null: sim.physics.space.update_lifts(engine, host)
 	var destination := String(result["travel"]["world"])
 	var riders: Array = []
 	for other: CooperativeActor in sim.actors.values():
@@ -764,7 +765,7 @@ func _lift_result(engine: ElevatorModule, host: String, a: CooperativeActor, fro
 		if local == null: local = Vector2(-1.1, 0)
 		var w := engine.world(destination, clampf(local.x, -1.61, -0.84), clampf(local.y, -0.41, 0.41))
 		var ang := engine._turn(from, destination, CampusGeometry.ang_from_yaw(float(other.pose["yaw"])))
-		sim.travel(other, destination, engine._pose(destination, w, ang, float(other.pose["pitch"])))
+		sim.travel(other, destination, engine._pose(destination, w, ang, float(other.pose["pitch"])), bool(result["travel"].get("seamless", false)))
 
 
 func _lift_tick(dt: float) -> void:

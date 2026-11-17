@@ -5,6 +5,9 @@ extends Node3D
 signal world_preparing(world: Node3D)
 
 @export var worlds: Array[WorldDefinition] = []
+@export var continuous_campus := false
+var resident: CampusResident
+var coordinate_frame: Node3D
 var current: WorldDefinition
 var _instance: Node3D
 var stream := CampusStream.new()
@@ -29,6 +32,26 @@ func switch_to(id: String) -> String:
 			matches.append(definition)
 	if matches.size() != 1 or matches[0].scene == null:
 		return "场景未登记、重复登记或未指定 PackedScene：%s" % id
+	if continuous_campus:
+		_ensure_resident()
+		if resident.space.contains(id):
+			# One initial build. Ordinary crossings only select the rules adapter.
+			for region: String in resident.space.frames: resident.prepare(region)
+			if is_instance_valid(_instance) and not _instance is CampusWorld:
+				_instance.get_parent().remove_child(_instance)
+				_instance.queue_free()
+			elif is_instance_valid(_instance) and _instance is CampusWorld and not _instance.resident:
+				_instance.get_parent().remove_child(_instance)
+				_instance.queue_free()
+			resident.resume()
+			_instance = resident.select(id)
+			current = matches[0]
+			if coordinate_frame != null: coordinate_frame.transform = resident.space.frame(id)
+			return ""
+		if is_instance_valid(_instance) and _instance is CampusWorld and _instance.resident:
+			resident.suspend()
+			_instance = null
+		if coordinate_frame != null: coordinate_frame.transform = Transform3D.IDENTITY
 	# The cold path is only for initial loads, teleports or a request that outran prefetch.
 	# Collect outstanding work before any synchronous mesh processing touches shared resources.
 	if not stream.has(id):
@@ -56,7 +79,35 @@ func switch_to(id: String) -> String:
 	return ""
 
 
+func _ensure_resident() -> void:
+	if is_instance_valid(resident): return
+	resident = CampusResident.new()
+	resident.name = "School"
+	resident.hide()
+	resident.space = CampusSpace.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
+	resident.configure = func(world: CampusWorld) -> void: world_preparing.emit(world)
+	add_child(resident)
+
+
+func school_ids() -> PackedStringArray:
+	_ensure_resident()
+	return PackedStringArray(resident.space.frames.keys())
+
+
+func school_ready() -> bool:
+	return is_instance_valid(resident) and resident.regions.size() == resident.space.frames.size()
+
+
+func same_space(a: String, b: String) -> bool:
+	return continuous_campus and is_instance_valid(resident) and resident.space.contains(a) and resident.space.contains(b)
+
+
 func prepare(id: String) -> void:
+	if continuous_campus:
+		_ensure_resident()
+		if resident.space.contains(id):
+			resident.prepare(id)
+			return
 	if (current != null and String(current.world_id) == id) or stream.has(id) or stream.pending(id):
 		return
 	for definition: WorldDefinition in worlds:
@@ -96,11 +147,29 @@ func prepare(id: String) -> void:
 		return
 
 
+func prepare_background(id: String) -> void:
+	if continuous_campus:
+		_ensure_resident()
+		if resident.space.contains(id):
+			resident.prepare(id)
+			return
+	prepare(id)
+
+
+func pending(id: String) -> bool:
+	return stream.pending(id)
+
+
 func warm(id: String) -> bool:
+	if is_instance_valid(resident) and resident.regions.has(id): return true
 	return stream.has(id) or (current != null and String(current.world_id) == id)
 
 
 func prefetch(position: Vector3) -> void:
+	if continuous_campus and is_instance_valid(resident) and not resident.active.is_empty():
+		# The app already schedules this at 5 Hz; do not throttle it a second time.
+		resident.update_view(resident.space.frame(resident.active) * position)
+		return
 	if not stream.automatic() or not _instance is CampusWorld:
 		return
 	var ids := CampusConnections.nearby(_instance.scene_id, position)
@@ -110,6 +179,10 @@ func prefetch(position: Vector3) -> void:
 
 
 func _process(_delta: float) -> void:
+	poll_preparation()
+
+
+func poll_preparation() -> void:
 	stream.poll()
 
 
@@ -119,6 +192,12 @@ func _exit_tree() -> void:
 
 func clear() -> void:
 	stream.clear()
+	if coordinate_frame != null: coordinate_frame.transform = Transform3D.IDENTITY
+	if is_instance_valid(resident):
+		if is_instance_valid(_instance) and resident.is_ancestor_of(_instance): _instance = null
+		remove_child(resident)
+		resident.queue_free()
+		resident = null
 	if is_instance_valid(_instance):
 		remove_child(_instance)
 		_instance.queue_free()

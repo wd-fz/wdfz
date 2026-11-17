@@ -11,7 +11,7 @@ func _test_campus_app() -> void:
 	app.start_new_game()
 	await _frames(5)
 	check(app.session != null and app.router.current.world_id == &"teach1", "new game opens the formal teach1 scene")
-	var world := app.router.get_child(0) as CampusWorld
+	var world := app.router.world_instance() as CampusWorld
 	check(world != null and world.get_node_or_null("Model") != null, "teach1 model loaded from the exported glb")
 	check(world.find_children("*", "MultiMeshInstance3D", true, false).size() > 50, "instanced furniture rebuilt as MultiMesh")
 	check(world.door_keys().size() == 8, "teach1 has its eight classroom doors as bodies")
@@ -68,7 +68,7 @@ func _test_campus_app() -> void:
 	await _frames(3)
 	await _until_world(app, "out")
 	check(app.router.current.world_id == &"out" and app.session.world_id == "out", "walking through the south door switches to the campus")
-	check(app.router.get_child(0) is CampusWorld, "campus outside scene built")
+	check(app.router.world_instance() is CampusWorld, "campus outside scene built")
 	app.player.place(_campus_pose(null, port["p"] + CampusGeometry.shift_of(t1) + Vector2(0, 8), -PI * 0.5))
 	await _frames()
 	Input.action_press("move_forward")
@@ -84,7 +84,7 @@ func _test_campus_app() -> void:
 	app.return_to_menu()
 	app.load_game()
 	await _frames(3)
-	var reloaded := app.router.get_child(0) as CampusWorld
+	var reloaded := app.router.world_instance() as CampusWorld
 	check(app.campus().is_open("teach1:10:15") and reloaded != null, "load restores the campus door state")
 	app.return_to_menu()
 	for id: String in CampusData.room_ids():
@@ -354,7 +354,7 @@ func _test_patrol_app(app: GameApp) -> void:
 	watcher.pat["y"] = CampusGeometry.tile_center(t1, 30, 17).y
 	watcher.pat["safety"] = 3.6
 	await _frames(4)
-	var world := app.router.get_child(0) as CampusWorld
+	var world := app.router.world_instance() as CampusWorld
 	check(watcher.figure_visible() and world.patrol_figure_shown(), "the patroller figure is drawn in the scene it walks in")
 	watcher.pat["room"] = "admin1"
 	await _frames(3)
@@ -993,7 +993,7 @@ func _test_elevator_walk(app: GameApp) -> void:
 	var hall := lift.world("teach1", 1.5, 0.0)
 	app.travel("teach1", _campus_pose(t1, hall, PI * 0.5), false)
 	await _frames(3)
-	var world := app.router.get_child(0) as CampusWorld
+	var world := app.router.world_instance() as CampusWorld
 	check(world.lift_leaf_count() == 4, "teach1 has two landing and two car leaves")
 	# Closed doors block the doorway.
 	await _walk(app, [CampusGeometry.to_scene(t1, lift.world("teach1", -1.2, 0.0))], 60)

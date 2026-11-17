@@ -72,6 +72,7 @@ var _next_indoor := 2.0
 var _next_menu := 2.5
 var _duck_until := 0.0
 var _space := ""
+var coordinate_frame: Node3D
 var _last_period := ""
 var _void_ping := 8.0
 var _void_moan := 35.0
@@ -221,6 +222,11 @@ func stop_audition() -> void:
 ## One recipe. opts (as in sound-player.js): k loudness, pan −1…1, lp muffled (1 = clear), pitch,
 ## at delay in seconds; pos (Vector3) plays it at a place in the world instead of a pan.
 func play(id: String, opts: Dictionary = {}) -> bool:
+	# Capture the source frame now, including delayed cues across a doorway.
+	if opts.get("pos") is Vector3 and not opts.get("world_pos", false) and is_instance_valid(coordinate_frame):
+		opts = opts.duplicate()
+		opts["pos"] = coordinate_frame.to_global(opts["pos"])
+		opts["world_pos"] = true
 	played.append(id)
 	if played.size() > 60:
 		played.pop_front()

@@ -81,7 +81,7 @@ func show_event(event: Dictionary, room: Dictionary, window: Dictionary, source_
 		camera.make_current()
 		var direction := Vector3(cos(f["yaw"]),0,sin(f["yaw"]))
 		camera.position = plane.position-direction*.9+Vector3(0,.28,0)
-		camera.look_at(plane.position+direction*2+Vector3(0,sin(f["pitch"])*2,0))
+		camera.look_at(to_global(plane.position+direction*2+Vector3(0,sin(f["pitch"])*2,0)))
 	if phase!="flight": cancel_camera()
 
 func cancel_camera() -> void:

@@ -199,21 +199,22 @@ static func in_view(cam: Camera3D, px: float, pz: float, cone: float) -> bool:
 func can_shift(cam: Camera3D) -> bool:
 	if props == null or cam == null:
 		return false
-	var p := props.position
+	var p := props.global_position
 	return Vector2(p.x - cam.global_position.x, p.z - cam.global_position.z).length() > SHIFT_MIN and not in_view(cam, p.x, p.z, 0.9)
 
 
 func sees_shifted(cam: Camera3D) -> bool:
 	if props == null or shifted == null or cam == null:
 		return false
-	var p := props.position
+	var p := props.global_position
 	return Vector2(p.x - cam.global_position.x, p.z - cam.global_position.z).length() < 9.0 and in_view(cam, p.x, p.z, 0.35)
 
 
 ## Per frame: a "face" shift turns the mop towards the camera once.
 func face_camera(cam: Camera3D) -> void:
 	if props != null and _face and cam != null:
-		props.rotation.y = atan2(cam.global_position.x - props.position.x, cam.global_position.z - props.position.z)
+		var eye := to_local(cam.global_position)
+		props.rotation.y = atan2(eye.x - props.position.x, eye.z - props.position.z)
 		_face = false
 
 
@@ -257,7 +258,7 @@ func show_window(w: Dictionary, cam: Camera3D) -> bool:
 		if w.has("anchor"):
 			var anchor: Dictionary = w["anchor"]
 			var far := CampusGeometry.to_scene(room,Vector2(anchor["x"],anchor["y"]))
-			var eye := cam.global_position
+			var eye := to_local(cam.global_position)
 			var dz := far.y-eye.z
 			var t := (face.y-eye.z)/(dz if not is_zero_approx(dz) else -1.0)
 			if t>0 and t<1:
@@ -265,4 +266,5 @@ func show_window(w: Dictionary, cam: Camera3D) -> bool:
 				_win_pos.y = clampf(eye.y+(float(anchor["height"])-(int(room["floor"])-1)*3.2-eye.y)*t,1.18,2.3)
 	_fig.visible = true
 	_fig.position = _win_pos
-	return in_view(cam, _win_pos.x, _win_pos.z, 0.22)
+	var at := to_global(_win_pos)
+	return in_view(cam, at.x, at.z, 0.22)

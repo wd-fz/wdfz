@@ -76,11 +76,11 @@ func test_app() -> void:
 		var view := app._gaze_nodes
 		var body := view.get_child(0) as Node3D
 		appearance(body,sample["body"])
-		check(body.global_position.distance_to(v3(sample["body"]["p"]))<.00001,"window body retains its original floor and glass offset")
+		check((view.transform * body.transform).origin.distance_to(v3(sample["body"]["p"]))<.00001,"window body retains its original floor and glass offset")
 		var expected_front := Vector3(sin(sample["body"]["yaw"]),0,cos(sample["body"]["yaw"]))
 		check((-body.global_basis.z).normalized().distance_to(expected_front)<.00001,"body faces into the room at either outer wall")
 		var eye: MeshInstance3D = view.eyes.get_child(0)
-		check(view.eyes.global_position.distance_to(v3(sample["eyes"]["p"]))<.00001 and view.eyes.global_basis.z.normalized().distance_to(v3(sample["eyes"]["direction"]))<.00001,"eyes at the glass follow the player at three lateral positions")
+		check((view.transform * view.eyes.transform).origin.distance_to(v3(sample["eyes"]["p"]))<.00001 and view.eyes.global_basis.z.normalized().distance_to(v3(sample["eyes"]["direction"]))<.00001,"eyes at the glass follow the player at three lateral positions")
 		check(absf(eye.mesh.radius-sample["eyes"]["size"])<.00001 and eye.scale.distance_to(v3(sample["eyes"]["scale"]))<.00001 and eye.material_override.albedo_color.is_equal_approx(Color(sample["eyes"]["color"])) and eye.material_override.disable_fog,"original flattened eye shape and fog-independent colour")
 		check(same_json(before,app.session.capture(app.player.capture_pose())),"visual tracking never changes gaze rules or saved player pose")
 	app.gaze().s["ev"] = null

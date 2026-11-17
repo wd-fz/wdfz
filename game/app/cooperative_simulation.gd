@@ -121,11 +121,11 @@ func tick(dt: float) -> void:
 			for death: Dictionary in a.school().take_deaths(): gameplay.kill(a, String(death["msg"]), String(death["fx"]), String(death["source"]))
 		if not a.fate().over() and a.choice.is_empty():
 			var crossed := campus().crossing(a.location(), a.pose)
-			if not crossed.is_empty(): travel(a, String(crossed["world"]), crossed["pose"])
+			if not crossed.is_empty(): travel(a, String(crossed["world"]), crossed["pose"], true)
 		for text: String in a.bag().take_notices(): a.event("notice", {"text": text})
 		for text: String in a.school().take_notices(): a.event("notice", {"text": text})
 	active.append(String(patrol.main.pat["room"]))
-	physics.sync_doors(campus(), gameplay.lifts)
+	physics.sync_doors(campus(), gameplay.lifts, gameplay.lift_engines)
 	physics.maintain(dt, active)
 	timings = {"personal_us": personal_end - started, "patrol_us": patrol_end - personal_end, "shared_us": shared_end - patrol_end, "finish_us": Time.get_ticks_usec() - shared_end}
 	if _seconds - _last_save >= 30.0:
@@ -138,7 +138,7 @@ func spawn(world: String) -> Dictionary:
 	return campus().default_spawn(world)
 
 
-func travel(a: CooperativeActor, world: String, pose: Dictionary) -> void:
+func travel(a: CooperativeActor, world: String, pose: Dictionary, continuous: bool = false) -> void:
 	if not campus().knows(world) or not pose.get("position") is Array or pose["position"].size() != 3 or not pose.has("yaw") or not pose.has("pitch"): return
 	if a.id == patrol.target:
 		patrol.main.set_context(CooperativeContext.patrol(a))
@@ -146,8 +146,11 @@ func travel(a: CooperativeActor, world: String, pose: Dictionary) -> void:
 	gameplay.cancel_actor_jobs(a)
 	a.school().seated = false
 	a.school().seat_id = ""
+	var same_school := continuous and physics.space != null and physics.space.contains(a.location()) and physics.space.contains(world)
+	if same_school:
+		pose = physics.space.local_pose(world, physics.space.global_pose(a.location(), a.pose))
 	a.travel(world, pose)
-	physics.place(a)
+	physics.place(a,same_school)
 
 
 func command(id: String, data: Dictionary) -> Dictionary:
@@ -191,10 +194,21 @@ func motion(for_id: String) -> Dictionary:
 	for id: String in actors:
 		var a: CooperativeActor = actors[id]
 		if room.members[id]["state"] == "departed": continue
-		if id != for_id and a.location() != viewer.location(): continue
+		var common := physics.space != null and physics.space.contains(a.location()) and physics.space.contains(viewer.location())
+		if id != for_id and a.location() != viewer.location() and not common: continue
 		if id != viewer.id and bool(a.watcher().hide["on"]): continue
-		data["players"][id] = {"pose": a.pose.duplicate(true), "world": a.location(), "scene": a.scene_version, "ack": a.processed_sequence, "moving": a.moving, "running": a.running, "seated": a.school().seated, "hiding": bool(a.watcher().hide["on"]), "dead": a.fate().dead}
+		var school_pose := common and id != viewer.id
+		var pose := physics.space.global_pose(a.location(), a.pose) if school_pose else a.pose
+		data["players"][id] = {"pose": _motion_pose(pose), "school": school_pose, "world": a.location(), "scene": a.scene_version, "ack": a.processed_sequence, "moving": a.moving, "running": a.running, "seated": a.school().seated, "hiding": bool(a.watcher().hide["on"]), "dead": a.fate().dead}
 	return data
+
+
+## Millimetre / 0.0001 rad presentation samples keep four-player motion below
+## ENet's MTU. Authoritative state and saves retain their full precision.
+static func _motion_pose(pose: Dictionary) -> Dictionary:
+	var p: Array = pose["position"]
+	return {"position":[snappedf(p[0],.001),snappedf(p[1],.001),snappedf(p[2],.001)],
+		"yaw":snappedf(pose["yaw"],.0001),"pitch":snappedf(pose["pitch"],.0001)}
 
 
 func state_for(id: String) -> Dictionary:
@@ -247,6 +261,7 @@ func restore(data: Dictionary) -> void:
 	patrol.synchronize(actors)
 	leases = data["leases"].duplicate()
 	gameplay.restore(data["gameplay"])
+	physics.sync_doors(campus(),gameplay.lifts,gameplay.lift_engines)
 	_seconds = float(data.get("seconds", 0))
 	room.tick = int(data["room"]["tick"])
 	room.debug_run = bool(data["room"].get("debug", false))

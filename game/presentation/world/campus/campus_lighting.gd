@@ -249,7 +249,7 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	overcast += (overcast_target - overcast) * minf(1.0, dt * 0.6)
 	if _stair_rise > 0.0 and camera != null:
 		# addRoomLights in a stairwell: the three lamps follow the storey the player is on.
-		var floor_i := mini(_stair_levels - 2, int(floorf(maxf(0.0, camera.global_position.y - 1.65) / _stair_rise)))
+		var floor_i := mini(_stair_levels - 2, int(floorf(maxf(0.0, to_local(camera.global_position).y - 1.65) / _stair_rise)))
 		for l: OmniLight3D in room_lights:
 			l.position.y = maxi(floor_i, 0) * _stair_rise + float(l.get_meta("base_y", l.position.y))
 	var h := fposmod(tsec, 1440.0) / 60.0
