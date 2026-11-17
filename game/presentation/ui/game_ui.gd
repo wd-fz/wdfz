@@ -218,7 +218,7 @@ func _ready() -> void:
 	load_button.owner = self
 	touch_toggle.owner = self
 	menu_screen = _build_side_menu()
-	pause_screen = _build_menu_screen(pause_panel,true)
+	pause_screen = _build_pause_screen()
 	set_touch_enabled(DisplayServer.is_touchscreen_available())
 	get_tree().root.size_changed.connect(_resize)
 	_resize()
@@ -269,6 +269,7 @@ func _resize() -> void:
 		_fit_choice.call_deferred()
 	_refit_touch.call_deferred()
 	_fit_bag.call_deferred()
+	_fit_captions.call_deferred()
 	_fit_toast.call_deferred()
 	_fit_ending.call_deferred()
 	_fit_settings.call_deferred()
@@ -300,29 +301,26 @@ func _build_side_menu() -> SideMenu:
 	var content: VBoxContainer = menu.get_node("Margin/Center/Content")
 	menu_preview = MenuPreview.new()
 	menu.add_child(menu_preview)
-	# Above the static photo and its vignette (the side menu shader veils the panorama itself).
-	var under: Node = menu.get_node_or_null("MenuPhotoShade")
-	if under == null: under = menu.get_node_or_null("MenuPhoto")
-	menu.move_child(menu_preview, under.get_index() + 1 if under != null else 1)
+	# The panorama obscures the still picture as it comes into view.
+	var photo := menu.get_node("MenuPhoto")
+	menu.move_child(menu_preview, photo.get_index() + 1)
 	var side := SideMenu.new()
 	menu.add_child(side)
 	side.setup(content)
-	if menu.has_node("MenuPhoto"):
-		side.set_frost((menu.get_node("MenuPhoto") as TextureRect).texture)
 	side.quit_requested.connect(func() -> void: quit_requested.emit())
-	menu_preview.shown_changed.connect(side.set_backdrop_lit)
+	side.backdrop_requested.connect(func() -> void: setting_changed.emit("menu_orbit", int(not menu_preview.orbit)))
 	menu.get_node("Margin").hide()
 	menu.get_node("Margin").queue_free()
 	return side
 
 
-func _build_menu_screen(panel: Control, is_pause: bool) -> MenuScreen:
-	var content: VBoxContainer = panel.get_node("Margin/Center/Content")
+func _build_pause_screen() -> MenuScreen:
+	var margin := pause_panel.get_node("Margin") as MarginContainer
 	var screen := MenuScreen.new()
-	panel.add_child(screen)
-	screen.setup(content,is_pause)
-	panel.get_node("Margin").hide()
-	panel.get_node("Margin").queue_free()
+	pause_panel.add_child(screen)
+	screen.setup(margin.get_node("Center/Content"))
+	margin.hide()
+	margin.queue_free()
 	return screen
 
 
@@ -341,7 +339,7 @@ func play_boot(reduce_motion: bool) -> void:
 		menu_preview.begin_load()
 
 
-## Open the main menu: the side panel tears open while the campus behind wakes (menu_wake.gd).
+## Open the main menu while the campus behind it wakes (menu_wake.gd).
 func _enter_menu(wake: bool = true) -> void:
 	menu_screen.enter()
 	if not wake or not menu_entrance or boot_playing():
@@ -412,7 +410,7 @@ func _fit_menu_scrolls() -> void:
 
 
 func show_pause_detail(text: String) -> void:
-	pause_screen.description.text = "时间已暂停，进度保存在本机。\n" + text
+	pause_screen.set_context(text)
 	show_notice("")
 
 
@@ -486,7 +484,8 @@ func show_captions(lines: PackedStringArray) -> void:
 	var text := "\n".join(lines)
 	if _captions.text != text:
 		_captions.text = text
-	_captions.position.y = _status_line.position.y + _status_line.size.y + 6.0 if _status_line.visible else 72.0
+		_captions.visible = not text.is_empty()
+		_fit_captions()
 
 
 func captions_text() -> String:
@@ -502,27 +501,49 @@ var interact_key := "E"          ## the first key bound to interact (KeyBindings
 func set_keys_hint(text: String) -> void:
 	if is_instance_valid(menu_screen): menu_screen.set_keys_hint(text)
 var _status_style: StyleBoxFlat
-const STATE_EDGE := {"warn": Color("e6c27a"), "exam": Color("c56a5f"), "": Color("8fd6c0")}
+var _status_card: PanelContainer
+var _hud_actions: HBoxContainer
 
 
 func _style_hud() -> void:
 	var runtime := %Runtime as Label
-	runtime.theme_type_variation = "HudCard"
+	var top := runtime.get_parent() as HBoxContainer
+	_status_card = PanelContainer.new()
+	_status_card.name = "CampusStatus"
+	_status_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_status_card.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_status_style = BASE_THEME.get_stylebox("normal", "HudCard").duplicate() as StyleBoxFlat
+	_status_style.set_content_margin_all(8)
+	_status_card.add_theme_stylebox_override("panel", _status_style)
+	top.add_child(_status_card)
+	top.move_child(_status_card, 0)
+	_status_card.hide()
+	_status_card.resized.connect(_fit_captions)
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_status_card.add_child(row)
+	_status_art.reparent(row, false)
+	_status_art.custom_minimum_size = Vector2(24, 24)
+	var status := VBoxContainer.new()
+	status.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	status.add_theme_constant_override("separation", 0)
+	row.add_child(status)
+	runtime.reparent(status, false)
 	runtime.visible = not runtime.text.is_empty()
-	runtime.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	runtime.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	runtime.add_theme_font_size_override("font_size", 22)
+	runtime.add_theme_font_size_override("font_size", 18)
+	runtime.add_theme_color_override("font_color", UISkin.INK)
+	_status_line.reparent(status, false)
 	var spacer := Control.new()
 	spacer.name = "TopSpacer"
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	runtime.add_sibling(spacer)
-	_status_line.theme_type_variation = "HudCard"
-	_status_style = BASE_THEME.get_stylebox("normal", "HudCard").duplicate() as StyleBoxFlat
-	_status_style.content_margin_left = 48
-	_status_line.add_theme_stylebox_override("normal", _status_style)
-	_status_line.position = Vector2(20, 72)
-	_status_line.add_theme_font_size_override("font_size", 14)
+	top.add_child(spacer)
+	_hud_actions = HBoxContainer.new()
+	_hud_actions.name = "HudActions"
+	_hud_actions.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_hud_actions.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_child(_hud_actions)
+	%PauseButton.reparent(_hud_actions, false)
 	var prompt := %Prompt as Label
 	prompt.theme_type_variation = "HudPill"
 	prompt.autowrap_mode = TextServer.AUTOWRAP_OFF
@@ -546,26 +567,34 @@ func _style_hud() -> void:
 	cross.add_theme_constant_override("outline_size", 3)
 
 
-## Old HUD (ui/hud.js): clock, place, period line coloured by state, and the stamina bar that
-## appears only when stamina is below full (red while out of breath).
+func add_hud_action(button: Button) -> void:
+	_hud_actions.add_child(button)
+	_hud_actions.move_child(button, 0)
+
+
+func _fit_captions() -> void:
+	var top := _status_card.get_parent() as Control
+	_captions.position = top.position + Vector2(0, _status_card.size.y + 8 if _status_card.visible else 0)
+
+
+## Stamina only appears below full. Time and school status share one compact card.
 func _build_status() -> void:
 	_status_line = Label.new()
 	_status_line.name = "Status"
 	_status_line.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	_status_line.position = Vector2(16, 58)
-	_status_line.add_theme_font_size_override("font_size", 15)
+	_status_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_status_line.add_theme_font_size_override("font_size", 14)
 	_status_line.visible = false
 	hud.add_child(_status_line)
 	_status_art = UIArt.view(UIArt.nav("notes"), Vector2.ZERO)
 	_status_art.name = "StatusIllustration"
-	_status_art.position = Vector2(10, 10)
-	_status_art.size = Vector2(28, 28)
 	_status_line.add_child(_status_art)
-	# Sound captions sit right under the status card (sound-captions.js place()).
+	# Sound captions follow the actual card height at every text size.
 	_captions = Label.new()
 	_captions.name = "SoundCaptions"
 	_captions.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	_captions.position = Vector2(20, 120)
+	_captions.theme_type_variation = "HudPill"
+	_captions.hide()
 	_captions.add_theme_font_size_override("font_size", 14)
 	_captions.add_theme_color_override("font_color", Color(0.86, 0.88, 0.92, 0.92))
 	_captions.add_theme_constant_override("outline_size", 4)
@@ -586,11 +615,12 @@ func show_status(place: String, period: String, state: String, clock: String) ->
 	_status_on = true
 	_clock_text = clock
 	_status_line.visible = true
-	_status_line.text = "%s\n%s" % [period, place]
+	_status_line.text = "%s  ·  %s" % [place, period]
 	_status_art.texture = UIArt.nav("inspect" if period.contains("检查") else ("exam" if state == "exam" else ("warning" if state == "warn" else "notes")))
-	_status_line.modulate = Color("#f0d6a0") if state == "warn" else (Color("#f0c4bc") if state == "exam" else Color("#ddd5c4"))
-	if _status_style != null:
-		_status_style.border_color = STATE_EDGE.get(state, STATE_EDGE[""])
+	var color := UISkin.WARM if state == "warn" else (UISkin.DANGER if state == "exam" else UISkin.MUTED)
+	if _status_line.get_theme_color("font_color") != color:
+		_status_line.add_theme_color_override("font_color", color)
+		_status_style.border_color = Color(color, 0.6)
 	show_runtime(0)
 
 
@@ -600,6 +630,8 @@ func reset_status() -> void:
 	_clock_text = ""
 	%Runtime.text = ""
 	%Runtime.visible = false
+	_status_card.hide()
+	_fit_captions()
 	if _status_line != null:
 		_status_line.visible = false
 		_stamina.visible = false
@@ -651,7 +683,7 @@ func _build_bag() -> void:
 	head.add_theme_constant_override("separation", 10)
 	head.add_child(UIArt.view(UIArt.surface("empty_bag"), Vector2(30, 30)))
 	var title := Label.new()
-	title.text = "随身物品 · 背包"
+	title.text = "背包"
 	title.theme_type_variation = "HeadingLabel"
 	title.add_theme_color_override("font_color", UISkin.ACCENT)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -662,6 +694,7 @@ func _build_bag() -> void:
 	_bag_count.add_theme_font_size_override("font_size", 14)
 	head.add_child(_bag_count)
 	box.add_child(head)
+	box.add_child(HSeparator.new())
 	_bag_scroll = TouchScroll.new()
 	_bag_scroll.name = "BagScroll"
 	_bag_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -684,12 +717,7 @@ func _build_bag() -> void:
 	detail_panel.name = "BagDetail"
 	detail_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	detail_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var detail_style := UISkin.panel(14)
-	detail_style.bg_color = UISkin.CARD
-	detail_style.border_color = UISkin.CARD_EDGE
-	detail_style.shadow_size = 0
-	detail_style.set_corner_radius_all(12)
-	detail_panel.add_theme_stylebox_override("panel", detail_style)
+	detail_panel.theme_type_variation = "CardPanel"
 	_bag_detail = VBoxContainer.new()
 	_bag_detail.add_theme_constant_override("separation", 8)
 	detail_panel.add_child(_bag_detail)
@@ -735,6 +763,7 @@ func _build_bag() -> void:
 	close.name = "BagClose"
 	close.text = "关闭背包"
 	close.custom_minimum_size = Vector2(140, 44)
+	close.theme_type_variation = "QuietButton"
 	UIArt.button(close, UIArt.nav("close"), 20)
 	close.pressed.connect(func() -> void: bag_closed.emit())
 	foot.add_child(close)
@@ -1318,6 +1347,7 @@ func show_list(head: String, rows: Array) -> void:
 		var box := VBoxContainer.new()
 		box.add_theme_constant_override("separation", 8)
 		_ach_head = Label.new()
+		_ach_head.theme_type_variation = "HeadingLabel"
 		_ach_head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_ach_head.add_theme_color_override("font_color",UISkin.ACCENT)
 		box.add_child(_ach_head)
@@ -1447,43 +1477,16 @@ const OPENING := ["你是这学期转来的。", "高二（二）班。第四节
 	"你把脸埋进胳膊里。袖子上有一股不属于你的味道。", "……", "你睁开眼。\n教室里还是坐满了人。只是没有一个人在呼吸。",
 	"窗外的颜色不见了。走廊里很安静，安静得能听见灯管里的电流。", "下课铃没有响。\n你忽然很确定：这不是你转来的那个学校。\n而它，已经知道你醒了。"]
 const OPENING_PAGE := 3.4
-## The menu photo (menu-photo.js): the campus at 22:18 behind the menu, under a dark vignette
-## (radial gradient: clear-ish at 72% / 42%, nearly black at the edges). The picture is shot once by
-## tools/capture/capture_menu_photo.gd and kept as assets/ui/menu_photo.jpg.
+## Rainy campus cover art. MenuPreview can replace it with the baked campus panorama.
 func _build_menu_photo() -> void:
-	var path := "res://assets/ui/menu_photo.jpg"
-	if not ResourceLoader.exists(path):
-		return
-	var pic := TextureRect.new()
+	var pic := UIArt.view(preload("res://assets/ui/menu_key_art.jpg"), Vector2.ZERO)
 	pic.name = "MenuPhoto"
-	pic.texture = load(path) as Texture2D
-	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pic.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	menu.add_child(pic)
 	menu.move_child(pic, 1)
 	if menu.has_node("Backdrop"):
 		(menu.get_node("Backdrop") as ColorRect).color = Color(0.016, 0.027, 0.039, 1.0)
-	var shade := TextureRect.new()
-	shade.name = "MenuPhotoShade"
-	var grad := Gradient.new()
-	grad.colors = PackedColorArray([Color(0.039, 0.07, 0.086, 0.34), Color(0.012, 0.024, 0.035, 0.92)])
-	grad.offsets = PackedFloat32Array([0.0, 0.62])
-	var gt := GradientTexture2D.new()
-	gt.gradient = grad
-	gt.fill = GradientTexture2D.FILL_RADIAL
-	gt.fill_from = Vector2(0.72, 0.42)
-	gt.fill_to = Vector2(1.4, 1.1)
-	gt.width = 256
-	gt.height = 256
-	shade.texture = gt
-	shade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	shade.stretch_mode = TextureRect.STRETCH_SCALE
-	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	menu.add_child(shade)
-	menu.move_child(shade, 2)
 
 
 var _cut_fade: ColorRect
@@ -1779,6 +1782,7 @@ func _build_touch_tools() -> void:
 		var b := TouchActionButton.new()
 		b.name = spec[1]
 		b.text = spec[0]
+		b.theme_type_variation = "TouchButton"
 		b.focus_mode = Control.FOCUS_NONE
 		b.custom_minimum_size = Vector2(44,44)
 		b.expand_icon = true
@@ -1792,6 +1796,8 @@ func _build_touch_tools() -> void:
 			)
 		touch_controls.add_child(b)
 		_touch_buttons[spec[2]] = b
+	%TouchInteract.theme_type_variation = "TouchButton"
+	%TouchSprint.theme_type_variation = "TouchButton"
 	%TouchInteract.focus_mode = Control.FOCUS_NONE
 	%TouchSprint.focus_mode = Control.FOCUS_NONE
 	look_pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -2017,7 +2023,8 @@ func open_map(options: Array, selected: String, head: String, note: String) -> M
 		outer.add_theme_constant_override("separation", 6)
 		var top := HBoxContainer.new()
 		var lab := Label.new()
-		lab.text = "查看"
+		lab.text = "地图"
+		lab.theme_type_variation = "HeadingLabel"
 		top.add_child(lab)
 		_map_select = OptionButton.new()
 		_map_select.name = "MapSelect"
@@ -2656,6 +2663,7 @@ func set_mode(mode: String) -> void:
 	if mode == "menu":
 		_enter_menu(changed)
 	elif mode == "pause":
+		pause_screen.set_context("单人游戏")
 		%Resume.grab_focus()
 	else:
 		var focused := get_viewport().gui_get_focus_owner()
@@ -2761,3 +2769,4 @@ func show_runtime(_seconds: float) -> void:
 	var shown := _clock_text if _status_on else _location
 	%Runtime.text = shown + (" · 速通 " + speedrun_text if speedrun_text != "" else "")
 	%Runtime.visible = not %Runtime.text.is_empty()
+	_status_card.visible = _status_line.visible or %Runtime.visible

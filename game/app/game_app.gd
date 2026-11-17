@@ -2692,6 +2692,7 @@ func _apply_settings() -> void:
 	ui.reduce_motion = settings.get_int("reduce_flash") == 1
 	ui.menu_preview.render_options = settings.graphics()
 	ui.menu_preview.set_orbit(settings.get_int("menu_orbit") == 1)
+	ui.menu_screen.set_backdrop_orbit(ui.menu_preview.orbit)
 	_menu_fps_capped = false
 	ui.scene_post().quality=settings.get_int("lighting_detail")
 	ui.scene_post().render_options=settings.graphics()

@@ -62,7 +62,6 @@ func _ready() -> void:
 	panel = LanPanel.new()
 	panel.name = "LanPanel"
 	panel.visible = false
-	panel.theme = GameUI.BASE_THEME
 	app.ui.get_node("Root").add_child(panel)
 	panel.host_requested.connect(_host)
 	panel.join_requested.connect(_join)
@@ -123,14 +122,7 @@ func _ready() -> void:
 		panel.connection_info.text = network.connection_details()
 		panel.show()
 		panel.show_connection_error(reason))
-	var new_game := app.ui.find_child("NewGame", true, false) as Button
-	if new_game != null:
-		var button := Button.new()
-		button.name = "LanCoop"
-		button.text = "与好友联机 · 2–4 人"
-		button.custom_minimum_size.y = 48
-		button.pressed.connect(func() -> void: _open_mode(false))
-		new_game.get_parent().add_child(button)
+	app.ui.menu_screen.add_coop_action(func() -> void: _open_mode(false))
 	remote.status_changed.connect(func(text: String) -> void:
 		panel.remote_status(text, remote.code if remote.available else "", remote.available))
 	remote.connected.connect(func(target: String, code: String) -> void:
@@ -148,14 +140,19 @@ func _ready() -> void:
 			panel.show_connection_error(reason))
 	_team = Button.new()
 	_team.text = "队伍"
-	_team.position = Vector2(16, 64)
-	_team.custom_minimum_size = Vector2(90, 44)
+	_team.custom_minimum_size = Vector2(90, 48)
 	_team.visible = false
 	_team.pressed.connect(open)
-	app.ui.hud.add_child(_team)
+	app.ui.add_hud_action(_team)
 	_network_hint = Label.new()
-	_network_hint.position = Vector2(16, 112)
+	_network_hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_network_hint.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_network_hint.offset_left = -20
+	_network_hint.offset_right = -20
+	_network_hint.offset_top = 72
+	_network_hint.offset_bottom = 72
 	_network_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_network_hint.theme_type_variation = "HudPill"
 	_network_hint.add_theme_font_size_override("font_size", 14)
 	_network_hint.add_theme_color_override("font_color", UISkin.MUTED)
 	_network_hint.hide()
@@ -388,7 +385,8 @@ func pause() -> void:
 	app.player.clear_input()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	app.ui.set_mode("pause")
-	app.ui.pause_screen.description.text = ("远程合作" if _remote_mode else "局域网合作") + " · 世界继续运行\n个人菜单不会暂停队友；需要停下时，在「队伍」中发起全队暂停。"
+	var mode := "远程合作" if _remote_mode else "局域网合作"
+	app.ui.pause_screen.set_context(mode + "\n队友仍在游戏中，可在「队伍」里发起全队暂停。", true)
 
 
 func resume() -> void:

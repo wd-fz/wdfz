@@ -58,13 +58,6 @@ custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="Eyebrow" type="Label" parent="Root/Menu/Margin/Center/Content"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.784, 0.651, 0.42, 1)
-theme_override_font_sizes/font_size = 14
-text = "— THE OTHER SIDE"
-horizontal_alignment = 1
-
 [node name="Title" type="Label" parent="Root/Menu/Margin/Center/Content"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 48
@@ -103,12 +96,6 @@ custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 text = "触屏控件（自动识别）"
 
-[node name="Help" type="Label" parent="Root/Menu/Margin/Center/Content"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 14
-text = "WASD / 方向键移动 · 鼠标环视\nShift 奔跑 · E 交互 · Esc 暂停"
-horizontal_alignment = 1
-
 [node name="PausePanel" type="Control" parent="Root"]
 unique_name_in_owner = true
 layout_mode = 1
@@ -125,7 +112,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.025, 0.045, 0.06, 0.92)
+color = Color(0.018, 0.032, 0.048, 0.79)
 
 [node name="Margin" type="MarginContainer" parent="Root/PausePanel"]
 layout_mode = 1
@@ -146,13 +133,6 @@ layout_mode = 2
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 theme_override_constants/separation = 10
-
-[node name="Eyebrow" type="Label" parent="Root/PausePanel/Margin/Center/Content"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.784, 0.651, 0.42, 1)
-theme_override_font_sizes/font_size = 14
-text = "— THE OTHER SIDE"
-horizontal_alignment = 1
 
 [node name="Title" type="Label" parent="Root/PausePanel/Margin/Center/Content"]
 layout_mode = 2

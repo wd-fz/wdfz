@@ -25,6 +25,10 @@ var album: VBoxContainer
 var _layout: HBoxContainer
 var _body_scroll: TouchScroll
 var _nav_scroll: TouchScroll
+var _apps: GridContainer
+var _app_header: HBoxContainer
+var _app_icon: TextureRect
+var _app_title: Label
 var _selected_app := ""
 
 
@@ -35,11 +39,14 @@ func _init() -> void:
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
 	var back := UISkin.panel(16)
+	back.set_corner_radius_all(20)
+	back.set_border_width_all(2)
 	add_theme_stylebox_override("panel", back)
+	clip_contents = true
 	var wallpaper := UIArt.view(UIArt.wallpaper(), Vector2.ZERO)
 	wallpaper.name = "PhoneWallpaper"
 	wallpaper.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	wallpaper.modulate = Color(1, 1, 1, 0.32)
+	wallpaper.modulate.a = 0.18
 	add_child(wallpaper)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 12)
@@ -48,17 +55,21 @@ func _init() -> void:
 	var top := Label.new()
 	top.text = "校园手机"
 	top.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_theme_color_override("font_color",UISkin.ACCENT)
+	top.theme_type_variation = "HeadingLabel"
+	top.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	header.add_child(top)
 	var status_row := HBoxContainer.new()
 	status_row.add_theme_constant_override("separation", 10)
+	status_row.size_flags_horizontal = Control.SIZE_SHRINK_END
 	status_row.add_child(UIArt.view(UIArt.phone("battery"), Vector2(30, 24)))
-	box.add_child(status_row)
+	header.add_child(status_row)
 	status = Label.new()
 	status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	status.add_theme_color_override("font_color",UISkin.MUTED)
 	status_row.add_child(status)
+	box.add_child(HSeparator.new())
 	_layout = HBoxContainer.new()
 	_layout.add_theme_constant_override("separation",16)
 	box.add_child(_layout)
@@ -66,37 +77,51 @@ func _init() -> void:
 	_nav_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_nav_scroll.follow_focus = true
 	_layout.add_child(_nav_scroll)
-	var nav := VBoxContainer.new()
-	nav.add_theme_constant_override("separation", 4)
-	nav.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_nav_scroll.add_child(nav)
+	_apps = GridContainer.new()
+	_apps.columns = 2
+	_apps.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_nav_scroll.add_child(_apps)
+	var display := PanelContainer.new()
+	display.theme_type_variation = "CardPanel"
+	display.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_layout.add_child(display)
 	_body_scroll = TouchScroll.new()
 	_body_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_body_scroll.follow_focus = true
 	_body_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_layout.add_child(_body_scroll)
+	display.add_child(_body_scroll)
 	var body := VBoxContainer.new()
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation",12)
 	_body_scroll.add_child(body)
+	_app_header = HBoxContainer.new()
+	_app_header.add_theme_constant_override("separation", 12)
+	_app_icon = UIArt.view(null, Vector2(42, 42))
+	_app_header.add_child(_app_icon)
+	_app_title = Label.new()
+	_app_title.theme_type_variation = "HeadingLabel"
+	_app_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_app_header.add_child(_app_title)
+	body.add_child(_app_header)
 	for a: Array in APPS:
 		var b := Button.new()
 		b.name = "App_" + String(a[0])
 		b.text = String(a[1])
 		b.icon = UIArt.phone(String(a[0]))
 		b.expand_icon = true
-		b.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.add_theme_constant_override("icon_max_width", 32)
-		b.add_theme_constant_override("h_separation", 10)
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.add_theme_constant_override("icon_max_width", 42)
+		b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		b.toggle_mode = true
-		b.custom_minimum_size.y = 52
+		b.custom_minimum_size.y = 86
 		b.pressed.connect(func() -> void: app_selected.emit(String(a[0])))
-		nav.add_child(b)
+		_apps.add_child(b)
 		app_buttons[a[0]] = b
 	copy = Label.new()
 	copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	copy.custom_minimum_size = Vector2(0, 90)
 	body.add_child(copy)
 	action_button = Button.new()
 	action_button.name = "PhoneAction"
@@ -137,6 +162,7 @@ func _init() -> void:
 	close.text = "收起"
 	close.name = "PhoneClose"
 	close.custom_minimum_size.y = 44
+	close.theme_type_variation = "QuietButton"
 	close.pressed.connect(func() -> void: closed.emit())
 	header.add_child(close)
 	add_child(box)
@@ -151,8 +177,11 @@ func _ready() -> void:
 
 func _fit() -> void:
 	if not is_inside_tree() or not visible: return
-	_nav_scroll.custom_minimum_size.x = 184*get_theme_default_font_size()/16.0
-	PanelLayout.fit(self,_layout,820,432)
+	var compact := get_viewport_rect().size.x < 650
+	_apps.columns = 1 if compact else 2
+	_nav_scroll.custom_minimum_size.x = 122 if compact else 248
+	status.custom_minimum_size.x = minf(296.0 * get_theme_default_font_size() / 16.0, minf(820.0, get_viewport_rect().size.x) * 0.46)
+	PanelLayout.fit(self, _layout, 820, 366)
 
 
 ## Select the app visually. action: "" hides the button; label its text.
@@ -161,6 +190,11 @@ func select(app: String, action: String, label: String, disabled: bool) -> void:
 		_nav_scroll.stop_motion()
 		_body_scroll.stop_motion()
 		_selected_app = app
+		var page := app_buttons.get(app) as Button
+		_app_header.visible = page != null and app != "plane"
+		if page != null:
+			_app_icon.texture = page.icon
+			_app_title.text = page.text
 	for k: String in app_buttons:
 		(app_buttons[k] as Button).button_pressed = k == app
 	screen.visible = app == "plane"

@@ -10,31 +10,30 @@ signal binding_changed(action: String, slot: int, key: int)
 signal binding_cleared(action: String, slot: int)
 signal bindings_reset(action: String)
 
-const INK := Color("ece6da")
-const MUTED := Color("9aa4a6")
-const ACCENT := Color("8fd6c0")
+const INK := UISkin.INK
+const MUTED := UISkin.MUTED
+const ACCENT := UISkin.ACCENT
 const PAGES := [
-	["画面", "选择清晰度与显示方式", [
-	]],
-	["声音", "让环境线索更容易听清", [
+	["画面", []],
+	["声音", [
 		["vol", "主音量", "控制游戏音乐、环境声与音效的音量。", [0,100,5]],
 		["amb", "环境声", "保留校园底噪、风声等环境声层。", []],
 		["captions", "声音字幕", "自动模式会在静音时显示声音线索。", [["自动",0],["开启",1],["关闭",2]]],
 		["sub", "提示文字大小", "同时调整声音字幕与临时提示。", [["小",0],["中",1],["大",2]]],
 	]],
-	["操作", "按自己的习惯调整手感", [
+	["操作", [
 		["touch", "触屏视角灵敏度", "数值越高，滑动时转动视角越快。", [25,250,5]],
 		["touch_size", "触屏按钮大小", "一起调整摇杆、动作按钮和工具栏。", [85,125,5]],
 		["mouse", "鼠标视角灵敏度", "影响桌面端鼠标环视的速度。", [25,250,5]],
 	]],
-	["键位", "把键盘按键改成顺手的位置", []],
-	["舒适", "减轻视觉刺激，调整阅读体验", [
+	["键位", []],
+	["舒适", [
 		["shake", "镜头晃动", "关闭后减少步行与奔跑时的镜头起伏。", []],
 		["distortion", "视野扭曲", "调整低 SAN 时的动态扭曲强度。", [["关闭",0],["减弱",1],["完整",2]]],
 		["reduce_flash", "减少闪光", "降低闪电等强光变化带来的刺激。", []],
 		["text", "界面文字大小", "调整菜单与界面文字，下面可直接预览。", [85,150,5]],
 	]],
-	["数据", "管理设置与上一局留下的痕迹", []],
+	["数据", []],
 ]
 const QUALITY_NOTES := ["480p 像素预算，最多两盏局部灯，无实时阴影。", "600p 像素预算，最多三盏局部灯，无实时阴影。", "720p 像素预算，保留太阳与手电阴影，最多四盏局部灯。", "900p 像素预算，较精细的模型与 2× 抗锯齿。", "1080p 像素预算与 2× 抗锯齿；不额外叠加光影特效。", "自定义：独立调整清晰度、模型与必要的光影；帧率单独保存。"]
 const PRESET_ROW := ["quality","画质预设","可从预设开始，再逐项调整。保留帧率上限、垂直同步与舒适设置。",[["流畅",0],["均衡",1],["精细",2],["高清",3],["极清",4],["自定义",5]]]
@@ -45,7 +44,7 @@ const GRAPHICS_SECTIONS := [
 		["bright","亮度","调整游戏画面的整体明暗。",[50,150,5]],
 		["full_screen","全屏显示","在窗口与全屏之间切换。",[]],
 		["auto_land","横屏自动旋转","开启时可左右翻转；关闭后固定横屏。",[]],
-		["menu_orbit","主菜单实景环绕","在主菜单背后缓慢转动一张校园全景图（预先渲染，不实时渲染）；关闭时显示静态夜景图。",[]],
+		["menu_orbit","主菜单实景环绕","显示缓慢转动的校园全景图。关闭后显示雨夜封面。",[]],
 	]],
 	["细节",[
 		["render_budget","3D 像素预算","限制场景渲染像素总数；宽屏会相应降低高度。界面文字始终清晰。原生分辨率负载更高。",[["480p",0],["600p",1],["720p",2],["900p",3],["1080p",4],["原生",5]]],
@@ -82,7 +81,9 @@ var _page_boxes := {}
 var _nav_buttons := {}
 var _value_labels := {}
 var _body: BoxContainer
-var _nav: BoxContainer
+var _nav: GridContainer
+var _page_heading: Label
+var _graphics_tabs: HFlowContainer
 var _status: Label
 var _quality_note: Label
 var _preview: Label
@@ -100,6 +101,7 @@ var mobile_renderer := RenderingServer.get_current_rendering_method()=="mobile"
 var _graphics_boxes := {}
 var _graphics_buttons := {}
 var _graphics_summary: Label
+var _fps_buttons: Dictionary = {}
 
 
 func _ready() -> void:
@@ -108,49 +110,59 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	theme = preload("res://content/ui/theme.tres").duplicate()
-	var shade := ColorRect.new()
-	shade.color = Color(0.008, 0.016, 0.025, 0.88)
-	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(shade)
+	UISkin.shade(self, 0.70)
 	shell = PanelContainer.new()
 	shell.name = "SettingsCard"
-	shell.add_theme_stylebox_override("panel", _box(Color("0b1116"), Color("263238"), 14, 20))
+	shell.add_theme_stylebox_override("panel", UISkin.panel(16))
 	shell.minimum_size_changed.connect(func() -> void: fit.call_deferred())
 	add_child(shell)
 	var outer := VBoxContainer.new()
-	outer.add_theme_constant_override("separation", 16)
+	outer.add_theme_constant_override("separation", 12)
 	shell.add_child(outer)
-	UIArt.decorate(shell)
 	var heading := HBoxContainer.new()
 	outer.add_child(heading)
-	var title := _label("设置", 28, INK)
+	var title := _label("设置", 27, INK)
 	title.theme_type_variation = "HeadingLabel"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	heading.add_child(title)
 	_close = _button("完成", "CloseSettings")
 	_close.custom_minimum_size.x = 100
-	_close.add_theme_stylebox_override("normal", _box(ACCENT, ACCENT, 10, 10))
-	for state: String in ["font_color","font_hover_color","font_focus_color"]:
-		_close.add_theme_color_override(state, Color("102c29"))
-	_close.add_theme_stylebox_override("hover", _box(ACCENT.lightened(0.1), ACCENT, 10, 10))
+	_close.theme_type_variation = "PrimaryButton"
 	_close.pressed.connect(dismiss)
 	heading.add_child(_close)
+	outer.add_child(HSeparator.new())
 	_body = BoxContainer.new()
 	_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_body.add_theme_constant_override("separation", 20)
+	_body.add_theme_constant_override("separation", 16)
 	outer.add_child(_body)
-	_nav = BoxContainer.new()
-	_nav.vertical = true
-	_nav.add_theme_constant_override("separation", 8)
+	_nav = GridContainer.new()
+	_nav.add_theme_constant_override("v_separation", 4)
+	_nav.add_theme_constant_override("h_separation", 4)
 	_body.add_child(_nav)
+	var detail := VBoxContainer.new()
+	detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	detail.add_theme_constant_override("separation", 8)
+	_body.add_child(detail)
+	var page_header := HBoxContainer.new()
+	detail.add_child(page_header)
+	_page_heading = _label("", 21, INK)
+	_page_heading.theme_type_variation = "HeadingLabel"
+	page_header.add_child(_page_heading)
+	_graphics_summary = _label("", 13, ACCENT)
+	_graphics_summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	page_header.add_child(_graphics_summary)
+	_graphics_tabs = HFlowContainer.new()
+	_graphics_tabs.add_theme_constant_override("h_separation", 6)
+	_graphics_tabs.add_theme_constant_override("v_separation", 6)
+	detail.add_child(_graphics_tabs)
 	scroll = TouchScroll.new()
 	scroll.name = "SettingsScroll"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.follow_focus = true
-	_body.add_child(scroll)
+	detail.add_child(scroll)
 	var pages := VBoxContainer.new()
 	pages.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(pages)
@@ -158,7 +170,8 @@ func _ready() -> void:
 	for page: Array in PAGES:
 		var id := String(page[0])
 		var nav := _button(id, "Page_" + id)
-		UIArt.button(nav, UIArt.nav(String({"画面": "picture", "声音": "sound", "操作": "controls", "键位": "keyboard", "舒适": "comfort", "数据": "data"}[id])))
+		nav.theme_type_variation = "QuietButton"
+		UIArt.button(nav, UIArt.nav(String({"画面": "picture", "声音": "sound", "操作": "controls", "键位": "keyboard", "舒适": "comfort", "数据": "data"}[id])), 22)
 		nav.toggle_mode = true
 		nav.button_group = nav_group
 		nav.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -170,14 +183,7 @@ func _ready() -> void:
 		column.add_theme_constant_override("separation", 12)
 		pages.add_child(column)
 		_page_boxes[id] = column
-		var page_title := _label(id, 22, INK)
-		page_title.theme_type_variation = "HeadingLabel"
-		column.add_child(page_title)
-		if id=="画面":
-			_graphics_summary=_label("",14,ACCENT)
-			column.add_child(_graphics_summary)
-		else: column.add_child(_label(page[1], 14, MUTED))
-		for row: Array in page[2]:
+		for row: Array in page[1]:
 			_add_setting(column, row)
 		if id == "画面": _add_graphics(column)
 		elif id == "操作":
@@ -188,7 +194,7 @@ func _ready() -> void:
 		elif id == "键位":
 			_add_bindings(column)
 		elif id == "舒适":
-			var preview_card := _card(column)
+			var preview_card := UISkin.card(column)
 			preview_card.add_child(_label("阅读预览", 13, ACCENT))
 			_preview = _label("铃声响起，走廊里传来了脚步声。", 16, INK)
 			preview_card.add_child(_preview)
@@ -201,16 +207,6 @@ func _ready() -> void:
 	select_page(selected)
 	fit()
 
-
-
-func _box(color: Color, border: Color, radius: int, margin: int, thickness: int = 1) -> StyleBoxFlat:
-	var box := StyleBoxFlat.new()
-	box.bg_color = color
-	box.border_color = border
-	box.set_corner_radius_all(radius)
-	box.set_border_width_all(thickness)
-	box.set_content_margin_all(margin)
-	return box
 
 
 func _label(text: String, pixels: int, color: Color) -> Label:
@@ -234,21 +230,7 @@ func _button(text: String, id: String) -> Button:
 	return button
 
 
-func _card(parent: Control) -> VBoxContainer:
-	var card := PanelContainer.new()
-	card.mouse_filter = Control.MOUSE_FILTER_PASS
-	card.add_theme_stylebox_override("panel", _box(UISkin.CARD, UISkin.CARD_EDGE, 10, 14))
-	parent.add_child(card)
-	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 8)
-	card.add_child(column)
-	return column
-
-
 func _add_graphics(column: VBoxContainer) -> void:
-	var tabs:=HFlowContainer.new()
-	tabs.add_theme_constant_override("h_separation",8)
-	column.add_child(tabs)
 	var group:=ButtonGroup.new()
 	for section: Array in GRAPHICS_SECTIONS:
 		var id:=String(section[0])
@@ -257,7 +239,8 @@ func _add_graphics(column: VBoxContainer) -> void:
 		button.toggle_mode=true
 		button.button_group=group
 		button.pressed.connect(select_graphics_section.bind(id))
-		tabs.add_child(button)
+		button.theme_type_variation = "QuietButton"
+		_graphics_tabs.add_child(button)
 		_graphics_buttons[id]=button
 		var box:=VBoxContainer.new()
 		box.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -280,17 +263,19 @@ func select_graphics_section(id: String) -> void:
 
 
 func _add_frame_limit(column: VBoxContainer) -> void:
+	var inputs := HFlowContainer.new()
+	inputs.add_theme_constant_override("h_separation", 10)
+	column.add_child(inputs)
 	var line:=HBoxContainer.new()
 	line.add_theme_constant_override("separation",10)
-	column.add_child(line)
+	inputs.add_child(line)
 	var spin:=SpinBox.new()
 	spin.name="FpsLimit"
 	spin.min_value=0
 	spin.max_value=360
 	spin.step=1
 	spin.suffix=" FPS"
-	spin.custom_minimum_size=Vector2(150,46)
-	spin.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	spin.custom_minimum_size=Vector2(112,46)
 	spin.get_line_edit().virtual_keyboard_type=LineEdit.KEYBOARD_TYPE_NUMBER
 	spin.value_changed.connect(func(value: float) -> void: _changed("fps_limit",int(value)))
 	var less:=_button("−","Less_fps_limit")
@@ -302,15 +287,15 @@ func _add_frame_limit(column: VBoxContainer) -> void:
 	line.add_child(spin)
 	line.add_child(more)
 	controls["fps_limit"]=spin
-	var shortcuts:=HFlowContainer.new()
-	shortcuts.add_theme_constant_override("h_separation",8)
-	shortcuts.add_theme_constant_override("v_separation",8)
-	column.add_child(shortcuts)
+	var group := ButtonGroup.new()
 	for fps: int in [30,60,90,120,144,240,0]:
 		var button:=_button("不限" if fps==0 else str(fps),"Fps_%d" % fps)
-		button.custom_minimum_size.x=64
+		button.custom_minimum_size.x = 52
+		button.toggle_mode = true
+		button.button_group = group
 		button.pressed.connect(func() -> void: _changed("fps_limit",fps))
-		shortcuts.add_child(button)
+		inputs.add_child(button)
+		_fps_buttons[fps] = button
 
 
 func _unavailable(key: String) -> bool:
@@ -326,7 +311,7 @@ func _add_setting(parent: Control, row: Array) -> void:
 	var key := String(row[0])
 	if key == "full_screen" and not fullscreen_toggle_allowed: return
 	var spec: Array = row[3]
-	var column := _card(parent)
+	var column := UISkin.card(parent)
 	column.name = "Setting_" + key
 	var head := HBoxContainer.new()
 	column.add_child(head)
@@ -397,13 +382,13 @@ func _add_setting(parent: Control, row: Array) -> void:
 
 
 func _add_data(column: VBoxContainer) -> void:
-	var comfort := _card(column)
+	var comfort := UISkin.card(column)
 	comfort.add_child(_label("恢复操作与文字默认", 16, INK))
 	comfort.add_child(_label("重置鼠标与触屏灵敏度、文字大小、按钮大小和触屏布局。保留画质、声音与游戏进度。", 13, MUTED))
 	var reset := _button("恢复默认", "ResetComfort")
 	reset.pressed.connect(func() -> void: setting_changed.emit("reset_comfort",0))
 	comfort.add_child(reset)
-	var traces := _card(column)
+	var traces := UISkin.card(column)
 	traces.add_child(_label("上一局的痕迹", 16, INK))
 	traces.add_child(_label("清除上一局留在校园里的痕迹，不删除当前存档。此操作无法撤销。", 13, MUTED))
 	_clear = _button("清除痕迹", "ClearLastLife")
@@ -421,7 +406,7 @@ func _add_data(column: VBoxContainer) -> void:
 
 
 func _add_bindings(column: VBoxContainer) -> void:
-	var top := _card(column)
+	var top := UISkin.card(column)
 	top.add_child(_label("点按一个键位，再按下新键。Esc 取消，退格清除这一格（每个动作至少留一个键）。新键已被别的动作使用时，两者互换。", 13, MUTED))
 	_bind_note = _label("", 13, ACCENT)
 	top.add_child(_bind_note)
@@ -436,7 +421,7 @@ func _add_bindings(column: VBoxContainer) -> void:
 		if a[2] != group:
 			group = String(a[2])
 			column.add_child(_label(group, 15, ACCENT))
-			card = _card(column)
+			card = UISkin.card(column)
 		var line := HBoxContainer.new()
 		line.name = "Bind_" + String(a[0])
 		line.add_theme_constant_override("separation", 8)
@@ -458,7 +443,7 @@ func _add_bindings(column: VBoxContainer) -> void:
 			_stop_capture()
 			bindings_reset.emit(String(a[0])))
 		line.add_child(reset)
-	var fixed := _card(column)
+	var fixed := UISkin.card(column)
 	var esc := HBoxContainer.new()
 	fixed.add_child(esc)
 	esc.add_child(_label("暂停 / 关闭菜单", 16, INK))
@@ -540,6 +525,8 @@ func set_values(current: Dictionary) -> void:
 		if control is SpinBox:
 			control.set_value_no_signal(value)
 			control.suffix=" · 不限" if value==0 else " FPS"
+			for fps: int in _fps_buttons:
+				_fps_buttons[fps].set_pressed_no_signal(fps == value)
 		elif control is HSlider:
 			control.set_value_no_signal(value)
 			control.editable=not unavailable
@@ -554,7 +541,7 @@ func set_values(current: Dictionary) -> void:
 				control[option].set_pressed_no_signal(option == value)
 				control[option].disabled=unavailable or (key=="upscaler" and option==1 and mobile_renderer)
 	_quality_note.text = QUALITY_NOTES[clampi(int(values.get("quality",2)),0,5)]
-	_graphics_summary.text="当前方案：%s · 各项独立保存" % GameSettings.QUALITY_LABELS[clampi(int(values.get("quality",2)),0,5)]
+	_graphics_summary.text = "画质 · %s" % GameSettings.QUALITY_LABELS[clampi(int(values.get("quality", 2)), 0, 5)]
 	var scale := float(values.get("text",100)) / 100.0
 	if not is_equal_approx(scale,_font_scale):
 		_font_scale = scale
@@ -582,6 +569,9 @@ func select_page(id: String) -> void:
 	if not _page_boxes.has(id): return
 	scroll.stop_motion()
 	selected = id
+	_page_heading.text = id
+	_graphics_tabs.visible = id == "画面"
+	_graphics_summary.visible = id == "画面"
 	_cancel_clear()
 	if not _capturing.is_empty(): _stop_capture()
 	for page: String in _page_boxes:
@@ -595,10 +585,10 @@ func fit() -> void:
 	var view := get_viewport_rect().size
 	var compact := view.x < 700
 	_body.vertical = compact
-	_nav.vertical = not compact
-	_nav.custom_minimum_size.x = 0 if compact else 132 * _font_scale
+	_nav.columns = 3 if compact else 1
+	_nav.custom_minimum_size.x = 0 if compact else 136 * sqrt(_font_scale)
 	for button: Button in _nav_buttons.values():
-		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL if compact else Control.SIZE_FILL
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.alignment = HORIZONTAL_ALIGNMENT_CENTER if compact else HORIZONTAL_ALIGNMENT_LEFT
 	shell.size = Vector2(minf(1120,view.x-32),minf(760,view.y-24))
 	shell.position = (view-shell.size)*0.5

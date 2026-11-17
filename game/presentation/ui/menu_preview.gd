@@ -7,8 +7,7 @@ extends ColorRect
 ## from the real scene by tools/capture/capture_menu_panorama.gd (assets/ui/menu_panorama.jpg); at run time
 ## nothing 3D is loaded or drawn, only this one textured rectangle.
 ##
-## Off by default (user request 2026-11-11, power): the setting 主菜单实景环绕 (menu_orbit) turns it on; off,
-## the menu shows the still picture underneath and this panel holds no texture.
+## 主菜单实景环绕 (menu_orbit) selects this view. The rainy campus cover is used when it is off.
 
 const PANORAMA := "res://assets/ui/menu_panorama.jpg"
 const CLOCK := 1080.0                   # 18:00 in minutes: the time the panorama was baked at
@@ -32,7 +31,8 @@ void fragment() {
 	c = pow(clamp((c - black) / max(0.01, white - black), 0.0, 1.0), vec3(gamma));
 	// The stretch widens the JPEG's sky steps into bands; a little ordered noise hides them.
 	float n = fract(sin(dot(FRAGCOORD.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
-	COLOR = vec4(c + n * 3.0 / 255.0, 1.0);
+	vec3 grade = c * vec3(0.74, 0.89, 1.04) + vec3(0.014, 0.024, 0.044);
+	COLOR = vec4(grade + n * 3.0 / 255.0, 1.0);
 }
 """
 
@@ -47,10 +47,6 @@ void fragment() {
 ## The menu's entrance (MenuWake) pushes the view in from this scale to 1.
 @export var entrance_zoom := 1.18
 var zoom := 1.0
-
-## Emitted when how much of the panorama shows changes (0 = none, 1 = fully faded in): the side menu
-## lightens its veil over a visible panorama.
-signal shown_changed(amount: float)
 
 var still := false                      # reduced motion: hold one angle
 ## Only the launched app turns the panorama on (GameApp, together with the boot animation); embedded apps in
@@ -130,24 +126,13 @@ func _process(delta: float) -> void:
 		angle = fposmod(angle + delta / maxf(10.0, orbit_seconds), 1.0)
 	(material as ShaderMaterial).set_shader_parameter("yaw", angle)
 	(material as ShaderMaterial).set_shader_parameter("zoom", zoom)
-	var was := _fade
 	_fade = minf(1.0, _fade + delta * 0.6)
 	modulate.a = _fade
-	if _fade != was:
-		shown_changed.emit(_fade)
-
-
-## How much of the panorama shows now (0–1).
-func shown() -> float:
-	return _fade if texture != null else 0.0
 
 
 ## Leaving the menu or switching off: drop the picture so play never holds it.
 func release() -> void:
-	var was := _fade
 	material = null
 	texture = null
 	_fade = 0.0
 	modulate.a = 0.0
-	if was > 0.0:
-		shown_changed.emit(0.0)
