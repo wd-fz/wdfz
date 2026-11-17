@@ -130,6 +130,13 @@ func tick(a: CooperativeActor, dt: float) -> void:
 		if source == "rules": (a.feature(&"dlc.campus_rules") as RulesDlcModule).advance_cues(dt)
 		flush(a, source)
 
+func _return_from_dream(a: CooperativeActor, from: Dictionary) -> void:
+	var pose := sim.spawn(from["room"])
+	if from.get("x") != null:
+		var p := CampusGeometry.to_scene(CampusData.rooms()[from["room"]], Vector2(from["x"], from["y"]))
+		pose = {"position": [p.x, from.get("floorY", 0), p.y], "yaw": CampusGeometry.yaw_from_ang(from.get("ang", 0)), "pitch": 0.0}
+	sim.travel(a, from["room"], pose)
+
 func flush(a: CooperativeActor, source: String) -> void:
 	for e: Dictionary in a.feature(CooperativeGameplay.SOURCES[source]).call("take_events"):
 		match String(e["kind"]):
@@ -142,12 +149,7 @@ func flush(a: CooperativeActor, source: String) -> void:
 				var p := CampusGeometry.to_scene(room, CampusGeometry.tile_center(room, InceptionModule.START.x, InceptionModule.START.y))
 				a.pose["position"] = [p.x, 0, p.y]
 			"wake":
-				var from: Dictionary = e["from"]
-				var pose := sim.spawn(from["room"])
-				if from.get("x") != null:
-					var p := CampusGeometry.to_scene(CampusData.rooms()[from["room"]], Vector2(from["x"], from["y"]))
-					pose = {"position": [p.x, from.get("floorY", 0), p.y], "yaw": CampusGeometry.yaw_from_ang(from.get("ang", 0)), "pitch": 0.0}
-				sim.travel(a, from["room"], pose)
+				_return_from_dream(a, e["from"])
 				if e["settle"]:
 					a.school().change_san(snappedf(52.0 * float(a.school().pressure()["rest"]), .1))
 					a.school().add_violation(15)
@@ -159,7 +161,11 @@ func flush(a: CooperativeActor, source: String) -> void:
 					sim.travel(a, "teach1", a.school().start_seated("teach1"))
 					a.school().start_seated("teach1")
 					a.event("notice", {"text": "《管制刀具》· 小刀被收走。你在自己的座位醒来，队友仍在行动。"})
-				else: game._offer_ending(a, e["id"])
+				else:
+					# The room keeps running until every teammate agrees; do not leave
+					# an actor in an already-cleared dream that wakes at the default dorm.
+					if e["id"] == "inception": _return_from_dream(a, e["from"])
+					game._offer_ending(a, e["id"])
 			"kill":
 				game.kill(a, String(e.get("msg", e.get("text", ""))), e["fx"], e["source"], false)
 				if source == "gaze": (a.feature(&"story.window_gaze") as WindowGazeModule).after_kill(a.fate().dead)

@@ -191,9 +191,10 @@ func tick(dt: float, cell: Vector2i) -> void:
 
 
 func succeed(how: String) -> void:
+	var from: Dictionary=dream.get("from",{"room":"dorm1","x":null,"y":null}).duplicate(true)
 	dream={}
 	_emit("fact",{"fact":{"kind":"inception","what":"ending","how":how}})
-	_emit("ending",{"id":"inception"})
+	_emit("ending",{"id":"inception","from":from})
 
 
 func wake(fell: bool) -> void:

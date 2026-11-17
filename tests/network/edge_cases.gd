@@ -97,7 +97,8 @@ func games_and_dream() -> void:
 	a.bag().add("top")
 	var dream := a.feature(&"story.inception") as InceptionModule
 	dream.roll = func() -> float: return 0.0 # Control only the rare entry draw.
-	check(tile(a, "dorm1", "b"), "C24 dormitory bed is a real interaction target")
+	check(tile(a, "dorm2", "b"), "C24 dormitory bed is a real interaction target")
+	var origin := a.pose.duplicate(true)
 	command(a, "interact")
 	agree_time()
 	check(a.location() == InceptionModule.ROOM and sim.actor("b").location() == "teach1", "C25 sleeping enters only the owner's dream")
@@ -106,6 +107,12 @@ func games_and_dream() -> void:
 	point(a, InceptionModule.ROOM, CampusGeometry.tile_center(CampusData.rooms()[InceptionModule.ROOM], InceptionModule.EXIT.x, InceptionModule.EXIT.y))
 	command(a, "interact")
 	check(sim.room.ending_offer.get("route") == "inception" and sim.room.phase == "playing", "C24 hidden true ending still waits for teammates")
+	sim.tick(1.0 / 60.0)
+	check(a.location() == "dorm2" and absf(a.pose["position"][0] - origin["position"][0]) < .01 and absf(a.pose["position"][2] - origin["position"][2]) < .01, "C25 completed dream returns to its own entrance while the team decides")
+	command(sim.actor("b"), "ending_confirm", {"accept": false})
+	check(sim.room.ending_offer.is_empty() and sim.room.phase == "playing", "C24 declined dream ending leaves the team playing")
+	command(a, "ending_request")
+	check(sim.room.ending_offer.get("route") == "inception", "C24 completed personal route can be proposed again without replaying the dream")
 	for id: String in ["b", "c"]: command(sim.actor(id), "ending_confirm", {"accept": true})
 	check(sim.room.ending == "inception", "C24 hidden true ending settles only after full consent")
 

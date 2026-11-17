@@ -37,6 +37,8 @@ var saved_calendar := 0.0
 var screenshot_dir := ""
 var ending_test := false
 var ending_wait := 0.0
+var original_guest_peer := 0
+var original_guest_reconnected := false
 var last_choice := -1
 var route_timer := 0.0
 var soak := false
@@ -129,6 +131,7 @@ func run() -> void:
 			check(false, reason)
 			finish())
 	network.room_changed.connect(func(_data: Dictionary) -> void:
+		if role == "host": _observe_guest_connection()
 		if network.room.phase == "lobby" and network.local_id != "" and network.room.members.has(network.local_id) and not network.room.members[network.local_id]["ready"]: network.ready(true, "watch")
 		if role == "host" and not began and network.room.members.size() == count and network.room.can_start():
 			began = true
@@ -192,6 +195,7 @@ func _process(dt: float) -> bool:
 		check(false, "connection/loading timeout")
 		finish()
 	if network == null: return false
+	if role == "host": _observe_guest_connection()
 	if reconnecting and startup - disconnected_at > (3.0 if restore_test else 1.5):
 		reconnecting = false
 		if ui_mode:
@@ -243,6 +247,9 @@ func _process(dt: float) -> bool:
 	# heartbeat expires. Let the reconnecting guest finish its full play interval
 	# before shutting down the authority; the overall startup deadline still bounds failures.
 	if elapsed > duration + (20.0 if role == "host" else 0.0):
+		if ending_test and role == "host":
+			var route := network.simulation.shared[&"story.routes"] as RoutesModule
+			print("ENDING TRACE: ", {"stage": stage, "hacked": route.hacked, "data": route.data_synced, "reconnected": original_guest_reconnected, "qualified": network.simulation.gameplay.qualified, "offer": network.room.ending_offer, "choices": network.simulation.actor(network.local_id).choice})
 		check(snapshots > 10, "received repeated baselines")
 		check(motions > 40, "received motion over unreliable ENet")
 		check(not ending_test and network.room != null and network.room.phase == "playing", "room stays running / ending completes before timeout")
@@ -286,8 +293,8 @@ func _host_scenario() -> void:
 		stage = 4
 	# A missed disconnect can wait for the 12 s heartbeat before admitting the
 	# returning identity. Assert recovery within that bound, not at one instant.
-	elif stage == 4 and elapsed > 11.0 and (_original_guest_connected() or elapsed > 26.0):
-		check(_original_guest_connected(), "original peer restored after transport disconnect")
+	elif stage == 4 and elapsed > 11.0 and (original_guest_reconnected or elapsed > 26.0):
+		check(original_guest_reconnected, "original peer restored after transport disconnect")
 		if ui_mode:
 			app.lan.open()
 			stage = 5
@@ -317,13 +324,17 @@ func _host_scenario() -> void:
 		stage = 7
 
 
-func _original_guest_connected() -> bool:
-	# Other guests may finish their own 18 s interval while guest-1 is waiting
-	# for the stale connection's heartbeat. Only guest-1 reconnects in this case.
+func _observe_guest_connection() -> void:
+	# A rendered host can stall while compiling a phone/camera pipeline. The guest
+	# may reconnect and finish before the host's later test phase. Record the real
+	# identity returning on a new ENet peer, rather than inspecting one late instant.
+	if network.room == null: return
 	for id: String in network.room.members:
 		if network.room.members[id]["name"] == "guest-1":
-			return network.connections.values().has(id)
-	return false
+			for peer: int in network.connections:
+				if network.connections[peer] != id: continue
+				if original_guest_peer == 0: original_guest_peer = peer
+				elif peer != original_guest_peer: original_guest_reconnected = true
 
 
 func _touch_panel() -> void:
@@ -428,7 +439,7 @@ func _ending_host() -> void:
 		check(route.hacked, "network command writes whitelist from actual terminal")
 		sim.travel(guest, "admin3", _terminal_pose("admin3"))
 		stage = 2
-	elif stage == 2 and route.data_synced and elapsed > 12:
+	elif stage == 2 and route.data_synced and original_guest_reconnected:
 		check(route.data_synced and network.connections.size() == count, "teammate syncs route and reconnects before gate")
 		var gate := CampusGeometry.to_scene(null, Vector2(401, 1250))
 		for actor: CooperativeActor in sim.actors.values(): sim.travel(actor, "out", {"position": [gate.x, 0.05, gate.y], "yaw": 0.0, "pitch": 0.0})

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "digest": "7dd955b91d2c35723b7c6c53fb138e52b5a851766ec8006faf754d83f8c95f0b",
+  "digest": "0f4edfe50faa5f7ac5e727b31680af8feea17d4b726b5e20f48ad6357b8da5c3",
   "files": {
     "assets/campus/archive.json": "0a3815b54b7591403085c29793d99e08f6f80fd18f7646b7d449a6552709b483",
     "assets/campus/death_geometry.json": "5b7a718919d12b00fa380efc95ffa2ed41262d680d11714d218603053cd52326",
@@ -61,7 +61,7 @@
     "game/app/cooperative_factory.gd": "6812851dbabf81457ade5d31c622c8b44713454d9b67842a4132a8191888c431",
     "game/app/cooperative_gameplay.gd": "87837c056636d416683980d75810f9479a5cbbcf9d42dbc000f6e975bd9e5901",
     "game/app/cooperative_simulation.gd": "59793c23b1f8795e21747c5f180a7b967930d1273fc0375f9695e259d610a2df",
-    "game/app/cooperative_stories.gd": "db63b49a6e36ddb2f63b59793c8dbf74a743e40be3ec4b7dbb9a6c6296ab7bc7",
+    "game/app/cooperative_stories.gd": "7d0ddc79cd38eda05c3a9888669d727e919ff97e0cf808d01a7ab22248e41596",
     "game/app/cooperative_validation.gd": "44e48a13bfe086b22bf23eaecc20bc20e9ce7796de63c0f36aa827e9e0ee3c4c",
     "game/app/debug_flow.gd": "2829392d88843105288bfb3cdc230d18f8c73d849feedd5a3104dfc6f3a9fdb9",
     "game/app/game_app.gd": "e64d2c82c305dbb41ea5c431de7a58d6472b4fbab481d2e8f1de2f7e5d392cc0",
@@ -136,7 +136,7 @@
     "game/features/story/dread_module.gd": "bc6c7c30e0dbb05aebf04eedfb31ea1a8a3f0d962e9d717917d0d3c8d66b1a18",
     "game/features/story/exchange_module.gd": "b85af6446fe8f274e7ca3a91b7ff4bf77d2a43cf1bb37bc6aa9e3644745355b4",
     "game/features/story/fake_normal_module.gd": "90ae0cc187fbfb574120bd6a0f5190f381ef87d442cc50fd9bed424f64532390",
-    "game/features/story/inception_module.gd": "1b7dad8423f7070f413dcbd6c60571d4969635c9e0fc9153cf4bad4cebbd8670",
+    "game/features/story/inception_module.gd": "c7fb54fcd0ba4bb6ba84f572875cad803625e0c504e3717f44f711361b5f0103",
     "game/features/story/investigation_module.gd": "840a2c8f8de54081b398497e43433a3ce8bab5eef2155a6aa6e673d865d6d96b",
     "game/features/story/knife_module.gd": "47cbd95d789ff00656771ef91556f565bf16be3d8571af28b04a4fffc73e8348",
     "game/features/story/mono_module.gd": "7cc3605303d10e03d7b7203c61fdb96188f54aa0a2494b620637fb968a53e159",
