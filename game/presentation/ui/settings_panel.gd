@@ -30,7 +30,7 @@ const PAGES := [
 	["舒适", [
 		["shake", "镜头晃动", "关闭后减少步行与奔跑时的镜头起伏。", []],
 		["distortion", "视野扭曲", "调整低 SAN 时的动态扭曲强度。", [["关闭",0],["减弱",1],["完整",2]]],
-		["reduce_flash", "减少闪光", "降低闪电等强光变化带来的刺激。", []],
+		["reduce_flash", "减少闪光", "减弱灯光闪烁和强光变化，停用菜单动画。", []],
 		["text", "界面文字大小", "调整菜单与界面文字，下面可直接预览。", [85,150,5]],
 	]],
 	["数据", []],
@@ -72,6 +72,7 @@ const GRAPHICS_SECTIONS := [
 ]
 
 var selected := "画面"
+var reduce_motion := false
 var fullscreen_toggle_allowed := GameSettings.can_toggle_fullscreen()
 var values := {}
 var shell: PanelContainer
@@ -113,7 +114,7 @@ func _ready() -> void:
 	UISkin.shade(self, 0.70)
 	shell = PanelContainer.new()
 	shell.name = "SettingsCard"
-	shell.add_theme_stylebox_override("panel", UISkin.panel(16))
+	shell.add_theme_stylebox_override("panel", UISkin.cinematic_panel(16))
 	shell.minimum_size_changed.connect(func() -> void: fit.call_deferred())
 	add_child(shell)
 	var outer := VBoxContainer.new()
@@ -170,7 +171,7 @@ func _ready() -> void:
 	for page: Array in PAGES:
 		var id := String(page[0])
 		var nav := _button(id, "Page_" + id)
-		nav.theme_type_variation = "QuietButton"
+		nav.theme_type_variation = "RailButton"
 		UIArt.button(nav, UIArt.nav(String({"画面": "picture", "声音": "sound", "操作": "controls", "键位": "keyboard", "舒适": "comfort", "数据": "data"}[id])), 22)
 		nav.toggle_mode = true
 		nav.button_group = nav_group
@@ -239,7 +240,7 @@ func _add_graphics(column: VBoxContainer) -> void:
 		button.toggle_mode=true
 		button.button_group=group
 		button.pressed.connect(select_graphics_section.bind(id))
-		button.theme_type_variation = "QuietButton"
+		button.theme_type_variation = "RailButton"
 		_graphics_tabs.add_child(button)
 		_graphics_buttons[id]=button
 		var box:=VBoxContainer.new()
@@ -254,12 +255,14 @@ func _add_graphics(column: VBoxContainer) -> void:
 
 func select_graphics_section(id: String) -> void:
 	if not _graphics_boxes.has(id): return
+	var changed := graphics_section != id
 	scroll.stop_motion()
 	graphics_section=id
 	for key: String in _graphics_boxes:
 		_graphics_boxes[key].visible=key==id
 		_graphics_buttons[key].set_pressed_no_signal(key==id)
 	scroll.scroll_vertical=0
+	if changed: UISkin.reveal(_graphics_boxes[id], reduce_motion)
 
 
 func _add_frame_limit(column: VBoxContainer) -> void:
@@ -508,12 +511,22 @@ func _cancel_clear() -> void:
 
 
 func open(current: Dictionary) -> void:
-	if not visible: _return_focus = weakref(get_viewport().gui_get_focus_owner())
+	var opening := not visible
+	if opening: _return_focus = weakref(get_viewport().gui_get_focus_owner())
 	set_values(current)
 	show()
 	fit()
 	fit.call_deferred()
 	_close.grab_focus()
+	if opening: UISkin.reveal(shell, reduce_motion)
+
+
+func set_reduce_motion(value: bool) -> void:
+	reduce_motion = value
+	if not value: return
+	UISkin.reveal(shell, true)
+	UISkin.reveal(_page_boxes[selected], true)
+	UISkin.reveal(_graphics_boxes[graphics_section], true)
 
 
 func set_values(current: Dictionary) -> void:
@@ -567,6 +580,7 @@ func _changed(key: String, value: int) -> void:
 
 func select_page(id: String) -> void:
 	if not _page_boxes.has(id): return
+	var changed := selected != id
 	scroll.stop_motion()
 	selected = id
 	_page_heading.text = id
@@ -578,6 +592,7 @@ func select_page(id: String) -> void:
 		_page_boxes[page].visible = page == id
 		_nav_buttons[page].set_pressed_no_signal(page == id)
 	scroll.scroll_vertical = 0
+	if changed: UISkin.reveal(_page_boxes[id], reduce_motion)
 
 
 func fit() -> void:

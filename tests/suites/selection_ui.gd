@@ -74,6 +74,9 @@ func test_selection() -> void:
 	check(panel.selected == -1 and panel.confirm_button.disabled, "selection requires an explicit pick before confirming")
 	await _tap(panel.confirm_button)
 	check(committed.is_empty(), "disabled confirmation cannot start a run")
+	panel.cards[2].grab_focus()
+	check(panel.selected == -1 and panel.confirm_button.disabled and panel._effect.text == TalentModule.DEF.drive.does,
+		"keyboard browsing previews a talent without choosing or confirming it")
 	await _tap(panel.cards[0])
 	check(panel.selected == 0 and committed.is_empty() and not panel.confirm_button.disabled, "a talent tap selects and previews without committing")
 	check(panel._effect.text == TalentModule.DEF.tech.does and panel._limit.text == TalentModule.DEF.tech.limit, "the preview includes the actual effect and the full limitation")

@@ -287,6 +287,7 @@ var pause_screen: MenuScreen
 
 
 var menu_preview: MenuPreview
+var menu_rain: MenuRain
 var boot_splash: BootSplash
 var menu_wake: MenuWake
 ## Only the launched app plays the menu's entrance (like the boot animation); embedded apps in tests and
@@ -304,6 +305,10 @@ func _build_side_menu() -> SideMenu:
 	# The panorama obscures the still picture as it comes into view.
 	var photo := menu.get_node("MenuPhoto")
 	menu.move_child(menu_preview, photo.get_index() + 1)
+	menu_rain = MenuRain.new()
+	menu_rain.name = "CoverRain"
+	menu.add_child(menu_rain)
+	menu.move_child(menu_rain, menu_preview.get_index() + 1)
 	var side := SideMenu.new()
 	menu.add_child(side)
 	side.setup(content)
@@ -322,6 +327,19 @@ func _build_pause_screen() -> MenuScreen:
 	margin.hide()
 	margin.queue_free()
 	return screen
+
+
+func set_menu_presentation(reduced: bool, orbit: bool) -> void:
+	reduce_motion = reduced
+	menu_screen.set_reduce_motion(reduced)
+	menu_preview.still = reduced
+	menu_preview.set_orbit(orbit)
+	menu_screen.set_backdrop_orbit(orbit)
+	menu_rain.visible = not reduced and not orbit
+	if reduced and is_instance_valid(menu_wake): menu_wake.finish()
+	if is_instance_valid(settings_panel): settings_panel.set_reduce_motion(reduced)
+	if is_instance_valid(selection_panel): selection_panel.set_reduce_motion(reduced)
+	if reduced: pause_screen.reveal(true)
 
 
 ## The opening animation before the menu (boot_splash.gd); the menu's panorama is loaded underneath.
@@ -349,6 +367,7 @@ func _enter_menu(wake: bool = true) -> void:
 	menu_wake = MenuWake.new()
 	menu_wake.reduce_motion = reduce_motion
 	menu_wake.preview = menu_preview
+	menu_wake.cover = menu.get_node("MenuPhoto") as TextureRect
 	menu.add_child(menu_wake)
 	# Above the photo and the panorama, below the side menu.
 	menu.move_child(menu_wake, menu_screen.get_index())
@@ -1740,6 +1759,7 @@ func show_settings(values: Dictionary, bindings: Dictionary = {}) -> void:
 	if settings_panel == null:
 		settings_panel = GameSettingsPanel.new()
 		settings_panel.fullscreen_toggle_allowed = fullscreen_toggle_allowed
+		settings_panel.reduce_motion = reduce_motion
 		settings_panel.hide()
 		$Root.add_child(settings_panel)
 		settings_panel.setting_changed.connect(func(key: String, value: int) -> void: setting_changed.emit(key,value))
@@ -2493,6 +2513,7 @@ func show_selection(title: String, mode: String, entries: Array) -> void:
 	hide_choice()
 	if not is_instance_valid(selection_panel):
 		selection_panel = SelectionPanel.new()
+		selection_panel.reduce_motion = reduce_motion
 		$Root.add_child(selection_panel)
 		selection_panel.confirmed.connect(choice_selected.emit)
 		selection_panel.canceled.connect(_selection_canceled)
@@ -2664,6 +2685,8 @@ func set_mode(mode: String) -> void:
 		_enter_menu(changed)
 	elif mode == "pause":
 		pause_screen.set_context("单人游戏")
+		pause_screen.set_run_status(_status_line.text if _status_on else _location, _clock_text)
+		if changed: pause_screen.reveal(reduce_motion)
 		%Resume.grab_focus()
 	else:
 		var focused := get_viewport().gui_get_focus_owner()

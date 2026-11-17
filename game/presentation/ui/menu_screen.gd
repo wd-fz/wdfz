@@ -8,6 +8,7 @@ var _layout: BoxContainer
 var _hero: VBoxContainer
 var _card: PanelContainer
 var _title: Label
+var _run_status: Label
 var _commands: VBoxContainer
 var _grids: Array[GridContainer] = []
 
@@ -34,12 +35,17 @@ func setup(content: VBoxContainer) -> void:
 	rule.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hero.add_child(rule)
+	_run_status = Label.new()
+	_run_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_run_status.add_theme_color_override("font_color", UISkin.ACCENT)
+	_run_status.hide()
+	_hero.add_child(_run_status)
 	description = content.get_node("Description") as Label
 	description.reparent(_hero, false)
 	description.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	description.add_theme_color_override("font_color", UISkin.MUTED)
 	_card = PanelContainer.new()
-	_card.add_theme_stylebox_override("panel", UISkin.panel(18))
+	_card.add_theme_stylebox_override("panel", UISkin.cinematic_panel(18))
 	_layout.add_child(_card)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
@@ -79,6 +85,7 @@ func _move(source: Control, target: Control, id: String, icon: String) -> Button
 	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.theme_type_variation = "CommandButton"
 	UIArt.button(button, UIArt.nav(icon), 22)
 	return button
 
@@ -95,6 +102,19 @@ func _group(source: Control, target: Control, buttons: Dictionary) -> void:
 func set_context(detail: String, cooperative: bool = false) -> void:
 	_title.text = "联机菜单" if cooperative else "已暂停"
 	description.text = detail
+
+
+func set_run_status(place_and_period: String, time: String) -> void:
+	_run_status.text = place_and_period
+	if not time.is_empty():
+		_run_status.text = "%s\n%s" % [time, place_and_period]
+	_run_status.visible = not _run_status.text.is_empty()
+	refit()
+
+
+func reveal(reduced: bool) -> void:
+	UISkin.reveal(_hero, reduced, 0.32)
+	UISkin.reveal(_card, reduced, 0.24)
 
 
 func refit() -> void:

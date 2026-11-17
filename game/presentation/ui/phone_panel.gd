@@ -116,6 +116,7 @@ func _init() -> void:
 		b.add_theme_constant_override("icon_max_width", 42)
 		b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		b.toggle_mode = true
+		b.theme_type_variation = "CommandButton"
 		b.custom_minimum_size.y = 86
 		b.pressed.connect(func() -> void: app_selected.emit(String(a[0])))
 		_apps.add_child(b)

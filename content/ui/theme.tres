@@ -1,4 +1,4 @@
-[gd_resource type="Theme" load_steps=30 format=3]
+[gd_resource type="Theme" load_steps=34 format=3]
 
 [ext_resource type="Texture2D" path="res://content/ui/icons/checked.svg" id="checked"]
 
@@ -88,10 +88,10 @@ content_margin_top = 0.0
 border_width_top = 2
 content_margin_bottom = 0.0
 border_width_bottom = 2
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_left = 8
-corner_radius_bottom_right = 8
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_left = 2
+corner_radius_bottom_right = 2
 
 [sub_resource type="StyleBoxFlat" id="Panel"]
 bg_color = Color(0.06667, 0.09804, 0.13725, 0.98039)
@@ -139,10 +139,10 @@ content_margin_top = 8.0
 border_width_top = 1
 content_margin_bottom = 8.0
 border_width_bottom = 1
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_left = 8
-corner_radius_bottom_right = 8
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_left = 2
+corner_radius_bottom_right = 2
 
 [sub_resource type="StyleBoxFlat" id="PrimaryHover"]
 bg_color = Color(0.82353, 0.95294, 0.95686, 1.0)
@@ -155,10 +155,10 @@ content_margin_top = 8.0
 border_width_top = 1
 content_margin_bottom = 8.0
 border_width_bottom = 1
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_left = 8
-corner_radius_bottom_right = 8
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_left = 2
+corner_radius_bottom_right = 2
 
 [sub_resource type="StyleBoxFlat" id="Danger"]
 bg_color = Color(0.21961, 0.13725, 0.15686, 1.0)
@@ -319,10 +319,10 @@ content_margin_top = 8.0
 border_width_top = 1
 content_margin_bottom = 8.0
 border_width_bottom = 1
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_left = 8
-corner_radius_bottom_right = 8
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_left = 2
+corner_radius_bottom_right = 2
 
 [sub_resource type="StyleBoxFlat" id="DangerHover"]
 bg_color = Color(0.31765, 0.17647, 0.21569, 1.0)
@@ -372,6 +372,62 @@ corner_radius_top_right = 12
 corner_radius_bottom_left = 12
 corner_radius_bottom_right = 12
 
+[sub_resource type="StyleBoxFlat" id="CommandIdle"]
+bg_color = Color(0.06667, 0.11373, 0.15686, 0.87451)
+border_color = Color(0.31765, 0.41176, 0.47843, 1.00000)
+content_margin_left = 14.0
+content_margin_right = 14.0
+content_margin_top = 8.0
+content_margin_bottom = 8.0
+border_width_left = 1
+border_width_bottom = 1
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_left = 2
+corner_radius_bottom_right = 2
+
+[sub_resource type="StyleBoxFlat" id="CommandHover"]
+bg_color = Color(0.16863, 0.27451, 0.34510, 0.97255)
+border_color = Color(0.72549, 0.86667, 0.87451, 1.00000)
+content_margin_left = 14.0
+content_margin_right = 14.0
+content_margin_top = 8.0
+content_margin_bottom = 8.0
+border_width_left = 3
+border_width_bottom = 1
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_left = 2
+corner_radius_bottom_right = 2
+
+[sub_resource type="StyleBoxFlat" id="CommandChosen"]
+bg_color = Color(0.18824, 0.30980, 0.38431, 1.00000)
+border_color = Color(0.81176, 0.93333, 0.95686, 1.00000)
+content_margin_left = 14.0
+content_margin_right = 14.0
+content_margin_top = 8.0
+content_margin_bottom = 8.0
+border_width_left = 3
+border_width_bottom = 1
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_left = 2
+corner_radius_bottom_right = 2
+
+[sub_resource type="StyleBoxFlat" id="CommandDisabled"]
+bg_color = Color(0.06275, 0.10196, 0.13725, 0.70980)
+border_color = Color(0.22353, 0.28627, 0.34118, 1.00000)
+content_margin_left = 14.0
+content_margin_right = 14.0
+content_margin_top = 8.0
+content_margin_bottom = 8.0
+border_width_left = 1
+border_width_bottom = 1
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_left = 2
+corner_radius_bottom_right = 2
+
 [resource]
 default_font = SubResource("Font")
 default_font_size = 16
@@ -417,6 +473,15 @@ DangerButton/styles/hover_pressed = SubResource("DangerHover")
 QuietButton/base_type = &"Button"
 QuietButton/styles/normal = SubResource("Quiet")
 QuietButton/styles/disabled = SubResource("Quiet")
+CommandButton/base_type = &"Button"
+CommandButton/styles/normal = SubResource("CommandIdle")
+CommandButton/styles/hover = SubResource("CommandHover")
+CommandButton/styles/pressed = SubResource("CommandChosen")
+CommandButton/styles/hover_pressed = SubResource("CommandChosen")
+CommandButton/styles/disabled = SubResource("CommandDisabled")
+RailButton/base_type = &"CommandButton"
+RailButton/styles/normal = SubResource("Quiet")
+RailButton/styles/disabled = SubResource("Quiet")
 TouchButton/base_type = &"Button"
 TouchButton/styles/normal = SubResource("TouchTarget")
 Label/colors/font_color = Color(0.93725, 0.95686, 0.97255, 1.0)

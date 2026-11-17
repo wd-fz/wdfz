@@ -7,6 +7,7 @@ signal confirmed(index: int)
 signal canceled
 
 var selected := -1
+var reduce_motion := false
 var cards: Array[Button] = []
 var list_scroll: TouchScroll
 var detail_scroll: TouchScroll
@@ -24,7 +25,9 @@ var _limit: Label
 var _art: TextureRect
 var _list: GridContainer
 var _layout: HBoxContainer
-var _effects: VBoxContainer
+var _effects: BoxContainer
+var _portrait: HBoxContainer
+var _preview := -1
 var _submitted := false
 var _return_focus: WeakRef
 
@@ -34,7 +37,7 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	UISkin.shade(self, 0.78)
 	shell = PanelContainer.new()
-	shell.add_theme_stylebox_override("panel", UISkin.panel(16))
+	shell.add_theme_stylebox_override("panel", UISkin.cinematic_panel(16))
 	add_child(shell)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 12)
@@ -69,7 +72,7 @@ func _ready() -> void:
 	_list.add_theme_constant_override("v_separation", 8)
 	list_scroll.add_child(_list)
 	var detail := PanelContainer.new()
-	detail.theme_type_variation = "CardPanel"
+	detail.add_theme_stylebox_override("panel", UISkin.cinematic_panel(10))
 	detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_layout.add_child(detail)
 	detail_scroll = TouchScroll.new()
@@ -80,30 +83,51 @@ func _ready() -> void:
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.add_theme_constant_override("separation", 12)
 	detail_scroll.add_child(content)
-	var intro := HBoxContainer.new()
-	intro.add_theme_constant_override("separation", 12)
-	content.add_child(intro)
-	_art = UIArt.view(UIArt.surface("locked"), Vector2(148, 144))
-	intro.add_child(_art)
+	var backdrop := PanelContainer.new()
+	var portrait_style := UISkin.cinematic_panel(8)
+	portrait_style.bg_color = Color("0c151e")
+	portrait_style.shadow_size = 0
+	backdrop.add_theme_stylebox_override("panel", portrait_style)
+	content.add_child(backdrop)
+	var spotlight := Gradient.new()
+	spotlight.colors = PackedColorArray([Color("375c6d"), Color("0d182100")])
+	var light := GradientTexture2D.new()
+	light.gradient = spotlight
+	light.fill = GradientTexture2D.FILL_RADIAL
+	light.fill_from = Vector2(0.28, 0.48)
+	light.fill_to = Vector2(0.83, 1.0)
+	light.width = 192
+	light.height = 128
+	var glow := UIArt.view(light, Vector2.ZERO)
+	glow.stretch_mode = TextureRect.STRETCH_SCALE
+	backdrop.add_child(glow)
+	_portrait = HBoxContainer.new()
+	_portrait.add_theme_constant_override("separation", 16)
+	backdrop.add_child(_portrait)
+	_art = UIArt.view(UIArt.surface("locked"), Vector2(174, 166))
+	_portrait.add_child(_art)
 	var words := VBoxContainer.new()
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	words.alignment = BoxContainer.ALIGNMENT_CENTER
-	intro.add_child(words)
+	_portrait.add_child(words)
 	_name = _label("选择天赋以查看详情", UISkin.INK)
 	_name.theme_type_variation = "HeadingLabel"
 	words.add_child(_name)
 	_role = _label("", UISkin.MUTED)
 	words.add_child(_role)
-	_effects = VBoxContainer.new()
+	_effects = BoxContainer.new()
 	_effects.add_theme_constant_override("separation", 8)
 	content.add_child(_effects)
-	_effects.add_child(HSeparator.new())
-	_effects.add_child(_label("天赋效果", UISkin.ACCENT))
+	var effect_card := UISkin.card(_effects)
+	(effect_card.get_parent() as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	effect_card.add_child(_label("天赋效果", UISkin.ACCENT))
 	_effect = _label("", UISkin.INK)
-	_effects.add_child(_effect)
-	_effects.add_child(_label("使用限制", UISkin.DANGER))
+	effect_card.add_child(_effect)
+	var limit_card := UISkin.card(_effects)
+	(limit_card.get_parent() as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	limit_card.add_child(_label("使用限制", UISkin.DANGER))
 	_limit = _label("", UISkin.MUTED)
-	_effects.add_child(_limit)
+	limit_card.add_child(_limit)
 	box.add_child(HSeparator.new())
 	var footer := HBoxContainer.new()
 	footer.add_theme_constant_override("separation", 12)
@@ -137,6 +161,7 @@ func open(title: String, mode: String, entries: Array) -> void:
 	_return_focus = weakref(get_viewport().gui_get_focus_owner())
 	_entries = entries.duplicate(true)
 	selected = -1
+	_preview = -1
 	_submitted = false
 	cards.clear()
 	for child in _list.get_children():
@@ -159,6 +184,9 @@ func open(title: String, mode: String, entries: Array) -> void:
 		card.add_theme_constant_override("icon_max_width", 72)
 		card.custom_minimum_size.y = 124
 		card.toggle_mode = true
+		card.theme_type_variation = "CommandButton"
+		card.mouse_entered.connect(_preview_card.bind(i))
+		card.focus_entered.connect(_preview_card.bind(i))
 		card.pressed.connect(select.bind(i))
 		_list.add_child(card)
 		cards.append(card)
@@ -172,25 +200,47 @@ func open(title: String, mode: String, entries: Array) -> void:
 	detail_scroll.scroll_vertical = 0
 	show()
 	_fit()
-	if not cards.is_empty(): cards[0].grab_focus()
+	UISkin.reveal(shell, reduce_motion)
+	if not cards.is_empty():
+		_present(0, false)
+		cards[0].grab_focus()
 
 
 func select(index: int) -> void:
 	if _submitted or index < 0 or index >= _entries.size(): return
 	selected = index
-	var entry: Dictionary = _entries[index]
 	for i in cards.size():
 		cards[i].set_pressed_no_signal(i == index)
+	_present(index, true)
+	_summary.text = "已选  %s" % _entries[index]["name"]
+	confirm_button.disabled = false
+
+
+func _preview_card(index: int) -> void:
+	if not visible or _submitted or selected >= 0 or index >= _entries.size(): return
+	_present(index, true)
+
+
+func _present(index: int, animated: bool) -> void:
+	if index == _preview: return
+	_preview = index
+	var entry: Dictionary = _entries[index]
 	_name.text = entry["name"]
 	_role.text = entry["role"]
 	_effects.show()
 	_effect.text = entry["effect"]
 	_limit.text = entry["limit"]
 	_art.texture = entry.get("art")
-	_summary.text = "已选  %s" % entry["name"]
-	confirm_button.disabled = false
 	detail_scroll.stop_motion()
 	detail_scroll.scroll_vertical = 0
+	UISkin.reveal(_portrait, reduce_motion or not animated, 0.28)
+
+
+func set_reduce_motion(value: bool) -> void:
+	reduce_motion = value
+	if value:
+		UISkin.reveal(shell, true)
+		UISkin.reveal(_portrait, true)
 
 
 func _confirm() -> void:
@@ -244,7 +294,9 @@ func _fit() -> void:
 	var width := minf(1120, view.x - 24)
 	var font_scale := get_theme_default_font_size() / 16.0
 	_list.columns = 1 if width < 670 else 2
-	_art.custom_minimum_size = Vector2(98, 102) if width < 670 else Vector2(148, 144)
+	var compact := width < 820 or font_scale > 1.2
+	_art.custom_minimum_size = Vector2(114, 106) if compact else Vector2(174, 166)
+	_effects.vertical = width < 760
 	_title.add_theme_font_size_override("font_size", roundi(26.0 * sqrt(font_scale)))
 	_name.add_theme_font_size_override("font_size", roundi(25.0 * sqrt(font_scale)))
 	shell.position = Vector2((view.x-width)*.5, 12)

@@ -18,7 +18,19 @@ const ICONS := {
 	"RecordsMenu": "records", "Speedrun": "speedrun", "DlcMenu": "dlc",
 	"ImportMenu": "import", "FullscreenMenu": "fullscreen", "DebugTools": "debug",
 }
-const ENTRANCE_SECONDS := 0.28
+const DETAILS := {
+	"NewGame": "选择一项天赋，从第一天的教室开始。",
+	"LoadGame": "读取最近一次保存的单人进度。",
+	"LanCoop": "创建房间或加入好友，2–4 人一起寻找出口。",
+	"Rebirth": "进入梦魇、速通或规则怪谈，也可导入旧存档。",
+	"Gallery": "回看已发现的结局、成就和通关记录。",
+	"SettingsMenu": "调整画质、帧率、声音、操作与阅读体验。",
+	"QuickOptions": "快速切换声音、触屏等常用选项。",
+	"HardGame": "以梦魇难度开始新游戏。",
+	"Speedrun": "开启速通计时，挑战通关路线。",
+}
+const ENTRANCE_SECONDS := 0.56
+const TITLE_LIGHT := preload("res://game/presentation/ui/title_light.gdshader")
 
 static var _noise_texture: Texture2D
 
@@ -39,6 +51,8 @@ var _primary: BoxContainer
 var _front: VBoxContainer
 var _utilities: GridContainer
 var _backdrop_button: Button
+var _detail: PanelContainer
+var _detail_copy: Label
 var _group_buttons: Dictionary = {}
 var _open_group := ""
 var _entrance := 0.0
@@ -68,6 +82,10 @@ func setup(source: VBoxContainer) -> void:
 	_title.theme_type_variation = "HeadingLabel"
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_title.add_theme_color_override("font_color", UISkin.INK)
+	var title_font := FontVariation.new()
+	title_font.base_font = _title.get_theme_font("font")
+	title_font.spacing_glyph = 3
+	_title.add_theme_font_override("font", title_font)
 	description = source.get_node("Description") as Label
 	description.reparent(content, false)
 	description.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -88,7 +106,7 @@ func setup(source: VBoxContainer) -> void:
 	pages.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(pages)
 	_front = VBoxContainer.new()
-	_front.add_theme_constant_override("separation", 12)
+	_front.add_theme_constant_override("separation", 10)
 	pages.add_child(_front)
 	_play_actions = VBoxContainer.new()
 	_play_actions.add_theme_constant_override("separation", 6)
@@ -109,9 +127,10 @@ func setup(source: VBoxContainer) -> void:
 	_move_action(source, _utilities, "SettingsMenu")
 	_add_group(source, pages, "QuickOptions", "快捷选项")
 	for button: Button in _utilities.get_children():
-		button.theme_type_variation = "QuietButton"
+		button.theme_type_variation = "RailButton"
 	_build_footer()
 	_build_backdrop_button()
+	_build_detail()
 	set_save_available(not _load.disabled)
 	set_touch(false)
 	get_viewport().size_changed.connect(refit)
@@ -174,6 +193,45 @@ func _build_backdrop_button() -> void:
 	_backdrop_button.pressed.connect(backdrop_requested.emit)
 
 
+func _build_detail() -> void:
+	_detail = PanelContainer.new()
+	_detail.name = "CommandDetail"
+	_detail.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := UISkin.cinematic_panel(12)
+	style.bg_color.a = 0.69
+	style.border_color = Color("7090a1")
+	style.set_border_width_all(0)
+	style.border_width_left = 2
+	style.shadow_size = 0
+	_detail.add_theme_stylebox_override("panel", style)
+	_detail.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	_detail.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_detail.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_detail.offset_right = -26
+	_detail.offset_bottom = -78
+	_detail_copy = Label.new()
+	_detail_copy.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_detail_copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_detail_copy.add_theme_color_override("font_color", UISkin.INK)
+	_detail.add_child(_detail_copy)
+	add_child(_detail)
+
+
+func _describe(button: Button) -> void:
+	var detail := String(DETAILS.get(String(button.name), ""))
+	if _detail_copy == null or detail.is_empty() or detail == _detail_copy.text or button.disabled: return
+	_detail_copy.text = detail
+	UISkin.reveal(_detail_copy, reduce_motion, 0.17)
+
+
+func _restore_detail() -> void:
+	var focus := get_viewport().gui_get_focus_owner() as Button
+	if focus != null and not focus.disabled and focus.is_visible_in_tree() and is_ancestor_of(focus) and DETAILS.has(String(focus.name)):
+		_describe(focus)
+	else:
+		_describe(_new_game if _load.disabled else _load)
+
+
 func set_backdrop_orbit(on: bool) -> void:
 	_backdrop_button.text = "雨夜封面" if on else "校园实景"
 
@@ -222,8 +280,14 @@ func _style_action(button: Button) -> void:
 	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	if not button is CheckButton:
+		button.theme_type_variation = "CommandButton"
 	if ICONS.has(String(button.name)):
 		UIArt.button(button, UIArt.nav(ICONS[String(button.name)]), 22)
+	if DETAILS.has(String(button.name)):
+		button.focus_entered.connect(_describe.bind(button))
+		button.mouse_entered.connect(_describe.bind(button))
+		button.mouse_exited.connect(_restore_detail)
 
 
 func add_coop_action(action: Callable) -> void:
@@ -244,18 +308,21 @@ func refit() -> void:
 	var compact := view.x < 690
 	var dense := text_scale > 1.2 or view.x > view.y * 2.0
 	var margin := clampf(view.x * 0.046, 24.0, 70.0)
-	var top := 18.0 if compact or dense else 24.0
+	var top := 18.0 if compact or dense else 20.0
 	var width := minf(378.0 * sqrt(text_scale), view.x * 0.47)
 	if compact: width = view.x - margin * 2.0
 	content.position = Vector2(margin, top)
 	content.size = Vector2(width, view.y - top * 2.0)
-	content.add_theme_constant_override("separation", 6 if dense else 8)
-	_title.add_theme_font_size_override("font_size", roundi((52.0 if dense else 62.0) * sqrt(text_scale)))
+	content.add_theme_constant_override("separation", 6)
+	_title.add_theme_font_size_override("font_size", roundi((52.0 if dense else 73.0) * sqrt(text_scale)))
 	_school.add_theme_font_size_override("font_size", roundi(14.0 * text_scale))
 	description.add_theme_font_size_override("font_size", roundi(15.0 * sqrt(text_scale)))
 	_primary.vertical = not dense or width < 344
 	_utilities.columns = 1 if width < 310 and text_scale > 1.25 else 2
 	_backdrop_button.visible = not compact
+	_detail.visible = not compact and not dense
+	_detail.offset_left = _detail.offset_right - minf(300.0, view.x * 0.32)
+	_sync_title_width()
 
 
 func set_touch(on: bool) -> void:
@@ -269,14 +336,18 @@ func set_keys_hint(text: String) -> void:
 
 
 func set_save_available(value: bool) -> void:
-	_load.theme_type_variation = "PrimaryButton" if value else "Button"
-	_new_game.theme_type_variation = "Button" if value else "PrimaryButton"
+	_load.theme_type_variation = "PrimaryButton" if value else "CommandButton"
+	_new_game.theme_type_variation = "CommandButton" if value else "PrimaryButton"
 	_primary.move_child(_load if value else _new_game, 0)
+	_restore_detail()
 
 
 func set_reduce_motion(value: bool) -> void:
 	reduce_motion = value
-	if value: open_now()
+	if value:
+		open_now()
+		if _detail_copy != null: UISkin.reveal(_detail_copy, true)
+		UISkin.reveal(_front if _open_group.is_empty() else groups[_open_group], true)
 
 
 func enter() -> void:
@@ -287,6 +358,10 @@ func enter() -> void:
 		state = "opening"
 		_entrance = 0.0
 		content.modulate.a = 0.5
+		var light := ShaderMaterial.new()
+		light.shader = TITLE_LIGHT
+		_title.material = light
+		_sync_title_width()
 		set_process(true)
 	focus_default()
 
@@ -297,6 +372,14 @@ func _process(delta: float) -> void:
 		open_now()
 	else:
 		content.modulate.a = 0.5 + 0.5 * smoothstep(0.0, ENTRANCE_SECONDS, _entrance)
+		(_title.material as ShaderMaterial).set_shader_parameter("progress", _entrance / ENTRANCE_SECONDS)
+
+
+func _sync_title_width() -> void:
+	if _title.material == null: return
+	var font := _title.get_theme_font("font")
+	var width := font.get_string_size(_title.text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, _title.get_theme_font_size("font_size")).x
+	(_title.material as ShaderMaterial).set_shader_parameter("title_width", width)
 
 
 func idle() -> bool:
@@ -306,6 +389,7 @@ func idle() -> bool:
 func open_now() -> void:
 	state = "open"
 	content.modulate.a = 1.0
+	_title.material = null
 	set_process(false)
 
 
@@ -334,6 +418,7 @@ func _show_page(id: String, restore_focus: bool = true) -> void:
 	for key: String in groups:
 		groups[key].visible = key == id
 	if not restore_focus: return
+	UISkin.reveal(_front if id.is_empty() else groups[id], reduce_motion)
 	if id.is_empty() and _group_buttons.has(previous):
 		(_group_buttons[previous] as Button).grab_focus()
 	else:

@@ -103,7 +103,7 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	UISkin.shade(self, 0.76)
 	_panel = PanelContainer.new()
-	_panel.add_theme_stylebox_override("panel", UISkin.panel(16))
+	_panel.add_theme_stylebox_override("panel", UISkin.cinematic_panel(16))
 	add_child(_panel)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 10)
@@ -112,8 +112,8 @@ func _ready() -> void:
 	_heading.theme_type_variation = "HeadingLabel"
 	_modes = HBoxContainer.new()
 	column.add_child(_modes)
-	_button(_modes, "同一 Wi-Fi / 热点", func() -> void: mode_requested.emit(false), "LanMode").theme_type_variation = "QuietButton"
-	_button(_modes, "远程联机", func() -> void: mode_requested.emit(true), "RemoteMode").theme_type_variation = "QuietButton"
+	_button(_modes, "同一 Wi-Fi / 热点", func() -> void: mode_requested.emit(false), "LanMode").theme_type_variation = "RailButton"
+	_button(_modes, "远程联机", func() -> void: mode_requested.emit(true), "RemoteMode").theme_type_variation = "RailButton"
 	column.add_child(HSeparator.new())
 	_scroll = TouchScroll.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -150,6 +150,7 @@ func _ready() -> void:
 	var join_page := _button(home_actions, "加入房间", func() -> void: select_page("join"), "JoinPage")
 	for action: Button in [create_page, join_page]:
 		action.custom_minimum_size.y = 118
+		action.theme_type_variation = "CommandButton"
 		action.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		action.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 	UIArt.button(create_page, UIArt.nav("new_game"), 62)

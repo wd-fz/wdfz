@@ -16,6 +16,29 @@ static func panel(margin: int = 16) -> StyleBoxFlat:
 	style.set_content_margin_all(margin)
 	return style
 
+
+static func cinematic_panel(margin: int = 16) -> StyleBoxFlat:
+	var style := panel(margin)
+	style.bg_color = Color("101922f7")
+	style.border_color = Color("4a6071")
+	style.set_corner_radius_all(3)
+	return style
+
+
+## Fade the surface in place. Its focus, scroll position and input bounds stay live.
+static func reveal(surface: Control, reduced: bool, duration: float = 0.22) -> void:
+	if surface.has_meta(&"ui_reveal"):
+		var previous := surface.get_meta(&"ui_reveal") as Tween
+		if previous != null: previous.kill()
+		surface.remove_meta(&"ui_reveal")
+	surface.modulate.a = 1.0
+	if reduced or not surface.is_visible_in_tree(): return
+	surface.modulate.a = 0.58
+	var tween := surface.create_tween().set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	surface.set_meta(&"ui_reveal", tween)
+	tween.tween_property(surface, "modulate:a", 1.0, duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_callback(surface.remove_meta.bind(&"ui_reveal"))
+
 static func card(parent: Control) -> VBoxContainer:
 	var panel_box := PanelContainer.new()
 	panel_box.mouse_filter = Control.MOUSE_FILTER_PASS
