@@ -3,11 +3,15 @@ extends RefCounted
 ## Bounded real-frame measurements. Never modifies engine time or gameplay settings.
 const MAX_SAMPLES := 180
 var intervals: Array[float] = []
+var longest_ms := 0.0
+var one_second_frames := 0
 var _cursor := 0
 var _total := 0.0
 
 func sample(delta: float) -> void:
 	if not is_finite(delta) or delta<=0: return
+	longest_ms = maxf(longest_ms, delta * 1000.0)
+	if delta >= 1.0: one_second_frames += 1
 	if intervals.size()<MAX_SAMPLES:
 		intervals.append(delta)
 	else:
@@ -18,6 +22,8 @@ func sample(delta: float) -> void:
 
 func reset() -> void:
 	intervals.clear()
+	longest_ms = 0.0
+	one_second_frames = 0
 	_cursor=0
 	_total=0
 
@@ -26,6 +32,7 @@ func capture(rendered: bool = true) -> Dictionary:
 	sorted.sort()
 	var p95:=0.0 if sorted.is_empty() else float(sorted[clampi(ceili(sorted.size()*.95)-1,0,sorted.size()-1)])*1000
 	return {"samples":intervals.size(),"average_ms":_total/maxi(1,intervals.size())*1000,"p95_ms":p95,
+		"longest_ms":longest_ms,"one_second_frames":one_second_frames,
 		"fps":Engine.get_frames_per_second(),"rendered":rendered,
 		"draw_calls":int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)) if rendered else -1,
 		"primitives":int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)) if rendered else -1,

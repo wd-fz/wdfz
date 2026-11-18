@@ -51,6 +51,12 @@ var _network_hint: Label
 var _rescan_timer := 0.0
 var _presented_frame := -1
 var _presentation_elapsed := 0.0
+var _frame_telemetry := DebugTelemetry.new()
+var _last_play_frame_us := 0
+var _longest_physics_ms := 0.0
+var _longest_snapshot_us := 0
+var _longest_gpu_ms := 0.0
+var _measure_render_time := false
 
 
 func _ready() -> void:
@@ -62,6 +68,7 @@ func _ready() -> void:
 	remote.name = "Terracotta"
 	add_child(remote)
 	panel = LanPanel.new()
+	panel.refresh_diagnostics = _refresh_diagnostics
 	panel.name = "LanPanel"
 	panel.visible = false
 	app.ui.get_node("Root").add_child(panel)
@@ -422,6 +429,7 @@ func stop() -> void:
 	_paused = false
 	_presented_frame = -1
 	_presentation_elapsed = 0.0
+	_reset_frame_timings()
 	current.clear()
 	_seen_event = 0
 	_shown_choice = -1
@@ -470,6 +478,7 @@ func _reset_local_modals() -> void:
 
 func _snapshot(data: Dictionary) -> void:
 	if not data.get("session") is Dictionary or network.room == null: return
+	var started_at := Time.get_ticks_usec()
 	var view: Dictionary = data.get("observed", data) if _spectating else data
 	_observing = String(view.get("id", "")) if _spectating else ""
 	var source: Dictionary = view["session"]
@@ -500,6 +509,7 @@ func _snapshot(data: Dictionary) -> void:
 		_lost = false
 		_presented_frame = -1
 		_presentation_elapsed = 0.0
+		_reset_frame_timings()
 		app._install_session(candidate, source["player"])
 		_load_album()
 		if is_instance_valid(avatars): avatars.queue_free()
@@ -566,7 +576,8 @@ func _snapshot(data: Dictionary) -> void:
 	app.player.speed_multiplier = (1.5 if app.items().snack_active() else 1.0) * app.body().speed_mul()
 	_scene = int(data["scene"])
 	var next_scene := int(view["scene"])
-	if first or next_scene != _view_scene or app.session.world_id != source["world_id"]:
+	var view_changed: bool = first or next_scene != _view_scene or app.session.world_id != source["world_id"]
+	if view_changed:
 		_view_scene = next_scene
 		prediction.clear()
 		var continuous: bool = not first and app.session.world_id != source["world_id"] and app.router.same_space(app.session.world_id,String(source["world_id"]))
@@ -618,7 +629,9 @@ func _snapshot(data: Dictionary) -> void:
 		app.player.enabled = false
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_update_offers()
-	app._sync_world()
+	# Network snapshots update world state. Local view culling runs through prefetch,
+	# so packets cannot alternate between eye-height and body-height region lists.
+	if not view_changed: app._sync_world(false)
 	if app.ui.bag_open(): app.ui.show_bag(app._bag_entries(), app.items().capacity())
 	if panel.visible:
 		panel.inventory(app._bag_entries())
@@ -633,6 +646,8 @@ func _snapshot(data: Dictionary) -> void:
 		CooperativeActivities.display(activity, app.phone().plane, app._snake)
 		if app._snake_panel != null: app._snake_panel.board.queue_redraw()
 	if app.phone_open(): app._phone_paint()
+	if not first and network.room.phase == "playing":
+		_longest_snapshot_us = maxi(_longest_snapshot_us, Time.get_ticks_usec() - started_at)
 
 
 func _finish_preparation(epoch: String) -> void:
@@ -655,6 +670,9 @@ func loaded() -> void:
 	# barrier until that local work has completed instead of starting the game.
 	if DisplayServer.get_name() != "headless": await RenderingServer.frame_post_draw
 	if not _installed or network.room == null or network.room.epoch != epoch: return
+	_measure_render_time = OS.is_debug_build() and DisplayServer.get_name() != "headless"
+	if _measure_render_time:
+		RenderingServer.viewport_set_measure_render_time(app.get_viewport().get_viewport_rid(), true)
 	network.loaded()
 	if network.room != null and network.room.phase == "playing": resume()
 
@@ -758,6 +776,7 @@ func _remote_step(at: Vector3, running: bool, world: String) -> void:
 
 
 func _process(dt: float) -> void:
+	_sample_play_frame()
 	if is_instance_valid(panel) and panel.is_visible_in_tree() and panel.page == "join" and not panel.busy and not _remote_mode and not active():
 		if network.discovery.scanning: _rescan_timer = 0.0
 		else:
@@ -770,13 +789,54 @@ func _process(dt: float) -> void:
 	if _diagnostic_timer >= 0.5:
 		_diagnostic_timer = 0.0
 		if is_instance_valid(panel) and panel.is_visible_in_tree() and panel._details.is_visible_in_tree():
-			panel.connection_info.text = network.connection_details()
-			panel.metrics.text = "%s · 延迟 %.0f ms · 抖动 %.0f ms\n发送 %.1f KiB / 接收 %.1f KiB · 校正误差 %.2f m" % ["房主" if network.transport.serving else "客户端", network.rtt_ms, network.jitter_ms, network.transport.bytes_sent / 1024.0, network.transport.bytes_received / 1024.0, prediction.error_metres]
+			_refresh_diagnostics()
 		if playing():
 			var silence := Time.get_ticks_msec() / 1000.0 - network._last_heard
 			_network_hint.text = "连接不稳定 · 等待房主回应" if not network.transport.serving and silence > 3.0 else "网络延迟较高" if network.rtt_ms > 350 else ""
 			if network.room.paused_left > 0: _network_hint.text = "全队暂停 · %d 秒后继续" % ceili(network.room.paused_left)
 			_network_hint.visible = not _network_hint.text.is_empty() and not _lost
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_RESUMED:
+		_last_play_frame_us = 0
+
+
+func _reset_frame_timings() -> void:
+	if _measure_render_time:
+		RenderingServer.viewport_set_measure_render_time(app.get_viewport().get_viewport_rid(), false)
+		_measure_render_time = false
+	_frame_telemetry.reset()
+	_last_play_frame_us = 0
+	_longest_physics_ms = 0.0
+	_longest_snapshot_us = 0
+	_longest_gpu_ms = 0.0
+
+
+func _sample_play_frame() -> void:
+	if not playing() or _lost or _paused or network.room.phase != "playing" or network.room.paused_left > 0.0:
+		_last_play_frame_us = 0
+		return
+	var now := Time.get_ticks_usec()
+	if _last_play_frame_us > 0:
+		_frame_telemetry.sample((now - _last_play_frame_us) / 1000000.0)
+		_longest_physics_ms = maxf(_longest_physics_ms, Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0)
+		if _measure_render_time:
+			_longest_gpu_ms = maxf(_longest_gpu_ms, RenderingServer.viewport_get_measured_render_time_gpu(app.get_viewport().get_viewport_rid()))
+	_last_play_frame_us = now
+
+
+func _refresh_diagnostics() -> void:
+	panel.connection_info.text = network.connection_details()
+	var text := "%s · 延迟 %.0f ms · 抖动 %.0f ms\n发送 %.1f KiB / 接收 %.1f KiB · 校正误差 %.2f m" % ["房主" if network.transport.serving else "客户端", network.rtt_ms, network.jitter_ms, network.transport.bytes_sent / 1024.0, network.transport.bytes_received / 1024.0, prediction.error_metres]
+	if not _frame_telemetry.intervals.is_empty():
+		var sample := _frame_telemetry.capture()
+		var resolution := app.get_window().size
+		text += "\n%s · %s · %s · %d×%d（3D %.0f%%）" % [RenderingServer.get_current_rendering_method(), RenderingServer.get_video_adapter_name(), GameSettings.QUALITY_LABELS[app.settings.get_int("quality")], resolution.x, resolution.y, app.get_viewport().scaling_3d_scale * 100.0]
+		text += "\n游玩 %.1f FPS · 最近 %d 帧 P95 %.1f ms · 本次最长 %.1f ms · ≥1 秒 %d 帧" % [1000.0 / maxf(0.01, sample.average_ms), sample.samples, sample.p95_ms, sample.longest_ms, sample.one_second_frames]
+		text += "\n物理峰值 %.1f ms · 应用联机快照峰值 %.1f ms" % [_longest_physics_ms, _longest_snapshot_us / 1000.0]
+		if _longest_gpu_ms > 0.0: text += " · GPU 峰值 %.1f ms" % _longest_gpu_ms
+	panel.metrics.text = text
 
 
 func _physics_process(dt: float) -> void:
@@ -896,7 +956,7 @@ func _present(dt: float) -> void:
 		var shadow_at := CampusGeometry.to_scene(room, Vector2(float(app.garage().roam["x"]), float(app.garage().roam["y"]))) if shadow else Vector2.ZERO
 		world.show_garage_shadow(shadow, shadow_at, float(pose["position"][1]))
 		world.show_silhouettes(school.inspection_points(), room, float(pose["position"][1]))
-		world.update_lighting(dt, school.tsec, app.player.camera, app.patrol().flick, app.patrol().red, app.anomaly().blackout_now(), app.anomaly().overcast_target())
+		app._update_campus_lighting(world, dt)
 		var patrol_view := visible_patrol()
 		if not patrol_view.is_empty():
 			var at: Vector3 = patrol_view["position"]

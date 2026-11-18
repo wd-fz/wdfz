@@ -17,12 +17,20 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Bind this game's new sockets to a physical LAN, never disable another app's VPN. */
 public final class WdfzLanNetwork extends GodotPlugin implements LocalNetworkRoute.Backend {
     private final ConnectivityManager manager;
     private final LocalNetworkRoute route;
     private final Set<Network> blocked = new HashSet<>();
+    private final ExecutorService routeMonitor = Executors.newSingleThreadExecutor(
+            work -> new Thread(work, "WdfzLanRoute"));
+    private final AtomicBoolean routeCheckPending = new AtomicBoolean();
+    private volatile String lastStatus = "{\"ok\":true,\"error\":\"\"}";
     private boolean watching;
     private final ConnectivityManager.NetworkCallback callback = new ConnectivityManager.NetworkCallback() {
         @Override public void onBlockedStatusChanged(Network network, boolean value) {
@@ -54,14 +62,25 @@ public final class WdfzLanNetwork extends GodotPlugin implements LocalNetworkRou
                 manager.registerNetworkCallback(request, callback);
                 watching = true;
             }
-            return status(route.prepare(target));
-        } catch (SecurityException e) { return status("系统不允许查询或选择本地网络，请检查 VPN 与网络权限。"); }
-        catch (RuntimeException e) { return status("无法选择本地网络，请检查 Wi-Fi 后重试。"); }
+            lastStatus = status(route.prepare(target));
+        } catch (SecurityException e) { lastStatus = status("系统不允许查询或选择本地网络，请检查 VPN 与网络权限。"); }
+        catch (RuntimeException e) { lastStatus = status("无法选择本地网络，请检查 Wi-Fi 后重试。"); }
+        return lastStatus;
     }
 
-    @UsedByGodot public synchronized String routeStatus() {
-        try { return status(route.check()); }
-        catch (RuntimeException e) { return status("无法确认本地网络状态，请重新加入房间。"); }
+    /** The game thread reads the last complete result without waiting on Android network services. */
+    @UsedByGodot public String routeStatus() {
+        if (routeCheckPending.compareAndSet(false, true)) {
+            try { routeMonitor.execute(this::refreshRoute); }
+            catch (RejectedExecutionException ignored) { routeCheckPending.set(false); }
+        }
+        return lastStatus;
+    }
+
+    private synchronized void refreshRoute() {
+        try { if (route.active()) lastStatus = status(route.check()); }
+        catch (RuntimeException e) { lastStatus = status("无法确认本地网络状态，请重新加入房间。"); }
+        finally { routeCheckPending.set(false); }
     }
 
     @UsedByGodot public synchronized String releaseLocal() {
@@ -73,10 +92,14 @@ public final class WdfzLanNetwork extends GodotPlugin implements LocalNetworkRou
             watching = false;
             blocked.clear();
         }
-        return status(error);
+        lastStatus = status(error);
+        return lastStatus;
     }
 
-    @Override public void onMainDestroy() { releaseLocal(); }
+    @Override public void onMainDestroy() {
+        try { releaseLocal(); }
+        finally { routeMonitor.shutdownNow(); }
+    }
 
     @Override public List<LocalNetworkRoute.Candidate> networks() {
         List<LocalNetworkRoute.Candidate> out = new ArrayList<>();

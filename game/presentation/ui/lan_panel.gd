@@ -37,6 +37,7 @@ var difficulty: OptionButton
 var transfer: OptionButton
 var metrics: Label
 var connection_info: Label
+var refresh_diagnostics: Callable
 var address_options: OptionButton
 var remote_mode := false
 var page := "home"
@@ -288,6 +289,7 @@ func _ready() -> void:
 	metrics = _label(_details, "")
 	metrics.add_theme_font_size_override("font_size", 14)
 	_button(_details, "复制诊断信息", func() -> void:
+		if refresh_diagnostics.is_valid(): refresh_diagnostics.call()
 		DisplayServer.clipboard_set(connection_info.text + "\n" + metrics.text)
 		feedback("诊断信息已复制。"), "CopyDiagnostics")
 	var debug := _fold(_details, "房主调试工具", "HostDebug")

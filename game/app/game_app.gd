@@ -1029,7 +1029,7 @@ func _campus_world() -> CampusWorld:
 	return router.world_instance() as CampusWorld
 
 
-func _sync_world() -> void:
+func _sync_world(seed_view: bool = true) -> void:
 	var world := _campus_world()
 	var rules := campus()
 	if world != null and rules != null:
@@ -1052,8 +1052,9 @@ func _sync_world() -> void:
 		if want != world.banner.is_on():
 			world.banner.set_on(want)
 
-	_update_campus_lighting(world, 0.0)
-	if is_instance_valid(router.resident) and router.resident.visible: router.resident.update_view(player.camera.global_position)
+	if seed_view:
+		_update_campus_lighting(world, 0.0)
+		if is_instance_valid(router.resident) and router.resident.visible: router.prefetch(player.position)
 
 
 ## Seed the incoming region before its first rendered frame, as well as on every simulation tick.
