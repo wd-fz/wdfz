@@ -33,6 +33,7 @@ func _init() -> void:
 	var bar := HBoxContainer.new()
 	heading = Label.new()
 	heading.text = "开发工具 · 拖动标题移动"
+	heading.theme_type_variation = "HeadingLabel"
 	heading.clip_text = true
 	heading.mouse_filter = Control.MOUSE_FILTER_STOP
 	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -44,12 +45,14 @@ func _init() -> void:
 	collapse.text = "•"
 	collapse.tooltip_text = "收起为悬浮球"
 	collapse.custom_minimum_size = Vector2(44,40)
+	collapse.theme_type_variation = "QuietButton"
 	collapse.pressed.connect(func() -> void: set_collapsed(true))
 	bar.add_child(collapse)
 	var close := Button.new()
 	close.name = "CloseWindow"
 	close.text = "×"
 	close.custom_minimum_size = Vector2(44,40)
+	close.theme_type_variation = "QuietButton"
 	close.pressed.connect(dismiss)
 	bar.add_child(close)
 	_frame.add_child(bar)

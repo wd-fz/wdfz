@@ -2,8 +2,8 @@ class_name MenuWake
 extends ColorRect
 ## The main menu's entrance (user request 2026-11-13): the campus behind the menu is seen as if waking up.
 ## Two dark eyelids part, blink once half-open, then open fully while the view sharpens out of a dark
-## blur and the panorama eases back from a slight push-in. It sits above the menu picture/panorama and below
-## the side menu (whose panel tears open at the same time), takes no input, and frees itself at the end.
+## blur while the camera eases back from a slight push-in. It sits between the backdrop and the menu
+## controls, takes no input and frees itself at the end.
 ## Reduced flashing / motion: a calm fade from black, no blink and no push-in.
 
 signal finished
@@ -33,8 +33,8 @@ void fragment() {
 @export var reduced_time := 0.8
 @export var blink_amount := 0.38
 var reduce_motion := false
-## The panorama to push in (optional; the still photo has nothing to move).
 var preview: MenuPreview
+var cover: TextureRect
 
 var _t := 0.0
 var _mat: ShaderMaterial
@@ -92,6 +92,8 @@ func finish() -> void:
 	_done = true
 	if is_instance_valid(preview):
 		preview.zoom = 1.0
+	if is_instance_valid(cover):
+		cover.scale = Vector2.ONE
 	finished.emit()
 	queue_free()
 
@@ -111,6 +113,9 @@ func _apply() -> void:
 	_mat.set_shader_parameter("open", openness(_t))
 	_mat.set_shader_parameter("dark", darkness(_t))
 	_mat.set_shader_parameter("aspect", size.x / size.y if size.y > 0.0 else 1.78)
+	var push := 0.0 if reduce_motion else pow(1.0 - clampf(_t / total(), 0.0, 1.0), 3.0)
 	if is_instance_valid(preview):
-		var k := clampf(_t / total(), 0.0, 1.0)
-		preview.zoom = 1.0 if reduce_motion else lerpf(preview.entrance_zoom, 1.0, 1.0 - pow(1.0 - k, 3.0))
+		preview.zoom = lerpf(1.0, preview.entrance_zoom, push)
+	if is_instance_valid(cover):
+		cover.pivot_offset = cover.size * Vector2(0.78, 0.58)
+		cover.scale = Vector2.ONE * (1.0 + 0.07 * push)

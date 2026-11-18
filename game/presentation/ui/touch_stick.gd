@@ -33,6 +33,12 @@ func clear() -> void:
 
 
 func _draw() -> void:
-	draw_circle(size * 0.5, size.x * 0.46, Color(0.8, 0.87, 0.9, 0.12))
-	draw_circle(size * 0.5, size.x * 0.46, Color(0.8, 0.87, 0.9, 0.45), false, 2.0)
-	draw_circle(size * 0.5 + _value * size.x * 0.25, size.x * 0.17, Color(0.8, 0.87, 0.9, 0.65))
+	var centre := size * 0.5
+	var radius := minf(size.x, size.y) * 0.46
+	var knob := centre + _value * radius * 0.56
+	draw_circle(centre, radius, Color(UISkin.SHADE, 0.48), true, -1.0, true)
+	draw_circle(centre, radius, Color(UISkin.ACCENT, 0.44), false, 1.5, true)
+	for direction: Vector2 in [Vector2.UP, Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT]:
+		draw_line(centre + direction * radius * 0.83, centre + direction * radius * 0.95,
+			Color(UISkin.ACCENT, 0.6), 1.5, true)
+	draw_circle(knob, radius * 0.37, Color(UISkin.ACCENT, 0.66 if _finger >= 0 else 0.44), true, -1.0, true)

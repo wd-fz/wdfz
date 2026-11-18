@@ -101,21 +101,20 @@ var _help_button: Button
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var backdrop := ColorRect.new()
-	backdrop.color = Color(0.025, 0.035, 0.045, 0.96)
-	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(backdrop)
+	UISkin.shade(self, 0.76)
 	_panel = PanelContainer.new()
-	_panel.add_theme_stylebox_override("panel", UISkin.panel(14))
+	_panel.add_theme_stylebox_override("panel", UISkin.cinematic_panel(16))
 	add_child(_panel)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 10)
 	_panel.add_child(column)
 	_heading = _label(column, "与好友联机", 26)
+	_heading.theme_type_variation = "HeadingLabel"
 	_modes = HBoxContainer.new()
 	column.add_child(_modes)
-	_button(_modes, "同一 Wi-Fi / 热点", func() -> void: mode_requested.emit(false), "LanMode")
-	_button(_modes, "远程联机", func() -> void: mode_requested.emit(true), "RemoteMode")
+	_button(_modes, "同一 Wi-Fi / 热点", func() -> void: mode_requested.emit(false), "LanMode").theme_type_variation = "RailButton"
+	_button(_modes, "远程联机", func() -> void: mode_requested.emit(true), "RemoteMode").theme_type_variation = "RailButton"
+	column.add_child(HSeparator.new())
 	_scroll = TouchScroll.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -144,8 +143,18 @@ func _ready() -> void:
 		host_form.add_child(body)
 		_pages[key] = body
 	var home: VBoxContainer = _pages.home
-	_button(home, "创建房间\n邀请好友一起探索", func() -> void: select_page("create"), "CreatePage").custom_minimum_size.y = 76
-	_button(home, "加入房间\n找到好友的校园", func() -> void: select_page("join"), "JoinPage").custom_minimum_size.y = 76
+	var home_actions := HBoxContainer.new()
+	home_actions.add_theme_constant_override("separation", 12)
+	home.add_child(home_actions)
+	var create_page := _button(home_actions, "创建房间", func() -> void: select_page("create"), "CreatePage")
+	var join_page := _button(home_actions, "加入房间", func() -> void: select_page("join"), "JoinPage")
+	for action: Button in [create_page, join_page]:
+		action.custom_minimum_size.y = 118
+		action.theme_type_variation = "CommandButton"
+		action.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		action.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+	UIArt.button(create_page, UIArt.nav("new_game"), 62)
+	UIArt.button(join_page, UIArt.nav("continue"), 62)
 	_reconnect = _button(home, "重连上次房间", func() -> void: reconnect_requested.emit(), "Reconnect")
 	_reconnect.visible = false
 	var create: VBoxContainer = _pages.create
@@ -699,6 +708,9 @@ func _button(parent: Node, text: String, action: Callable, node_name: String = "
 	button.custom_minimum_size.y = 48
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	if node_name in ["CreateRoom", "JoinRoom", "StartRoom", "ConfirmRoomAction"]:
+		button.theme_type_variation = "PrimaryButton"
 	button.pressed.connect(action)
 	parent.add_child(button)
 	return button
@@ -728,7 +740,11 @@ func refit() -> void:
 	var keyboard := float(DisplayServer.virtual_keyboard_get_height()) if DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD) else 0.0
 	# Keyboard height is in window pixels; layout uses stretched canvas units.
 	keyboard /= maxf(0.01, get_viewport().get_screen_transform().get_scale().y)
-	PanelLayout.fit(_panel, _scroll, 760.0, 280.0 if page == "home" and _state.is_empty() else 380.0, keyboard if keyboard > 0 else -1.0)
+	var home := page == "home" and _state.is_empty() and not busy and not _connection_failed
+	var height := 380.0
+	if home:
+		height = minf(280.0, (_scroll.get_child(0) as Control).get_combined_minimum_size().y)
+	PanelLayout.fit(_panel, _scroll, 760.0, height, keyboard if keyboard > 0 else -1.0)
 	for option: OptionButton in [talent, capacity, difficulty, address_options, transfer]:
 		option.get_popup().max_size.y = maxi(120, mini(360, int(get_viewport_rect().size.y) - 100))
 

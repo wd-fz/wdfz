@@ -1,6 +1,5 @@
 extends SceneTree
-## 开机动画与侧边主菜单: boot animation frames, the panel tearing open on entry, the open panel with the peephole,
-## an expanded group, the green pulse, reduced motion, 21:9, and the optional panorama orbit (setting 主菜单实景环绕).
+## 开机动画和主菜单：开场分镜、雨夜封面、其他玩法、超宽屏与校园实景。
 ## xvfb-run -a godot --windowed --path . --rendering-driver vulkan --script res://tools/capture/capture_side_menu.gd
 ## 2026-11-14: the boot animation was redesigned (tube light, wall clock to 18:00); its frames are pinned.
 ## 2026-11-13: the re-baked panorama behind the open menu, the menu's waking entrance and the loading screen.
@@ -102,38 +101,15 @@ func _run() -> void:
 		screen.queue_free()
 		await process_frame
 	if want("menu"):
-		# The timeline is fixed by hand for the in-between frames (the software renderer is too slow for real time).
-		side.set_process(false)
-		for spec: Array in [["menu-entry-tearing", 0.35], ["menu-entry-stretching", 0.75]]:
-			side.state = "opening"
-			side.open_amount = float(spec[1])
-			side._apply_state()
-			side._draw_params()
-			await shot(String(spec[0]), 3)
-		side.set_process(true)
+		_app._setting_changed("menu_orbit", 0)
 		side.enter()
-		for _i in 90:
-			await process_frame
-		var rebirth := side.find_child("Rebirth", true, false) as Button
-		rebirth.grab_focus()
-		await shot("menu-open-peephole", 40)
-		rebirth.pressed.emit()
-		var new_game := side.find_child("NewGame", true, false) as Button
-		new_game.grab_focus()
-		await shot("menu-group-rebirth", 50)
-		var gallery := side.find_child("Gallery", true, false) as Button
-		gallery.pressed.emit()
-		var ach := side.find_child("Achievements", true, false) as Button
-		side._acted(ach)
-		for _i in 10:
-			await process_frame
-		await shot("menu-pulse", 0)
-		for _i in 50:
-			await process_frame
-		await shot("menu-pulse-absorbed", 0)
-		for _i in 200:
-			await process_frame
-		await shot("menu-faded-back", 0)
+		side.open_now()
+		await shot("menu-cover", 8)
+		var other_modes := side.find_child("Rebirth", true, false) as Button
+		other_modes.pressed.emit()
+		await shot("menu-other-modes", 8)
+		side.enter()
+		side.open_now()
 	if want("wide"):
 		root.size = Vector2i(2520, 1080)
 		side.open_now()

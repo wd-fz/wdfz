@@ -78,6 +78,7 @@ func _init() -> void:
 	back_button = Button.new()
 	back_button.name = "ResultsBack"
 	back_button.text = "回到主菜单"
+	back_button.theme_type_variation = "PrimaryButton"
 	back_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	back_button.pressed.connect(func() -> void: back_pressed.emit())
 	_feet.add_child(back_button)

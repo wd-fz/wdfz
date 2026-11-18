@@ -53,11 +53,16 @@ func _init(store: RunRecords = null, rooms: Dictionary = {}) -> void:
 	var back := UISkin.panel(12)
 	add_theme_stylebox_override("panel", back)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
+	box.add_theme_constant_override("separation", 8)
+	var header := HBoxContainer.new()
+	box.add_child(header)
 	_head = Label.new()
 	_head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_head.add_theme_color_override("font_color",UISkin.ACCENT)
-	box.add_child(_head)
+	_head.theme_type_variation = "HeadingLabel"
+	_head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_head.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	header.add_child(_head)
+	box.add_child(HSeparator.new())
 	_tabs = HFlowContainer.new()
 	box.add_child(_tabs)
 	_scroll = TouchScroll.new()
@@ -71,8 +76,10 @@ func _init(store: RunRecords = null, rooms: Dictionary = {}) -> void:
 	_close_button = Button.new()
 	_close_button.name = "RecordsClose"
 	_close_button.text = "关闭"
+	_close_button.custom_minimum_size.y = 44
+	_close_button.theme_type_variation = "QuietButton"
 	_close_button.pressed.connect(_close)
-	box.add_child(_close_button)
+	header.add_child(_close_button)
 	add_child(box)
 	UIArt.decorate(self)
 	minimum_size_changed.connect(func() -> void: _fit.call_deferred())
@@ -86,12 +93,7 @@ func _ready() -> void:
 
 func _fit() -> void:
 	if not is_inside_tree() or not visible: return
-	var screen := get_viewport_rect().size
-	custom_minimum_size.x = minf(720, screen.x - 24)
-	var fixed := _head.get_combined_minimum_size().y + _tabs.get_combined_minimum_size().y + _close_button.get_combined_minimum_size().y + 66
-	_scroll.custom_minimum_size.y = minf(480, maxf(60, screen.y - fixed))
-	reset_size()
-	position = (screen - size) * .5
+	PanelLayout.fit(self, _scroll, 760, 480)
 	if _mode == "view": _redraw()
 
 

@@ -1,10 +1,19 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://game/presentation/ui/game_ui.gd" id="1"]
 [ext_resource type="Script" path="res://game/presentation/ui/touch_stick.gd" id="2"]
 [ext_resource type="Script" path="res://game/presentation/ui/touch_look.gd" id="3"]
 [ext_resource type="Theme" path="res://content/ui/theme.tres" id="4"]
 [ext_resource type="Script" path="res://game/presentation/ui/touch_action_button.gd" id="5"]
+
+[sub_resource type="Gradient" id="PauseGradient"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(0.018, 0.03, 0.046, 0.61, 0.022, 0.04, 0.06, 0.72, 0.014, 0.026, 0.04, 0.91)
+
+[sub_resource type="GradientTexture2D" id="PauseScrim"]
+gradient = SubResource("PauseGradient")
+width = 256
+height = 4
 
 [node name="UI" type="CanvasLayer"]
 layer = 10
@@ -58,13 +67,6 @@ custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="Eyebrow" type="Label" parent="Root/Menu/Margin/Center/Content"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.784, 0.651, 0.42, 1)
-theme_override_font_sizes/font_size = 14
-text = "— THE OTHER SIDE"
-horizontal_alignment = 1
-
 [node name="Title" type="Label" parent="Root/Menu/Margin/Center/Content"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 48
@@ -103,12 +105,6 @@ custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 text = "触屏控件（自动识别）"
 
-[node name="Help" type="Label" parent="Root/Menu/Margin/Center/Content"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 14
-text = "WASD / 方向键移动 · 鼠标环视\nShift 奔跑 · E 交互 · Esc 暂停"
-horizontal_alignment = 1
-
 [node name="PausePanel" type="Control" parent="Root"]
 unique_name_in_owner = true
 layout_mode = 1
@@ -118,14 +114,15 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="Backdrop" type="ColorRect" parent="Root/PausePanel"]
+[node name="Backdrop" type="TextureRect" parent="Root/PausePanel"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.025, 0.045, 0.06, 0.92)
+texture = SubResource("PauseScrim")
+expand_mode = 1
 
 [node name="Margin" type="MarginContainer" parent="Root/PausePanel"]
 layout_mode = 1
@@ -146,13 +143,6 @@ layout_mode = 2
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 theme_override_constants/separation = 10
-
-[node name="Eyebrow" type="Label" parent="Root/PausePanel/Margin/Center/Content"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.784, 0.651, 0.42, 1)
-theme_override_font_sizes/font_size = 14
-text = "— THE OTHER SIDE"
-horizontal_alignment = 1
 
 [node name="Title" type="Label" parent="Root/PausePanel/Margin/Center/Content"]
 layout_mode = 2

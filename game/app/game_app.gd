@@ -2687,11 +2687,8 @@ func _apply_settings() -> void:
 	ui.apply_text_scale(settings.get_int("text"))
 	ui.apply_touch_scale(settings.get_int("touch_size"), settings.touch_layout)
 	ui.set_grain(settings.get_int("grain") == 1)
-	ui.menu_screen.set_reduce_motion(settings.get_int("reduce_flash") == 1)
-	ui.menu_preview.still = settings.get_int("reduce_flash") == 1
-	ui.reduce_motion = settings.get_int("reduce_flash") == 1
+	ui.set_menu_presentation(settings.get_int("reduce_flash") == 1, settings.get_int("menu_orbit") == 1)
 	ui.menu_preview.render_options = settings.graphics()
-	ui.menu_preview.set_orbit(settings.get_int("menu_orbit") == 1)
 	_menu_fps_capped = false
 	ui.scene_post().quality=settings.get_int("lighting_detail")
 	ui.scene_post().render_options=settings.graphics()
