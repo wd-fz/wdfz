@@ -107,7 +107,7 @@ func prepare(a: CooperativeActor) -> Dictionary:
 	var ctx := CooperativeContext.base(a)
 	for source: String in SOURCES:
 		var m := a.feature(SOURCES[source])
-		if m.has_method("set_context"): m.call("set_context", CooperativeContext.investigation(a) if source == "investigation" else ctx)
+		if m.has_method("set_context"): m.call("set_context", CooperativeContext.investigation(a, ctx) if source == "investigation" else ctx)
 	var body_ctx := ctx.duplicate()
 	body_ctx["anomaly"] = bool(ctx["anomaly_active"])
 	(a.feature(&"body.injury") as BodyModule).set_context(body_ctx)
@@ -130,7 +130,7 @@ func prepare(a: CooperativeActor) -> Dictionary:
 		if _committing_time: return stories.rest(a, key)
 		_offer_time(a, float(FacilitiesModule.SAN_ACTS[key]["min"]), {"kind": "rest", "key": key})
 		return true
-	a.watcher().set_context(CooperativeContext.patrol(a))
+	a.watcher().set_context(CooperativeContext.patrol(a, ctx))
 	stories.prepare(a, ctx)
 	return ctx
 
@@ -1115,7 +1115,6 @@ func _garage_tick(dt: float) -> void:
 func _broadcast_tick(dt: float) -> void:
 	var a := _owner("broadcast")
 	if a == null: return
-	prepare(a)
 	var radio := a.feature(&"story.broadcast") as BroadcastModule
 	if not _radio_job.is_empty() and sim.actors.has(_radio_job["owner"]):
 		var worker := sim.actor(_radio_job["owner"])

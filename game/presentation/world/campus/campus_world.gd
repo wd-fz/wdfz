@@ -732,14 +732,14 @@ func set_door_open(key: String, open: bool) -> void:
 
 
 func apply_doors(open_doors: Dictionary) -> void:
-	_open_doors = open_doors.duplicate()
-	for key: String in _door_bodies:
-		set_door_open(key, open_doors.has(key))
-	for key: String in _door_leaves:
-		if not _door_bodies.has(key):
-			set_door_open(key, open_doors.has(key))
-	for key: String in _preview_doors:
-		set_door_open(key, open_doors.has(key))
+	if _open_doors == open_doors:
+		return
+	for key: String in _open_doors.keys():
+		if not open_doors.has(key):
+			set_door_open(key, false)
+	for key: String in open_doors:
+		if not _open_doors.has(key):
+			set_door_open(key, true)
 
 
 func apply_lift_doors(lift: ElevatorModule) -> void:

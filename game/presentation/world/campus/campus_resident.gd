@@ -82,13 +82,15 @@ func update_lifts(lifts: ElevatorModule) -> void:
 	for world: CampusWorld in regions.values():
 		if not world._lift_bodies.is_empty() or not world._lift_leaves.is_empty(): world.apply_lift_doors(lifts)
 	for id: String in ["lift_teach", "lift_lab"]:
-		if regions.has(id): (regions[id] as CampusWorld).transform = space.frame(id)
+		var cabin := regions.get(id) as CampusWorld
+		var frame := space.frame(id)
+		if cabin != null and cabin.transform != frame:
+			cabin.transform = frame
 
 
-func apply_doors(doors: Dictionary, lifts: ElevatorModule = null) -> void:
+func apply_doors(doors: Dictionary) -> void:
 	for world: CampusWorld in regions.values():
 		world.apply_doors(doors)
-		if lifts != null: world.apply_lift_doors(lifts)
 
 
 func configure_graphics(options: Dictionary, camera: Camera3D) -> void:

@@ -82,7 +82,9 @@ func place(a: CooperativeActor, preserve_motion: bool = false) -> CharacterBody3
 		if not preserve_motion: body.velocity = Vector3.ZERO
 	body_worlds[a.id] = a.location()
 	var p: Array = a.pose["position"]
-	body.position = Vector3(float(p[0]), float(p[1]), float(p[2]))
+	var position := Vector3(p[0], p[1], p[2])
+	if body.position != position:
+		body.position = position
 	_last_seen[instance_key(a)] = _time
 	return body
 
@@ -114,12 +116,17 @@ func advance(a: CooperativeActor, dt: float) -> void:
 
 func sync_doors(rules: CampusModule, lifts: ElevatorModule, engines: Dictionary = {}) -> void:
 	if space != null:
-		space.update_lifts(lifts)
-		for host: String in engines: space.update_lifts(engines[host], host)
+		for host: String in ElevatorModule.HOSTS:
+			space.update_lifts(engines.get(host, lifts), host)
+			var id := "lift_" + host
+			var cabin := geometry.get(id) as CampusWorld
+			var frame := space.frame(id)
+			if cabin != null and cabin.transform != frame:
+				cabin.transform = frame
 	for world: CampusWorld in geometry.values():
 		world.apply_doors(rules._open_doors)
-		world.apply_lift_doors(lifts)
-		if world.resident: world.transform = space.frame(world.scene_id)
+		if not world._lift_bodies.is_empty():
+			world.apply_lift_doors(lifts)
 
 
 func maintain(dt: float, active: Array) -> void:

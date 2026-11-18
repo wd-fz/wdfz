@@ -144,6 +144,17 @@ func handoff_checks(room: CooperativeRoom) -> void:
 	check(sim.physics.can_exchange(a, b), "opening the same door enables handoff")
 	b.pose.position[1] += 3.2
 	check(not sim.physics.can_exchange(a, b), "vertically separated floors cannot exchange")
+	b.pose.position[1] -= 3.2
+	sim.campus().restore({"open_doors": []})
+	sim.physics.sync_doors(sim.campus(), sim.gameplay.lifts)
+	sim.physics.sync_doors(sim.campus(), sim.gameplay.lifts)
+	await frames()
+	check(not sim.physics.can_exchange(a, b), "removing an open door from the state restores its collision")
+	sim.campus().restore({"open_doors": ["teach1:10:15"]})
+	sim.physics.sync_doors(sim.campus(), sim.gameplay.lifts)
+	sim.physics.sync_doors(sim.campus(), sim.gameplay.lifts)
+	await frames()
+	check(sim.physics.can_exchange(a, b), "repeated unchanged door states leave the reopened doorway clear")
 	sim.travel(b, "portal_tunnel", inside)
 	check(not sim.physics.can_exchange(a, b) and sim.state_for("a").team.b.distance == -1, "special spaces stay isolated even with overlapping local coordinates")
 	var saved := sim.capture()

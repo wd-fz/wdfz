@@ -57,6 +57,7 @@ var _events: Array = []
 var active_seconds := 0.0
 var _warn_times: Array = []
 var _notices: PackedStringArray = []
+var _seat_cache: Dictionary = {}
 
 
 func _init(rooms: Dictionary = {}, outside: Dictionary = {}, campus: Dictionary = {}) -> void:
@@ -252,11 +253,14 @@ func _room(world_id: String) -> Variant:
 
 
 func _seat(id: String) -> Dictionary:
+	if _seat_cache.has(id):
+		return _seat_cache[id]
 	var parts := id.split(":")
 	if parts.size() != 3 or not _rooms.has(parts[0]):
 		return {}
 	for s: Dictionary in _rooms[parts[0]].get("seats", []):
 		if s["seat_id"] == id:
+			_seat_cache[id] = s
 			return s
 	return {}
 
@@ -282,8 +286,10 @@ func assign_own_seat(id: String) -> bool:
 		_rooms["teach1"] = _rooms["teach1"].duplicate()
 		_rooms["teach1"]["seats"] = _rooms["teach1"]["seats"].duplicate()
 		_rooms["teach1"]["seats"].append(seat)
-	_campus = _campus.duplicate()
-	_campus["own_seat"] = {"room": id.get_slice(":", 0), "seatId": id}
+		_seat_cache[id] = seat
+	if _campus.get("own_seat", {}).get("seatId") != id:
+		_campus = _campus.duplicate()
+		_campus["own_seat"] = {"room": id.get_slice(":", 0), "seatId": id}
 	return true
 
 

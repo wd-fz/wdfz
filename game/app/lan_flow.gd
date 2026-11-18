@@ -49,6 +49,8 @@ var _room_phase := ""
 var _display_addresses := ""
 var _network_hint: Label
 var _rescan_timer := 0.0
+var _presented_frame := -1
+var _presentation_elapsed := 0.0
 
 
 func _ready() -> void:
@@ -418,6 +420,8 @@ func stop() -> void:
 	_scene = -1
 	_lost = false
 	_paused = false
+	_presented_frame = -1
+	_presentation_elapsed = 0.0
 	current.clear()
 	_seen_event = 0
 	_shown_choice = -1
@@ -494,6 +498,8 @@ func _snapshot(data: Dictionary) -> void:
 		_installed = true
 		_epoch = network.room.epoch
 		_lost = false
+		_presented_frame = -1
+		_presentation_elapsed = 0.0
 		app._install_session(candidate, source["player"])
 		_load_album()
 		if is_instance_valid(avatars): avatars.queue_free()
@@ -795,7 +801,15 @@ func _physics_process(dt: float) -> void:
 		for i in 2:
 			if Input.is_action_just_pressed("hot_%d" % (i + 1)) and app.items().hot[i] != null: send("item", {"item": app.items().hot[i], "source": "hot"})
 		if Input.is_action_just_pressed("lift_close"): send("lift_close")
-	_present(dt)
+	# Several physics steps can precede one rendered frame. Keep physics queries
+	# here, and update the view once using the elapsed simulation time.
+	_presentation_elapsed += dt
+	var frame := Engine.get_process_frames()
+	if _presented_frame == frame: return
+	_presented_frame = frame
+	var elapsed := _presentation_elapsed
+	_presentation_elapsed = 0.0
+	_present(elapsed)
 	if is_instance_valid(_mic) and _mic.visible:
 		var radio := app.broadcast()
 		radio.set_context(app._broadcast_context())

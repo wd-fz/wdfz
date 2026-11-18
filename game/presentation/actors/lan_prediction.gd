@@ -14,7 +14,8 @@ func record(sequence: int, axis: Vector2, yaw: float, running: bool, multiplier:
 func reconcile(body: CharacterBody3D, authority: Vector3, ack: int, enabled: bool) -> void:
 	while not history.is_empty() and int(history[0]["seq"]) <= ack: history.pop_front()
 	var before := body.position
-	body.position = authority
+	if before != authority:
+		body.position = authority
 	var replayed := 0.0
 	if enabled:
 		for frame: Dictionary in history:
@@ -23,6 +24,8 @@ func reconcile(body: CharacterBody3D, authority: Vector3, ack: int, enabled: boo
 			replayed += dt
 			var direction: Vector3 = body.get_parent().global_basis * Basis(Vector3.UP, float(frame["yaw"])) * Vector3(frame["axis"].x, 0, frame["axis"].y)
 			var displacement := direction * (CharacterMotor.RUN if frame["running"] else CharacterMotor.WALK) * float(frame["multiplier"]) * dt
+			if displacement.is_zero_approx():
+				continue
 			for _slide in 3:
 				var collision := body.move_and_collide(displacement)
 				if collision == null: break

@@ -7,28 +7,35 @@ static func base(a: CooperativeActor) -> Dictionary:
 	var w := a.point(CampusData.rooms())
 	var weird := a.feature(&"anomaly.world") as AnomalyModule
 	var room: Variant = CampusData.rooms().get(a.location())
+	var clock := s.game_clock()
+	var pressure := s.pressure()
+	var in_classroom := s.in_classroom_here(a.location(), w)
+	var inspection_pending := s.inspection_pending()
+	var inspection_upcoming := s.inspection_upcoming()
+	var patrol_chase := a.watcher().local_chase()
+	var anomaly_active := weird.is_active()
 	var meal := false
 	for m: Array in CampusData.campus().get("meals", []):
 		if s.tsec >= float(m[0]) and s.tsec < float(m[1]): meal = true
 	var ctx := {"cooperative": true, "scene": a.location(), "world_id": a.location(), "x": w.x, "y": w.y, "w": w, "height": float(a.pose["position"][1]),
 		"ang": CampusGeometry.ang_from_yaw(float(a.pose["yaw"])), "pitch": float(a.pose["pitch"]), "tsec": s.tsec, "day": s.day,
-		"clock": s.game_clock(), "game_clock": s.game_clock(), "dead": a.fate().dead, "diff": a.fate().diff,
+		"clock": clock, "game_clock": clock, "dead": a.fate().dead, "diff": a.fate().diff,
 		"moving": a.moving, "running": a.running, "run": a.running, "seated": s.seated, "san": s.san, "viol": s.viol,
 		"hiding": bool(a.watcher().hide["on"]), "night": SchoolClock.is_night(s.tsec), "need_where": SchoolClock.need_where(s.tsec),
-		"meal": meal, "rest_mul": float(s.pressure()["rest"]), "pressure_anomaly": float(s.pressure()["anomaly"]), "exam": s.exam,
-		"held": a.bag().has("phone"), "tech": a.talent().has("tech"), "classroom": a.location() == a.own_seat.get_slice(":", 0) and s.in_classroom_here(a.location(), w),
+		"meal": meal, "rest_mul": float(pressure["rest"]), "pressure_anomaly": float(pressure["anomaly"]), "exam": s.exam,
+		"held": a.bag().has("phone"), "tech": a.talent().has("tech"), "classroom": a.location() == a.own_seat.get_slice(":", 0) and in_classroom,
 		"has": a.bag().has, "add": a.bag().add, "remove": a.bag().remove,
-		"busy": weird.is_active() or s.inspection_pending() or a.watcher().local_chase(),
-		"anomaly": weird.pendulum_info(), "anomaly_active": weird.is_active(), "anomaly_id": weird.active_id(), "brolly": a.bag().brolly_up,
-		"patrol_chase": a.watcher().local_chase(), "choice_open": not a.choice.is_empty(), "inspection_pending": s.inspection_pending(),
-		"inspection_quiet": s.inspection_pending() or s.inspection_upcoming() or float(s.inspection.get("calm", 0)) > 0,
+		"busy": anomaly_active or inspection_pending or patrol_chase,
+		"anomaly": weird.pendulum_info(), "anomaly_active": anomaly_active, "anomaly_id": weird.active_id(), "brolly": a.bag().brolly_up,
+		"patrol_chase": patrol_chase, "choice_open": not a.choice.is_empty(), "inspection_pending": inspection_pending,
+		"inspection_quiet": inspection_pending or inspection_upcoming or float(s.inspection.get("calm", 0)) > 0,
 		"gate_n_map": CampusData.campus().get("gates", {}).get("n", {"x": 514, "y": 95}), "bound_x1": 830.0,
 		"closed": [], "drain_mul": 1.0, "has_key": a.bag().has("key"), "torch": a.bag().torch_on, "hotwire": a.talent().has("drive"),
 		"enter_cool": a.enter_cool, "tile": CampusGeometry.tile_at(room, w) if room != null else "",
-		"on_field": s.on_field(a.location(), w), "in_classroom": s.in_classroom_here(a.location(), w), "in_lift": a.location() in ElevatorModule.RIDE_ROOMS,
+		"on_field": s.on_field(a.location(), w), "in_classroom": in_classroom, "in_lift": a.location() in ElevatorModule.RIDE_ROOMS,
 		"fence_x": float(CampusData.layout("out")["bound"]["x1"]) * 2 - 6, "bag": a.bag().bag, "item_names": {},
-		"available": s.seated and s.at_my_seat(a.location(), w) and not s.inspection_pending() and not s.inspection_upcoming() and not weird.is_active(),
-		"quiet": s.inspection_pending() or s.inspection_upcoming(), "room": a.location(), "stam": s.stam, "space": bool(a.input.get("vault", false)),
+		"available": s.seated and s.at_my_seat(a.location(), w) and not inspection_pending and not inspection_upcoming and not anomaly_active,
+		"quiet": inspection_pending or inspection_upcoming, "room": a.location(), "stam": s.stam, "space": bool(a.input.get("vault", false)),
 		"locked": bool(a.watcher().pat["locked"])}
 	for id: String in a.bag().bag: ctx["item_names"][id] = a.bag().item_name(id)
 	var nav := a.watcher().nav
@@ -49,8 +56,8 @@ static func base(a: CooperativeActor) -> Dictionary:
 	return ctx
 
 
-static func patrol(a: CooperativeActor) -> Dictionary:
-	var c := base(a)
+static func patrol(a: CooperativeActor, common: Dictionary = {}) -> Dictionary:
+	var c := base(a) if common.is_empty() else common.duplicate()
 	var s := a.school()
 	var cur: Dictionary = s.inspection.get("current", {})
 	var room: Variant = CampusData.rooms().get(a.location())
@@ -62,8 +69,8 @@ static func patrol(a: CooperativeActor) -> Dictionary:
 	return c
 
 
-static func investigation(a: CooperativeActor) -> Dictionary:
-	var c := base(a)
+static func investigation(a: CooperativeActor, common: Dictionary = {}) -> Dictionary:
+	var c := base(a) if common.is_empty() else common.duplicate()
 	var f := a.feature(&"campus.facilities") as FacilitiesModule
 	var r := a.feature(&"story.routes") as RoutesModule
 	var p := a.feature(&"phone.network") as PhoneModule

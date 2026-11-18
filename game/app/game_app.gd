@@ -1033,14 +1033,17 @@ func _sync_world() -> void:
 	var world := _campus_world()
 	var rules := campus()
 	if world != null and rules != null:
-		if is_instance_valid(router.resident): router.resident.apply_doors(rules.open_doors(), elevator())
-		world.apply_doors(rules.open_doors())
+		var doors := rules.open_doors()
+		if is_instance_valid(router.resident): router.resident.apply_doors(doors)
+		if not world.resident: world.apply_doors(doors)
 		world.set_player_scene(player.position)
 	var lift := elevator()
 	if lift != null and is_instance_valid(router.resident):
 		router.resident.update_lifts(lift)
-		if router.resident.space.contains(session.world_id): router.coordinate_frame.transform = router.resident.space.frame(session.world_id)
-	if world != null and lift != null:
+		if router.resident.space.contains(session.world_id):
+			var frame := router.resident.space.frame(session.world_id)
+			if router.coordinate_frame.transform != frame: router.coordinate_frame.transform = frame
+	if world != null and lift != null and not world.resident:
 		world.apply_lift_doors(lift)
 	if world != null and world.broadcast_props != null and broadcast() != null:
 		world.broadcast_props.set_fuse(bool(broadcast().b["fuse"]))
