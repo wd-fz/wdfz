@@ -345,6 +345,8 @@ func _run() -> void:
 	await menu_ui.test_android_fullscreen_ui()
 	print("CASE: menu_ui.test_menus")
 	await menu_ui.test_menus()
+	print("CASE: menu_ui.test_pause_layout")
+	await menu_ui.test_pause_layout()
 	print("CASE: menu_ui.test_devices")
 	await menu_ui.test_devices()
 	var horror_pacing := preload("res://tests/suites/horror_pacing.gd").new(self)

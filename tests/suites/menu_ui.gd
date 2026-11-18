@@ -75,6 +75,54 @@ func test_menus() -> void:
 	root.content_scale_size = original_scale
 
 
+func test_pause_layout() -> void:
+	var original_size := root.size
+	var original_scale := root.content_scale_size
+	var ui: GameUI = preload("res://game/presentation/ui/game_ui.tscn").instantiate()
+	ui.fullscreen_toggle_allowed = false
+	ui.process_mode = Node.PROCESS_MODE_ALWAYS
+	root.size = Vector2i(1280, 591)
+	root.add_child(ui)
+	ui.set_touch_enabled(true)
+	var screen := ui.pause_screen
+	var resume := ui.get_node("%Resume") as Button
+	var back := ui.get_node("%BackToMenu") as Button
+	var taps := {"resume": 0, "back": 0}
+	ui.resume_requested.connect(func() -> void: taps.resume += 1)
+	ui.menu_requested.connect(func() -> void: taps.back += 1)
+	var talent := TalentModule.new()
+	for text_scale: int in [100, 150]:
+		ui.set_mode("play")
+		root.size = Vector2i(1280, 591) if text_scale == 100 else Vector2i(844, 390)
+		ui.apply_text_scale(text_scale)
+		await _frames(4)
+		ui.show_status("武大附中 · 教学楼 1F", "第 4 节 · 可探索，留意巡察", "normal", "时间不明")
+		talent.pick("tech" if text_scale == 100 else "code")
+		paused = true
+		ui.set_mode("pause")
+		ui.show_pause_detail(talent.pause_text())
+		await _frames(6)
+		var bounds := root.get_visible_rect()
+		var card := screen._card.get_global_rect()
+		check(bounds.encloses(card), "pause card stays within the short landscape viewport at %d%%" % text_scale)
+		check(bounds.encloses(screen._overview.get_global_rect()), "pause overview stays inside the viewport at %d%%" % text_scale)
+		check(screen.description.get_global_rect().end.x <= card.position.x, "talent details wrap before the pause actions at %d%%" % text_scale)
+		if text_scale == 150:
+			check(screen._overview.get_v_scroll_bar().visible, "large talent text scrolls inside the pause overview")
+		for button: Button in [resume, back]:
+			check(card.encloses(button.get_global_rect()) and bounds.encloses(button.get_global_rect()), "%s is fully visible at %d%%" % [button.name, text_scale])
+			check(not screen.scroll.is_ancestor_of(button), "%s stays outside the scrollable actions" % button.name)
+		var before := taps.duplicate()
+		await _tap(resume)
+		await _tap(back)
+		check(taps.resume == before.resume + 1 and taps.back == before.back + 1, "both pause shortcuts respond to touch at %d%%" % text_scale)
+		paused = false
+	ui.queue_free()
+	await _frames(3)
+	root.size = original_size
+	root.content_scale_size = original_scale
+
+
 func test_launch_defaults() -> void:
 	check(ProjectSettings.get_setting("display/window/handheld/orientation") == DisplayServer.SCREEN_SENSOR_LANDSCAPE, "Android export starts in landscape before the scene runs")
 	check(ProjectSettings.get_setting("display/window/size/mode") == DisplayServer.WINDOW_MODE_WINDOWED, "desktop launch defaults to windowed")
