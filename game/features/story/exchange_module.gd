@@ -186,6 +186,14 @@ func visible() -> bool:
 	return s["phase"] in ["waiting", "qualified", "escort"]
 
 
+func notebook_goal() -> String:
+	match s.get("phase", "none"):
+		"waiting": return "广播在找交流团的接待学生。去行政楼北门外找领队。"
+		"qualified": return "已登记为接待学生，回行政楼北门外找领队一起出发。"
+		"escort": return "跟在交流团末尾一起离校。看住前面的人，别掉队。"
+	return ""
+
+
 func tail_dist() -> float:
 	if String(_c.get("scene", "")) != "out":
 		return INF

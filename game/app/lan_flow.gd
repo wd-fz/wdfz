@@ -386,6 +386,7 @@ func choice(index: int) -> void:
 			2: app._show_map("")
 			3: send("lesson")
 			4: send("think")
+			5: send("seat_card")
 		return
 	if _special_choice != "":
 		send(_special_choice, {"accept": index == 0})
@@ -1004,7 +1005,7 @@ func _present(dt: float) -> void:
 	app.phone().set_context(app._phone_context())
 	app.patrol().set_context(app._patrol_context(room, pose))
 	app.anomaly().set_context(app._anomaly_context(room, pose))
-	app.ui.show_status(school.place_name(app.session.world_id, float(pose["position"][1])), school.period_text(false), school.period_class(false), school.clock_text(app.items().has_clock() or app.talent().has("watch")))
+	app.ui.show_status(school.place_name(app.session.world_id, float(pose["position"][1])), app.first_lunch_lead(school, school.period_text(false)), school.period_class(false), school.clock_text(app.items().has_clock() or app.talent().has("watch")))
 	app.ui.show_stamina(school.stam, school.stamina_max(), school.tired)
 	app.ui.show_sprint_available(app.player.can_sprint)
 	app.ui.show_runtime(app.session.clock.active_seconds)
@@ -1082,7 +1083,9 @@ func manual() -> void:
 	app.player.clear_input()
 	app.player.enabled = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	app.ui.show_choice("合作手册 · 世界继续运行", ["背包", "笔记", "地图", "课堂互动", "逃生思路"], false)
+	var pages := ["背包", "笔记", "地图", "课堂互动", "逃生思路"]
+	if app.school().at_card_seat(): pages.append("我桌上的名牌")
+	app.ui.show_choice("合作手册 · 世界继续运行", pages, false)
 
 
 func open_mic() -> void:

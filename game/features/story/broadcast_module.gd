@@ -215,6 +215,21 @@ func ready() -> bool:
 	return bool(b["book"]) and bool(b["fuse"]) and assembled()
 
 
+func notebook_goal(has_item: Callable, day: int) -> String:
+	if not bool(b.get("book", false)):
+		for n in range(1, 5):
+			if has_item.call("notice%d" % n): return "残页上有播音室的戳。到行政楼二楼广播站查阅播音记录本。"
+		return ""
+	if b["phase"] == "bell": return "长铃已经响了。跟着放学的人群去北门，铃停前离校。"
+	if not b["fuse"]:
+		if has_item.call("broadcastfuse"): return "带备用保险丝回行政楼二楼广播站，修好功放。"
+		return "播音记录本写着功放烧了。先去体育器材室找备用保险丝。"
+	for i in SOURCES.size():
+		if not has_item.call("notice%d" % (i + 1)): return "去%s找蓝黑墨水的通知稿，红色那份留在那里。" % SOURCES[i]["title"]
+	if int(b["attemptDay"]) >= day: return "今天的长铃已停。留好稿子，明天第八节下课后再播。"
+	return "稿子和功放都齐了。第二天起，第八节下课后回行政楼二楼读放学通知。"
+
+
 func reason() -> String:
 	if int(b["attemptDay"]) >= _day():
 		return "今天的长铃已经停了。通知稿还在，明天第八节下课后再试。"

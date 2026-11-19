@@ -512,21 +512,24 @@ func _stall(room_id: String) -> void:
 
 
 func _guard() -> void:
-	if not bool(flags.get("guard_told", false)):
-		flags["guard_told"] = true
+	var first := not bool(flags.get("guard_told", false))
+	var borrowed := bool(_c.get("rollcall_claim", false))
+	if first:
 		_emit("clue", {"id": "keys"})
-		_parking_records()
-		var light := _has("torch") or _add("torch")
-		_say("我：钥匙已上交行政楼五楼校长办公室。停车记录和避险便签记在手册里了。" + ("抽屉里的手电带好了，去车库前记得打开。" if light else "手电还在抽屉里，装不下了，腾出一格再来拿。"))
-		_emit("save")
-		return
-	if not _has("torch"):
-		_parking_records()
-		if _add("torch"):
-			_say("我：柜台下面还有一把手电筒。去车库之前，把它带上。")
-		return
+		flags["guard_told"] = true
 	_parking_records()
-	_say("我：登记写着「靠西侧，第 %d 排」。旁边的便签说：手电能暂时照退黑影，硬币能把它引开，开门前先确认车道。" % int(_c.get("car_row", 1)))
+	var line := "登记簿上真是我的签名，离校那一栏却空着。"
+	if borrowed:
+		line = "我抽出底联。签名最后一笔也是歪的，跟我写的一样。同化可以自然回落了。"
+	elif not first:
+		line = "签收底联还在这里。"
+	if _has("key") or _c.get("hotwire", false):
+		line += " 登记写着「车库西侧，第 %d 排」。" % int(_c.get("car_row", 1))
+	else:
+		line += " 钥匙移交给了行政楼五楼校长室。"
+	if not _has("torch"):
+		line += " 我拿走了抽屉里的手电。" if _add("torch") else " 手电还在抽屉里，腾出一格再来拿。"
+	_say(line)
 	_emit("save")
 
 

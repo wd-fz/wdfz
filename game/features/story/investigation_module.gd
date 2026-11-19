@@ -4,8 +4,8 @@ extends FeatureModule
 ## investigation.js): what the player found out, written only by real interactions, reread from the
 ## handbook's notes page. Records have a kind (事实 / 推测 / 验证 / 线索), the place and the day they
 ## were found; the most recent eight are remembered; the "current investigation" card names the goal of
-## the route the player follows (car / white-list / portal / cyber), and a progress block lists each
-## route. It also owns the three flows that start the first route: the parking ticket in the own desk (R),
+## the route that reader follows. Published notices, items and interactions reveal routes. The module
+## also owns the three flows that start the first route: the parking ticket in the own desk (R),
 ## the handover note on the own classroom's podium and the temporary supply box.
 ## Events out: say {text}, choice {text, labels}, save, outing, chalk, spots {names}, supply {pay},
 ## continue (the supply choice was declined: go on with the facility), record is silent.
@@ -17,6 +17,7 @@ const RECENT_MAX := 8
 var entries: Dictionary = {}   # id → {text, kind, source, day}
 var recent: Array = []
 var focus := ""
+var pins: Dictionary = {}
 var supply: Dictionary = {}    # {site: "guard1" | "canteen1", taken: bool}
 var events: Array = []
 
@@ -41,19 +42,23 @@ func reset() -> void:
 	entries = {}
 	recent = []
 	focus = ""
+	pins = {}
 	supply = {}
 	events = []
 	_pending = {}
 
 
 func capture() -> Dictionary:
-	return {"random": RandomState.capture(_rng), "entries": entries.duplicate(true), "recent": recent.duplicate(), "focus": focus, "supply": supply.duplicate()}
+	return {"random": RandomState.capture(_rng), "entries": entries.duplicate(true), "recent": recent.duplicate(), "focus": focus, "pins": pins.duplicate(), "supply": supply.duplicate()}
 
 
 func validate(data: Dictionary) -> String:
 	if not (data.get("entries", {}) is Dictionary) or not (data.get("recent", []) is Array) or not (data.get("supply", {}) is Dictionary):
 		return "调查笔记无效"
-	for v: Variant in (data["entries"] as Dictionary).values():
+	if not data.get("pins", {}) is Dictionary: return "调查路线无效"
+	for reader: Variant in data.get("pins", {}):
+		if not reader is String or data["pins"][reader] not in ["car", "face", "portal", "cyber", "dismissal", "international"]: return "调查路线无效"
+	for v: Variant in (data.get("entries", {}) as Dictionary).values():
 		if not (v is Dictionary) or not (v.get("text") is String) or not KINDS.has(String(v.get("kind", ""))):
 			return "调查笔记无效"
 	return ""
@@ -65,6 +70,7 @@ func restore(data: Dictionary) -> void:
 	entries = (data.get("entries", {}) as Dictionary).duplicate(true)
 	recent = (data.get("recent", []) as Array).filter(func(id: Variant) -> bool: return id is String and entries.has(id)).slice(-RECENT_MAX)
 	focus = String(data.get("focus", ""))
+	pins = data.get("pins", {}).duplicate()
 	supply = (data.get("supply", {}) as Dictionary).duplicate()
 
 
@@ -96,6 +102,8 @@ func record(id: String, text: String, kind: String = "事实", source: String = 
 		focus = "face"
 	elif id == "notice" or id == "parking" or id == "carKey":
 		focus = "car"
+	elif id in ["broadcastBook", "broadcastTeacher", "notice1", "notice2", "notice3", "notice4"]:
+		focus = "dismissal"
 	recent = recent.filter(func(k: String) -> bool: return k != id)
 	recent.append(id)
 	recent = recent.slice(-RECENT_MAX)
@@ -111,8 +119,9 @@ func visible(id: String) -> bool:
 func open_desk() -> bool:
 	if not bool(_c.get("desk_ok", false)) or visible("desk"):
 		return false
-	record("desk", "桌肚里夹着一张停车单，背面写着：「钥匙又被收走了。讲台上的移交单还没撕。」", "事实", "自己的课桌")
-	_emit("say", {"text": "我：停车单背面写着「讲台上的移交单还没撕」。先去教室前面的讲台看看。手册的笔记页能重读。", "keep": true})
+	record("desk", "同桌塞来的停车单上签着我的名字。底联在保安岗。背面写着「讲台上有钥匙移交单」。", "事实", "自己的课桌")
+	_emit("spots", {"names": ["guard"]})
+	_emit("say", {"text": "停车单上的签名是我的。去保安岗查底联，或者先看看讲台上的钥匙移交单。", "keep": true})
 	_emit("save")
 	return true
 
@@ -126,7 +135,7 @@ func notice() -> void:
 	var s := supply_site()
 	record("supply", "临时补给箱移至%s。可领取一份药片；封条能慢慢拆，也可投一枚硬币解锁。" % ("保安岗柜台" if s["site"] == "guard1" else "食堂售货机旁"), "事实", "讲台移交单 · 补给附注")
 	_pending = {"kind": "notice"}
-	_emit("choice", {"text": "移交单：钥匙在行政楼五楼校长办公室；保安岗有停车记录和备用手电。车库在西侧。第一天不开放外出登记；第二天起许可可跨越普通课堂，但必须参加约定的下一次检查，缺席会被持续追踪。12:50、17:50 回教室集合，熄灯回宿舍。校长室、网络中心黄线报警区、考试和夜间仍要小心。尽量当天离校，第二天起校园更危险，休息效果也会减弱。",
+	_emit("choice", {"text": "钥匙移交给了行政楼五楼校长室。底联在保安岗柜台，柜台下有备用手电。两处地点和留校规定已记进笔记。",
 		"labels": ["阅读登记规定（次日起开放）" if int(_c.get("day", 1)) == 1 else "登记外出，记下移交事项", "拿讲台上的粉笔"]})
 
 
@@ -191,9 +200,16 @@ func car_name(c: int, r: int) -> String:
 
 # ---- the goal and the route progress ----
 
+func _radio_lead() -> String:
+	var next: String = _c.get("radio_goal", "")
+	if next.is_empty() and (visible("broadcastBook") or visible("broadcastTeacher")):
+		return "去行政楼二楼广播站，查阅播音记录本里的通知稿来源。"
+	return next
+
+
 func routes() -> Array:
 	var out: Array = []
-	if visible("notice") or bool(_c.get("has_key", false)) or int(_c.get("car_tried", 0)) > 0:
+	if visible("parking") or visible("notice") or bool(_c.get("has_key", false)) or int(_c.get("car_tried", 0)) > 0:
 		out.append(["car", "车辆"])
 	if bool(_c.get("spot_comp", false)) or bool(_c.get("spot_data", false)) or bool(_c.get("hacked", false)):
 		out.append(["face", "白名单"])
@@ -202,22 +218,25 @@ func routes() -> Array:
 		out.append(["portal", "造门"])
 	if bool(_c.get("has_phone", false)) or bool(_c.get("cyber", {}).get("initialized", false)):
 		out.append(["cyber", "网安仙人"])
+	if not _radio_lead().is_empty():
+		out.append(["dismissal", "放学广播"])
+	if not String(_c.get("exchange_goal", "")).is_empty():
+		out.append(["international", "交流团"])
 	return out
 
 
 func current_focus() -> String:
-	if focus != "":
-		return focus
-	var po: Dictionary = _c.get("portal", {})
-	if bool(po.get("diary", false)) or bool(po.get("sketch", false)) or bool(po.get("open", false)):
-		return "portal"
-	return "face" if bool(_c.get("hacked", false)) else "car"
+	var known := routes()
+	var preferred: String = pins.get(_c.get("reader", "solo"), "")
+	for id: String in [preferred, focus, "portal", "dismissal", "international"]:
+		if not id.is_empty() and known.any(func(r: Array) -> bool: return r[0] == id): return id
+	return "car" if known.is_empty() else String(known[0][0])
 
 
 func set_focus(id: String) -> bool:
 	if not routes().any(func(r: Array) -> bool: return r[0] == id):
 		return false
-	focus = id
+	pins[_c.get("reader", "solo")] = id
 	return true
 
 
@@ -225,6 +244,8 @@ func goal() -> String:
 	var f := current_focus()
 	var cy: Dictionary = _c.get("cyber", {})
 	var po: Dictionary = _c.get("portal", {})
+	if f == "dismissal": return _radio_lead()
+	if f == "international": return _c["exchange_goal"]
 	if f == "cyber":
 		if String(cy.get("term", "")) == "accepted":
 			return "停机请求已提交。保持存活，手机可查看任务状态。"
@@ -239,14 +260,14 @@ func goal() -> String:
 		if bool(_c.get("data", false)):
 			return "数据已同步，前往西小门完成闸机验证。"
 		return "网络中心已写入，前往行政楼三楼同步数据。" if bool(_c.get("hacked", false)) else "调查实验楼三楼的网络中心；留意门锁和终端旁的说明。"
-	if bool(_c.get("has_key", false)) and not visible("notice"):
+	if bool(_c.get("has_key", false)) and not visible("notice") and not visible("parking"):
 		return "已经有车钥匙。在背包中使用它，读清环上的牌号，再去车辆旁核对。"
-	if not visible("desk") and not visible("notice"):
-		return "先看看自己课桌上的停车单（靠近自己的座位，按 R），也可以自由探索。"
-	if not visible("notice"):
-		return "停车单提到了教室前方的讲台。走近后交互，看看移交单。"
+	if not visible("parking") and not visible("notice"):
+		if visible("desk"): return "去保安岗柜台核对签名。出教室前，也可以顺手看看讲台上的钥匙移交单。"
+		return "去北门旁的保安岗柜台，查那张签着我名字的停车单。起身前可以低头看看自己的名牌。"
 	var car: Dictionary = _c.get("car", {})
 	if not bool(car.get("ok", false)):
+		if visible("parking"): return "底联拿到了。去行政楼五楼校长室取车钥匙。"
 		return "钥匙被收到行政楼五楼校长办公室；出发前可以去保安岗取手电、查看停车记录。"
 	if car.get("via") == "hotwire":
 		if not visible("parking"):
@@ -262,7 +283,7 @@ func progress() -> Array:
 	var out: Array = []
 	var car: Dictionary = _c.get("car", {})
 	var tried := int(_c.get("car_tried", 0))
-	if visible("notice") or bool(_c.get("has_key", false)) or tried > 0:
+	if visible("parking") or visible("notice") or bool(_c.get("has_key", false)) or tried > 0:
 		var state := "已驶离车库" if bool(_c.get("car_used", false)) else ("有钥匙，能够试车门" if car.get("via") == "key" else ("会搭线，能够试车" if bool(car.get("ok", false)) else "尚无开车办法"))
 		out.append(["车辆", "%s；已试 %d 辆。" % [state, tried], bool(_c.get("car_used", false))])
 	if bool(_c.get("spot_comp", false)) or bool(_c.get("spot_data", false)) or bool(_c.get("hacked", false)):
@@ -283,6 +304,9 @@ func progress() -> Array:
 		else:
 			text = "已获得 %d/3 张图纸" % int(po.get("count", 0)) + ("；还需调查实验楼 %s 楼教师台" % "、".join((po.get("floors_left", []) as Array).map(func(f: Variant) -> String: return str(f))) if visible("portalDiary") else "；日记的文字已模糊，可以回去重读")
 		out.append(["造门", text + "。", bool(po.get("open", false))])
+	var radio := _radio_lead()
+	if not radio.is_empty(): out.append(["放学广播", radio, false])
+	if not String(_c.get("exchange_goal", "")).is_empty(): out.append(["交流团", _c["exchange_goal"], false])
 	return out
 
 

@@ -30,6 +30,7 @@ func setup(state: CooperativeRoom, seed_value: int) -> void:
 		var a := CooperativeFactory.actor(id, slot, room.difficulty, String(room.members[id]["talent"]), seed_value, shared)
 		a.session.character_id = String(room.members[id]["character"])
 		actors[id] = a
+		a.event("notice", {"text": RollcallCard.INVITATION})
 		room.members[id]["seat"] = a.own_seat
 		inventory.reconcile(a)
 		physics.place(a)

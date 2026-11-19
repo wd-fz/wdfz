@@ -148,7 +148,9 @@ static func _runtime(a: Dictionary) -> String:
 		if not CampusData.rooms().has(job.get("room")) or not SaveSchema.is_integer(job.get("c"), 0, 1000) or not SaveSchema.is_integer(job.get("r"), 0, 1000) or not SaveSchema.number_in(job.get("t"), 0, InventoryModule.SEARCH_SECONDS) or not SaveSchema.number_in(job.get("x"), -100000, 100000) or not SaveSchema.number_in(job.get("y"), -100000, 100000): return "搜索进度无效。"
 	var choice: Dictionary = a["choice"]
 	if not choice.is_empty():
-		if choice.get("source") != "lift" and not CooperativeGameplay.SOURCES.has(choice.get("source")): return "选择来源无效。"
+		if choice.get("source") not in ["lift", "seat_card"] and not CooperativeGameplay.SOURCES.has(choice.get("source")): return "选择来源无效。"
+		if choice.get("source") == "seat_card" and choice.has("target"):
+			if not RollcallCard.valid_slot(choice["target"]) or not choice.get("leave") is bool: return "座签选择无效。"
 		if not choice.get("text") is String or not choice.get("labels") is Array or choice["labels"].size() > 40 or not SaveSchema.is_integer(choice.get("id"), 0, 2147483647): return "选择内容无效。"
 		for label: Variant in choice["labels"]:
 			if not label is String: return "选择文本无效。"

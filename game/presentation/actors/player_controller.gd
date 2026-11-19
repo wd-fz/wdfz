@@ -152,6 +152,10 @@ func apply_look(delta: Vector2) -> void:
 	set_pitch(_look_pitch - delta.y)
 
 
+func look_pitch() -> float:
+	return _look_pitch
+
+
 func set_pitch(value: float) -> void:
 	_look_pitch = clampf(value, -1.4, 1.4)
 	camera.rotation.x = _look_pitch + (-0.06 if seated else 0.0)

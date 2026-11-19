@@ -100,6 +100,69 @@ func _test_school_rules() -> void:
 	check(absent.viol > 20.0 + 16.0 + 10.0 - 1.0, "moving during the check adds 2 violation per second on top of the absence (%.2f)" % absent.viol)
 
 
+func test_rollcall_card() -> void:
+	var rules := SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
+	rules.reset()
+	var seat := rules.start_seated("teach1")
+	var me := CampusGeometry.to_world(CampusData.layout("teach1"), seat.position[0], seat.position[2])
+	var bell := {"day": 1, "slot": 0}
+	var free := func(_p: Vector2) -> bool: return true
+	check(rules.looking_at_card(-.8) and not rules.looking_at_card(0), "looking down selects the card; level gaze still stands up")
+	check(rules.read_seat_card("out", me).is_empty(), "the physical card cannot be reached from a different room")
+	var ref: Dictionary = rules.read_seat_card("teach1", me)
+	check(ref.get("target") == "1:0" and ref.get("leave"), "the card offers the next real inspection")
+	rules.tt = 82
+	check(String(rules.read_seat_card("teach1", me).text).contains("上限"), "a dangerous borrowing price is visible before signing")
+	rules.tt = 0
+	rules.sign_seat_card("teach1", me, "1:0", true)
+	check(not rules.read_seat_card("teach1", me).leave, "turning the card over again offers to take it back")
+	rules.sign_seat_card("teach1", me, "1:0", false)
+	check(rules.seat_card.armed.is_empty() and is_zero_approx(rules.tt), "cancelling costs nothing")
+	rules.sign_seat_card("teach1", me, "1:0", true)
+	var booked := rules.capture()
+	rules.start_inspection(bell, "teach1", me, free)
+	check(not rules.inspection.current.proxy and rules.seat_card.armed.is_empty(), "attending in person takes priority over a booking")
+	rules._inspection_tick(8, {"world_id":"teach1", "w":me, "pitch":1.2})
+	check(rules.inspection.settled.get("1:0") == "present" and not rules.seat_card.outstanding(), "an unused booking grants normal attendance")
+	rules.restore(booked)
+	rules.stand_up()
+	rules.tt = 12
+	rules.san = 80
+	rules.viol = 12
+	rules.start_inspection(bell, "out", me, free)
+	check(rules.inspection.current.proxy and rules.inspection_points().is_empty() and rules.tt == 30, "the absent student's seat answers once for 18 assimilation")
+	rules.start_inspection(bell, "out", me, free)
+	check(rules.tt == 30 and rules.inspection.current.proxy, "duplicate entry into the same check cannot charge or replace it")
+	var snapshot: Dictionary = JSON.parse_string(JSON.stringify(rules.capture()))
+	check(rules.validate(snapshot).is_empty(), "a mid-inspection save with a borrowed answer validates")
+	rules.restore(snapshot)
+	var away := {"world_id":"out", "w":me, "moving":true, "ang":0.0, "pitch":0.0}
+	rules._inspection_tick(8, away)
+	check(rules.inspection.settled.get("1:0") == "proxy" and rules.viol == 12 and rules.san == 80 and not rules.permit(), "a moving borrower receives neither the absence penalty nor personal attendance credit")
+	rules._tt_tick(5, "自由", "out")
+	check(rules.tt == 30 and rules.seat_card.entry().contains("保安岗"), "outstanding evidence holds natural decay and names the recovery action")
+	check(rules.seat_card.check_counterfoil() and not rules.seat_card.check_counterfoil(), "checking a counterfoil is idempotent")
+	rules._tt_tick(5, "自由", "out")
+	check(rules.tt < 30 and rules.seat_card.checked, "counterfoil reopens the ordinary recovery rule")
+	check(not rules.seat_card.offer({"id":"1:1","day":1},1,false).has("target") and rules.seat_card.offer({"id":"2:0","day":2},2,false).get("leave"), "only a new day permits the next borrowed answer")
+	rules.restore(booked)
+	rules._duty_grant("outing")
+	check(rules.seat_card.armed.is_empty() and not rules.read_seat_card("teach1", me).has("target"), "a personal registered duty takes the card back")
+	rules.stand_up()
+	rules.start_inspection(bell, "out", me, free)
+	rules._inspection_tick(8, away)
+	check(rules.inspection.settled.get("1:0") == "absent" and rules.duties.processed.get("1:0") == "absent", "an absent signatory must answer for their own duty")
+	rules.restore(booked)
+	rules.stand_up()
+	rules.tt = 82
+	rules.start_inspection(bell, "out", me, free)
+	check(rules.take_deaths().any(func(d: Dictionary) -> bool: return d.source == "assimilation"), "borrowing at the threshold uses the ordinary assimilation death")
+	booked.erase("seat_card")
+	check(rules.validate(booked).is_empty(), "saves from before the card remain valid")
+	rules.restore(booked)
+	check(rules.seat_card.entry().is_empty() and not RollcallCard.valid({"armed":[]}) and not RollcallCard.valid({"armed":"1:1","answered":"2:1","checked":true}), "old saves start blank and malformed or rewound bookings are rejected")
+
+
 func _test_night_dorm_rules() -> void:
 	var school := SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
 	var ctx := {"world_id": "out", "w": Vector2(1000, 1000), "calendar": false}

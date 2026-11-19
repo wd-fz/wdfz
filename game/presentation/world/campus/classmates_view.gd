@@ -13,6 +13,14 @@ var _face_step := 0.0
 var _sound_wait := 3.0
 var _listening := false
 var _lesson_material: StandardMaterial3D
+var _card: Node3D
+var _card_face: MeshInstance3D
+var _card_back: MeshInstance3D
+var _card_text: Label3D
+var _card_header: Label3D
+var _card_seat := ""
+var _card_person := ""
+var _card_fold := -1
 
 func build(layout: Dictionary, seats: Array) -> void:
 	name = "Classmates"
@@ -37,6 +45,63 @@ func _add(home: Vector2, is_teacher: bool, classroom: String) -> void:
 	figures.append(data)
 	_pose(data,"teacher" if is_teacher else "sit")
 	if is_teacher: teacher = figure
+
+
+## One folded slip on the actual desktop, facing the student. No per-frame mesh updates.
+func show_name_card(seat: String, person: String, state: RollcallCard) -> void:
+	var fold := 2 if state.outstanding() else int(not state.armed.is_empty())
+	if seat == _card_seat and person == _card_person and fold == _card_fold: return
+	if seat.is_empty(): return
+	_card_seat = seat
+	_card_person = person
+	_card_fold = fold
+	if _card == null:
+		_card = Node3D.new()
+		_card.name = "SeatNameCard"
+		_card.rotation.y = PI/2
+		add_child(_card)
+		_card_face = MeshInstance3D.new()
+		var paper := QuadMesh.new()
+		paper.size = Vector2(.26, .15)
+		var stock := FigureModel.material(Color("e9e1c7"))
+		stock.cull_mode = BaseMaterial3D.CULL_DISABLED
+		paper.material = stock
+		_card_face.mesh = paper
+		_card_face.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_card.add_child(_card_face)
+		_card_back = MeshInstance3D.new()
+		_card_back.mesh = paper
+		_card_back.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_card.add_child(_card_back)
+		_card_text = Label3D.new()
+		_card_text.font_size = 40
+		_card_text.pixel_size = .0011
+		_card_text.outline_size = 0
+		_card_text.modulate = Color("292f34")
+		_card_text.position = Vector3(0, -.016, .0015)
+		_card_text.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_card_face.add_child(_card_text)
+		_card_header = Label3D.new()
+		_card_header.font_size = 32
+		_card_header.pixel_size = .00055
+		_card_header.outline_size = 0
+		_card_header.modulate = Color("514e55")
+		_card_header.position = Vector3(0, .045, .0015)
+		_card_header.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_card_face.add_child(_card_header)
+	var point := CampusGeometry.tile_center(room, seat.get_slice(":", 1).to_int(), seat.get_slice(":", 2).to_int())
+	var xy := CampusGeometry.to_scene(room, point)
+	# Desk top is 0.757 m. The paper's low edge touches it in both postures.
+	_card.position = Vector3(xy.x - .10, .761, xy.y - .11)
+	_card_face.rotation.x = -PI/2 if fold == 0 else -.58
+	_card_face.position.y = .075 * cos(_card_face.rotation.x)
+	_card_back.visible = fold > 0
+	if _card_back.visible:
+		_card_back.rotation.x = -_card_face.rotation.x
+		_card_back.position = Vector3(0, _card_face.position.y, .15 * sin(_card_face.rotation.x))
+	var student: String = StudentCast.PEOPLE[StudentCast.resolve(person)]["name"]
+	_card_text.text = student + ("　到" if fold == 2 else "")
+	_card_header.text = "点 名 签　／　复 写" if fold == 2 else "武 大 附 中　／　点 名 签"
 
 func _pose(data: Dictionary, kind: String) -> void:
 	if data.kind == kind: return
