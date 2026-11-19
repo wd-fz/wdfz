@@ -50,6 +50,7 @@ var viol_full := false
 var _deaths: Array = []
 ## Inspection state (RT.inspection) and the outing permit it grants (RT.outing).
 var inspection := {}
+var seat_card := RollcallCard.new()
 var outing := {}
 ## Attendance duties (attendance.js): a registered outing promises attendance at the next check.
 var duties := {"seq": 0, "list": [], "processed": {}}
@@ -99,6 +100,7 @@ func reset() -> void:
 	_deaths = []
 	_notices = PackedStringArray()
 	inspection = {"seen": {}, "warned": {}, "queue": [], "current": {}, "settled": {}, "calm": 0.0, "calm_room": ""}
+	seat_card.restore({})
 	outing = {}
 	duties = {"seq": 0, "list": [], "processed": {}}
 	_events = []
@@ -109,7 +111,7 @@ func capture() -> Dictionary:
 	return {"tsec": tsec, "day": day, "san": san, "viol": viol, "tt": tt, "stam": stam, "tired": tired,
 		"seated": seated, "seat_id": seat_id, "tt_tier": tt_tier, "pressure_clock": pressure_clock,
 		"pressure_seen": pressure_seen, "viol_full": viol_full,
-		"danger_seen": danger_seen.duplicate(), "tt_hold_until": tt_hold_until, "exam": exam, "exam_cur": exam_cur, "exam_seat": exam_seat, "exam_tot": exam_tot, "leave_until": leave_until, "inspection": inspection.duplicate(true), "outing": outing.duplicate(true), "duties": duties.duplicate(true), "active_seconds": active_seconds}
+		"danger_seen": danger_seen.duplicate(), "tt_hold_until": tt_hold_until, "exam": exam, "exam_cur": exam_cur, "exam_seat": exam_seat, "exam_tot": exam_tot, "leave_until": leave_until, "inspection": inspection.duplicate(true), "seat_card": seat_card.capture(), "outing": outing.duplicate(true), "duties": duties.duplicate(true), "active_seconds": active_seconds}
 
 
 func validate(data: Dictionary) -> String:
@@ -133,12 +135,18 @@ func validate(data: Dictionary) -> String:
 		if not item is Dictionary or not SaveSchema.is_integer(item.get("day"),1,100000) or not SaveSchema.is_integer(item.get("slot"),0,INSPECT["times"].size()-1):
 			return "检查日期无效"
 	var current: Dictionary = ins.get("current", {})
+	if not RollcallCard.valid(data.get("seat_card", {})): return "座位名牌记录无效"
 	if not current.is_empty():
 		for k: String in ["t","look","move"]:
 			if not SaveSchema.number_in(current.get(k),0,SaveSchema.MAX_SECONDS):
 				return "检查计时无效"
 		if not current.get("room") is String or not current.get("compliant") is bool or not current.get("points") is Array:
 			return "检查现场无效"
+		if not current.get("proxy", false) is bool: return "代答记录无效"
+		if current.get("proxy", false):
+			var id := "%d:%d" % [int(current["day"]), int(current["slot"])]
+			if data.get("seat_card", {}).get("answered", "") != id or current["compliant"] or not current["points"].is_empty():
+				return "代答与现场不符"
 		for xy: Variant in current["points"]:
 			if not xy is Array or xy.size()!=2 or not SaveSchema.number_in(xy[0],-1e7,1e7) or not SaveSchema.number_in(xy[1],-1e7,1e7):
 				return "检查人影的位置无效"
@@ -177,6 +185,7 @@ func restore(data: Dictionary) -> void:
 	_deaths = []
 	inspection = {"seen": {}, "warned": {}, "queue": [], "current": {}, "settled": {}, "calm": 0.0}
 	inspection.merge(data.get("inspection", {}).duplicate(true), true)
+	seat_card.restore(data.get("seat_card", {}))
 	for item: Dictionary in inspection["queue"]:
 		item["day"] = int(item["day"])
 		item["slot"] = int(item["slot"])
@@ -346,9 +355,11 @@ func place_name(world_id: String, height: float) -> String:
 func period_text(frozen: bool) -> String:
 	if frozen:
 		return "???"
+	if inspection.get("current", {}).get("proxy", false): return "点名中 · 教室里有人替我应声"
 	if inspection_active():
 		return "学生会检查 · 坐稳自己的座位"
 	if inspection_upcoming():
+		if not seat_card.armed.is_empty(): return "集合将至 · 桌上留着我的名牌"
 		return "集合将至 · 请坐回自己的座位"
 	if permit():
 		return "外出登记 · " + return_label()
@@ -702,7 +713,7 @@ func _tt_tick(dt: float, nw: String, world_id: String) -> void:
 		tt += TT_CFG["seat"] * dt
 	elif in_dorm(world_id) and tsec >= SchoolClock.EVENING:
 		tt += TT_CFG["dorm"] * dt
-	elif game_clock() >= tt_hold_until:
+	elif game_clock() >= tt_hold_until and not seat_card.outstanding():
 		tt = maxf(0.0, tt - TT_CFG["decay"] * dt)
 	tt = clampf(tt, 0.0, 100.0)
 	if tt >= 100.0:
@@ -768,7 +779,8 @@ func dream_wake_reset() -> void:
 	viol = 0.0
 	stam = 100.0
 	tired = false
-	tt = 0.0
+	seat_card.armed = ""
+	tt = RollcallCard.COST if seat_card.outstanding() else 0.0
 	tt_tier = 0
 	wrong = false
 	inspection["current"] = {}
@@ -840,7 +852,9 @@ func _inspection_cross(d: int, before: float, after: float) -> void:
 		var key := "%d:%d" % [d, i]
 		if after >= _warn_time(i) and after < times[i] and not inspection["warned"].has(key):
 			inspection["warned"][key] = true
-			_say("广播：「请各班同学注意，学生会将于%s到各班检查，请坐回自己的座位。」" % ("五点五十" if i else "十二点五十"))
+			var warning := "广播：「请各班同学注意，学生会将于%s到各班检查，请坐回自己的座位。」" % ("五点五十" if i else "十二点五十")
+			if seat_card.armed == key: warning += " 名牌还竖着，我可以留在外面。"
+			_say(warning)
 		if before <= times[i] and after >= times[i] and not inspection["seen"].has(key):
 			inspection["seen"][key] = true
 			inspection["warned"][key] = true
@@ -910,6 +924,10 @@ func _inspection_tick(dt: float, ctx: Dictionary) -> void:
 			var item: Dictionary = queue.pop_front()
 			start_inspection(item, world_id, w, can_stand)
 		return
+	if c.get("proxy", false):
+		c["t"] = float(c["t"]) + dt
+		if float(c["t"]) >= INSPECT["duration"]: _inspection_finish(c, world_id, w)
+		return
 	if c["room"] != world_id:
 		c["room"] = world_id
 		c["points"] = _points_json(ring_points(w, can_stand))
@@ -956,15 +974,23 @@ func _inspection_finish(c: Dictionary, world_id: String, w: Vector2) -> void:
 	if inspection["settled"].has(key):
 		return
 	var good := bool(c["compliant"])
-	inspection["settled"][key] = "present" if good else "absent"
+	var proxy := bool(c.get("proxy", false))
+	inspection["settled"][key] = "proxy" if proxy else ("present" if good else "absent")
 	inspection["calm"] = 8.0
 	inspection["calm_room"] = String(c["room"])
 	_events.append({"kind": "inspection", "day": int(c["day"]), "slot": int(c["slot"]), "compliant": good})
 	_duty_settle(c, false, good)
+	if proxy:
+		_say("我捏着手里的底联。刚才那声「到」，确实不是我答的。" if seat_card.checked else "点名册上已经打了勾。我没有开过口。去保安岗核对底联。")
+		return
 	san = maxf(0.0, san - (INSPECT["good_san"] if good else INSPECT["bad_san"]))
 	_add_violation(-INSPECT["good_violation"] if good else INSPECT["bad_violation"], false)
 	tt = clampf(tt + (INSPECT["assimilation"] if good else -INSPECT["assimilation"]), 0.0, 100.0)
-	_say("我：黑影散开了。我一直坐在自己的座位上。" if good else "我：黑影散开了。它们记下了那个空着的座位。")
+	if good and key == "1:0":
+		_events.append({"kind": "rollcall_sound", "cue": "dread.chair", "caption": "旁边的空椅子响了一下"})
+		_say("我答了「到」。老师又念了一遍我的名字。旁边的空椅子响了一下。")
+	else:
+		_say("我：黑影散开了。我一直坐在自己的座位上。" if good else "我：黑影散开了。它们记下了那个空着的座位。")
 	_settle_san()
 	if tt >= 100.0:
 		_resolve_assimilation()
@@ -1025,6 +1051,9 @@ func _duty_prune() -> void:
 
 func _duty_grant(source: String) -> void:
 	var target := _next_check()
+	if seat_card.armed == target["id"]:
+		seat_card.armed = ""
+		_say("登记的是本人到场。我把桌上的名牌放平了。")
 	for duty: Dictionary in duties["list"]:
 		if duty["status"] == "pending" and duty["targetCheckId"] == target["id"]:
 			return
@@ -1053,6 +1082,7 @@ func _duty_settle(c: Dictionary, excused: bool, compliant: bool) -> void:
 
 func _duty_cancel(c: Dictionary) -> void:
 	var old := "%d:%d" % [int(c["day"]), int(c["slot"])]
+	if seat_card.armed == old: seat_card.armed = ""
 	var next := _next_check(c)
 	if _check_clock(next["day"], next["slot"]) <= game_clock():
 		next = _next_check()
@@ -1070,9 +1100,58 @@ func take_events() -> Array:
 
 ## Shared with developer staging; normal starts still go through the timed queue.
 func start_inspection(item: Dictionary, world_id: String, w: Vector2, can_stand: Callable) -> void:
+	var id := "%d:%d" % [int(item["day"]), int(item["slot"])]
+	if inspection_active() or inspection["settled"].has(id): return
+	var present := at_my_seat(world_id, w)
+	var proxy := seat_card.armed == id and not present and not _promised_check(id)
+	if seat_card.armed == id: seat_card.armed = ""
 	inspection["current"] = {"day": item["day"], "slot": item["slot"], "t": 0.0, "look": 0.0, "move": 0.0,
-		"compliant": at_my_seat(world_id,w), "room": world_id, "points": _points_json(ring_points(w,can_stand))}
+		"compliant": present, "proxy": proxy, "room": world_id, "points": [] if proxy else _points_json(ring_points(w,can_stand))}
+	if proxy:
+		seat_card.answered = id
+		seat_card.checked = false
+		tt = minf(100.0, tt + RollcallCard.COST)
+		_events.append({"kind": "rollcall_sound", "cue": "dread.call", "caption": "喇叭里传出一声「到」"})
+		_say("喇叭里有人替我答了声「到」。是我自己的声音。")
+		if tt >= 100.0: _resolve_assimilation()
+		return
 	_say("我：走廊里的声音一下子停了。一圈黑影站在附近——别动，也别看它们。")
+
+
+func _promised_check(id: String) -> bool:
+	for duty: Dictionary in duties["list"]:
+		if duty["status"] == "pending" and duty["targetCheckId"] == id: return true
+	return false
+
+
+func looking_at_card(pitch: float) -> bool:
+	return at_card_seat() and pitch <= RollcallCard.LOOK_DOWN
+
+
+func at_card_seat() -> bool:
+	return seated and seat_id == name_card_seat() and not inspection_pending()
+
+
+func name_card_seat() -> String:
+	return _campus.get("own_seat", {}).get("seatId", "")
+
+
+func read_seat_card(world_id: String, at: Vector2) -> Dictionary:
+	if not at_my_seat(world_id, at) or inspection_pending(): return {}
+	var next := _next_check()
+	var offer := seat_card.offer(next, day, _promised_check(next["id"]))
+	if offer.get("leave", false) and tt + RollcallCard.COST >= 100:
+		offer["text"] += "\n按我现在的同化，空座一开口就会到达上限。"
+	return offer
+
+
+## Recheck the actor's seat, the bell and the target when the choice arrives.
+func sign_seat_card(world_id: String, at: Vector2, target: String, leave: bool) -> String:
+	var offer := read_seat_card(world_id, at)
+	if not offer.has("target") or offer["target"] != target or offer["leave"] != leave:
+		return "时机已经过去。翻开笔记可以核对当前点名记录。"
+	seat_card.armed = target if leave else ""
+	return "我把名牌留给了空座。去保安岗找那张签收单。" if leave else "名牌放平了，这次我自己应到。"
 
 
 ## systems.js rewindGameTime: pressure high-water mark cannot be erased by rewinding.

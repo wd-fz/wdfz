@@ -1950,6 +1950,8 @@ func show_notes(data: Dictionary) -> void:
 		_notes_search.text = query
 	UIArt.heading(_notes_box, "当前调查" + ("  ·  %s路线" % _route_name(data) if not String(data.get("focus", "")).is_empty() else ""), UIArt.route_hint(String(data.get("focus", ""))), UISkin.ACCENT)
 	_note_label(String(data["goal"]), Color.WHITE)
+	if not String(data.get("seat_record", "")).is_empty():
+		_note_label(String(data["seat_record"]), UISkin.WARM)
 	var routes: Array = data["routes"]
 	if routes.size() > 1:
 		var row := HFlowContainer.new()

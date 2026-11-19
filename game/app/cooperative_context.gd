@@ -22,7 +22,7 @@ static func base(a: CooperativeActor) -> Dictionary:
 		"clock": clock, "game_clock": clock, "dead": a.fate().dead, "diff": a.fate().diff,
 		"moving": a.moving, "running": a.running, "run": a.running, "seated": s.seated, "san": s.san, "viol": s.viol,
 		"hiding": bool(a.watcher().hide["on"]), "night": SchoolClock.is_night(s.tsec), "need_where": SchoolClock.need_where(s.tsec),
-		"meal": meal, "rest_mul": float(pressure["rest"]), "pressure_anomaly": float(pressure["anomaly"]), "exam": s.exam,
+		"meal": meal, "rollcall_claim": s.seat_card.outstanding(), "rest_mul": float(pressure["rest"]), "pressure_anomaly": float(pressure["anomaly"]), "exam": s.exam,
 		"held": a.bag().has("phone"), "tech": a.talent().has("tech"), "classroom": a.location() == a.own_seat.get_slice(":", 0) and in_classroom,
 		"has": a.bag().has, "add": a.bag().add, "remove": a.bag().remove,
 		"busy": anomaly_active or inspection_pending or patrol_chase,
@@ -69,16 +69,20 @@ static func patrol(a: CooperativeActor, common: Dictionary = {}) -> Dictionary:
 	return c
 
 
-static func investigation(a: CooperativeActor, common: Dictionary = {}) -> Dictionary:
+static func investigation(a: CooperativeActor, common: Dictionary = {}, reading: bool = false) -> Dictionary:
 	var c := base(a) if common.is_empty() else common.duplicate()
 	var f := a.feature(&"campus.facilities") as FacilitiesModule
 	var r := a.feature(&"story.routes") as RoutesModule
 	var p := a.feature(&"phone.network") as PhoneModule
 	var g := a.feature(&"garage.world") as GarageModule
 	var left: Array = []
+	if reading:
+		c["radio_goal"] = (a.feature(&"story.broadcast") as BroadcastModule).notebook_goal(a.bag().has, a.school().day)
+		c["exchange_goal"] = (a.feature(&"story.exchange") as ExchangeModule).notebook_goal()
 	for floor_id: int in FacilitiesModule.BLUEPRINT_FLOORS:
 		if not f.portal["blueprints"].has(floor_id): left.append(floor_id)
 	c.merge({"place": a.school().place_name(a.location(), float(a.pose["position"][1])), "has_phone": a.bag().has("phone"), "has_coin": a.bag().has("coin"), "has_pill": a.bag().has("pill"), "bag_full": a.bag().bag.size() >= a.bag().capacity(),
+		"reader": a.own_seat,
 		"car": a.talent().car(a.bag().has("key")), "car_tried": g.car_tried.size(), "car_used": g.car_used, "hacked": r.hacked, "data": r.data_synced,
 		"face_done": int(r.face_quiz.get("done", -1)), "spot_comp": f.spots.has("comp"), "spot_data": f.spots.has("data"),
 		"portal": {"diary": f.portal["diary"], "sketch": f.portal["sketch"], "open": f.portal["open"], "count": f.blueprint_count(), "floors_left": left, "need": f.portal_need_text()},

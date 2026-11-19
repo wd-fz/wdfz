@@ -178,6 +178,7 @@ func personal(a: CooperativeActor, dt: float) -> void:
 	sim.inventory.finish_search(a)
 	for e: Dictionary in a.school().take_events():
 		if e["kind"] == "absence": sim.patrol.permanent[a.id] = String(e["id"])
+		elif e["kind"] == "rollcall_sound": a.event("sound", {"cue": e["cue"], "options": {"k": .65, "caption": e["caption"]}})
 	var phone := a.feature(&"phone.network") as PhoneModule
 	phone.tick(dt, false)
 	a.terminal = phone.terminal_open
@@ -353,7 +354,15 @@ func command(a: CooperativeActor, data: Dictionary) -> Dictionary:
 				(a.feature(&"campus.facilities") as FacilitiesModule).think()
 				drain(a, "facilities")
 		"notes_focus":
-			(a.feature(&"story.investigation") as InvestigationModule).set_focus(String(data.get("route", "")))
+			var notebook := a.feature(&"story.investigation") as InvestigationModule
+			notebook.set_context(CooperativeContext.investigation(a, ctx, true))
+			if notebook.set_focus(String(data.get("route", ""))): sim.checkpoint_requested.emit()
+		"seat_card":
+			var offer := a.school().read_seat_card(a.location(), ctx["w"])
+			if offer.is_empty(): return {"ok": false, "error": "坐回自己的座位，才够得着桌上的名牌。"}
+			var notebook := a.feature(&"story.investigation") as InvestigationModule
+			if notebook.open_desk(): drain(a, "investigation")
+			_choice(a, "seat_card", offer)
 		"desk":
 			if lease(a, "investigation"):
 				(a.feature(&"story.investigation") as InvestigationModule).open_desk()
@@ -586,6 +595,11 @@ func choose(a: CooperativeActor, index: int) -> void:
 		_offer_time(a, 6.0, {"kind": "supply"})
 		return
 	match source:
+		"seat_card":
+			if index == 0 and choice.has("target"):
+				var text := a.school().sign_seat_card(a.location(), ctx["w"], choice["target"], choice["leave"])
+				a.event("notice", {"text":text})
+				sim.checkpoint_requested.emit()
 		"paper":
 			if index == 0: (a.feature(&"story.paper_plane") as PaperPlaneModule).fold()
 			else: (a.feature(&"story.paper_plane") as PaperPlaneModule).fail("drop")
@@ -677,6 +691,7 @@ func apply_event(a: CooperativeActor, source: String, e: Dictionary) -> void:
 			var notebook := a.feature(&"story.investigation") as InvestigationModule
 			notebook.set_context(CooperativeContext.investigation(a))
 			notebook.record(String(e["id"]), String(e["text"]), "事实", String(e.get("source", "")))
+			if e["id"] == "parking": a.school().seat_card.check_counterfoil()
 		"ending": _offer_ending(a, String(e["id"]))
 		"travel":
 			var world := String(e["world"])

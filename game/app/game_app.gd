@@ -425,9 +425,9 @@ func _opening_done(_skipped: bool) -> void:
 		return
 	player.enabled = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
-	ui.show_notice("我：第四节。我坐在自己的位子上——至少，名牌上写的是我的名字。")
 	speedrun.start()
 	fact({"kind": "opening"})
+	ui.show_notice(RollcallCard.INVITATION)
 
 
 ## TalentPick: the new-game talent screen (seven cards and a random pick).
@@ -1161,7 +1161,7 @@ func _refresh_interaction_prompt() -> void:
 		ui.show_prompt("那张名单")
 		return
 	if school() != null and school().seated:
-		ui.show_prompt("站起来")
+		ui.show_prompt("读桌上的名牌" if school().looking_at_card(player.look_pitch()) else "站起来")
 		return
 	if player.has_focus():
 		ui.show_prompt(player.focus_prompt())
@@ -1227,7 +1227,8 @@ func _lift_crowd_events() -> void:
 
 func _campus_interact() -> void:
 	if is_instance_valid(lan) and lan.playing():
-		lan.send("interact")
+		if school() != null and school().looking_at_card(player.look_pitch()) and (anomaly() == null or not anomaly().near_roster()): lan.send("seat_card")
+		else: lan.send("interact")
 		return
 	var rules := campus()
 	if session == null or get_tree().paused or rules == null or not rules.knows(session.world_id):
@@ -1248,9 +1249,10 @@ func _campus_interact() -> void:
 		var bag_here := items()
 		weird.use_roster(bag_here != null and (bag_here.has("pen") or bag_here.has("chalk")))
 		return
-	# tryInteract: a seated player stands up first.
+	# The card lies flat on the player's own desk. Looking up leaves E as stand up.
 	if day_rules != null and day_rules.seated:
-		_stand_up("我站了起来。")
+		if day_rules.looking_at_card(float(pose["pitch"])): _read_seat_card()
+		else: _stand_up("我站了起来。")
 		return
 	var lying := _ground_pick_index()
 	if lying >= 0:
@@ -1562,6 +1564,7 @@ func _school_step(delta: float, rules: CampusModule, advance_calendar: bool = tr
 		ui.show_notice(text)
 	var frozen := not router.current.advances_calendar
 	var period := day_rules.period_text(frozen)
+	if not frozen: period = first_lunch_lead(day_rules, period)
 	var tale_now := tales()
 	if tale_now != null and not frozen and not day_rules.inspection_active() and not day_rules.inspection_upcoming() and tale_now.checkup_period() != "":
 		period = tale_now.checkup_period()
@@ -1694,6 +1697,42 @@ func _touch_hot(index: int) -> void:
 		_apply_result(items().use_hot(index,school().tsec))
 
 
+func first_lunch_lead(rules: SchoolModule, period: String) -> String:
+	if rules.day != 1 or not rules.seated or session.world_id != "teach1" or rules.inspection.settled.get("1:0") != "present": return period
+	if not period.begins_with("午饭") and not period.begins_with("午休"): return period
+	var inv := investigation()
+	if inv != null and (inv.entries.is_empty() or (inv.entries.size() == 1 and inv.visible("desk"))):
+		return period + " · 去北门旁保安岗查签名"
+	return period
+
+
+func _read_seat_card() -> void:
+	var rules := school()
+	var room := campus().room(session.world_id) as Dictionary
+	var here := CampusGeometry.to_world(room, player.position.x, player.position.z)
+	var offer := rules.read_seat_card(session.world_id, here)
+	if offer.is_empty():
+		ui.show_notice("坐回自己的座位，才够得着桌上的名牌。")
+		return
+	var inv := investigation()
+	if inv != null:
+		inv.set_context(_invest_context())
+		if inv.open_desk(): _apply_invest_events()
+	_choice_count += 1
+	var mine := _choice_count
+	_choice_handler = func(index: int) -> void:
+		if mine != _choice_count or index != 0 or not offer.has("target"): return
+		var at := CampusGeometry.to_world(campus().room(session.world_id), player.position.x, player.position.z)
+		var answer := rules.sign_seat_card(session.world_id, at, offer["target"], offer["leave"])
+		save_game(true)
+		ui.show_notice(answer)
+	player.enabled = false
+	player.clear_input()
+	ui.clear_touch()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	ui.show_choice(offer["text"], offer["labels"], false)
+
+
 func _open_manual() -> void:
 	if is_instance_valid(lan) and lan.playing():
 		lan.manual()
@@ -1718,7 +1757,10 @@ func _open_manual() -> void:
 				facilities().set_context(_facility_context())
 				facilities().think()
 				_apply_facility_events()
-	ui.show_choice("手册",["背包","笔记","地图","课堂互动","逃生思路"])
+			5: _read_seat_card()
+	var pages := ["背包","笔记","地图","课堂互动","逃生思路"]
+	if school() != null and school().at_card_seat(): pages.append("我桌上的名牌")
+	ui.show_choice("手册", pages)
 
 
 func _open_bag() -> void:
@@ -2129,6 +2171,8 @@ func _patrol_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, 
 			fact({"kind": "exam", "phase": e["phase"], "pass": e.get("pass", false), "day": e.get("day", 1)})
 		elif e["kind"] == "inspection":
 			fact({"kind": "inspection", "day": e["day"], "slot": e["slot"], "compliant": e["compliant"]})
+		elif e["kind"] == "rollcall_sound":
+			audio.play(e["cue"], {"k": .65, "caption": e["caption"]})
 	watcher.set_context(_patrol_context(room, pose))
 	watcher.tick(delta)
 	for e: Dictionary in watcher.take_events():
@@ -2290,6 +2334,8 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 
 func _facility_context() -> Dictionary:
 	var ctx := _facility_context_base()
+	ctx["rollcall_claim"] = school().seat_card.outstanding()
+	ctx["hotwire"] = talent() != null and talent().has("drive")
 	var cars := garage()
 	ctx["car_row"] = int(cars.car_right.split(":")[1]) + 1 if cars != null and not cars.car_right.is_empty() else 1
 	return ctx
@@ -2384,7 +2430,7 @@ func _apply_facility_events() -> void:
 			"bell":
 				audio.play("event.bigBell")
 			"save":
-				save_game()
+				save_game(true)
 			"map":
 				ui.show_list("地图 · 记下的地方", fac.spot_rows().map(func(r: Dictionary) -> Dictionary: return {"text": r["name"] if r["on"] else "？？？", "on": r["on"], "memo": ""}))
 			"travel":
@@ -2877,6 +2923,9 @@ func _invest_context() -> Dictionary:
 	if cars != null and not cars.car_right.is_empty():
 		row = int(cars.car_right.split(":")[1]) + 1
 	return {"day": school().day, "place": school().place_name(session.world_id, float(p[1])), "has_key": has_key, "has_phone": bag != null and bag.has("phone"),
+		"reader": school().name_card_seat() if is_instance_valid(lan) and lan.playing() else "solo",
+		"radio_goal": broadcast().notebook_goal(bag.has, school().day) if broadcast() != null and bag != null else "",
+		"exchange_goal": exchange().notebook_goal() if exchange() != null else "",
 		"has_coin": bag != null and bag.has("coin"), "has_pill": bag != null and bag.has("pill"), "bag_full": bag != null and bag.bag.size() >= 8,
 		"car": talent().car(has_key) if talent() != null else {"ok": has_key, "via": "key" if has_key else ""}, "car_tried": cars.car_tried.size() if cars != null else 0,
 		"car_used": cars != null and cars.car_used, "hacked": rt != null and rt.hacked, "data": rt != null and rt.data_synced,
@@ -2891,6 +2940,7 @@ func _record(e: Dictionary) -> void:
 		return
 	inv.set_context(_invest_context())
 	inv.record(String(e["id"]), String(e["text"]), String(e.get("kind", "事实")), String(e.get("source", "")))
+	if e["id"] == "parking": school().seat_card.check_counterfoil()
 
 
 func _invest_do(action: Callable) -> void:
@@ -2911,7 +2961,7 @@ func _apply_invest_events() -> void:
 			"say":
 				ui.show_notice(String(e["text"]))
 			"save":
-				save_game()
+				save_game(true)
 			"spots":
 				if facilities() != null:
 					for n: String in e["names"]:
@@ -2961,7 +3011,7 @@ func _show_notes(query: String = "") -> void:
 	var listing := inv.list(query)
 	ui.show_notes({"goal": inv.goal(), "focus": focus, "routes": routes, "recent": listing["recent"], "groups": listing["groups"],
 		"progress": inv.progress(), "found": listing["found"], "query": query,
-		"duty": school().duty_summary(), "permanent": bool(patrol().pat["permanent"])})
+		"seat_record": school().seat_card.entry(), "duty": school().duty_summary(), "permanent": bool(patrol().pat["permanent"])})
 
 
 func _notes_focus(route: String) -> void:
@@ -3691,6 +3741,8 @@ func _show_classmates(mates: ClassmatesModule, room: Variant, me: Vector2, dt: f
 				if cue == "foley.chalk": sound["caption"] = "粉笔擦过黑板"
 				audio.play(cue,sound))
 	_mates_nodes.set_normal(fake_normal()!=null and fake_normal().active())
+	if key == "teach1":
+		_mates_nodes.show_name_card(school().name_card_seat(), session.character_id, school().seat_card)
 	var bell: bool = broadcast() != null and broadcast().b["phase"] == "bell"
 	var stare: bool = anomaly() != null and anomaly().an.get("active",false) and anomaly().an.get("id") == "stare"
 	_mates_nodes.advance(dt,me,school().viol,mates.state.get("door"),stare,bell,patrol().nav if patrol()!=null else null)
@@ -4867,7 +4919,7 @@ func _apply_broadcast_events() -> void:
 				school().san = maxf(school().san + float(e["amount"]), float(e.get("min", -INF)))
 			"save":
 				if not story().dead:
-					save_game()
+					save_game(true)
 			"fact":
 				fact({"kind": "broadcast", "what": e["what"], "real": e.get("real", true)})
 			"job":

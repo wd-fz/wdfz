@@ -6,10 +6,41 @@ func run() -> void:
 	await garage_and_lockers()
 	await games_and_dream()
 	await records_and_input()
+	await personal_name_cards()
 	sim.queue_free()
 	await process_frame
 	print("LAN EDGES: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+func personal_name_cards() -> void:
+	await fresh()
+	var a := sim.actor("a")
+	var b := sim.actor("b")
+	check(command(a, "seat_card").get("ok", false) and a.choice.get("source") == "seat_card", "desk card opens from a real, assigned seat")
+	var dialog := saved("open seat card")
+	sim.restore(dialog)
+	a = sim.actor("a")
+	b = sim.actor("b")
+	check(a.choice.get("source") == "seat_card", "an open desk dialog restores through the cooperative save validator")
+	command(a, "choice", {"index":0})
+	check(a.school().seat_card.armed == "1:0" and b.school().seat_card.armed.is_empty(), "a student's answer cannot spend a teammate's name")
+	command(a, "interact")
+	check(not command(a, "seat_card").get("ok", true), "standing away from the desk cannot arm the card")
+	var stand := func(_p: Vector2) -> bool: return true
+	for person: CooperativeActor in [a,b]:
+		person.school().start_inspection({"day":1,"slot":0},person.location(),person.point(CampusData.rooms()),stand)
+	check(a.school().inspection.current.proxy and not b.school().inspection.current.proxy, "the same team bell permits individual attendance outcomes")
+	var during := saved("rollcall in two places")
+	sim.restore(during)
+	check(sim.actor("a").school().seat_card.outstanding(), "the outstanding counterfoil survives a team resume")
+	a = sim.actor("a")
+	b = sim.actor("b")
+	check(tile(b, "guard1", "k"), "the teammate reaches the guard's real counter")
+	command(b, "interact")
+	check(a.school().seat_card.outstanding(), "a teammate reading the shared register cannot clear personal debt")
+	check(tile(a, "guard1", "k"), "the borrower reaches the guard's real counter")
+	command(a, "interact")
+	check(a.school().seat_card.checked, "reading the same counter personally releases natural recovery")
 
 func agree_time() -> void:
 	for id: String in ["b", "c"]: command(sim.actor(id), "time_confirm", {"accept": true})
