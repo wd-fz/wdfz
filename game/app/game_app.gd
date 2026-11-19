@@ -3125,10 +3125,9 @@ func _show_map(selected: String = "") -> void:
 		var notebook := investigation()
 		notebook.set_context(_invest_context())
 		var landmark := notebook.paper_landmark()
-		var view := ui.open_map(options, selected, "走过 %d 处室内" % ids.size(), ("◎ 当前调查地点　" + landmark) if not landmark.is_empty() else "")
 		var out: Dictionary = CampusData.layout("out")
 		var objects: Array = out["objects"]
-		var me := Vector2.ZERO
+		var me := Vector2.INF
 		var p: Array = pose["position"]
 		var sc := float(out.get("SC", 2.0))
 		if here_room != null:
@@ -3143,8 +3142,13 @@ func _show_map(selected: String = "") -> void:
 		elif landmark == "保安岗":
 			for o: Dictionary in objects:
 				if o.get("id") == "guard": plan["target"] = Vector2(o["x"] + o["w"] / 2.0, o["y"] + o["h"] / 2.0)
+		var head := "你在%s　北 ↑" % (String(here_room["name"]) if here_room != null else "校园室外")
+		var note := "走过 %d 处室内" % ids.size()
+		if plan.has("target"):
+			note = MapView.landmark_note(landmark, plan["target"] - me, here_room != null, school().seat_card.clearance > 0)
 		plan["me"] = me
 		plan["ang"] = yaw_ang
+		var view := ui.open_map(options, selected, head, note)
 		view.show_plan(plan)
 		return
 	var r: Dictionary = campus().room(selected)

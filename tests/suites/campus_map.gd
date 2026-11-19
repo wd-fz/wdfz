@@ -1,6 +1,9 @@
 extends "res://tests/support/test_suite.gd"
 
 func test_original_draw() -> void:
+	check(MapView.landmark_note("保安岗", Vector2(0, -250), true, false).contains("北侧"), "north on the campus plan is smaller Y")
+	check(MapView.landmark_note("西小门", Vector2.ZERO, false, true).contains("就在附近。向校外跨过白线"), "at the marked exit the map names the remaining physical action")
+	check(MapView.landmark_note("保安岗", Vector2.INF, true, false) == "保安岗 · 找柜台上的底联", "an unmapped room still names the destination without inventing a bearing")
 	var bytes := FileAccess.get_file_as_bytes("res://tests/fixtures/map-reference.json.gz")
 	var source: Dictionary = JSON.parse_string(bytes.decompress_dynamic(4*1024*1024,FileAccess.COMPRESSION_GZIP).get_string_from_utf8())
 	var data := CampusData.campus_map()

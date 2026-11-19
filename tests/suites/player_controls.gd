@@ -200,6 +200,7 @@ func test_west_gate_walk(attendance: String = "ink") -> void:
 	for button: Button in app.ui._notes_box.find_children("*","Button",true,false):
 		if button.text == "在校园图上找西小门": button.pressed.emit()
 	check(is_instance_valid(app.ui.map_view) and app.ui.map_view.plan.get("target") == app.routes().west_gate_center() / 2, "the notebook opens the correct marked campus destination")
+	check(app.ui._map_head.text.contains("保安岗") and app.ui._map_note.text.contains("西南") and app.ui._map_note.text.contains("闸机"), "the map gives a readable origin, bearing and action at phone size")
 	if is_instance_valid(app.ui.map_panel): app.ui.map_panel.hide()
 	var reader := app.routes().west_gate_center() + Vector2(44, -RollcallCard.EXIT_NORTH)
 	app.travel("out", _campus_pose(null, reader, PI), false)

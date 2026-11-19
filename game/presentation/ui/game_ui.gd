@@ -2084,7 +2084,7 @@ func open_map(options: Array, selected: String, head: String, note: String) -> M
 		outer.add_child(_map_scroll)
 		_map_note = Label.new()
 		_map_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_map_note.modulate = Color(1, 1, 1, 0.6)
+		_map_note.modulate = Color(1, 1, 1, 0.88)
 		outer.add_child(_map_note)
 		_map_close_button = Button.new()
 		_map_close_button.text = "关闭"

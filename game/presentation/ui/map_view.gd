@@ -30,6 +30,16 @@ var plan: Dictionary = {}        # {bound, objects, gates, me, ang}
 var plan_scale := 0.4
 
 
+## The printed plan faces north. Give the same bearing in text at phone sizes.
+static func landmark_note(landmark: String, offset: Vector2, indoors: bool, cleared: bool) -> String:
+	const DIRECTIONS := ["东", "东南", "南", "西南", "西", "西北", "北", "东北"]
+	var action := "找柜台上的底联" if landmark == "保安岗" else ("向校外跨过白线" if cleared else "到闸机前交底联")
+	if not offset.is_finite(): return "%s · %s" % [landmark, action]
+	if offset.length() <= 22.0: return "%s就在附近。%s。" % [landmark, action]
+	var bearing: String = DIRECTIONS[posmod(roundi(offset.angle() / (PI / 4.0)), DIRECTIONS.size())]
+	return "%s在%s侧。%s%s。" % [landmark, bearing, "出楼后" if indoors else "", action]
+
+
 func _init() -> void:
 	size_flags_horizontal = Control.SIZE_EXPAND | Control.SIZE_SHRINK_CENTER
 	size_flags_vertical = Control.SIZE_SHRINK_BEGIN
@@ -270,7 +280,8 @@ func _draw_plan() -> void:
 		var pin: Vector2 = (plan["target"] - Vector2(x0, y0)) * sc
 		draw_arc(pin, 9, 0, TAU, 24, Color("#f4cd7b"), 2.5, true)
 		draw_circle(pin, 2.5, Color("#f4cd7b"))
-	var me_pos: Vector2 = plan["me"]
+	var me_pos: Vector2 = plan.get("me", Vector2.INF)
+	if not me_pos.is_finite(): return
 	var mp := Vector2((me_pos.x - x0) * sc, (me_pos.y - y0) * sc)
 	var green := Color("#79c8a4")
 	draw_circle(mp, 4.5, green)
