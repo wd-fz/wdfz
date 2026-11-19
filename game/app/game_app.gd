@@ -2203,7 +2203,7 @@ func _patrol_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, 
 		elif e["kind"] == "exam":
 			fact({"kind": "exam", "phase": e["phase"], "pass": e.get("pass", false), "day": e.get("day", 1)})
 		elif e["kind"] == "inspection":
-			fact({"kind": "inspection", "day": e["day"], "slot": e["slot"], "compliant": e["compliant"]})
+			fact(e)
 		elif e["kind"] == "rollcall_sound":
 			audio.play(e["cue"], {"k": .65, "caption": e["caption"]})
 	watcher.set_context(_patrol_context(room, pose))

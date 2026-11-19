@@ -139,6 +139,7 @@ func test_rollcall_card() -> void:
 	var away := {"world_id":"out", "w":me, "moving":true, "ang":0.0, "pitch":0.0}
 	rules._inspection_tick(8, away)
 	check(rules.inspection.settled.get("1:0") == "proxy" and rules.viol == 12 and rules.san == 80 and not rules.permit(), "a moving borrower receives neither the absence penalty nor personal attendance credit")
+	check(rules.take_events().any(func(event: Dictionary) -> bool: return event["kind"] == "inspection" and event.get("result") == "proxy" and not event["compliant"]), "the run log receives the borrowed answer with no personal attendance credit")
 	rules._tt_tick(5, "自由", "out")
 	check(rules.tt == 30 and rules.seat_card.entry().contains("保安岗"), "outstanding evidence holds natural decay and names the recovery action")
 	check(rules.seat_card.check_counterfoil() and not rules.seat_card.check_counterfoil(), "checking a counterfoil is idempotent")

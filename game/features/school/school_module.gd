@@ -987,7 +987,7 @@ func _inspection_finish(c: Dictionary, world_id: String, w: Vector2) -> void:
 	if good: seat_card.attended(key)
 	inspection["calm"] = 8.0
 	inspection["calm_room"] = String(c["room"])
-	_events.append({"kind": "inspection", "day": int(c["day"]), "slot": int(c["slot"]), "compliant": good})
+	_events.append({"kind": "inspection", "day": int(c["day"]), "slot": int(c["slot"]), "compliant": good, "result": inspection["settled"][key]})
 	_duty_settle(c, false, good)
 	if proxy:
 		_say("我捏着手里的底联。刚才那声「到」，确实不是我答的。" if seat_card.checked else "点名册上已经打了勾。我没有开过口。去保安岗核对底联。")
