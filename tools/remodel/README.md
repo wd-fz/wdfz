@@ -33,4 +33,10 @@ godot --headless --path . --import
 
 每件衣服是 GLB 里单独的网格，名字是 `dressed_<kind>_<衣物>`（skin、jacket、trim、zip、trousers、shoes、shirt），游戏按衣物分别给材质（`DeathShots._fig_cloth`）。各衣物之间的分界沿距离场的交界线把三角形切开（不是整块三角形归类），所以边缘不呈锯齿。2 毫米体素、每种约 2 万三角面；无脸的头作为 skin 保留（死亡演出在脖子上换成 `HorrorKit` 的头）。身高、站位与原人形相同（`tests/suites/remodel.gd` 的 `test_dressed` 对照包围盒）。
 
-这组死亡演出衣物供死亡镜头使用。开场的主角、老师和同班同学由 `student_cast.py` 生成。老师使用独立骨架模型，同班同学共用两种烘焙坐姿。进入里世界后，教室恢复剪影。
+这组死亡演出衣物供死亡镜头使用。开场的主角、老师和同班同学由 `student_cast.py` 生成。老师使用独立骨架模型，同班同学共用两种烘焙坐姿。
+
+## 里世界人物与字迹
+
+运行 `python3 tools/remodel/otherworld.py` 生成坐姿同学、站姿同学、教师、巡察者与车库人影。可传入 `--base /path/to/hm08.obj` 离线重建。脚本复用选角模型的骨架和步态，以固定的 HM08 网格雕出眼窝、面颊和嘴唇。每人显示一个身体和一张独立转动的脸，共用一个不透明材质。坐姿已经烘焙，走动和做操的人物使用骨骼动画。模型位于 `assets/campus/figures/otherworld/`。
+
+运行 `python3 tools/remodel/anomaly_prints.py` 生成值日黑板、晚自习点名册、字形图集和地面人影。依赖 NumPy、Pillow 和 Noto Sans CJK Regular 字体集，`--font` 可指定该字体集的位置。游戏根据异象记录的时刻、经过秒数与当前角色，在场景里写字和划名。

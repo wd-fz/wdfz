@@ -9,6 +9,9 @@ var seed_value: int = 42
 var _random: int
 var items: Array[Node3D] = []
 var _tier := -1
+var _writing: AnomalyWriting
+var _visage: Node3D
+var _shadow_yaw := 0.0
 
 
 func _rand() -> float:
@@ -98,6 +101,7 @@ func _figure_horror(hex: String, p: Vector3, type: String, size: float, opts: Di
 	head.scale=Vector3.ONE*size*head_size*1.3 # the kit head is a little smaller than the model's own
 	head.position=(spec[1] as Vector3)*size
 	n.add_child(head)
+	_visage=head
 	# A white shirt collar at the neck root, so the dark body reads as a school uniform.
 	var ring:=TorusMesh.new()
 	ring.inner_radius=.055
@@ -148,28 +152,53 @@ static func _bare_neck_mesh(y0: float, y1: float) -> ArrayMesh:
 	return st.commit()
 
 
-static func wall_face(room: Variant, feet: Vector3) -> Dictionary:
+static func _open_wall(room: Dictionary, tile: Vector2i, dir: Vector2i) -> bool:
+	var next := tile+dir
+	if mini(mini(tile.x,next.x),mini(tile.y,next.y))<0 or maxi(tile.x,next.x)>=int(room.cols) or maxi(tile.y,next.y)>=int(room.rows): return false
+	return String(room.grid[tile.y]).substr(tile.x,1)=="#" and String(room.grid[next.y]).substr(next.x,1)=="."
+
+
+static func wall_face(room: Variant, feet: Vector3, width: float = .9, reach: float = 12.0) -> Dictionary:
 	if room==null: return {}
-	var world:=CampusGeometry.to_world(room,feet.x,feet.z)
-	var c0:=floori((world.x-room["ox"])/room["tw"])
-	var r0:=floori((world.y-room["oy"])/room["th"])
-	var best:=Vector2i(-1,-1)
-	var distance:=2147483647
-	for r in int(room["rows"]):
-		for c in int(room["cols"]):
-			if String(room["grid"][r]).substr(c,1)!="#": continue
-			var d:=absi(r-r0)+absi(c-c0)
-			if d<distance:
-				distance=d
-				best=Vector2i(c,r)
-	if best.x<0: return {}
-	var normal:=Vector2.ZERO
-	if best.y!=r0: normal.y=1 if r0>best.y else -1
-	elif best.x!=c0: normal.x=1 if c0>best.x else -1
-	else: normal.y=1
-	var at:=CampusGeometry.tile_center(room,best.x,best.y)+normal*Vector2(room["tw"],room["th"])*.5
-	var point:=CampusGeometry.to_scene(room,at)
-	return {"p":Vector3(point.x,0,point.y),"n":Vector3(normal.x,0,normal.y)}
+	var best := INF
+	var target := {}
+	var player := Vector2(feet.x,feet.z)
+	var tile_size := Vector2(room.tw,room.th)*CampusGeometry.U2M
+	var furniture: Array[Rect2] = []
+	for box: Dictionary in room.get("boxes",[]):
+		var footprint := Rect2(box.x0,box.z0,box.x1-box.x0,box.z1-box.z0)
+		if footprint.get_center().distance_squared_to(player)<144: furniture.append(footprint)
+	var player_world := CampusGeometry.to_world(room,feet.x,feet.z)
+	var cell := Vector2i(floori((player_world.x-room.ox)/room.tw),floori((player_world.y-room.oy)/room.th))
+	var radius := Vector2i(ceili(reach/tile_size.x)+1,ceili(reach/tile_size.y)+1)
+	for row in range(maxi(0,cell.y-radius.y),mini(int(room.rows),cell.y+radius.y+1)):
+		for col in range(maxi(0,cell.x-radius.x),mini(int(room.cols),cell.x+radius.x+1)):
+			var tile := Vector2i(col,row)
+			if String(room.grid[row]).substr(col,1)!="#": continue
+			var center := CampusGeometry.to_scene(room,CampusGeometry.tile_center(room,col,row))
+			for dir: Vector2i in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
+				if not _open_wall(room,tile,dir): continue
+				var point := center + Vector2(dir)*tile_size*.5
+				var gap := player-point
+				if gap.dot(Vector2(dir))<-.02 or gap.length_squared()>reach*reach or gap.length_squared()>=best: continue
+				var tangent := Vector2i(dir.y,-dir.x)
+				var tiles_needed := ceili((width/(tile_size.x if dir.y else tile_size.y)-1.0)*.5)
+				var score := gap.length_squared()
+				for offset in range(1,tiles_needed+1):
+					if not _open_wall(room,tile+tangent*offset,dir) or not _open_wall(room,tile-tangent*offset,dir): score+=100.0
+				if score>=best: continue
+				var side := Vector2(tangent)*(width*.5+.05)
+				var clear := Rect2(point-side+Vector2(dir)*.045,Vector2.ZERO).expand(point+side+Vector2(dir)*1.05).abs()
+				for obstruction in furniture:
+					if clear.intersects(obstruction):
+						score+=140.0
+						break
+				if score>=best: continue
+				var reading_spot := point+Vector2(dir)*.15
+				if not CampusGeometry.tile_los(room,player_world,CampusGeometry.to_world(room,reading_spot.x,reading_spot.y),col,row,{}): continue
+				best=score
+				target={"p":Vector3(point.x,0,point.y),"n":Vector3(dir.x,0,dir.y)}
+	return target
 
 
 func _point(room: Variant, point: Dictionary) -> Vector3:
@@ -177,7 +206,28 @@ func _point(room: Variant, point: Dictionary) -> Vector3:
 	return Vector3(p.x,0,p.y)
 
 
-func build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vector2, tier: int) -> void:
+## Find a nearby clear aisle within the specified half of the room.
+static func _aisle_spot(room: Variant, origin: Vector3, direction: Vector2) -> Vector3:
+	var here := Vector2(origin.x,origin.z)
+	var forward := direction.normalized() if not direction.is_zero_approx() else Vector2.DOWN
+	for distance: float in [1.06,1.58,.79,2.05]:
+		for angle: float in [0.0,.47,-.47,.94,-.94,1.27,-1.27]:
+			var point := here + forward.rotated(angle)*distance
+			if room != null:
+				var dest := CampusGeometry.to_world(room,point.x,point.y)
+				if CampusGeometry.tile_at(room,dest) not in [".","d"]: continue
+				if not CampusGeometry.tile_los(room,CampusGeometry.to_world(room,here.x,here.y),dest,-1,-1,{}): continue
+				var clear := true
+				for box: Dictionary in room.get("boxes",[]):
+					if point.x>box.x0-.15 and point.x<box.x1+.15 and point.y>box.z0-.15 and point.y<box.z1+.15:
+						clear = false
+						break
+				if not clear: continue
+			return Vector3(point.x,origin.y,point.y)
+	return Vector3.INF
+
+
+func build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vector2, tier: int, student: String = StudentCast.DEFAULT) -> void:
 	kind=id
 	_tier=tier
 	_random=seed_value
@@ -186,8 +236,12 @@ func build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vect
 	match id:
 		"exercise":
 			for i in 6:
-				var f:=_figure("1b2226",p+Vector3(-5+i*2,0,.3 if i%2 else -.3))
-				f.rotation=Vector3(-.25,PI,0)
+				var pupil := OtherworldFigure.make("person")
+				pupil.position = p+Vector3(-5+i*2,0,.3 if i%2 else -.3)
+				pupil.scale = Vector3(.98,1.39,.98)
+				add_child(pupil)
+				items.append(pupil)
+				pupil.exercise_pose(0,i,Vector2(feet.x-pupil.position.x,feet.z-pupil.position.z))
 		"hand": _hand(tier,p,feet)
 		"leak":
 			var pts: Array=d.get("pts",[])
@@ -234,24 +288,38 @@ func build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vect
 			for i in 16: _box("f4f8ff",1,Vector3(1.5,.06,.22),p+Vector3(-14+i*1.9,2.94,0),true).visible=false
 			_box("3a444a",1,Vector3(1.3,.012,1.3),p+Vector3(0,.012,0),true).visible=false
 		"chalk","roster":
-			var face:=wall_face(room,feet)
-			var at: Vector3=face.get("p",p)
-			var normal: Vector3=face.get("n",Vector3.ZERO)
-			var side:=normal.x!=0
-			if id=="chalk":
-				_box("171c20",1,Vector3(.035 if side else 4.2,1.02,4.2 if side else .035),at+normal*.19+Vector3(0,1.58,0),true)
-				for i in 5:
-					var width:=1.4+i*.42
-					_box("e6e8e2",.92,Vector3(.03 if side else width,.055,width if side else .03),at+normal*.22+Vector3(0,2-i*.13,0),true)
+			var origin := _point(room,{"x":d.rx,"y":d.ry}) if d.has("rx") and d.has("ry") else feet
+			var reach := AnomalyModule.ROSTER_REACH*CampusGeometry.U2M-.35 if id=="roster" else 12.0
+			var panel := wall_face(room,origin,.90 if id=="roster" else 2.92,reach)
+			_writing=AnomalyWriting.new()
+			_writing.build(id,d,student)
+			if panel.is_empty():
+				# In a large open hall the physical page must still be within reach.
+				var heading := Vector2.from_angle(d.heading) if d.has("heading") else facing
+				var floor_spot := _aisle_spot(room,origin,heading)
+				_writing.position = (floor_spot if floor_spot.is_finite() else origin)+Vector3.UP*.045
+				_writing.rotation = Vector3(-PI/2,atan2(-heading.x,-heading.y),0)
 			else:
-				_box("d6d2c8",1,Vector3(.045 if side else 1.1,1.5,1.1 if side else .045),at+Vector3(0,1.55,0),true)
-				for i in 9: _box("4a4a46",1,Vector3(.02 if side else .82,.035,.82 if side else .02),at+normal*.035+Vector3(0,1.95-i*.15,0),true)
+				var normal: Vector3 = panel.n
+				_writing.position = (panel.p as Vector3)+normal*.16+Vector3.UP*1.55
+				_writing.rotation.y = atan2(normal.x,normal.z)
+			add_child(_writing)
+			items.append(_writing)
 		"broad":
 			for i in 2:
 				var at:=p+Vector3(1.9 if i else -1.9,2.55,0)
 				_box("3a4046",1,Vector3(.42,.42,.30),at,true)
 				_box("b8c4c8",1.15,Vector3(.26,.26,.06),at+Vector3(0,0,.17),true)
-		"repeat": _figure_horror("1a2024",p,"tall",1.0,{"mouth":"none"})
+		"repeat":
+			var origin := _point(room,{"x":d.rx,"y":d.ry}) if d.has("rx") and d.has("ry") else feet
+			var heading := Vector2.from_angle(d.heading) if d.has("heading") else facing
+			var spot := _aisle_spot(room,origin,-heading)
+			if not spot.is_finite(): return
+			var pupil := OtherworldFigure.make("person",null,1)
+			pupil.position = spot
+			pupil.rotation.y = atan2(spot.x-origin.x,spot.z-origin.z)
+			add_child(pupil)
+			items.append(pupil)
 		"shifting":
 			for i in 4: _box("9fb6c8",.75,Vector3(1.4,1.1,.04),p+Vector3(-2.4+i*1.6,1.85,0),true)
 		"cold":
@@ -273,9 +341,18 @@ func build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vect
 			_figure_horror("121619",Vector3(at.x,0,at.y),"neck",1.4,{"mouth":"closed","skew":.6},1.15)
 		"twin": _figure_horror("141a1d",_point(room,d) if d.has("x") else p,"tall",1.0,{"mouth":"closed","skew":.4})
 		"shadow":
-			var shade:=_plane("05070a",.72,Vector2(.9,1.6),p+Vector3(0,.02,0))
-			shade.rotation.x=-PI/2
+			# The painted court and track sit above the collision floor, at different heights.
+			var shade := Decal.new()
+			shade.texture_albedo = preload("res://assets/campus/anomalies/writing/late-shadow.png")
+			shade.size = Vector3(1.08,.56,1.88)
+			shade.position.y = .12
+			shade.normal_fade = .75
+			shade.albedo_mix = .84
+			add_child(shade)
 			items.append(shade)
+			_shadow_yaw=atan2(-facing.x,-facing.y)
+			position=feet+Vector3(facing.x,0,facing.y)*.68
+			rotation.y=_shadow_yaw
 
 
 ## The hand from under the stall partition: back up, fingers spread and propped on their tips like a pale
@@ -611,11 +688,13 @@ func _gaze(room: Variant, feet: Vector3, facing: Vector2, tier: int) -> void:
 		eye.set_meta("eye",{"d":.5+_rand()*1.5,"w":eye.scale.x,"ph":_rand()*6.283})
 
 
-func advance(dt: float, d: Dictionary, room: Variant, feet: Vector3, acc: float = 0) -> void:
-	time+=maxf(0,dt)
+func advance(dt: float, d: Dictionary, room: Variant, feet: Vector3, acc: float = 0, facing: Vector2 = Vector2.ZERO, event_time: float = -1.0) -> void:
+	time = event_time if event_time>=0 and kind in ["exercise","chalk","roster","shadow","repeat","necker","twin"] else time+maxf(0,dt)
 	match kind:
 		"exercise":
-			for i in items.size(): items[i].rotation.x=-.25+sin(time*2.2+i)*.35
+			for i in items.size():
+				var pupil := items[i] as OtherworldFigure
+				pupil.exercise_pose(time,i,Vector2(feet.x-pupil.position.x,feet.z-pupil.position.z))
 		"leak":
 			for i in range(5,items.size()):
 				items[i].position.y-=dt*4.6
@@ -623,10 +702,8 @@ func advance(dt: float, d: Dictionary, room: Variant, feet: Vector3, acc: float 
 		"lamps":
 			var lit:=floori(fmod(time*2.6,20))
 			for i in items.size(): items[i].visible=i<=lit
-		"chalk":
-			for i in range(1,items.size()):
-				items[i].position.y-=dt*.08
-				if items[i].position.y<.9: items[i].position.y=2.05
+		"chalk","roster":
+			if _writing != null: _writing.write_at(time)
 		"shifting":
 			for i in items.size(): items[i].position.x+=sin(time*.5+i)*dt*.5
 		"broad":
@@ -642,16 +719,32 @@ func advance(dt: float, d: Dictionary, room: Variant, feet: Vector3, acc: float 
 				var pulse:=1+.05*sin(time*3.1+data["ph"])+.25*hit
 				eye.scale=Vector3(data["w"]*pulse,data["w"]*.6875*lid*aperture*pulse,1)
 				eye.material_override.albedo_color.a=aperture*(.75+.25*maxf(hold,hit))
-		"shadow": position=Vector3(feet.x+.35,0,feet.z+.5)
+		"shadow":
+			if not facing.is_zero_approx(): _shadow_yaw=atan2(-facing.x,-facing.y)
+			var dir:=Vector2(-sin(_shadow_yaw),-cos(_shadow_yaw))
+			var target:=Vector2(feet.x,feet.z)+dir*lerpf(.68,.22,clampf(acc/10,0,1))
+			var at:=Vector2(position.x,position.z)
+			at = target if at.distance_squared_to(target)>16 else at.lerp(target,1.0-exp(-dt*3.4))
+			position=Vector3(at.x,feet.y,at.y)
+			var reach:=smoothstep(5.0,8.0,time)*(1.0-smoothstep(9.0,12.0,time))
+			rotation.y=lerp_angle(rotation.y,_shadow_yaw+.30*reach,1.0-exp(-dt*3.0))
+		"repeat":
+			if items.is_empty(): return
+			var pupil := items[0] as OtherworldFigure
+			var away := pupil.position-feet
+			var yaw := wrapf(atan2(away.x,away.z)-pupil.rotation.y,-PI,PI)
+			pupil.face.rotation=Vector3(-.17*sin(time*1.7),clampf(yaw,-.95,.95)*smoothstep(.5,1.4,time),.16)
 		"hand": _pose_hand()
 		"twin":
 			if d.has("x"):
 				items[0].position=_point(room,d)
 				items[0].rotation.y=atan2(feet.x-items[0].position.x,feet.z-items[0].position.z)
+			_visage.rotation=Vector3(-.23,PI+.22*sin(time*.72),.12)
 		"necker":
 			items[0].position.z+=(feet.z-items[0].position.z)*minf(1,dt*.9)
 			items[0].rotation.y=atan2(feet.x-items[0].position.x,feet.z-items[0].position.z)
 			items[0].rotation.z=sin(time*1.3)*.05
+			_visage.rotation.z=-.18-.12*sin(time*.75)
 		"raindots": items[0].material_override.albedo_color.a=minf(.85,time*.12)
 		"rite":
 			for i in range(44,items.size()): items[i].scale.y=.8+.4*absf(sin(time*7+i))

@@ -204,7 +204,7 @@ func end_anomaly() -> void:
 func sync_anomaly() -> void:
 	var cam:=app.player.camera
 	var forward:=-app.player.scene_camera_transform().basis.z
-	app._campus_world().anomaly_fx.update(0,app.anomaly().an,app.campus().room(app.session.world_id),app.session.world_id,app.player.position,Vector2(forward.x,forward.z),app.player.scene_camera_transform().origin,app.story().diff=="hard")
+	app._campus_world().anomaly_fx.update(0,app.anomaly().an,app.campus().room(app.session.world_id),app.session.world_id,app.player.position,Vector2(forward.x,forward.z),app.player.scene_camera_transform().origin,app.story().diff=="hard",app.session.character_id)
 
 func prepare_teleport() -> void:
 	clear_preview()

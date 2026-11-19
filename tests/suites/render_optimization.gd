@@ -97,9 +97,9 @@ func test_instances() -> void:
 	check(figures.size()>1 and figures[0].material_override==figures[1].material_override,"classmates share a view-local material for automatic instancing")
 	var other:=ClassmatesView.new()
 	other.build(CampusData.layout("teach1"),[Vector2i(8,8)])
-	var other_material:=other.find_children("*","MeshInstance3D",true,false)[0].material_override as StandardMaterial3D
+	var other_face: MeshInstance3D = other.figures[0].actor.face
 	classroom.set_normal(true)
-	check(other_material.shading_mode==BaseMaterial3D.SHADING_MODE_UNSHADED and classroom._material.shading_mode==BaseMaterial3D.SHADING_MODE_PER_PIXEL,"changing classroom lighting cannot recolour a different view or cinematic")
+	check(other_face.material_override==figures[0].material_override and other.figures[0].actor.visible and not classroom.figures[0].actor.visible,"isolated classroom presentation changes visibility without recolouring shared resources")
 	classroom.free()
 	other.free()
 

@@ -63,6 +63,51 @@ func _hand_differences(props: AnomalyProps, state: Dictionary, feet: Vector3) ->
 	return errors
 
 
+func _school_anomaly(props: AnomalyProps, spec: Dictionary, data: Dictionary, room: Variant, feet: Vector3) -> void:
+	var original:=data.duplicate(true)
+	match props.kind:
+		"exercise":
+			check(props.items.size()==6,"the playground still has six pupils")
+			for i in props.items.size():
+				check(props.items[i].position.distance_to(_v(spec.before.children[i].p))<.001,"drill feet stay on their original marks")
+			var lead:=props.items[0] as OtherworldFigure
+			var late:=props.items[4] as OtherworldFigure
+			var a:=lead.find_child("Skeleton3D",true,false) as Skeleton3D
+			var b:=late.find_child("Skeleton3D",true,false) as Skeleton3D
+			var arm:=a.find_bone("ArmL")
+			props.advance(0,data,room,feet,0,Vector2.RIGHT,.2)
+			var rest:=a.get_bone_pose_rotation(arm)
+			props.advance(0,data,room,feet,0,Vector2.RIGHT,1.60)
+			check(a.get_bone_pose_rotation(arm).angle_to(rest)>.8 and a.get_bone_pose_rotation(arm).angle_to(b.get_bone_pose_rotation(arm))>.4,"arms articulate, with one student finishing half a count late")
+			props.advance(0,data,room,feet+Vector3.RIGHT*6,0,Vector2.RIGHT,2.0)
+			check(absf(lead.face.rotation.y)>.1 and lead.rotation==Vector3.ZERO,"the head turns independently while the feet hold position")
+		"chalk","roster":
+			check(props.items.size()==1 and props.items[0] is AnomalyWriting,"one legible world-space notice replaces placeholder bars")
+			var face:=props._writing.global_basis.z
+			check(face.dot(feet-props._writing.position)>-.05 and face.y==0,"the notice faces the walkable reading side of the wall")
+			props.advance(0,data,room,feet,0,Vector2.RIGHT,5)
+			check(is_equal_approx(props._writing.surface.get_shader_parameter("written"),1.0),"loading into the event restores the written marks")
+			if props.kind=="chalk":
+				props.advance(0,data,room,feet,0,Vector2.RIGHT,13)
+				check(not props._writing.forecast and is_equal_approx(props._writing.surface.get_shader_parameter("erased"),1.0),"an unconfirmed forecast erases without inventing a time")
+		"shadow":
+			var at:=props.items[0].global_position
+			check(at.distance_to(feet)<1.1,"late shadow begins at the actual player, including far from the origin")
+			props.advance(.05,data,room,feet+Vector3.RIGHT*1.5,0,Vector2.RIGHT,6)
+			var behind:=props.items[0].global_position
+			check(behind.x>at.x and behind.x<at.x+1.4,"the shadow lags a step behind actual movement")
+			props.advance(.016,data,room,feet+Vector3.RIGHT*20,0,Vector2.RIGHT,7)
+			check(props.position.distance_to(feet+Vector3.RIGHT*20)<1,"an authoritative displacement cannot stretch the shadow across the grounds")
+		"repeat":
+			var headmate := props.items[0] as OtherworldFigure
+			var offset := Vector2(headmate.position.x-feet.x,headmate.position.z-feet.z)
+			check(offset.dot(Vector2.from_angle(spec.ang))<0 and offset.length()>.65,"the voice has a classmate behind the player, clear of the camera")
+			var anchor := headmate.position
+			props.advance(0,data,room,feet+Vector3.RIGHT*2,0,Vector2.RIGHT,2.0)
+			check(headmate.position==anchor and absf(headmate.face.rotation.y)>.1,"the classmate follows with the head while staying in the original aisle")
+	check(same_json(original,data),"school horror staging is read-only for "+props.kind)
+
+
 func test_reference() -> void:
 	var scenarios: Array=_reference()["scenarios"]
 	check(scenarios.size()==21,"reference covers 17 original effects and all five gaze qualities")
@@ -75,6 +120,10 @@ func test_reference() -> void:
 		var props:=AnomalyProps.new()
 		root.add_child(props)
 		props.build(spec["kind"],data,room,Vector3(p.x,0,p.y),Vector2.from_angle(spec["ang"]),int(spec["tier"]))
+		if spec["kind"] in ["exercise","chalk","roster","shadow","repeat"]:
+			_school_anomaly(props,spec,data,room,Vector3(p.x,0,p.y))
+			props.free()
+			continue
 		if spec["kind"]=="hand":
 			var feet:=Vector3(p.x,0,p.y)
 			check(_hand_differences(props,spec["before"],feet).is_empty(),"stall hand keeps the original spot: %s" % [_hand_differences(props,spec["before"],feet)])
@@ -114,6 +163,7 @@ func test_adapter() -> void:
 	var state:=an.duplicate(true)
 	fx.update(.016,an,room,"teach1",feet,Vector2.RIGHT)
 	var props: AnomalyProps=fx._extra["original"]
+	check(props._writing.surface.get_shader_parameter("clock_digits")==Vector4(1,3,2,0),"chalk records the real 13:20 forecast")
 	var at:=props.items[0].position
 	an["t"]=.016
 	fx.update(.016,an,room,"teach1",feet+Vector3(2,0,3),Vector2.LEFT)
@@ -121,6 +171,33 @@ func test_adapter() -> void:
 	an["t"]=0.0
 	fx.update(0,an,room,"teach1",feet,Vector2.RIGHT)
 	check(fx._extra["original"]!=props and not props.is_visible_in_tree(),"a restarted same-id anomaly replaces its old props without a one-frame overlap")
+	an={"id":"roster","active":true,"t":5.0,"data":{"scene":"teach1"}}
+	fx.update(0,an,room,"teach1",feet,Vector2.RIGHT,Vector3.INF,false,"lin")
+	var first: AnomalyProps=fx._extra.original
+	fx.update(0,an,room,"teach1",feet,Vector2.RIGHT,Vector3.INF,false,"xu")
+	check(fx._extra.original!=first and not first.is_visible_in_tree() and is_equal_approx(fx._extra.original._writing.surface.get_shader_parameter("student_row"),3.0),"spectating another student changes the crossed-out name even during the same event")
+	var origin := CampusGeometry.to_world(room,feet.x,feet.z)
+	an={"id":"repeat","active":true,"t":4.0,"data":{"scene":"teach1","rx":origin.x,"ry":origin.y,"heading":0.0}}
+	fx.update(0,an,room,"teach1",feet,Vector2.RIGHT)
+	var witness: Vector3 = fx._extra.original.items[0].position
+	fx.update(0,{},room,"teach1",feet,Vector2.RIGHT)
+	fx.update(0,an,room,"teach1",feet+Vector3.RIGHT*4,Vector2.LEFT)
+	check(fx._extra.original.items[0].position==witness,"loading while facing a different way leaves the witness in the original aisle")
+	var sealed_room:=room.duplicate()
+	sealed_room["grid"]=room.grid.map(func(line: String) -> String: return "#".repeat(line.length()))
+	var boxed:=AnomalyProps.new()
+	boxed.build("repeat",{},sealed_room,feet,Vector2.RIGHT,2)
+	boxed.advance(.1,{},sealed_room,feet)
+	check(boxed.items.is_empty(),"when there is no clear aisle only the question is heard")
+	boxed.free()
+	var hall := room.duplicate()
+	hall["grid"] = room.grid.map(func(line: String) -> String: return ".".repeat(line.length()))
+	hall["boxes"] = []
+	var paper := AnomalyProps.new()
+	root.add_child(paper)
+	paper.build("roster",{"rx":origin.x,"ry":origin.y,"heading":0.0},hall,feet+Vector3.RIGHT*20,Vector2.LEFT,2)
+	check(paper._writing.position.distance_to(feet)<2.0 and paper._writing.global_basis.z.y>.99,"an open hall leaves the physical register flat within its original interaction radius")
+	paper.free()
 	an=state.duplicate(true)
 	an["id"]="raindots"
 	fx.update(0,an,room,"teach1",feet,Vector2.RIGHT)
@@ -193,5 +270,32 @@ func test_rendering() -> void:
 		for x in viewport.size.x:
 			if absf(with_text.get_pixel(x,y).get_luminance()-blank.get_pixel(x,y).get_luminance())>.05: changed+=1
 	check(changed>100,"original rain lettering is visible from above after its authored fade-in")
+	props.free()
+	var court := MeshInstance3D.new()
+	var slab := BoxMesh.new()
+	slab.size = Vector3(10,.18,10)
+	court.mesh = slab
+	viewport.add_child(court)
+	var sun := DirectionalLight3D.new()
+	viewport.add_child(sun)
+	sun.rotation.x = -PI*.45
+	props = AnomalyProps.new()
+	viewport.add_child(props)
+	props.build("shadow",{},null,Vector3.ZERO,Vector2.RIGHT,2)
+	camera.position = props.position+Vector3(0,3.0,1.3)
+	camera.look_at(props.position)
+	await _frames(2)
+	await RenderingServer.frame_post_draw
+	var with_shadow := viewport.get_texture().get_image()
+	props.hide()
+	await _frames(2)
+	await RenderingServer.frame_post_draw
+	var bare := viewport.get_texture().get_image()
+	var dark_samples := 0
+	for y in range(0,bare.get_height(),4):
+		for x in range(0,bare.get_width(),4):
+			if bare.get_pixel(x,y).get_luminance()-with_shadow.get_pixel(x,y).get_luminance()>.08:
+				dark_samples+=1
+	check(dark_samples>32,"the detached shadow projects onto a raised playing surface above the collision floor")
 	viewport.queue_free()
 	await _frames()

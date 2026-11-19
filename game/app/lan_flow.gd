@@ -550,6 +550,7 @@ func _snapshot(data: Dictionary) -> void:
 		app.camera().restore(album)
 		app.phone().page = phone_page if same_phone else "home"
 		app.session.clock.restore(source["clock"])
+		app.session.character_id = StudentCast.resolve(source.get("character"))
 	current = data
 	if network.room.phase == "ended" and not _recorded:
 		_recorded = true
@@ -1043,13 +1044,13 @@ func _present(dt: float) -> void:
 		var patrol_view := visible_patrol()
 		if not patrol_view.is_empty():
 			var at: Vector3 = patrol_view["position"]
-			world.show_patrol(true, Vector2(at.x, at.z), at.y, patrol_view["look"])
+			world.show_patrol(true, Vector2(at.x, at.z), at.y, patrol_view["look"], String(app.patrol().pat.behavior), dt)
 		else: world.show_patrol(false, Vector2.ZERO, 0, Vector3.ZERO)
 		world.show_portal(bool(app.facilities().portal["open"]), bool(app.facilities().portal["sketch"]))
 		if world.anomaly_fx != null:
 			var cam := app.player.scene_camera_transform().origin
 			var fwd := -app.player.scene_camera_transform().basis.z
-			world.anomaly_fx.update(dt, app.anomaly().an, room, app.session.world_id, app.player.position, Vector2(fwd.x, fwd.z), cam, app.story().diff == "hard")
+			world.anomaly_fx.update(dt, app.anomaly().an, room, app.session.world_id, app.player.position, Vector2(fwd.x, fwd.z), cam, app.story().diff == "hard", app.session.character_id)
 	if _death_seen and not _spectating and not _ended_seen:
 		_death_t += dt
 		if is_instance_valid(app._death_cg): app._death_cg.tick(dt)

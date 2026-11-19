@@ -10,23 +10,56 @@ func test_material_lifecycle() -> void:
 		var view := ClassmatesView.new()
 		root.add_child(view)
 		view.build(CampusData.layout("teach1"), [Vector2i(8, 8), Vector2i(9, 8)])
-		var shared := view._material
-		for data: Dictionary in view.figures:
-			(data["node"] as Node3D).position = Vector3.ZERO
+		var shared: Material = (view.figures[0].actor as OtherworldFigure).face.material_override
+		check(shared!=null and (view.figures[1].actor as OtherworldFigure).face.material_override==shared,"the two desks share an opaque skin material")
 		view.set_normal(true)
-		for data: Dictionary in view.figures: view._pose(data, "person")
+		for data: Dictionary in view.figures: view._pose(data,"person")
 		await _frames(1)
-		var meshes := view.find_children("*", "MeshInstance3D", true, false)
-		check(shared != null and meshes.all(func(mesh: MeshInstance3D) -> bool: return mesh.material_override == shared)
-			and shared.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL, "rebuilt classroom poses retain the live shared material %d" % cycle)
+		check(view.figures.all(func(d: Dictionary) -> bool: return d.civilian.visible and not d.actor.visible),"new poses respect the ordinary opening classroom")
 		view.set_normal(false)
-		for data: Dictionary in view.figures: view._pose(data, "sit")
+		for data: Dictionary in view.figures: view._pose(data,"sit")
 		await _frames(1)
-		check(shared.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and shared.albedo_color == Color("080b0d"), "new poses preserve the dark classroom tint %d" % cycle)
+		check(view.figures.all(func(d: Dictionary) -> bool: return d.actor.visible and d.civilian==null and d.actor.face.material_override==shared and d.actor.animation==null),"reseated witnesses reuse the material and need no skeleton")
 		view.queue_free()
 		await _frames(2)
 	camera.queue_free()
 	await _frames(2)
+
+func test_otherworld() -> void:
+	var view:=ClassmatesView.new()
+	root.add_child(view)
+	var room:=CampusData.layout("teach1")
+	view.build(room,[Vector2i(48,8),Vector2i(49,8),Vector2i(12,8)])
+	var observer: OtherworldFigure=view.figures[0].actor
+	var far: OtherworldFigure=view.figures[2].actor
+	var listener: Node3D=view.figures[0].node
+	var me:=CampusGeometry.tile_center(room,49,9)
+	var player:=CampusGeometry.to_scene(room,me)
+	var base:=listener.transform
+	var sounds:=[]
+	view.room_sound.connect(func(cue: String,_pos: Vector3) -> void: sounds.append(cue))
+	for i in 210: view._faces(.1,me,player,0,false,false)
+	check(sounds.size()>=1 and sounds.size()<=2,"near classroom movements share a sound cooldown")
+	for i in 12: view._faces(.1,me,player,65,true,false)
+	check(absf(observer.face.rotation.y)>.4 and far.face.rotation.is_zero_approx() and listener.transform==base,"heads can track nearby players while the body and other classrooms stay put")
+	check(view.figures[0].actor.face.mesh!=view.figures[1].actor.face.mesh and observer.animation==null,"seated students have two shared face variants and no per-seat animation mixer")
+	for i in 40: view.advance(.1,me,55,null,false,false,null)
+	var staff: OtherworldFigure = view.figures.back().actor
+	var target := Vector3(player.x,0,player.y)-staff.global_position
+	check((-staff.global_basis.z).dot(target.normalized())>.95,"the teacher turns towards the student after leaving the lectern stance")
+	view.set_normal(true)
+	var heard:=sounds.size()
+	for i in 200: view._faces(.1,me,player,80,true,false)
+	check(sounds.size()==heard and not observer.visible and observer.face.rotation.is_zero_approx(),"the normal classroom does not run otherworld sounds or poses")
+	view.free()
+	var pat:=OtherworldFigure.make("patroller")
+	root.add_child(pat)
+	pat.patrol_pose(2,0,"search")
+	var searching:=pat.face.rotation
+	pat.patrol_pose(1,.09,"chase")
+	check(absf(searching.y)>.6 and absf(pat.face.rotation.y)<.03 and pat.face.rotation.x<-.15 and pat.animation.current_animation=="walk","search sweeps, pursuit fixes the gaze and legs still follow distance")
+	pat.free()
+
 
 func fixture() -> Dictionary:
 	var bytes := FileAccess.get_file_as_bytes("res://tests/fixtures/classmates-reference.json.gz")
@@ -129,14 +162,14 @@ func test_app() -> void:
 	app.add_child(cut)
 	cut.begin(app._campus_world(),CampusData.rules().room("teach1"),app.player,app.ui,false,app.session.character_id)
 	cut.set_process(false)
-	var material: StandardMaterial3D = (view.figures[0]["node"] as Node3D).find_children("*","MeshInstance3D",true,false)[0].material_override
-	check(material.albedo_color == Color("5d6873") and material.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL,"opening figures use the original lit normal material")
+	var witness: Dictionary = view.figures[0]
+	check(witness.civilian.visible and not witness.actor.visible,"the ordinary opening keeps otherworld faces out of sight")
 	check(view.normal and not view.teacher.visible,"full opening uses normal classmates and only one teacher")
 	check(cut._me.character=="xu" and cut._me.clip=="sit" and cut._teacher.animation.has_animation("read"),"opening actors are dressed and posed for this run")
 	cut._apply(.75)
 	check(not cut._me.visible,"the cinematic body is gone before first-person handover")
-	check(material.albedo_color == Color("080b0d") and material.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED,"the flip changes actual figure materials")
-	check(not view.normal,"opening flips classmates to the original dark silhouette")
+	check(witness.actor.visible and not witness.civilian.visible and cut._other_teacher.visible and not cut._teacher.visible,"the flip reveals the articulated students and lectern teacher together")
+	check(not view.normal,"opening hands the classroom to its otherworld cast")
 	cut.cancel()
 	check(view.teacher.visible and not view.normal and same_json(before,app.session.capture(app.player.capture_pose())),"opening cancellation restores figures without changing the run")
 	cut.queue_free()

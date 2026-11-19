@@ -171,6 +171,8 @@ func _run() -> void:
 	var classroom := preload("res://tests/suites/classroom_motion.gd").new(self)
 	print("CASE: classroom.test_material_lifecycle")
 	await classroom.test_material_lifecycle()
+	print("CASE: classroom.test_otherworld")
+	classroom.test_otherworld()
 	print("CASE: classroom.test_original_motion")
 	await classroom.test_original_motion()
 	print("CASE: classroom.test_departure_navigation")

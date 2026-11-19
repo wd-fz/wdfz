@@ -10,6 +10,7 @@ extends FeatureModule
 const STATE_VERSION := 1
 const U2M := CampusGeometry.U2M
 const SC := 2.0
+const ROSTER_REACH := 80.0
 const CUP_H := 10.6
 const CUP_R := 0.95
 const CUP_WOB := {"easy": 0.85, "normal": 0.60, "hard": 0.40}
@@ -649,6 +650,10 @@ func end_now() -> void:
 
 func _on(id: String) -> void:
 	var d: Dictionary = an["data"]
+	if id in ["chalk","repeat","roster"]:
+		d["rx"] = float(_c["x"])
+		d["ry"] = float(_c["y"])
+		d["heading"] = float(_c.get("ang",0.0))
 	match id:
 		"rain":
 			an["rained"] = true
@@ -679,8 +684,6 @@ func _on(id: String) -> void:
 				an["preNext"] = 0.0
 				_say("我：粉笔在黑板上写了几笔，又慢慢擦掉了。")
 		"roster":
-			d["rx"] = float(_c["x"])
-			d["ry"] = float(_c["y"])
 			d["done"] = false
 		"leak":
 			var pts: Array = []
@@ -755,7 +758,7 @@ func choose(id: String) -> void:
 func near_roster() -> bool:
 	if not an["active"] or an["id"] != "roster" or an["data"].get("done", false) or not an["data"].has("rx"):
 		return false
-	return Vector2(float(_c["x"]) - float(an["data"]["rx"]), float(_c["y"]) - float(an["data"]["ry"])).length() < 80.0
+	return Vector2(float(_c["x"]) - float(an["data"]["rx"]), float(_c["y"]) - float(an["data"]["ry"])).length() < ROSTER_REACH
 
 
 ## E on the roster: with a pen or chalk write the name back; otherwise choose.

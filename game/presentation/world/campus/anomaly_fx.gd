@@ -5,6 +5,7 @@ extends Node3D
 var ground_height: Callable
 var _props: Node3D
 var _key := ""
+var _reader := ""
 var _quality := -1
 var particle_quality := -1
 var _particle_quality := -1
@@ -18,26 +19,27 @@ func _init() -> void:
 	_visual_random.randomize()
 
 
-func update(dt: float, an: Dictionary, room: Variant, scene: String, feet: Vector3, facing: Vector2, eye: Vector3 = Vector3.INF, hard: bool = false) -> void:
+func update(dt: float, an: Dictionary, room: Variant, scene: String, feet: Vector3, facing: Vector2, eye: Vector3 = Vector3.INF, hard: bool = false, student: String = StudentCast.DEFAULT) -> void:
 	var id:=String(an.get("id","")) if an.get("active",false) else ""
 	var data: Dictionary=an.get("data",{})
 	if id!="" and data.has("scene") and String(data["scene"])!=scene: id=""
 	var t:=float(an.get("t",0))
-	if id!=_key or _quality!=CampusData.tier or _particle_quality!=particle_quality or t<_last_t:
+	if id!=_key or (id=="roster" and _reader!=student) or _quality!=CampusData.tier or _particle_quality!=particle_quality or t<_last_t:
 		_clear()
 		_key=id
+		_reader=student
 		_quality=CampusData.tier
 		_particle_quality=particle_quality
 		if id!="":
 			_props=Node3D.new()
 			_props.name="Anomaly_"+id
 			add_child(_props)
-			_build(id,data,room,feet,facing,t)
+			_build(id,data,room,feet,facing,t,student)
 	_last_t=t
 	if _props==null: return
 	var camera_pos:=eye if eye.is_finite() else feet+Vector3(0,CameraMotion.EYE,0)
 	if _extra.has("original"):
-		(_extra["original"] as AnomalyProps).advance(dt,data,room,feet,float(an.get("acc",0)))
+		(_extra["original"] as AnomalyProps).advance(dt,data,room,feet,float(an.get("acc",0)),facing,t)
 	if _extra.has("rain"): (_extra["rain"] as WeatherFx).update_rain(dt,camera_pos,feet.y)
 	if _extra.has("swarm"): (_extra["swarm"] as WeatherFx).update_moths(dt,camera_pos,float(an.get("acc",0)),hard)
 	if _extra.has("falling"): (_extra["falling"] as FallingProps).advance(dt,t,data,room,feet)
@@ -67,12 +69,12 @@ func _at(room: Variant, x: float, y: float) -> Vector2:
 	return CampusGeometry.to_scene(room, Vector2(x, y))
 
 
-func _build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vector2, t: float) -> void:
+func _build(id: String, d: Dictionary, room: Variant, feet: Vector3, facing: Vector2, t: float, student: String) -> void:
 	if id in AnomalyProps.KINDS:
 		var props:=AnomalyProps.new()
 		props.seed_value=visual_seed if visual_seed>=0 else _visual_random.randi()
 		_props.add_child(props)
-		props.build(id,d,room,feet,facing,CampusData.tier if particle_quality<0 else particle_quality)
+		props.build(id,d,room,feet,facing,CampusData.tier if particle_quality<0 else particle_quality,student)
 		_extra["original"]=props
 		return
 	match id:

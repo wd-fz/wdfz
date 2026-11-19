@@ -1581,11 +1581,11 @@ func _school_step(delta: float, rules: CampusModule, advance_calendar: bool = tr
 				fig_scene = CampusGeometry.to_scene(room, Vector2(float(watcher.pat["x"]), float(watcher.pat["y"])))
 				var look := watcher.look_point()
 				look_scene = CampusGeometry.to_scene(room, Vector2(float(look["x"]), float(look["y"])))
-			lit.show_patrol(watcher.figure_visible(), fig_scene, float(watcher.pat["fy"]), Vector3(look_scene.x, float(watcher.pat["fy"]), look_scene.y))
+			lit.show_patrol(watcher.figure_visible(), fig_scene, float(watcher.pat["fy"]), Vector3(look_scene.x, float(watcher.pat["fy"]), look_scene.y), String(watcher.pat.behavior), delta)
 		if weird_light != null and lit.anomaly_fx != null:
 			var cam_pos := player.scene_camera_transform().origin
 			var fwd := -player.scene_camera_transform().basis.z
-			lit.anomaly_fx.update(delta, weird_light.an, room, session.world_id, Vector3(cam_pos.x, float(p[1]), cam_pos.z), Vector2(fwd.x, fwd.z), cam_pos, story().diff == "hard")
+			lit.anomaly_fx.update(delta, weird_light.an, room, session.world_id, Vector3(cam_pos.x, float(p[1]), cam_pos.z), Vector2(fwd.x, fwd.z), cam_pos, story().diff == "hard", session.character_id)
 
 
 ## canStand (world.js): is there room for the body (radius 3 units) at this old world point?
@@ -3685,6 +3685,12 @@ func _show_classmates(mates: ClassmatesModule, room: Variant, me: Vector2, dt: f
 		if is_instance_valid(lan) and lan.playing() and key == "teach1":
 			seats = seats.filter(func(t: Vector2i) -> bool: return t.y != 11 or t.x < 48 or t.x > 51)
 		_mates_nodes.build(room,seats)
+		_mates_nodes.room_sound.connect(func(cue: String, point: Vector3) -> void:
+			if not opening_busy() and not _atmos_busy and audio.ambience and not story().over():
+				var sound := {"pos":world.to_global(point),"world_pos":true,"unit":2.2,"k":.34,"pitch":.86,"owner":"classroom"}
+				if cue == "foley.chalk": sound["caption"] = "粉笔擦过黑板"
+				audio.play(cue,sound))
+	_mates_nodes.set_normal(fake_normal()!=null and fake_normal().active())
 	var bell: bool = broadcast() != null and broadcast().b["phase"] == "bell"
 	var stare: bool = anomaly() != null and anomaly().an.get("active",false) and anomaly().an.get("id") == "stare"
 	_mates_nodes.advance(dt,me,school().viol,mates.state.get("door"),stare,bell,patrol().nav if patrol()!=null else null)

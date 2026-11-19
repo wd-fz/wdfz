@@ -900,52 +900,44 @@ func _scatter_dirs_of(group: Node3D, _room: Variant) -> Array:
 	return out
 
 
-## The patroller's figure (patEnsureFig / patRender): the exported teacher figure scaled 1.12,
-## black and unlit, facing the supplied observed target or route. Positions/heights are metres.
-var _patrol_figure: Node3D
-const PATROL_FIGURE := "res://assets/campus/figures/motion/patroller.glb"
+## The pose follows the visible patrol's observed heading and authoritative behaviour.
+var _patrol_figure: OtherworldFigure
+const PATROL_FIGURE := "res://assets/campus/figures/otherworld/patroller.glb"
 
 
-func show_patrol(visible_now: bool, scene_pos: Vector2, height: float, toward: Vector3) -> void:
+func show_patrol(visible_now: bool, scene_pos: Vector2, height: float, toward: Vector3, behavior: String = "patrol", dt: float = 0.0) -> void:
 	if not visible_now:
-		if is_instance_valid(_patrol_figure):
-			_patrol_figure.visible = false
+		if is_instance_valid(_patrol_figure): _patrol_figure.hide()
 		return
 	if not is_instance_valid(_patrol_figure):
-		var packed := _patrol_asset if _patrol_asset != null else load(PATROL_FIGURE) as PackedScene
-		if packed == null:
-			return
-		_patrol_figure = packed.instantiate() as Node3D
+		_patrol_figure = OtherworldFigure.make("patroller", _patrol_asset)
 		_patrol_figure.name = "Patroller"
 		add_child(_patrol_figure)
-		FigureGait.attach(_patrol_figure)
-		for mi: MeshInstance3D in _patrol_figure.find_children("*", "MeshInstance3D", true, false):
-			for s in mi.mesh.get_surface_count():
-				var mat := mi.mesh.surface_get_material(s) as BaseMaterial3D
-				if mat != null:
-					mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_patrol_figure.visible = true
+		_patrol_figure.hide()
 	var next := Vector3(scene_pos.x, height, scene_pos.y)
-	FigureGait.step(_patrol_figure, _patrol_figure.position.distance_to(next), get_physics_process_delta_time())
+	var distance := _patrol_figure.position.distance_to(next) if _patrol_figure.visible else 0.0
 	_patrol_figure.position = next
-	_patrol_figure.rotation.y = atan2(toward.x - scene_pos.x, toward.z - scene_pos.y)
+	var forward := Vector2(toward.x-scene_pos.x,toward.z-scene_pos.y)
+	if forward.length_squared()>.00001: _patrol_figure.rotation.y = atan2(-forward.x,-forward.y)
+	_patrol_figure.show()
+	_patrol_figure.patrol_pose(dt,distance,behavior)
 
 
-## The thing in the garage driveway (systems.js ROAM): a tall dark figure, placeholder.
-var _garage_shadow: Node3D
+var _garage_shadow: OtherworldFigure
 
 
 func show_garage_shadow(visible_now: bool, scene_pos: Vector2, height: float) -> void:
 	if not visible_now:
-		if is_instance_valid(_garage_shadow):
-			_garage_shadow.visible = false
+		if is_instance_valid(_garage_shadow): _garage_shadow.hide()
 		return
 	if not is_instance_valid(_garage_shadow):
-		_garage_shadow = FigureModel.make("roam", Color(0.01, 0.01, 0.012), true)
+		_garage_shadow = OtherworldFigure.make("roam")
 		_garage_shadow.name = "GarageShadow"
 		add_child(_garage_shadow)
-	_garage_shadow.visible = true
-	_garage_shadow.position = Vector3(scene_pos.x, height, scene_pos.y)
+	_garage_shadow.position = Vector3(scene_pos.x,height,scene_pos.y)
+	_garage_shadow.rotation.y = atan2(scene_pos.x-_player_scene.x,scene_pos.y-_player_scene.z)
+	_garage_shadow.face.rotation = Vector3(-.28, .20, -.24)
+	_garage_shadow.show()
 
 
 ## The opened door of the portal route (portal.js): a ring of coloured light in front of the physics bench.
