@@ -1274,6 +1274,13 @@ func _anomaly_tick(dt: float) -> void:
 					_copy_anomaly_schedule(weird, other.feature(&"anomaly.world") as AnomalyModule)
 					anomaly_participants.append(id)
 	drain(a, "anomaly")
+	var cycle := weird.rain_cycle()
+	if cycle >= 0:
+		for id: String in alive:
+			if not sim.room.members[id]["connected"]: continue
+			var listener := sim.actor(id)
+			var omen := (listener.feature(&"anomaly.world") as AnomalyModule).hear_rain(cycle, listener.location(), weird.is_active())
+			if not omen.is_empty(): listener.event("notice", {"text": omen})
 	for id: String in anomaly_participants:
 		if id == a.id or id not in alive: continue
 		var other := sim.actor(id)

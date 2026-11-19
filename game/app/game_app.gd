@@ -5425,6 +5425,7 @@ func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 			tw.update_shaft_previews(float(pose["position"][1]))
 	_phantom_step(delta, day_rules, room, pose, weird)
 	weird.tick(delta)
+	var omen := weird.hear_rain(weird.rain_cycle(), session.world_id, weird.is_active())
 	for e: Dictionary in weird.take_events():
 		match e["kind"]:
 			"clue":
@@ -5476,6 +5477,8 @@ func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 			"kill":
 				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
 				return
+
+	if not omen.is_empty(): ui.show_notice(omen)
 
 
 func _open_anomaly_choice(e: Dictionary) -> void:

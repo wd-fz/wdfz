@@ -89,6 +89,19 @@ func test_cup_encounter() -> void:
 
 
 func test_boundaries() -> void:
+	var rain := _new(16, _outside(Vector2(750, 1100)))
+	rain.an["pre"] = "rain"
+	rain.an["next"] = AnomalyModule.FORECAST_LEAD + 1.0
+	check(rain.rain_cycle() < 0, "outdoor rain does not announce an entire scheduling interval early")
+	rain.an["next"] -= 1.0
+	var cycle := rain.rain_cycle()
+	check(cycle >= 0 and rain.hear_rain(cycle, "guard1", false).is_empty(), "the forecast is audible outside and leaves indoor listeners eligible")
+	check(rain.hear_rain(cycle, "out", false).contains("连廊"), "the first dry-land omen names reachable cover before exposure")
+	var snapshot: Dictionary = JSON.parse_string(JSON.stringify(rain.capture()))
+	rain.restore(snapshot)
+	check(rain.hear_rain(cycle, "out", true).is_empty(), "saving and reloading a forecast cannot repeat the cue")
+	var late := _new(17, _outside(Vector2(750, 1100)))
+	check(late.hear_rain(cycle, "out", true).contains("雨已经落下来了"), "a second student who comes out after the rain starts gets an immediate instruction")
 	var nav := CampusData.patrol_nav()
 	for building: String in ["teach", "lab", "admin"]:
 		var at := _window(building)
