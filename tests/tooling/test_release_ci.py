@@ -41,6 +41,11 @@ class ReleaseCITests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, 'missing or skipped'):
             self.run_gate(skipped='LAN authority and ENet')
 
+    def test_each_native_backend_requires_campus_integration(self):
+        for job in ('Regression (windowed integration)', 'Regression (Vulkan Mobile integration)'):
+            with self.subTest(job=job), self.assertRaisesRegex(SystemExit, 'missing or skipped'):
+                self.run_gate(skipped=job)
+
     def test_failed_network_workflow_blocks_release(self):
         with self.assertRaisesRegex(SystemExit, 'unsuccessful CI'):
             self.run_gate(failed=True)

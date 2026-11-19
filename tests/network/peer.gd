@@ -120,7 +120,7 @@ func run() -> void:
 	network.notice.connect(func(text: String) -> void: print("NOTICE: ", text))
 	network.closed.connect(func(reason: String) -> void:
 		print("CONNECTION CLOSED: ", reason, "\n", network.connection_details())
-		if restore_test and elapsed >= 7.0 and not reconnecting:
+		if restore_test and role != "host" and elapsed >= 7.0 and disconnected_at < 0 and network.room != null:
 			saved_identity = network.local_id
 			token = network.reconnect_token
 			old_epoch = network.room.epoch
@@ -128,7 +128,7 @@ func run() -> void:
 			reconnecting = true
 			network.stop()
 			return
-		if elapsed < 7.0:
+		if not reconnecting:
 			check(false, reason)
 			finish())
 	network.room_changed.connect(func(_data: Dictionary) -> void:
@@ -201,6 +201,7 @@ func _process(dt: float) -> bool:
 	if startup > duration * 2 + (160 if ui_mode else 35):
 		check(false, "connection/loading timeout")
 		finish()
+		return false
 	if network == null: return false
 	if role == "host": _observe_guest_connection()
 	if reconnecting and startup - disconnected_at > (3.0 if restore_test else 1.5):

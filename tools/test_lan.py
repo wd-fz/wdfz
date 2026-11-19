@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 from ci.lan_proxy import LanProxy
-from ci.common import ENGINE
+from ci.common import ENGINE, run
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -49,12 +49,11 @@ def main():
     reports.mkdir(parents=True, exist_ok=True)
     rendering = ["--windowed", "--rendering-method", args.renderer, "--rendering-driver", "vulkan", "--display-driver", args.display_driver] if args.renderer else ["--headless"]
     if args.ui:
-        entry = subprocess.run([ENGINE, *rendering, "--path", str(ROOT), "--audio-driver", "Dummy",
-                                "--script", "res://tests/network/entry.gd", "--", f"--screenshots={reports / 'entry'}"],
-                               cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120)
-        (reports / "entry.log").write_text(entry.stdout)
-        if entry.returncode or "ERROR:" in entry.stdout or not re.search(r"LAN ENTRY: [1-9]\d* checks, 0 failures", entry.stdout):
-            raise RuntimeError(entry.stdout[-9000:])
+        entry = run("entry", [ENGINE, *rendering, "--path", str(ROOT), "--audio-driver", "Dummy",
+                              "--disable-vsync", "--max-fps", "60", "--script", "res://tests/network/entry.gd",
+                              "--", f"--screenshots={reports / 'entry'}"], reports, timeout=120)
+        if not re.search(r"LAN ENTRY: [1-9]\d* checks, 0 failures", entry):
+            raise RuntimeError(entry[-9000:])
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]

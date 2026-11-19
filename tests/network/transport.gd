@@ -26,6 +26,7 @@ func free_port() -> int:
 func run() -> void:
 	await delayed_join()
 	await delayed_join(true)
+	await reconnect_during_loading()
 	await input_bandwidth()
 	await failed_join_diagnostics()
 	print("LAN TRANSPORT: %d checks, %d failures" % [checks, failures])
@@ -77,6 +78,42 @@ func delayed_join(reconnect: bool = false) -> void:
 	proxy.close()
 	host.queue_free()
 	guest.queue_free()
+	await process_frame
+
+
+func reconnect_during_loading() -> void:
+	var host := LanSession.new()
+	var original := LanSession.new()
+	var replacement := LanSession.new()
+	for session: LanSession in [host, original, replacement]: root.add_child(session)
+	var port := free_port()
+	var target := "127.0.0.1:%d" % port
+	check(host.host("test", "host", port).is_empty() and original.join(target, "guest").is_empty(), "open the original ENet connection")
+	var deadline := Time.get_ticks_msec() + 5000
+	while original.room == null and Time.get_ticks_msec() < deadline: await process_frame
+	check(original.room != null, "original guest owns a room seat")
+	if original.room != null:
+		host.room.phase = "loading"
+		var member := original.local_id
+		var old_peer := original.transport.api.get_unique_id()
+		check(replacement.join(target, "guest", original.reconnect_token).is_empty(), "start restoring the same seat")
+		deadline = Time.get_ticks_msec() + 5000
+		while replacement.connection_stage != "reconnect_wait" and Time.get_ticks_msec() < deadline: await process_frame
+		check(replacement.connection_stage == "reconnect_wait" and host.connections.has(old_peer), "a second connection waits without displacing the original player")
+		if replacement.connection_stage == "reconnect_wait":
+			var new_peer := replacement.transport.api.get_unique_id()
+			var client_limit := replacement._hello_deadline
+			var host_limit := float(host._peers_waiting[new_peer].until)
+			check(client_limit - replacement._join_started >= LanSession.LOADING_HEARTBEAT_TIMEOUT and host_limit - float(host._peers_waiting[new_peer].start) >= LanSession.LOADING_HEARTBEAT_TIMEOUT, "both ends allow the old loading heartbeat to expire")
+			await create_timer(1.3).timeout
+			check(replacement._hello_deadline == client_limit and host._peers_waiting[new_peer].until == host_limit, "repeated wait messages cannot extend either deadline")
+			host._peer_heard[old_peer] = Time.get_ticks_msec() / 1000.0 - LanSession.LOADING_HEARTBEAT_TIMEOUT - 1.0
+			host._process(0)
+			deadline = Time.get_ticks_msec() + 5000
+			while replacement.room == null and Time.get_ticks_msec() < deadline: await process_frame
+			check(replacement.room != null and replacement.local_id == member and replacement._hello_deadline == 0.0, "the waiting socket receives the original seat and finishes joining")
+			check(host.connections.get(new_peer) == member and not host.connections.has(old_peer) and not host._peers_waiting.has(new_peer), "only the replacement owns the admitted member")
+	for session: LanSession in [replacement, original, host]: session.queue_free()
 	await process_frame
 
 

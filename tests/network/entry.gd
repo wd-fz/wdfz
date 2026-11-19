@@ -54,8 +54,11 @@ func capture(label: String) -> void:
 func run() -> void:
 	root.size = Vector2i(960, 540)
 	root.content_scale_size = Vector2i.ZERO
+	print("CASE: LAN room discovery and touch controls")
 	await interface_checks()
+	print("CASE: LAN team controls")
 	await team_experience_checks()
+	print("CASE: LAN handshake")
 	await handshake_checks()
 	print("LAN ENTRY: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)

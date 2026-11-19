@@ -7,6 +7,11 @@ signal motion_received(data: Dictionary)
 signal notice(text: String)
 signal closed(reason: String)
 signal connection_changed(text: String)
+
+const JOIN_TIMEOUT := 20.0
+const PLAYING_HEARTBEAT_TIMEOUT := 12.0
+const LOADING_HEARTBEAT_TIMEOUT := 60.0
+
 var transport := LanTransport.new()
 var discovery := LanDiscovery.new()
 var route := LanNetworkRoute.new()
@@ -30,6 +35,7 @@ var _command_seq := 0
 var _snapshot_seq := 0
 var _last_snapshot := -1
 var _awaiting: Dictionary = {}
+var _join_started := 0.0
 var _hello_deadline := 0.0
 var _loading_deadline := 0.0
 var _last_heard := 0.0
@@ -75,7 +81,9 @@ func _ready() -> void:
 	transport.chunk_received.connect(_chunk)
 	transport.api.peer_connected.connect(func(id: int) -> void:
 		_trace_event("ENet peer connected")
-		if transport.serving: _peers_waiting[id] = Time.get_ticks_msec() / 1000.0 + 20.0)
+		if transport.serving:
+			var now := Time.get_ticks_msec() / 1000.0
+			_peers_waiting[id] = {"start": now, "until": now + JOIN_TIMEOUT})
 	var manifest: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/lan_manifest.json"))
 	_fingerprint = String(manifest["digest"])
 
@@ -158,7 +166,8 @@ func join(target: String, who: String, token: String = "") -> String:
 		connection_stage = "connecting"
 		_trace_event("join started")
 		connection_changed.emit("正在连接房主……")
-		_hello_deadline = _clock + 20.0
+		_join_started = _clock
+		_hello_deadline = _join_started + JOIN_TIMEOUT
 		_transport_retry_at = _clock + 4.0
 		_last_heard = _clock
 	return error
@@ -296,8 +305,14 @@ func _control(peer_id: int, data: Dictionary) -> void:
 				connection_changed.emit("版本校验通过，正在进入房间……")
 			"reconnect_wait":
 				if _hello_deadline > 0.0 and reconnect_token != "":
+					# The first connection may still own the seat. Replays use the original
+					# start time so a responsive occupied seat cannot keep us here forever.
+					var old_link_timeout := LOADING_HEARTBEAT_TIMEOUT if is_same(data.get("loading"), true) else PLAYING_HEARTBEAT_TIMEOUT
+					_hello_deadline = maxf(_hello_deadline, _join_started + JOIN_TIMEOUT + old_link_timeout)
 					_hello_again_at = _last_heard + 1.0
-					notice.emit("正在等待原连接释放，随后恢复角色……")
+					if connection_stage != "reconnect_wait":
+						connection_stage = "reconnect_wait"
+						notice.emit("正在等待原连接释放，随后恢复角色……")
 			"room": _receive_room(data.get("room", {}))
 			"reject": _lost(String(data.get("text", "连接被拒绝。")))
 			"result":
@@ -380,7 +395,12 @@ func _accept(peer_id: int, data: Dictionary) -> void:
 		if room.members.has(id) and room.members[id]["connected"] and room.members[id]["state"] != "departed":
 			# A tunnel can disappear before ENet's disconnect packet arrives. A
 			# credential holder waits for heartbeat expiry; it cannot evict a live player.
-			transport.send_control(peer_id, {"kind": "reconnect_wait"})
+			var loading := room.phase == "loading"
+			if _peers_waiting.has(peer_id):
+				var pending: Dictionary = _peers_waiting[peer_id]
+				var until := float(pending.start) + JOIN_TIMEOUT + _heartbeat_timeout()
+				pending.until = maxf(float(pending.until), until)
+			transport.send_control(peer_id, {"kind": "reconnect_wait", "loading": loading})
 			return
 		if room.phase == "lobby" and room.members.has(id) and room.members[id]["state"] != "departed" and not room.members[id]["connected"]:
 			room.members[id]["connected"] = true
@@ -534,6 +554,10 @@ func _physics_process(dt: float) -> void:
 	if transport.serving and simulation != null: simulation.tick(dt)
 
 
+func _heartbeat_timeout() -> float:
+	return LOADING_HEARTBEAT_TIMEOUT if room != null and room.phase == "loading" else PLAYING_HEARTBEAT_TIMEOUT
+
+
 func _process(dt: float) -> void:
 	var now := Time.get_ticks_msec() / 1000.0
 	var wall_dt := maxf(0.0, now - _clock)
@@ -558,8 +582,7 @@ func _process(dt: float) -> void:
 			if not error.is_empty(): _trace_event(error)
 	if transport.peer == null: return
 	if not transport.serving:
-		var timeout := 60.0 if room != null and room.phase == "loading" else 12.0
-		if (_hello_deadline > 0.0 and _clock > _hello_deadline) or (_hello_deadline == 0.0 and _clock - _last_heard > timeout):
+		if (_hello_deadline > 0.0 and _clock > _hello_deadline) or (_hello_deadline == 0.0 and _clock - _last_heard > _heartbeat_timeout()):
 			_lost("房主没有响应。检查网络后可重连原角色。")
 			return
 		if _hello_again_at > 0.0 and _clock >= _hello_again_at:
@@ -573,12 +596,11 @@ func _process(dt: float) -> void:
 	if room == null: return
 	for peer_id: int in _peer_heard.keys():
 		if peer_id == 1: continue
-		var timeout := 60.0 if room.phase == "loading" else 12.0
-		if _clock - float(_peer_heard[peer_id]) > timeout:
+		if _clock - float(_peer_heard[peer_id]) > _heartbeat_timeout():
 			transport.expire_peer(peer_id)
 			_peer_left(peer_id)
 	for peer_id: int in _peers_waiting.keys():
-		if _clock >= float(_peers_waiting[peer_id]):
+		if _clock >= float(_peers_waiting[peer_id].until):
 			transport.expire_peer(peer_id)
 			_peers_waiting.erase(peer_id)
 	var paused := room.paused_left > 0.0
@@ -623,6 +645,8 @@ func _lost(reason: String) -> void:
 
 
 func _join_timeout_reason() -> String:
+	if connection_stage == "reconnect_wait":
+		return "原角色的连接仍未释放，请稍后重试恢复。"
 	if connection_stage in ["handshake", "joining"]:
 		return "已连接到设备，但房间未确认加入。请确认双方版本一致，并让房主重建房间。"
 	transport.sample_network()
@@ -681,6 +705,7 @@ func stop() -> String:
 	local_id = ""
 	_command_seq = 0
 	_last_snapshot = -1
+	_join_started = 0.0
 	_hello_deadline = 0.0
 	_queued_save = false
 	_manual_save = false

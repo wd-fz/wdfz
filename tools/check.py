@@ -16,12 +16,15 @@ def main():
     parser.add_argument("--renderer", choices=("forward_plus", "mobile"), default="forward_plus",
                         help="Vulkan renderer for windowed tests; headless tests do not render")
     parser.add_argument("--display-driver", choices=("x11", "wayland"), default="x11")
+    parser.add_argument("--suites", choices=("all", "features", "integration"), default="all",
+                        help="run the full suite or one independent CI group")
     options = parser.parse_args()
     mode = "static" if options.static_only else "both" if options.windowed else options.mode
-    reports = ROOT / "build/reports" / (mode if mode in ("static", "headless") else f"{mode}-{options.renderer}")
+    report_name = mode if mode in ("static", "headless") else f"{mode}-{options.renderer}"
+    reports = ROOT / "build/reports" / (report_name if options.suites == "all" else f"{report_name}-{options.suites}")
     reports.mkdir(parents=True, exist_ok=True)
     (ROOT / "build/.gdignore").touch()
-    summary = {"mode": mode, "passed": False, "suites": {}}
+    summary = {"mode": mode, "group": options.suites, "passed": False, "suites": {}}
     try:
         print(quality.check(ROOT), flush=True)
         run("lan-manifest", [sys.executable, "tools/lan_manifest.py", "--check"], reports)
@@ -33,7 +36,7 @@ def main():
                 args = ["--headless"] if display == "headless" else ["--windowed", "--rendering-method", options.renderer,
                                                                       "--rendering-driver", "vulkan", "--display-driver", options.display_driver]
                 output = run(display, [ENGINE, *args, "--path", str(ROOT), "--audio-driver", "Dummy",
-                                      "--fixed-fps", "60", "--script", "res://tests/run_tests.gd"], reports,
+                                      "--fixed-fps", "60", "--script", "res://tests/run_tests.gd", "--", f"--suites={options.suites}"], reports,
                              # Application lifecycle fixtures now prepare all 40 campus regions.
                              timeout=5400 if display == "windowed" else 2400)
                 result = re.search(r"FRAMEWORK TESTS: (\d+) checks, 0 failures", output)
