@@ -29,6 +29,7 @@ static func base(a: CooperativeActor) -> Dictionary:
 		"anomaly": weird.pendulum_info(), "anomaly_active": anomaly_active, "anomaly_id": weird.active_id(), "brolly": a.bag().brolly_up,
 		"patrol_chase": patrol_chase, "choice_open": not a.choice.is_empty(), "inspection_pending": inspection_pending,
 		"inspection_quiet": inspection_pending or inspection_upcoming or float(s.inspection.get("calm", 0)) > 0,
+		"reading_counterfoil": s.seat_card.reading(a.location(), s.active_seconds),
 		"gate_n_map": CampusData.campus().get("gates", {}).get("n", {"x": 514, "y": 95}), "bound_x1": 830.0,
 		"closed": [], "drain_mul": 1.0, "has_key": a.bag().has("key"), "torch": a.bag().torch_on, "hotwire": a.talent().has("drive"),
 		"enter_cool": a.enter_cool, "tile": CampusGeometry.tile_at(room, w) if room != null else "",
@@ -83,6 +84,8 @@ static func investigation(a: CooperativeActor, common: Dictionary = {}, reading:
 		if not f.portal["blueprints"].has(floor_id): left.append(floor_id)
 	c.merge({"place": a.school().place_name(a.location(), float(a.pose["position"][1])), "has_phone": a.bag().has("phone"), "has_coin": a.bag().has("coin"), "has_pill": a.bag().has("pill"), "bag_full": a.bag().bag.size() >= a.bag().capacity(),
 		"reader": a.own_seat,
+		"paper_goal": a.school().seat_card.gate_goal(),
+		"paper_debt": a.school().seat_card.outstanding(),
 		"car": a.talent().car(a.bag().has("key")), "car_tried": g.car_tried.size(), "car_used": g.car_used, "hacked": r.hacked, "data": r.data_synced,
 		"face_done": int(r.face_quiz.get("done", -1)), "spot_comp": f.spots.has("comp"), "spot_data": f.spots.has("data"),
 		"portal": {"diary": f.portal["diary"], "sketch": f.portal["sketch"], "open": f.portal["open"], "count": f.blueprint_count(), "floors_left": left, "need": f.portal_need_text()},

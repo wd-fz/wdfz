@@ -245,7 +245,11 @@ static func gate_name(key: String) -> String:
 	return {"n": "校门", "w": "西小门", "s": "南门"}.get(key, "")
 
 
-func use_gate(key: String, day: int) -> void:
+func west_gate_center() -> Vector2:
+	return CampusGeometry.gate_center(_campus, "w")
+
+
+func use_gate(key: String, day: int, paper: RollcallCard = null) -> void:
 	match key:
 		"n":
 			_say("我：北门的闸机屏幕上显示：「查无此人」。门外的路上没有车，也没有声音，一直延伸到雾里。")
@@ -253,11 +257,34 @@ func use_gate(key: String, day: int) -> void:
 		"s":
 			_say("我：南门锁着，锁上全是锈。门缝外面——是另一个南门。")
 		"w":
+			if paper != null and not paper.proof.is_empty():
+				if paper.clearance == 0:
+					_emit("paper_gate", paper.gate_question(hacked and data_synced))
+					return
+				if not (hacked and data_synced):
+					_say(RollcallCard.EXIT_HINT if paper.clearance == 1 else "回执已经交好，可以和队友在这里集合离校。")
+					return
 			if not hacked or not data_synced:
 				_say("我：小门上挂着锁，旁边那台闸机的屏幕亮着：「未登记」。")
 				_clue("gatew", day)
 				return
 			face_open()
+
+
+func return_paper(paper: RollcallCard, choice: Dictionary, index: int, world_id: String, at: Vector2) -> void:
+	if index < 0 or index >= choice["labels"].size(): return
+	if world_id != "out" or gate_at(at) != "w":
+		_say("我已经离开了读卡器。带着底联回西小门再核一次。")
+		return
+	if index == 3:
+		if hacked and data_synced: face_open()
+		return
+	var before := paper.clearance
+	var note := paper.answer_gate(choice["reference"], index, at)
+	if not note.is_empty(): _say(note)
+	if before == 0 and paper.clearance == 1:
+		_emit("gate_chime")
+		_emit("save")
 
 
 # ---- the whitelist quiz (story.js FaceChallenge) ----
@@ -387,8 +414,23 @@ func use_trash(scene: String, day: int) -> void:
 
 
 ## Card data for an ending (title, tag, lines).
-static func card(id: String) -> Dictionary:
+static func card(id: String, paper: RollcallCard = null, team_gate: String = "") -> Dictionary:
 	var e: Dictionary = ENDINGS.get(id, {})
 	if e.is_empty():
 		return {}
-	return {"title": e["t"], "tag": "假 结 局" if e.get("fake",false) else ("真 结 局" if e.get("true", false) else ""), "lines": e["l"],"fake":bool(e.get("fake",false))}
+	var title: String = e["t"]
+	var lines: Array = e["l"]
+	if paper != null:
+		if id == "face" and (team_gate == "paper" or (team_gate.is_empty() and paper.clearance == 2)):
+			title = "《取回名字》"
+			lines = [paper.evidence() if paper.clearance == 2 else "同学递进那张底联，等在白线对面。我追上去，和大家一起出了校门。", "白线后面只有普通的车声。我一直走，没人拦我。",
+				"身后，喇叭又念了一次我的名字。", "这次，我让它空着。"]
+		elif id == "car":
+			lines = lines.slice(0, 2)
+			lines.append("北门外，一个背书包的小姑娘追着车跑了两步。我踩下刹车。")
+			lines.append("我摇下车窗告诉她：「你哥说，他没忘。」她点了点头，往教学楼又看了一眼。" if paper.heard_promise else "「我哥还在里面吗？」她问。我看了一眼后视镜，第一次不知道该怎么回答。")
+		elif id == "dismissal":
+			lines = lines.slice(0, 3)
+			lines.append("北门外，同桌接过妹妹的书包。「我没忘。」这回，他用不着我捎话了。" if paper.heard_promise else "北门外，一个小姑娘喊了声「哥」。同桌跑过去，接过她的书包。")
+			lines.append("他们混进放学的人群，谈起晚上吃什么。")
+	return {"title": title, "tag": "假 结 局" if e.get("fake",false) else ("真 结 局" if e.get("true", false) else ""), "lines": lines,"fake":bool(e.get("fake",false))}

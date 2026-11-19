@@ -1,0 +1,51 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="Mat_line"]
+albedo_color = Color(0.85, 0.86, 0.77, 1)
+shading_mode = 0
+
+[sub_resource type="BoxMesh" id="Line"]
+material = SubResource("Mat_line")
+size = Vector3(0.14, 0.025, 1)
+
+[sub_resource type="StandardMaterial3D" id="Mat_case"]
+albedo_color = Color(0.13, 0.19, 0.19, 1)
+shading_mode = 0
+
+[sub_resource type="BoxMesh" id="Case"]
+material = SubResource("Mat_case")
+size = Vector3(0.23, 1.45, 0.94)
+
+[sub_resource type="StandardMaterial3D" id="Mat_slot"]
+albedo_color = Color(0.034, 0.043, 0.04, 1)
+shading_mode = 0
+
+[sub_resource type="BoxMesh" id="Slot"]
+material = SubResource("Mat_slot")
+size = Vector3(0.02, 0.055, 0.57)
+
+[node name="WestGateReader" type="Node3D"]
+
+[node name="WhiteLine" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.036, 0)
+mesh = SubResource("Line")
+cast_shadow = 0
+
+[node name="Reader" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.725, -1.14)
+mesh = SubResource("Case")
+
+[node name="PaperSlot" type="MeshInstance3D" parent="Reader"]
+position = Vector3(0.122, 0.05, 0)
+mesh = SubResource("Slot")
+cast_shadow = 0
+
+[node name="Display" type="Label3D" parent="Reader"]
+position = Vector3(0.12, 0.43, 0)
+rotation = Vector3(0, 1.5708, 0)
+text = "西小门\n请递底联"
+font_size = 40
+pixel_size = 0.0038
+outline_size = 2
+modulate = Color(0.88, 0.83, 0.68, 1)
+visibility_range_end = 30.0

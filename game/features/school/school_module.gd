@@ -976,6 +976,7 @@ func _inspection_finish(c: Dictionary, world_id: String, w: Vector2) -> void:
 	var good := bool(c["compliant"])
 	var proxy := bool(c.get("proxy", false))
 	inspection["settled"][key] = "proxy" if proxy else ("present" if good else "absent")
+	if good: seat_card.attended(key)
 	inspection["calm"] = 8.0
 	inspection["calm_room"] = String(c["room"])
 	_events.append({"kind": "inspection", "day": int(c["day"]), "slot": int(c["slot"]), "compliant": good})
@@ -1108,10 +1109,11 @@ func start_inspection(item: Dictionary, world_id: String, w: Vector2, can_stand:
 	inspection["current"] = {"day": item["day"], "slot": item["slot"], "t": 0.0, "look": 0.0, "move": 0.0,
 		"compliant": present, "proxy": proxy, "room": world_id, "points": [] if proxy else _points_json(ring_points(w,can_stand))}
 	if proxy:
-		seat_card.answered = id
-		seat_card.checked = false
+		var room: Variant = _room(world_id)
+		seat_card.borrowed_at(id, String(room["name"]) if room != null else ("校园室外" if world_id == "out" else ""))
 		tt = minf(100.0, tt + RollcallCard.COST)
 		_events.append({"kind": "rollcall_sound", "cue": "dread.call", "caption": "喇叭里传出一声「到」"})
+		_events.append({"kind": "empty_seat_answer", "stamp": id})
 		_say("喇叭里有人替我答了声「到」。是我自己的声音。")
 		if tt >= 100.0: _resolve_assimilation()
 		return
@@ -1140,6 +1142,9 @@ func read_seat_card(world_id: String, at: Vector2) -> Dictionary:
 	if not at_my_seat(world_id, at) or inspection_pending(): return {}
 	var next := _next_check()
 	var offer := seat_card.offer(next, day, _promised_check(next["id"]))
+	if not seat_card.heard_promise:
+		offer["text"] += "\n" + RollcallCard.PROMISE
+		seat_card.heard_promise = true
 	if offer.get("leave", false) and tt + RollcallCard.COST >= 100:
 		offer["text"] += "\n按我现在的同化，空座一开口就会到达上限。"
 	return offer

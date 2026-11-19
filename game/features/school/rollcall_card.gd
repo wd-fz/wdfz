@@ -4,21 +4,42 @@ extends RefCounted
 ## are still settled by SchoolModule. A counterfoil belongs to this student.
 const COST := 18.0
 const LOOK_DOWN := -0.48
+const EXIT_OFFSET := 24.0 # Original campus units, east of the old boundary wall.
+const EXIT_NORTH := 13.0 # The pedestrian gap north of the vehicle gate is present in all five campus meshes.
+const EXIT_HALF_WIDTH := 4.0
+const EXIT_HINT := "西小门亮了绿灯。站到白线靠校园的一侧，再朝门外跨过去。"
+const PROMISE := "同桌又在纸角挤了一行：「要是先出去了，跟我妹说一声，我没忘。她在北门等我。」"
 const INVITATION := "同桌推来一张纸条：「北门旁的保安岗有张单子，签的是你的名字。你去看，我替你答到。」低头看名牌，或起身去保安岗。"
 
 var armed := ""
 var answered := ""
 var checked := false
+var proxy_place := ""
+var proof := "" # ink, present, proxy. A teammate's notebook entry cannot issue a receipt.
+var present_slot := ""
+var clearance := 0 # 1 accepted at the reader, 2 walked across the line.
+var heard_promise := false
+var reading_until := 0.0
+var _previous := Vector2.INF
 
 
 func capture() -> Dictionary:
-	return {"armed": armed, "answered": answered, "checked": checked}
+	return {"armed": armed, "answered": answered, "checked": checked, "proxy_place": proxy_place,
+		"proof": proof, "present_slot": present_slot, "clearance": clearance, "heard_promise": heard_promise,
+		"reading_until": reading_until}
 
 
 func restore(data: Dictionary) -> void:
 	armed = data.get("armed", "")
 	answered = data.get("answered", "")
 	checked = data.get("checked", false)
+	proxy_place = data.get("proxy_place", "")
+	proof = data.get("proof", "proxy" if checked else "")
+	present_slot = data.get("present_slot", "")
+	clearance = int(data.get("clearance", 0))
+	heard_promise = data.get("heard_promise", false)
+	reading_until = float(data.get("reading_until", 0.0))
+	_previous = Vector2.INF
 
 
 static func valid_slot(id: Variant) -> bool:
@@ -38,6 +59,16 @@ static func valid(data: Variant) -> bool:
 	if not seen is bool: return false
 	var last: String = data.get("answered", "")
 	var next: String = data.get("armed", "")
+	var basis: Variant = data.get("proof", "proxy" if seen else "")
+	if basis not in ["", "ink", "present", "proxy"] or (basis == "proxy") != seen: return false
+	var place: Variant = data.get("proxy_place", "")
+	if not place is String or place.length() > 80 or (last.is_empty() and not place.is_empty()): return false
+	var slot: Variant = data.get("present_slot", "")
+	if not slot is String or (not slot.is_empty() and not valid_slot(slot)) or (basis == "present" and slot.is_empty()): return false
+	if not SaveSchema.is_integer(data.get("clearance", 0), 0, 2) or (basis == "" and data.get("clearance", 0) != 0): return false
+	if not data.get("heard_promise", false) is bool: return false
+	if not SaveSchema.number_in(data.get("reading_until", 0), 0, 1e12): return false
+	if not last.is_empty() and not seen and basis != "": return false
 	if last.is_empty(): return not seen
 	return next.is_empty() or (seen and next.get_slice(":", 0).to_int() > last.get_slice(":", 0).to_int())
 
@@ -73,7 +104,108 @@ func offer(next: Dictionary, today: int, promised: bool) -> Dictionary:
 		"labels": ["竖起名牌，让空座应到", "保持平放，自己应到"]}
 
 
-func check_counterfoil() -> bool:
-	if not outstanding(): return false
-	checked = true
+func check_counterfoil(active_seconds: float = 0.0) -> bool:
+	var owed := outstanding()
+	if owed: checked = true
+	if proof.is_empty():
+		proof = "proxy" if checked else ("present" if not present_slot.is_empty() else "ink")
+		reading_until = active_seconds + 8.0
+	return owed
+
+
+func reading(world_id: String, active_seconds: float) -> bool:
+	return world_id == "guard1" and not proof.is_empty() and active_seconds < reading_until
+
+
+func borrowed_at(id: String, place: String) -> void:
+	answered = id
+	checked = false
+	proxy_place = place
+	proof = ""
+	clearance = 0
+	_previous = Vector2.INF
+
+
+func attended(id: String) -> void:
+	if clearance > 0: return
+	present_slot = id
+	if proof == "ink": proof = "present"
+
+
+func evidence() -> String:
+	match proof:
+		"proxy":
+			if proxy_place.is_empty(): return "%s，空座替我答了到。底联上是我的签名，离校栏空着。" % stamp(answered)
+			return "%s点名时我在%s。教室里的空座替我应了声。底联上是我的签名。" % [stamp(answered), proxy_place]
+		"present": return "%s，我亲自在座位上答到。保安岗底联上早就有我的签名，离校栏却空着。" % stamp(present_slot)
+		"ink": return "保安岗底联上是我的签名，离校栏空着。右下角盖着「西小门核验」。"
+	return ""
+
+
+func gate_goal() -> String:
+	if clearance > 0: return EXIT_HINT
+	if proof.is_empty(): return ""
+	return "带底联去校园西侧的西小门。到闸机前交回执，笔记里可以重读底联。"
+
+
+func journal() -> String:
+	var lines := PackedStringArray()
+	var trace := entry()
+	if not trace.is_empty() and (proof.is_empty() or not armed.is_empty()): lines.append(trace)
+	if not proof.is_empty(): lines.append(evidence())
+	if heard_promise: lines.append(PROMISE)
+	return "\n".join(lines)
+
+
+func gate_question(electronic: bool) -> Dictionary:
+	if proof.is_empty(): return {}
+	var wording := ""
+	var labels: Array = []
+	match proof:
+		"proxy":
+			if proxy_place.is_empty():
+				wording = "%s，教室里是谁替你应了声？" % stamp(answered)
+				labels = ["我亲自答的", "我的空座", "那天没有点名"]
+			else:
+				wording = "%s，点名册勾了你的名字。铃响时，你本人在哪儿？" % stamp(answered)
+				labels = ["已经出了校门", "我在" + proxy_place, "我坐在自己的座位上"]
+		"present":
+			wording = "%s，你在哪里答的到？" % stamp(present_slot)
+			labels = ["我坐在自己的座位上", "别人替我答了到", "我已经离校"]
+		"ink":
+			wording = "登记簿说你已经走了。你自己看过的底联上，离校栏填着什么？"
+			labels = ["已经放行", "今天的日期", "那一栏是空的"]
+	if clearance > 0: return {}
+	if electronic: labels.append("改用电子白名单")
+	return {"text": "西小门 · 离校回执\n" + wording, "labels": labels, "reference": proof_reference()}
+
+
+func proof_reference() -> String:
+	match proof:
+		"proxy": return "proxy/%s/%s" % [answered, proxy_place]
+		"present": return "present/" + present_slot
+	return proof
+
+
+## Both callers rediscover the current gate and pass the authority's own paper.
+func answer_gate(token: String, index: int, at: Vector2) -> String:
+	if index < 0 or index >= 3: return ""
+	if proof.is_empty() or clearance != 0 or token != proof_reference(): return "这张回执和刚才不一样了。把现在的底联再递进去。"
+	if index != {"present": 0, "proxy": 1, "ink": 2}[proof]:
+		return "回执被退回来，红章上写着「请核原件」。我翻开随身的底联：" + evidence()
+	clearance = 1
+	_previous = at
+	return "闸机只响了一声。「本人，到。」" + EXIT_HINT
+
+
+func crossed_line(outdoors: bool, at: Vector2, gate: Vector2) -> bool:
+	if clearance != 1: return false
+	var last := _previous
+	_previous = at if outdoors else Vector2.INF
+	if not outdoors or not last.is_finite() or last.distance_squared_to(at) > 24.0 * 24.0: return false
+	var line := gate.x + EXIT_OFFSET
+	if last.x <= line or at.x > line: return false
+	var y := lerpf(last.y, at.y, (last.x - line) / (last.x - at.x))
+	if absf(y - (gate.y - EXIT_NORTH)) > EXIT_HALF_WIDTH: return false
+	clearance = 2
 	return true

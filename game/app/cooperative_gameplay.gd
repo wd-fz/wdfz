@@ -160,6 +160,10 @@ func personal(a: CooperativeActor, dt: float) -> void:
 	if a.fate().ended != "": return
 	var ctx := prepare(a)
 	if a.vehicle: return
+	var paper := a.school().seat_card
+	if paper.clearance == 1 and paper.crossed_line(a.location() == "out", ctx["w"], (sim.shared[&"story.routes"] as RoutesModule).west_gate_center()):
+		_offer_ending(a, "face")
+		if a.fate().over(): return
 	var approaching := a.watcher().approach()
 	var threat := bool(a.watcher().pat["locked"]) or a.watcher().local_threat() or (not approaching.is_empty() and float(approaching["distance"]) < 220.0)
 	var locker_beat := a.locker.tick(dt, bool(a.watcher().hide["on"]), threat)
@@ -179,6 +183,7 @@ func personal(a: CooperativeActor, dt: float) -> void:
 	for e: Dictionary in a.school().take_events():
 		if e["kind"] == "absence": sim.patrol.permanent[a.id] = String(e["id"])
 		elif e["kind"] == "rollcall_sound": a.event("sound", {"cue": e["cue"], "options": {"k": .65, "caption": e["caption"]}})
+		elif e["kind"] == "empty_seat_answer": _classroom_witnesses(a, e["stamp"])
 	var phone := a.feature(&"phone.network") as PhoneModule
 	phone.tick(dt, false)
 	a.terminal = phone.terminal_open
@@ -502,7 +507,7 @@ func apply_result(a: CooperativeActor, result: Dictionary) -> void:
 		else: routes.use_terminal(a.location(), a.bag().has("usb") or a.talent().has("code"), a.school().day)
 		drain(a, "routes")
 	if result.has("gate") and lease(a, "routes"):
-		routes.use_gate(String(result["gate"]), a.school().day)
+		routes.use_gate(String(result["gate"]), a.school().day, a.school().seat_card)
 		drain(a, "routes")
 	if result.has("trash"):
 		routes.use_trash(a.location(), a.school().day)
@@ -595,6 +600,9 @@ func choose(a: CooperativeActor, index: int) -> void:
 		_offer_time(a, 6.0, {"kind": "supply"})
 		return
 	match source:
+		"paper_gate":
+			(a.feature(&"story.routes") as RoutesModule).return_paper(a.school().seat_card, choice, index, a.location(), ctx["w"])
+			drain(a, "routes")
 		"seat_card":
 			if index == 0 and choice.has("target"):
 				var text := a.school().sign_seat_card(a.location(), ctx["w"], choice["target"], choice["leave"])
@@ -648,6 +656,8 @@ func drain(a: CooperativeActor, source: String) -> void:
 
 func apply_event(a: CooperativeActor, source: String, e: Dictionary) -> void:
 	match String(e["kind"]):
+		"paper_gate": _choice(a, "paper_gate", e)
+		"gate_chime": a.event("sound", {"cue": "ui.beep"})
 		"smile", "sound": a.event(String(e["kind"]), e)
 		"step":
 			if source == "garage":
@@ -691,7 +701,7 @@ func apply_event(a: CooperativeActor, source: String, e: Dictionary) -> void:
 			var notebook := a.feature(&"story.investigation") as InvestigationModule
 			notebook.set_context(CooperativeContext.investigation(a))
 			notebook.record(String(e["id"]), String(e["text"]), "事实", String(e.get("source", "")))
-			if e["id"] == "parking": a.school().seat_card.check_counterfoil()
+			if e["id"] == "parking": a.school().seat_card.check_counterfoil(a.school().active_seconds)
 		"ending": _offer_ending(a, String(e["id"]))
 		"travel":
 			var world := String(e["world"])
@@ -879,6 +889,7 @@ func _offer_ending(a: CooperativeActor, route: String) -> void:
 	if qualified.get("route") != route:
 		var at := a.point(CampusData.rooms())
 		qualified = {"owner": a.id, "route": route, "world": a.location(), "x": at.x, "y": at.y}
+		if route == "face" and a.school().seat_card.clearance == 2: qualified["paper"] = true
 	if sim.room.ending_offer.get("route") == route: return
 	var participants := _ending_participants()
 	if not sim.room.offer_ending(a.id, route, participants):
@@ -898,6 +909,33 @@ func _confirm_ending(a: CooperativeActor, accept: bool) -> void:
 			a.event("notice", {"text": "成员位置或状态已变化，请重新集合后发起逃离。"})
 			return
 	if sim.room.confirm_ending(a.id, accept): _finish_ending()
+
+
+func _classroom_witnesses(owner: CooperativeActor, stamp: String) -> void:
+	var seat := owner.school()._seat(owner.own_seat)
+	if seat.is_empty(): return
+	var place: Dictionary = seat["seated"]
+	var at := Vector2(place["x"], place["y"])
+	var room: Dictionary = CampusData.rooms()["teach1"]
+	var witnesses: Array[CooperativeActor] = []
+	for other: CooperativeActor in sim.active_actors():
+		if other.location() != "teach1" or other.fate().over(): continue
+		var where := other.point(CampusData.rooms())
+		if where.distance_squared_to(at) < 4.5 * 4.5 or (other.school().seated and other.school().seat_id == owner.own_seat): return
+		if other == owner or not sim.room.members[other.id]["connected"]: continue
+		var col := floori((where.x - float(room["ox"])) / float(room["tw"]))
+		var row := floori((where.y - float(room["oy"])) / float(room["th"]))
+		if AtmosModule.class_index(col, row) == AtmosModule.class_index(seat["c"], seat["r"]): witnesses.append(other)
+	if witnesses.is_empty(): return
+	var person := owner.session.character_id
+	var names := PackedStringArray()
+	for witness: CooperativeActor in witnesses:
+		names.append(StudentCast.PEOPLE[witness.session.character_id]["name"])
+		witness.event("seat_witness", {"person": person, "seat": owner.own_seat, "x": at.x, "y": at.y,
+			"expires": witness.school().active_seconds + 6.0})
+	var notebook := owner.feature(&"story.investigation") as InvestigationModule
+	notebook.set_context(CooperativeContext.investigation(witnesses[0]))
+	notebook.record("witness:%s:%s" % [person, stamp], "%s，%s听见%s的座位上有人应了一声「到」。" % [RollcallCard.stamp(stamp), "、".join(names), StudentCast.PEOPLE[person]["name"]], "事实", "教学楼一楼 · 教室")
 
 
 func _finish_ending() -> void:

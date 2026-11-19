@@ -148,7 +148,8 @@ static func _runtime(a: Dictionary) -> String:
 		if not CampusData.rooms().has(job.get("room")) or not SaveSchema.is_integer(job.get("c"), 0, 1000) or not SaveSchema.is_integer(job.get("r"), 0, 1000) or not SaveSchema.number_in(job.get("t"), 0, InventoryModule.SEARCH_SECONDS) or not SaveSchema.number_in(job.get("x"), -100000, 100000) or not SaveSchema.number_in(job.get("y"), -100000, 100000): return "搜索进度无效。"
 	var choice: Dictionary = a["choice"]
 	if not choice.is_empty():
-		if choice.get("source") not in ["lift", "seat_card"] and not CooperativeGameplay.SOURCES.has(choice.get("source")): return "选择来源无效。"
+		if choice.get("source") not in ["lift", "seat_card", "paper_gate"] and not CooperativeGameplay.SOURCES.has(choice.get("source")): return "选择来源无效。"
+		if choice.get("source") == "paper_gate" and not choice.get("reference") is String: return "底联凭据无效。"
 		if choice.get("source") == "seat_card" and choice.has("target"):
 			if not RollcallCard.valid_slot(choice["target"]) or not choice.get("leave") is bool: return "座签选择无效。"
 		if not choice.get("text") is String or not choice.get("labels") is Array or choice["labels"].size() > 40 or not SaveSchema.is_integer(choice.get("id"), 0, 2147483647): return "选择内容无效。"
@@ -239,6 +240,7 @@ static func _gameplay(g: Dictionary, actors: Dictionary) -> String:
 	if not board.is_empty() and board.has("position") and (not _vector(board["position"]) or not _world(board.get("world")) or not board.get("id") is String): return "车辆集合点无效。"
 	var qualified: Dictionary = extra["qualified"]
 	if not qualified.is_empty():
+		if not qualified.get("paper", false) is bool or (qualified.get("paper", false) and qualified.get("route") != "face"): return "共同离校回执无效。"
 		if not actors.has(qualified.get("owner")) or qualified.get("route") not in CooperativeRoom.ENDINGS or not _world(qualified.get("world")) or not SaveSchema.number_in(qualified.get("x"), -100000, 100000) or not SaveSchema.number_in(qualified.get("y"), -100000, 100000): return "共同结局条件无效。"
 	for id: Variant in extra["escort_lag"]:
 		if not actors.has(id) or not SaveSchema.number_in(extra["escort_lag"][id], 0, SaveSchema.MAX_SECONDS): return "队伍跟随时间无效。"

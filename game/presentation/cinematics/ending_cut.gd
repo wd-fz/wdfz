@@ -42,6 +42,7 @@ var _g := Vector3.ZERO
 var _lamp: MeshInstance3D
 var _figs: Array = []
 var _beeped := false
+var _paper_exit := false
 var _on_beep: Callable
 var _campus: Dictionary = {}
 var _lit := false                   # blocks are shaded by the stage's ambient light (the cyber interiors)
@@ -146,8 +147,7 @@ static func phase(kk: float, a: float, b: float) -> float:
 
 ## A gate of the campus plan in scene coordinates (cutW2S).
 static func gate_scene(campus: Dictionary, key: String) -> Vector3:
-	var g: Dictionary = campus.get("gates", {}).get(key, {})
-	var s := CampusGeometry.to_scene(null, Vector2(float(g.get("x", 0)) * SC, float(g.get("y", 0)) * SC))
+	var s := CampusGeometry.to_scene(null, CampusGeometry.gate_center(campus, key))
 	return Vector3(s.x, 0.0, s.y)
 
 
@@ -177,6 +177,8 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	_on_beep = on_beep
 	_dur = float(DEFS[id]["dur"])
 	k = 0.0
+	_paper_exit = opts.get("paper_exit", false)
+	_beeped = _paper_exit
 	on = true
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_root = Node3D.new()
@@ -275,6 +277,7 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 		_apply(0.0)
 		return
 	_g = gate_scene(campus, "w")
+	if _paper_exit and id == "face": _g.z -= RollcallCard.EXIT_NORTH * CampusGeometry.U2M
 	var box := BoxMesh.new()
 	box.size = Vector3.ONE * 0.12
 	_lamp = MeshInstance3D.new()
@@ -360,14 +363,18 @@ func _apply(kk: float) -> void:
 		return
 	_ui.cut_fade(clampf(face_fade(kk), 0.0, 1.0))
 	if kk < 0.3:
-		(_lamp.material_override as StandardMaterial3D).albedo_color = face_lamp(kk)
+		(_lamp.material_override as StandardMaterial3D).albedo_color = Color("#7ae6ab") if _paper_exit else face_lamp(kk)
 		if kk > 0.16 and not _beeped:
 			_beeped = true
 			if _on_beep.is_valid():
 				_on_beep.call()
 			# The gate answers with two clicks, 120 ms apart (the first is the app's own).
 			get_tree().create_timer(0.12, true).timeout.connect(func() -> void: snd("ui.click"))
-		_look(_g + Vector3(3.4, 1.6, 0.6), _g + Vector3(0.0, 1.3, 0.6))
+		if _paper_exit:
+			var through := _g + Vector3(lerpf(RollcallCard.EXIT_OFFSET * CampusGeometry.U2M, -2.4, kk / 0.3), 1.6, 0)
+			_look(through, through + Vector3.LEFT * 5.0)
+		else:
+			_look(_g + Vector3(3.4, 1.6, 0.6), _g + Vector3(0.0, 1.3, 0.6))
 		for f: Node3D in _figs:
 			f.visible = false
 		return

@@ -8,14 +8,14 @@ func test_menus() -> void:
 	root.add_child(ui)
 	await _frames(4)
 	var hits := {}
-	for id: String in ["new_requested","new_hard_requested","load_requested","settings_requested","achievements_requested","archive_requested","records_requested","speedrun_requested","dlc_requested","fullscreen_requested","debug_requested","resume_requested","save_requested","menu_requested"]:
+	for id: String in ["new_requested","custom_game_requested","new_hard_requested","load_requested","settings_requested","achievements_requested","archive_requested","records_requested","speedrun_requested","dlc_requested","fullscreen_requested","debug_requested","resume_requested","save_requested","menu_requested"]:
 		hits[id] = 0
 		ui.connect(id,func() -> void: hits[id] += 1)
 	hits["notes_requested"] = 0
 	hits["map_requested"] = 0
 	ui.notes_requested.connect(func(_q: String) -> void: hits.notes_requested += 1)
 	ui.map_requested.connect(func(_q: String) -> void: hits.map_requested += 1)
-	var main := {"NewGame":"new_requested","HardGame":"new_hard_requested","LoadGame":"load_requested","SettingsMenu":"settings_requested","Achievements":"achievements_requested","Archive":"archive_requested","RecordsMenu":"records_requested","Speedrun":"speedrun_requested","DlcMenu":"dlc_requested","FullscreenMenu":"fullscreen_requested","DebugTools":"debug_requested"}
+	var main := {"NewGame":"new_requested","CustomGame":"custom_game_requested","HardGame":"new_hard_requested","LoadGame":"load_requested","SettingsMenu":"settings_requested","Achievements":"achievements_requested","Archive":"archive_requested","RecordsMenu":"records_requested","Speedrun":"speedrun_requested","DlcMenu":"dlc_requested","FullscreenMenu":"fullscreen_requested","DebugTools":"debug_requested"}
 	var pause := {"Resume":"resume_requested","Save":"save_requested","Reload":"load_requested","BackToMenu":"menu_requested","SettingsPause":"settings_requested","NotesPause":"notes_requested","MapPause":"map_requested","DlcMenu":"dlc_requested","FullscreenPause":"fullscreen_requested","DebugTools":"debug_requested"}
 	for resolution: Vector2i in [Vector2i(960,540),Vector2i(1280,800),Vector2i(2340,1080),Vector2i(2520,1080)]:
 		root.size = resolution

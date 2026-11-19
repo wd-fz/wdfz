@@ -9,7 +9,7 @@ extends RefCounted
 ## do not write the normal save slot. Hidden routes appear in the table only after a record exists.
 
 const RULES := 6
-const ROUTES := {"dismissal": "《放学》", "international": "《外国语学生》", "cyber": "《网安仙人》", "car": "《闸门》", "face": "《白名单》", "portal": "《门》", "beast":"《先辈》"}
+const ROUTES := {"dismissal": "《放学》", "international": "《外国语学生》", "cyber": "《网安仙人》", "car": "《闸门》", "face": "《白名单》", "facePaper": "《取回名字》", "portal": "《门》", "beast":"《先辈》"}
 const DIFF_NAME := {"easy": "预知梦", "hard": "梦魇"}
 
 var run: Dictionary = {}
@@ -107,7 +107,7 @@ static func rows(record: Dictionary) -> Array:
 	for diff: String in ["easy", "hard"]:
 		for route: String in ROUTES:
 			var b: Variant = (record.get("best", {}) as Dictionary).get(key(diff, route))
-			if route == "beast" and b == null:
+			if route in ["beast", "facePaper"] and b == null:
 				continue
 			out.append({"text": "%s · %s　%s" % [DIFF_NAME[diff], ROUTES[route], fmt(int(b["ms"])) if b != null else "—"], "on": b != null, "memo": ""})
 	for r: Dictionary in record.get("recent", []):

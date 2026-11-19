@@ -337,6 +337,9 @@ func _run() -> void:
 	var player_controls := preload("res://tests/suites/player_controls.gd").new(self)
 	print("CASE: player_controls.test_seated_prompt")
 	await player_controls.test_seated_prompt()
+	print("CASE: player_controls.test_west_gate_walk")
+	for attendance: String in ["ink", "present", "proxy"]:
+		await player_controls.test_west_gate_walk(attendance)
 	print("CASE: player_controls.test_touch_sprint")
 	await player_controls.test_touch_sprint()
 	var settings_ui := preload("res://tests/suites/settings_ui.gd").new(self)
@@ -435,6 +438,7 @@ func _run() -> void:
 	print("CASE: school._test_school_rules")
 	school._test_school_rules()
 	school.test_rollcall_card()
+	school.test_paper_evidence()
 	print("CASE: school._test_night_dorm_rules")
 	school._test_night_dorm_rules()
 	print("CASE: campus._test_inventory_rules")

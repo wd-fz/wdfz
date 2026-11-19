@@ -107,7 +107,8 @@ func begin(entry: Dictionary, worlds: Array[WorldDefinition], view: GameUI, opti
 		ending.audio = audio
 		ending.finished.connect(func(_skipped: bool) -> void: _done())
 		if kind == "portal": (router.world_instance() as CampusWorld).show_portal(true)
-		var opts := {"tsec":_clock}
+		var opts := {"tsec":_clock, "paper_exit":entry.get("end") == "facePaper"}
+		if opts["paper_exit"]: (router.world_instance() as CampusWorld).show_west_clearance(true)
 		if kind == "car": opts["switch"] = _car_out
 		ending.begin(kind,router.world_instance(),CampusData.campus(),player,ui,func() -> void: audio.play("ui.beep"),opts)
 	else:

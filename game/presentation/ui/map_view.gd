@@ -266,6 +266,10 @@ func _draw_plan() -> void:
 	for gate: Array in plan["gates"]:
 		var gp := Vector2((float(gate[1])-x0)*sc,(float(gate[2])-y0)*sc)
 		draw_rect(Rect2(gp-Vector2(2,2),Vector2(4,4)),Color("c8a24a"))
+	if plan.has("target"):
+		var pin: Vector2 = (plan["target"] - Vector2(x0, y0)) * sc
+		draw_arc(pin, 9, 0, TAU, 24, Color("#f4cd7b"), 2.5, true)
+		draw_circle(pin, 2.5, Color("#f4cd7b"))
 	var me_pos: Vector2 = plan["me"]
 	var mp := Vector2((me_pos.x - x0) * sc, (me_pos.y - y0) * sc)
 	var green := Color("#79c8a4")

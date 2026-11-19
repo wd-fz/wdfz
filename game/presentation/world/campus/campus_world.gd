@@ -24,6 +24,8 @@ var ground_items: GroundItems
 var _traces_seen := -1
 var _trace_data: Array=[]
 var broadcast_props: BroadcastProps
+var _west_display: Label3D
+var _west_cleared := false
 var mirror_view: MirrorView
 var canteen_view: CanteenView
 var lighting: CampusLighting
@@ -71,6 +73,15 @@ func activate() -> void:
 	runtime_active = true
 	set_process(true)
 	_build_lighting()
+	if scene_id == "out":
+		var reader := preload("res://game/presentation/world/campus/west_gate_reader.tscn").instantiate() as Node3D
+		var centre := CampusGeometry.gate_center(CampusData.campus(), "w") + Vector2(RollcallCard.EXIT_OFFSET, -RollcallCard.EXIT_NORTH)
+		var p := CampusGeometry.to_scene(null, centre)
+		reader.position = Vector3(p.x, visual_ground.height(p.x, p.y), p.y)
+		reader.get_node("WhiteLine").scale.z = RollcallCard.EXIT_HALF_WIDTH * 2.0 * CampusGeometry.U2M
+		add_child(reader)
+		_west_display = reader.get_node("Reader/Display")
+		_west_cleared = false
 	anomaly_fx = AnomalyFx.new()
 	anomaly_fx.particle_quality=int(render_options.get("particle_detail",-1))
 	anomaly_fx.ground_height=visual_ground.height
@@ -118,6 +129,13 @@ func activate() -> void:
 			duty.name = "DutyRoster"
 			add_child(duty)
 			duty.setup(layout)
+
+
+func show_west_clearance(accepted: bool) -> void:
+	if accepted == _west_cleared or not is_instance_valid(_west_display): return
+	_west_cleared = accepted
+	_west_display.text = "本人已核验\n请越线离校" if accepted else "西小门\n请递底联"
+	_west_display.modulate = Color("#8ef4b1") if accepted else Color("#e0d4ad")
 
 
 func deactivate() -> void:

@@ -21,6 +21,27 @@ var _card_header: Label3D
 var _card_seat := ""
 var _card_person := ""
 var _card_fold := -1
+var _echoes := {}
+
+
+func show_seat_witness(seat: String, person: String, point: Vector2, seconds: float) -> void:
+	if seconds <= 0 or room.get("id") != "teach1" or not StudentCast.valid(person) or _echoes.has(seat): return
+	var double := StudentAvatar.new()
+	var xy := CampusGeometry.to_scene(room, point)
+	double.position = Vector3(xy.x, 0, xy.y)
+	double.rotation.y = CampusGeometry.yaw_from_ang(PI)
+	add_child(double)
+	double.dress(person)
+	double.advance("sit", 0)
+	_echoes[seat] = {"node": double, "at": point, "left": seconds}
+
+
+func clear_seat_witness(seat: String) -> void:
+	if not _echoes.has(seat): return
+	var double: Node3D = _echoes[seat]["node"]
+	double.hide()
+	double.queue_free()
+	_echoes.erase(seat)
 
 func build(layout: Dictionary, seats: Array) -> void:
 	name = "Classmates"
@@ -211,6 +232,11 @@ func _faces(dt: float, me: Vector2, player: Vector2, viol: float, staring: bool,
 
 
 func advance(dt: float, me: Vector2, viol: float, door: Variant, staring: bool, bell: bool, nav: PatrolNav) -> void:
+	if not _echoes.is_empty():
+		for seat: String in _echoes.keys():
+			var echo: Dictionary = _echoes[seat]
+			echo["left"] -= dt
+			if echo["left"] <= 0 or me.distance_squared_to(echo["at"]) < 4.5 * 4.5: clear_seat_witness(seat)
 	var player := CampusGeometry.to_scene(room,me)
 	_faces(dt,me,player,viol,staring,bell)
 	var exit_point := Vector2.ZERO

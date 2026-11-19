@@ -1297,7 +1297,7 @@ func tick(dt: float) -> void:
 			return
 		if _cola_drive(dt):
 			return
-		if bool(_c.get("inspection_quiet", false)):
+		if bool(_c.get("inspection_quiet", false)) or bool(_c.get("reading_counterfoil", false)):
 			return
 		an["next"] = float(an["next"]) - dt
 		# 2026-11-14 scare-overlap audit (docs/plan/中式与西式恐怖及吓人手法.md, item 1): while the patroller

@@ -57,7 +57,7 @@ func validate(data: Dictionary) -> String:
 		return "调查笔记无效"
 	if not data.get("pins", {}) is Dictionary: return "调查路线无效"
 	for reader: Variant in data.get("pins", {}):
-		if not reader is String or data["pins"][reader] not in ["car", "face", "portal", "cyber", "dismissal", "international"]: return "调查路线无效"
+		if not reader is String or data["pins"][reader] not in ["identity", "car", "face", "portal", "cyber", "dismissal", "international"]: return "调查路线无效"
 	for v: Variant in (data.get("entries", {}) as Dictionary).values():
 		if not (v is Dictionary) or not (v.get("text") is String) or not KINDS.has(String(v.get("kind", ""))):
 			return "调查笔记无效"
@@ -209,6 +209,7 @@ func _radio_lead() -> String:
 
 func routes() -> Array:
 	var out: Array = []
+	if not _paper_lead().is_empty(): out.append(["identity", "离校回执"])
 	if visible("parking") or visible("notice") or bool(_c.get("has_key", false)) or int(_c.get("car_tried", 0)) > 0:
 		out.append(["car", "车辆"])
 	if bool(_c.get("spot_comp", false)) or bool(_c.get("spot_data", false)) or bool(_c.get("hacked", false)):
@@ -228,7 +229,8 @@ func routes() -> Array:
 func current_focus() -> String:
 	var known := routes()
 	var preferred: String = pins.get(_c.get("reader", "solo"), "")
-	for id: String in [preferred, focus, "portal", "dismissal", "international"]:
+	var lead := "identity" if focus in ["", "car"] and not _paper_lead().is_empty() else focus
+	for id: String in [preferred, lead, "portal", "dismissal", "international"]:
 		if not id.is_empty() and known.any(func(r: Array) -> bool: return r[0] == id): return id
 	return "car" if known.is_empty() else String(known[0][0])
 
@@ -244,6 +246,7 @@ func goal() -> String:
 	var f := current_focus()
 	var cy: Dictionary = _c.get("cyber", {})
 	var po: Dictionary = _c.get("portal", {})
+	if f == "identity": return _paper_lead()
 	if f == "dismissal": return _radio_lead()
 	if f == "international": return _c["exchange_goal"]
 	if f == "cyber":
@@ -276,6 +279,22 @@ func goal() -> String:
 	if not visible("parking"):
 		return "已有开车的办法。保安岗停车记录能缩小范围，钥匙上的牌号可供核对。"
 	return "去西侧车库核对车牌；先用手电或诱饵处理车道上的黑影，再试车门。"
+
+
+func _paper_lead() -> String:
+	if _c.get("paper_debt", false): return "空座替我答过到。我得亲自去北门旁的保安岗柜台，核对那张签着我名字的底联。"
+	var lead: String = _c.get("paper_goal", "")
+	if lead.is_empty() and _c.get("reader", "solo") != "solo" and visible("parking"):
+		return "队友翻过了登记簿。去北门旁的保安岗柜台，我自己的底联还在那里。"
+	return lead
+
+
+## A known destination, shown only when its lead is the reader's current investigation.
+func paper_landmark() -> String:
+	var tracked := current_focus()
+	if tracked == "identity": return "保安岗" if String(_c.get("paper_goal", "")).is_empty() else "西小门"
+	if tracked == "car" and not visible("notice") and not visible("parking") and not _c.get("has_key", false): return "保安岗"
+	return ""
 
 
 ## [[route, text, done]]
