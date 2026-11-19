@@ -35,10 +35,11 @@ def main():
             for display in (("headless", "windowed") if mode == "both" else (mode,)):
                 args = ["--headless"] if display == "headless" else ["--windowed", "--rendering-method", options.renderer,
                                                                       "--rendering-driver", "vulkan", "--display-driver", options.display_driver]
+                # A local full native run includes both independent 90-minute CI groups.
+                timeout = 2400 if display == "headless" else 5400 * (2 if options.suites == "all" else 1)
                 output = run(display, [ENGINE, *args, "--path", str(ROOT), "--audio-driver", "Dummy",
                                       "--fixed-fps", "60", "--script", "res://tests/run_tests.gd", "--", f"--suites={options.suites}"], reports,
-                             # Application lifecycle fixtures now prepare all 40 campus regions.
-                             timeout=5400 if display == "windowed" else 2400)
+                             timeout=timeout)
                 result = re.search(r"FRAMEWORK TESTS: (\d+) checks, 0 failures", output)
                 if not result or int(result[1]) == 0:
                     raise RuntimeError(f"{display}: test runner did not confirm a completed, nonempty suite")
