@@ -58,7 +58,8 @@ def main():
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
     children = []
-    summaries = []
+    summaries = [None] * args.players
+    guest_results = reports / f".guests-finished-{os.getpid()}-{time.monotonic_ns()}"
     proxies = []
     try:
         for index in range(args.players):
@@ -74,6 +75,8 @@ def main():
                 join_port = proxy.port
             peer_script = "walking_peer" if args.walk else "peer"
             command = [ENGINE, *rendering, "--path", str(ROOT), "--audio-driver", "Dummy", "--max-fps", "60", "--script", f"res://tests/network/{peer_script}.gd", "--", f"--role={role}", f"--port={join_port}", f"--players={args.players}", f"--seconds={args.seconds}"]
+            if index == 0 and not args.walk and not args.ending:
+                command.append(f"--guest-results={guest_results}")
             if args.ui: command.extend(["--ui", f"--screenshots={reports}"])
             if args.soak: command.append("--soak")
             if args.slow_load: command.append("--slow-load")
@@ -89,7 +92,10 @@ def main():
         # connection/reconnect assertions. Renderless transport keeps its limit.
         startup_budget = 420 if args.ui and args.renderer else 180 if args.ui or args.walk else 45
         deadline = time.monotonic() + args.seconds * 2 + startup_budget
-        for process, output, path in children:
+        for index in [*range(1, len(children)), 0]:
+            process, output, path = children[index]
+            if index == 0:
+                guest_results.touch()
             code = process.wait(timeout=max(1, deadline - time.monotonic()))
             output.flush()
             text = path.read_text()
@@ -103,7 +109,7 @@ def main():
             summary = json.loads(match[1])
             if summary["failures"]:
                 raise RuntimeError(f"{path.name}: {summary}")
-            summaries.append(summary)
+            summaries[index] = summary
         (reports / "summary.json").write_text(json.dumps(summaries, indent=2) + "\n")
         (reports / "impairment.json").write_text(json.dumps([{"forwarded": p.forwarded, "dropped": p.dropped, "duplicated": p.duplicated} for p in proxies], indent=2) + "\n")
         print(f"LAN ENet: {args.players} independent processes, {sum(s['checks'] for s in summaries)} checks passed")
@@ -119,6 +125,7 @@ def main():
             output.close()
         for proxy in proxies:
             proxy.close()
+        guest_results.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

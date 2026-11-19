@@ -17,6 +17,7 @@ var failures := 0
 var stage := 0
 var before_pause := 0.0
 var duration := 18.0
+var guest_results_file := ""
 var ui_mode := false
 var app: GameApp
 var disconnected_at := -1.0
@@ -57,6 +58,7 @@ func _initialize() -> void:
 		if argument.begins_with("--port="): port = int(argument.trim_prefix("--port="))
 		if argument.begins_with("--players="): count = int(argument.trim_prefix("--players="))
 		if argument.begins_with("--seconds="): duration = float(argument.trim_prefix("--seconds="))
+		if argument.begins_with("--guest-results="): guest_results_file = argument.trim_prefix("--guest-results=")
 		if argument == "--ui": ui_mode = true
 		if argument == "--soak": soak = true
 		if argument == "--ending": ending_test = true
@@ -199,7 +201,7 @@ func _tap(control: Control) -> void:
 func _process(dt: float) -> bool:
 	startup += dt
 	if startup > duration * 2 + (160 if ui_mode else 35):
-		check(false, "connection/loading timeout")
+		check(false, "%s connection/loading timeout at scenario stage %d after %.1fs of play" % [role, stage, elapsed])
 		finish()
 		return false
 	if network == null: return false
@@ -251,22 +253,30 @@ func _process(dt: float) -> bool:
 			check(network.room.ending == "face" and state.get("life", {}).get("ended") == "face", "real ENet client receives shared whitelist ending")
 			if role == "guest-1": check(network.local_id == saved_identity, "route survives original-member reconnect")
 			finish()
-	# A lost disconnect datagram keeps the old member alive until its 12-second
-	# heartbeat expires. Let the reconnecting guest finish its full play interval
-	# before shutting down the authority; the overall startup deadline still bounds failures.
-	if elapsed > duration + (20.0 if role == "host" else 0.0):
+	if _play_interval_complete():
 		if ending_test and role == "host":
 			var route := network.simulation.shared[&"story.routes"] as RoutesModule
 			print("ENDING TRACE: ", {"stage": stage, "hacked": route.hacked, "data": route.data_synced, "reconnected": original_guest_reconnected, "qualified": network.simulation.gameplay.qualified, "offer": network.room.ending_offer, "choices": network.simulation.actor(network.local_id).choice})
 		check(snapshots > 10, "received repeated baselines")
 		check(motions > 40, "received motion over unreliable ENet")
 		check(not ending_test and network.room != null and network.room.phase == "playing", "room stays running / ending completes before timeout")
+		if role == "host" and not ending_test and not restore_test and not soak:
+			check(original_guest_reconnected, "original peer restored after transport disconnect")
 		if role == "guest-1":
 			check(network.local_id == saved_identity, "reconnect keeps stable identity")
 			check(state["session"].get("character") == "xu" and network.room.members[network.local_id].get("character") == "xu", "reconnecting restores the selected student across real ENet")
 			if restore_test: check(network.room.epoch != old_epoch and state["session"]["world_id"] == "lab3", "restored guest loads the new epoch in its saved world")
 		finish()
 	return false
+
+
+func _play_interval_complete() -> bool:
+	if elapsed <= duration: return false
+	if role != "host": return true
+	if guest_results_file.is_empty(): return elapsed > duration + 20.0
+	# Each client measures play time only while connected. A second handshake can
+	# outlast a fixed host grace period. The supervisor signals clean guest exits.
+	return (soak or stage >= (4 if restore_test else 7)) and FileAccess.file_exists(guest_results_file)
 
 
 func _host_scenario() -> void:
@@ -306,10 +316,7 @@ func _host_scenario() -> void:
 		check(error.is_empty(), "running world validates: " + error)
 		check(sim.actor(network.local_id).school().tsec == sim.actor(String(sim.actors.keys()[1])).school().tsec, "calendar not multiplied by player count")
 		stage = 4
-	# A missed disconnect can wait for the 12 s heartbeat before admitting the
-	# returning identity. Assert recovery within that bound, not at one instant.
-	elif stage == 4 and elapsed > 11.0 and (original_guest_reconnected or elapsed > 26.0):
-		check(original_guest_reconnected, "original peer restored after transport disconnect")
+	elif stage == 4 and elapsed > 11.0 and original_guest_reconnected:
 		if ui_mode:
 			app.lan.open()
 			stage = 5
