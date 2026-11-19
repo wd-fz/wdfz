@@ -4,7 +4,8 @@ extends FeatureModule
 ## wd-fz.github.io@0bf508a, modules/paper-plane/paper.js PAPER_CFG): rolled once per run (10 %,
 ## half peaceful, half dangerous); after 150 s of play, in a room with outer windows (the same
 ## windows as the window gaze) a plane flies out of a visible window 3–14 m away and lands in front
-## of the player. Peaceful: a note with a true tip (item 'paper'). Dangerous: pick it up within 8 s,
+## of the player. Peaceful: a note with a true tip (item 'paper'). Dangerous: leave the room with the
+## plane untouched, or stay and pick it up within 8 s,
 ## read it within 8 s, aim at that window within 4 s, then steer it (W/S/A/D) back through the window
 ## (1.4 m wide, 1.0–2.25 m high) without touching walls, the floor or the ceiling, within distance ÷
 ## speed + 6 s; failing brings footsteps and, 4 s later, the paper sender death.
@@ -150,7 +151,7 @@ func start(kind: String) -> bool:
 		var replacement: Variant=text_override.call(kind)
 		if replacement is String: s["ev"]["text"]=replacement
 	_emit("fact", {"what": "delivery", "kind": kind})
-	_say("（窗那边 · 两下拍窗）" if kind == "danger" else "（纸擦过地面的轻响）")
+	_say("（窗那边 · 两下拍窗）那只手一直朝屋里摊着。我现在还能走。要是留下，就得把纸送回去。" if kind == "danger" else "（纸擦过地面的轻响）")
 	return true
 
 
@@ -313,8 +314,11 @@ func tick(dt: float) -> void:
 		if rl is Dictionary and bool(rl["hit"]) and not bool(s["used"]) and float(_c.get("now", 0.0)) >= MIN_RUN and not bool(_c.get("busy", false)):
 			start(String(rl["kind"]))
 		return
-	e["t"] = float(e["t"]) + dt
 	var here: bool = String(_c.get("scene", "")) == e["room"]
+	if not here and e["kind"] == "danger" and e["phase"] in ["fly", "wait"]:
+		_end("left")
+		return
+	e["t"] = float(e["t"]) + dt
 	match String(e["phase"]):
 		"fly":
 			if float(e["t"]) >= FLY_IN:

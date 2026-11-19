@@ -190,6 +190,12 @@ func test_west_gate_walk(attendance: String = "ink") -> void:
 	app.player.request_interaction()
 	await _frames(2)
 	check(app.school().seat_card.proof == attendance and app.investigation_brief().contains("西小门"), "the real guard cabinet and the pause lead open the early route")
+	if attendance == "present":
+		var old := app.session.capture(app.player.capture_pose())
+		old["modules"]["school.day"]["data"]["seat_card"] = {"armed":"", "answered":"", "checked":false}
+		app.saves.write(old)
+		app.load_game()
+		check(app.school().seat_card.proof == "present" and app.school().seat_card.present_slot == "1:0" and not app.school().seat_card.reading("guard1",app.school().active_seconds), "an old solo cabinet record and settled attendance restore the facts without replaying the reading grace")
 	app._show_notes()
 	for button: Button in app.ui._notes_box.find_children("*","Button",true,false):
 		if button.text == "在校园图上找西小门": button.pressed.emit()

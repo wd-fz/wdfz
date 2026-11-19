@@ -383,6 +383,18 @@ func _test_paper_rules() -> void:
 	var d := PaperPlaneModule.new(rooms)
 	d.reset()
 	var dctx: Dictionary = dspot["ctx"].duplicate()
+	var outside := dctx.duplicate()
+	outside["scene"] = "out"
+	for elapsed: float in [0.0, PaperPlaneModule.FLY_IN]:
+		var declined := PaperPlaneModule.new(rooms)
+		declined.reset()
+		declined.set_context(dctx)
+		declined.start("danger")
+		declined.tick(elapsed)
+		declined.set_context(outside)
+		declined.tick(PaperPlaneModule.WAIT)
+		declined.tick(PaperPlaneModule.HUNT)
+		check(declined.phase().is_empty() and declined.s["used"] and not declined.take_events().any(func(item: Dictionary) -> bool: return item["kind"] in ["steps", "kill"]), "leaving before touching a flying or grounded plane dismisses it for this run")
 	d.set_context(dctx)
 	d.start("danger")
 	for _i in 25:
@@ -406,6 +418,12 @@ func _test_paper_rules() -> void:
 	ok.set_context(dctx)
 	ok.use_here()
 	check(ok.phase() == "read", "picked up, it has to be read")
+	var accepted := PaperPlaneModule.new(rooms)
+	accepted.s = ok.s.duplicate(true)
+	accepted.set_context(outside)
+	accepted.tick(PaperPlaneModule.READ)
+	accepted.tick(PaperPlaneModule.HUNT)
+	check(accepted.take_events().any(func(item: Dictionary) -> bool: return item["kind"] == "kill"), "leaving after picking up the dangerous letter still carries the consequence")
 	ok.fold()
 	check(ok.phase() == "aim", "folded, it has to be aimed")
 	var w: Dictionary = dspot["w"]

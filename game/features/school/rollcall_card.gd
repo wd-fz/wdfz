@@ -85,7 +85,7 @@ func entry() -> String:
 	if not armed.is_empty(): return "%s点名，我把名牌竖在了桌上。铃响时亲自坐好，就由我自己应声。" % stamp(armed)
 	if answered.is_empty(): return ""
 	var when := stamp(answered)
-	if checked: return "保安岗底联和点名册上都有我的名字。%s，我只在其中一个地方。底联我收好了。" % when
+	if checked: return "%s，我没在自己的座位上答到。保安岗那张签着我名字的底联，我已经收好了。" % when
 	return "%s，空座替我答了到。同化停止自然回落。去保安岗柜台核对那张有我签名的底联。" % when
 
 
@@ -108,9 +108,15 @@ func check_counterfoil(active_seconds: float = 0.0) -> bool:
 	var owed := outstanding()
 	if owed: checked = true
 	if proof.is_empty():
-		proof = "proxy" if checked else ("present" if not present_slot.is_empty() else "ink")
+		recall_counterfoil()
 		reading_until = active_seconds + 8.0
 	return owed
+
+
+## Also used when an older solo notebook proves this student visited the counter.
+func recall_counterfoil() -> void:
+	if proof.is_empty() and not outstanding():
+		proof = "proxy" if checked else ("present" if not present_slot.is_empty() else "ink")
 
 
 func reading(world_id: String, active_seconds: float) -> bool:

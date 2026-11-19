@@ -186,6 +186,14 @@ func restore(data: Dictionary) -> void:
 	inspection = {"seen": {}, "warned": {}, "queue": [], "current": {}, "settled": {}, "calm": 0.0}
 	inspection.merge(data.get("inspection", {}).duplicate(true), true)
 	seat_card.restore(data.get("seat_card", {}))
+	if not data.get("seat_card", {}).has("present_slot"):
+		var latest := -1
+		for stamp: String in inspection["settled"]:
+			if inspection["settled"][stamp] != "present" or not RollcallCard.valid_slot(stamp): continue
+			var order := stamp.get_slice(":", 0).to_int() * 2 + stamp.get_slice(":", 1).to_int()
+			if order > latest:
+				latest = order
+				seat_card.attended(stamp)
 	for item: Dictionary in inspection["queue"]:
 		item["day"] = int(item["day"])
 		item["slot"] = int(item["slot"])

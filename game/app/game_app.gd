@@ -871,6 +871,9 @@ func load_game() -> void:
 		return
 	candidate.restore(data)
 	_install_session(candidate, data["player"])
+	var old_paper: Dictionary = data["modules"].get("school.day", {}).get("data", {}).get("seat_card", {})
+	if not old_paper.has("proof") and school() != null and investigation() != null and investigation().visible("parking"):
+		school().seat_card.recall_counterfoil()
 	_restore_loaded_world()
 	ui.show_notice("已恢复进度；读档不会再次触发交互奖励。")
 
