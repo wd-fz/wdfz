@@ -756,9 +756,13 @@ func choose(id: String) -> void:
 # ---- the roster wall paper (interact.js nearRoster / useRoster) ----
 
 func near_roster() -> bool:
-	if not an["active"] or an["id"] != "roster" or an["data"].get("done", false) or not an["data"].has("rx"):
+	if not an["active"] or an["id"] != "roster":
 		return false
-	return Vector2(float(_c["x"]) - float(an["data"]["rx"]), float(_c["y"]) - float(an["data"]["ry"])).length() < ROSTER_REACH
+	var data: Dictionary = an["data"]
+	# Installing a saved run or network snapshot can refresh prompts before the first pose arrives.
+	if data.get("done",false) or not data.has_all(["rx","ry"]) or not _c.has_all(["x","y"]): return false
+	if data.has("scene") and data.scene != _c.get("scene",""): return false
+	return Vector2(float(_c.x)-float(data.rx),float(_c.y)-float(data.ry)).length() < ROSTER_REACH
 
 
 ## E on the roster: with a pen or chalk write the name back; otherwise choose.

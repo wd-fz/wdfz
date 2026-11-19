@@ -154,6 +154,16 @@ func test_reference() -> void:
 
 
 func test_adapter() -> void:
+	var saved := AnomalyModule.new()
+	saved.reset()
+	saved.an.merge({"id":"roster","active":true,"data":{"rx":100.0,"ry":120.0,"scene":"teach1","done":false}},true)
+	var restored := AnomalyModule.new()
+	restored.restore(saved.capture())
+	check(not restored.near_roster(),"installing an active register waits for the player's actual position")
+	restored.set_context({"x":100.0,"y":120.0,"scene":"teach2"})
+	check(not restored.near_roster(),"a register on a different floor cannot receive an interaction")
+	restored.set_context({"x":100.0,"y":120.0,"scene":"teach1"})
+	check(restored.near_roster(),"restoring the matching position enables the original register")
 	var fx:=AnomalyFx.new()
 	root.add_child(fx)
 	var room:=CampusData.layout("teach1")
