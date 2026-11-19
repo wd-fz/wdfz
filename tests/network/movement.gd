@@ -215,6 +215,21 @@ func cast_checks() -> void:
 		avatar.advance("down",.01)
 		avatar.advance("down",1.0)
 		check(avatar.clip=="down", "collapse settles without repeating the fall")
+	avatar.dress("xu")
+	var cloth:=avatar.skeleton
+	var hem:=cloth.find_bone("Hem00")
+	check(hem>=0 and cloth.get_bone_parent(hem)==cloth.find_bone("Hips"),"the skirt has an independent waist-mounted hem")
+	if hem>=0:
+		var intact:=true
+		for action: String in ["idle","run","left","sit_down","sit","crouch"]:
+			avatar.animation.play(action,0.0)
+			for step in 9:
+				avatar.animation.seek(avatar.animation.current_animation_length*step/9,true)
+				for j in 12:
+					var edge_start:=cloth.get_bone_global_pose(cloth.find_bone("Hem%02d"%j)).origin
+					var edge_end:=cloth.get_bone_global_pose(cloth.find_bone("Hem%02d"%((j+1)%12))).origin
+					intact = intact and edge_start.is_finite() and edge_start.distance_to(edge_end)<.38
+		check(intact,"hem stays connected through full strides, strafing, crouching and sitting")
 	avatar.queue_free()
 	await process_frame
 

@@ -337,8 +337,7 @@ func hint(world_id: String, pose: Dictionary) -> String:
 			var own: Dictionary = _campus.get("own_seat", {})
 			return "坐到自己的座位" if world_id == own.get("room") and int(hit["c"]) == int(own.get("col", -1)) and int(hit["r"]) == int(own.get("row", -1)) else "坐下（非本人座位）"
 		"T":
-			var podium: Array = _campus.get("own_podium", [])
-			if world_id == "teach1" and podium.size() == 2 and int(podium[0]) == int(hit["c"]) and int(podium[1]) == int(hit["r"]):
+			if CampusGeometry.is_handover_podium(_campus, world_id, [hit["c"], hit["r"]]):
 				return "看移交单"
 			return "拿粉笔" if world_id == "teach1" else "看讲台"
 		"D":

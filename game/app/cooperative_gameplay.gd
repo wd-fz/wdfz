@@ -522,8 +522,9 @@ func apply_result(a: CooperativeActor, result: Dictionary) -> void:
 		elif lease(a, "facilities"):
 			(a.feature(&"campus.facilities") as FacilitiesModule).use(CampusData.rooms().get(a.location()), String(f[0]), int(f[1]), int(f[2]))
 			drain(a, "facilities")
-	if result.has("podium") and lease(a, "investigation"):
-		if a.location() == "teach1" and int(result["podium"][0]) == int(CampusData.campus()["own_podium"][0]) and int(result["podium"][1]) == int(CampusData.campus()["own_podium"][1]):
+	if result.has("podium"):
+		if CampusGeometry.is_handover_podium(CampusData.campus(), a.location(), result["podium"]):
+			if not lease(a, "investigation"): return
 			(a.feature(&"story.investigation") as InvestigationModule).notice()
 			drain(a, "investigation")
 		else:

@@ -63,6 +63,7 @@ func update_view(at: Vector3, dt: float = 0.0) -> void:
 	_visibility_acc += dt
 	if dt > 0.0 and _visibility_acc < 0.2: return
 	_visibility_acc = 0.0
+	var outside := regions.get("out") as CampusWorld
 	for id: String in regions:
 		var world: CampusWorld = regions[id]
 		var local := world.to_local(at)
@@ -70,10 +71,10 @@ func update_view(at: Vector3, dt: float = 0.0) -> void:
 		var nearest := Vector2(clampf(local.x, rect.position.x, rect.end.x), clampf(local.z, rect.position.y, rect.end.y))
 		var distance := Vector2(local.x, local.z).distance_to(nearest)
 		var detail := id == "out" or id == active or (distance < 26.0 and absf(local.y) < 5.0)
-		if world.layout.get("flags", {}).get("stairwell", false): detail = distance < 35.0
+		if world.layout.get("flags", {}).get("stairwell", false): detail = id == active or distance < 35.0
+		if outside == null or not outside.shells.has(id): detail = true
 		var model := world.get_node_or_null("Model") as Node3D
 		if model != null: model.visible = detail
-		var outside := regions.get("out") as CampusWorld
 		if outside != null and outside.shells.has(id): (outside.shells[id] as Node3D).visible = not detail
 
 

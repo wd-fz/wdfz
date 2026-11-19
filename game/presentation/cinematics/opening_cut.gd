@@ -45,8 +45,8 @@ var _normal_before := 0.0
 var _room: Dictionary = {}
 var _player: PlayerController
 var _root: Node3D
-var _teacher: Node3D
-var _me: Node3D
+var _teacher: StudentAvatar
+var _me: StudentAvatar
 var _dust: MultiMeshInstance3D
 var _dust_data: Array = []
 var _flow := 0.0
@@ -93,7 +93,7 @@ func _cell(gx: float, gy: float, y: float) -> Vector3:
 	return Vector3(s.x, y, s.y)
 
 
-func begin(world: Node3D, room: Dictionary, player: PlayerController, ui: GameUI, is_short: bool) -> void:
+func begin(world: Node3D, room: Dictionary, player: PlayerController, ui: GameUI, is_short: bool, character: String = StudentCast.DEFAULT) -> void:
 	_room = room
 	_player = player
 	_ui = ui
@@ -119,25 +119,30 @@ func begin(world: Node3D, room: Dictionary, player: PlayerController, ui: GameUI
 	_seat_yaw = player.rotation.y
 	_board = _cell(C0 + 0.05, MID, 1.45)
 	_dust3 = _cell(C0 + 5.5, R0 + 0.7, 1.75)
-	_cams = [[_cell(C0 + 10.0, AISLE_N, 1.62), _cell(C0 + 6.8, AISLE_N, 1.5)], [_cell(C0 + 1.75, R0 + 1.0, 1.55), _cell(C0 + 1.55, R0 + 1.45, 1.5)],
+	_cams = [[_cell(C0 + 10.0, AISLE_N, 1.62), _cell(C0 + 6.8, AISLE_N, 1.5)], [_cell(C0 + 2.0, MID - 1.65, 1.57), _cell(C0 + 1.8, MID - 1.25, 1.51)],
 		[_cell(C0 + 6.1, AISLE_N - 0.05, 1.55), _cell(C0 + 5.3, AISLE_N + 0.05, 1.45)], [_cell(C0 + 4.6, AISLE_S + 0.25, 1.35), _cell(C0 + 4.05, AISLE_S + 0.1, 1.2)]]
 	# The teacher beside the board (facing the class, east), and "you" in your own chair (facing the board, west).
-	_teacher = FigureModel.make("teacher", Color("5d6873"))
-	_teacher.position = _cell(C0 + 0.62, MID, 0.0)
-	_teacher.position.y = 0.0
-	_teacher.rotation.y = -PI / 2.0
+	_teacher = StudentAvatar.new()
+	_teacher.name = "ClassTeacher"
 	_root.add_child(_teacher)
-	_me = Node3D.new()
+	_teacher.dress_teacher()
+	_teacher.position = _cell(C0 + 0.62, MID, 0.0)
+	_teacher.rotation.y = -PI / 2.0
+	_me = StudentAvatar.new()
+	_me.name = "SeatedProtagonist"
+	_root.add_child(_me)
+	_me.dress(character)
 	_me.position = _cell(C0 + 3.8, MID + 0.39, 0.0)
 	_me.rotation.y = PI / 2.0
-	_me.add_child(FigureModel.make("sit", Color(0.455, 0.502, 0.549)))
-	_root.add_child(_me)
+	_me.advance("sit", 0.0)
 	_build_dust()
 	# The classmates' small movements: some write (nodding forward again and again), some turn a page (a little turn), some stay.
 	var crowd := world.get_node_or_null("Classmates")
 	_classroom = crowd as ClassmatesView
 	if _classroom != null and is_instance_valid(_classroom.teacher): _classroom.teacher.hide()
 	if crowd != null:
+		var extras := (load("res://assets/characters/classmates.glb") as PackedScene).instantiate()
+		var types := extras.find_children("*", "MeshInstance3D", true, false)
 		var mr := RandomNumberGenerator.new()
 		mr.seed = 4141
 		for n: Node in crowd.get_children():
@@ -148,9 +153,17 @@ func begin(world: Node3D, room: Dictionary, player: PlayerController, ui: GameUI
 			var r := mr.randf()
 			var kind := "write" if r < 0.5 else ("turn" if r < 0.78 else "still")
 			node.rotation_order = EULER_ORDER_YXZ
-			_mates.append({"node": node, "base_y": node.rotation.y, "kind": kind, "amp": 0.0 if kind == "still" else (0.05 if kind == "write" else 0.06) + 0.05 * mr.randf(), "f": 0.35 + 0.55 * mr.randf(), "ph": mr.randf() * TAU})
+			var shadow := node.get_child(0) as Node3D
+			var uniform: MeshInstance3D
+			if node.get_meta("cls","") == "teach1:3":
+				uniform = MeshInstance3D.new()
+				uniform.mesh = (types[mr.randi_range(0,types.size()-1)] as MeshInstance3D).mesh
+				uniform.scale = Vector3.ONE * mr.randf_range(.95,1.04)
+				node.add_child(uniform)
+			_mates.append({"node": node, "shadow": shadow, "uniform": uniform, "base_y": node.rotation.y, "kind": kind, "amp": 0.0 if kind == "still" else (0.05 if kind == "write" else 0.06) + 0.05 * mr.randf(), "f": 0.35 + 0.55 * mr.randf(), "ph": mr.randf() * TAU})
+		extras.free()
 	_ui.cut_fade(0.0)
-	_apply(0.0)
+	_apply(story_time(0.0, short))
 
 
 func _build_dust() -> void:
@@ -229,14 +242,27 @@ func _apply(kk: float) -> void:
 		_lighting.update(0,700.0,cam)
 	_beats(kk)
 	if is_instance_valid(_classroom): _classroom.set_normal(kk<.72)
+	var read_until := minf(kk, .455)
+	var book := _teacher.animation
+	if book.current_animation != "read": book.play("read")
+	# The reading stops, repeats, then freezes along with the chalk.
+	var read_time := read_until if read_until < .34 else maxf(0.0,read_until-.36)+.24
+	book.seek(fmod(read_time*DUR_FULL,book.current_animation_length),true)
 	if _teacher_shadow != (kk>=.72):
 		_teacher_shadow = kk>=.72
-		for mesh: Node in _teacher.find_children("*","MeshInstance3D",true,false):
-			var mat := (mesh as MeshInstance3D).material_override as StandardMaterial3D
-			mat.albedo_color = Color("080b0d") if _teacher_shadow else Color("5d6873")
-			mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED if _teacher_shadow else BaseMaterial3D.SHADING_MODE_PER_PIXEL
+		var shadow := FigureModel.material(Color("080b0d"), true) if _teacher_shadow else null
+		for mesh: MeshInstance3D in _teacher.find_children("*","MeshInstance3D",true,false):
+			mesh.material_override = shadow
+	_me.visible = kk < .735
+	_me.animation.seek(fmod(minf(kk,.455)*DUR_FULL,_me.animation.current_animation_length),true)
+	var spine := _me.skeleton.find_bone("Spine")
+	_me.skeleton.set_bone_pose_rotation(spine,_me.skeleton.get_bone_pose_rotation(spine)*Quaternion(Vector3.RIGHT,-.55*phase(kk,.60,.68)))
+	_ui.cut_fade(0.0)
 	for m: Dictionary in _mates:
 		if is_instance_valid(m["node"]):
+			if is_instance_valid(m["uniform"]):
+				m["shadow"].visible = kk >= .72
+				m["uniform"].visible = kk < .72
 			var pz := mate_pose(String(m["kind"]), float(m["amp"]), float(m["f"]), float(m["ph"]), kk)
 			(m["node"] as Node3D).rotation = Vector3(pz.x, float(m["base_y"]) + pz.y, 0.0)
 	var line := line_at(kk)
@@ -285,7 +311,6 @@ func _apply(kk: float) -> void:
 		var a4: Vector3 = _cams[3][0]
 		var b4: Vector3 = _cams[3][1]
 		_me.visible = kk < 0.735
-		_me.rotation.x = -0.42 * phase(kk, 0.6, 0.68)
 		var m4 := _me.position
 		var fl := 0.04 * maxf(0.0, sin(kk * 160.0)) if kk < 0.7 else 0.0
 		var from4 := a4.lerp(b4, t4)
@@ -356,6 +381,9 @@ func _finish(skipped: bool, notify: bool) -> void:
 	for m: Dictionary in _mates:
 		if is_instance_valid(m["node"]):
 			(m["node"] as Node3D).rotation = Vector3(0.0, float(m["base_y"]), 0.0)
+			if is_instance_valid(m["uniform"]):
+				(m["shadow"] as Node3D).show()
+				(m["uniform"] as Node3D).free()
 	_mates = []
 	if is_instance_valid(_classroom):
 		_classroom.set_normal(false)

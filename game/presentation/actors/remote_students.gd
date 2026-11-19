@@ -54,11 +54,17 @@ func receive(data: Dictionary, local_id: String, world: String, names: Dictionar
 		history.append(sample)
 		while history.size() > 12: history.pop_front()
 	for id: String in peers.keys():
-		if id not in visible_ids:
-			peers[id].queue_free()
-			peers.erase(id)
-			samples.erase(id)
-			_steps.erase(id)
+		if id not in visible_ids: remove_from_view(id)
+
+
+func remove_from_view(id: String) -> void:
+	if not peers.has(id): return
+	var actor: Node3D = peers[id]
+	actor.hide()
+	actor.queue_free()
+	peers.erase(id)
+	samples.erase(id)
+	_steps.erase(id)
 
 
 func _add(id: String) -> void:

@@ -406,13 +406,13 @@ func _play_opening() -> void:
 			DirAccess.make_dir_recursive_absolute(seen.get_base_dir())
 			var f := FileAccess.open(seen, FileAccess.WRITE)
 			if f != null:
-				f.store_string("1")
+				f.store_string(session.character_id)
 				f.close()
 			_opening_done(skipped))
 		_opening_cut.audio = audio
 		var at := CampusGeometry.to_world(room,player.position.x,player.position.z)
 		_show_classmates(classmates(),room,at,0)
-		_opening_cut.begin(world, room, player, ui, FileAccess.file_exists(seen))
+		_opening_cut.begin(world, room, player, ui, FileAccess.file_exists(seen), session.character_id)
 		return
 	ui.show_opening()
 
@@ -804,8 +804,8 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	var bag := items()
 	if rules != null and bag != null:
 		rules.has_item = bag.has
-	_sync_world()
 	player.restore_pose(pose)
+	_sync_world()
 	debug_flow.session_started()
 	rules_dlc_flow.install()
 	maze_flow.changed_world(true)
@@ -1324,7 +1324,7 @@ func _apply_result(result: Dictionary) -> void:
 		var room: Variant = campus().room(session.world_id)
 		var p: Array = player.capture_pose()["position"]
 		items().start_search(session.world_id, int(result["search"][0]), int(result["search"][1]), CampusGeometry.to_world(room, float(p[0]), float(p[2])))
-	if result.has("podium") and investigation() != null and CampusData.campus().get("own_podium", []) == [int(result["podium"][0]), int(result["podium"][1])] and session.world_id == "teach1":
+	if result.has("podium") and investigation() != null and CampusGeometry.is_handover_podium(CampusData.campus(), session.world_id, result["podium"]):
 		_invest_do(func(inv: InvestigationModule) -> void: inv.notice())
 		return
 	if result.has("podium") and items() != null:
@@ -5485,30 +5485,6 @@ func _interact(id: StringName) -> void:
 
 
 var _hands: HandsView
-var _self_avatar: StudentAvatar
-
-
-func _show_first_person_body(dt: float, shown: bool) -> void:
-	var visible_body := shown and ui._mode == "play" and player._look_pitch < -.45 and not player.hiding
-	if is_instance_valid(lan) and lan.playing():
-		visible_body = visible_body and not lan._spectating and not lan.current.get("vehicle", false)
-	if not visible_body:
-		if is_instance_valid(_self_avatar): _self_avatar.hide()
-		return
-	if not is_instance_valid(_self_avatar):
-		_self_avatar = StudentAvatar.new()
-		_self_avatar.name = "FirstPersonBody"
-		player.add_child(_self_avatar)
-	_self_avatar.dress(session.character_id, true)
-	_self_avatar.show()
-	var local_motion := player.global_basis.inverse() * player.velocity
-	var action := StudentAvatar.locomotion(local_motion, player.moving, player.sprinting)
-	if player.seated: action = "sit"
-	elif body() != null:
-		if body().fall != null: action = "fall" if body().fall["kind"] == "roof" else "vault"
-		elif body().treat != null: action = "bandage"
-		elif not body().can_run() and player.moving: action = "limp"
-	_self_avatar.advance(action, dt)
 
 
 ## While the launched app sits idle on the main menu the frame rate drops to 30 (or the player's lower limit);
@@ -5547,7 +5523,6 @@ func _process(delta: float) -> void:
 		var shown := not get_tree().paused and not story().dead and not driving() and not opening_busy() and not is_instance_valid(debug_flow.preview)
 		var inv := items()
 		var torch_lit := inv != null and inv.torch_on and inv.has("torch")
-		_show_first_person_body(delta, shown)
 		_hands.update(delta, torch_lit, inv != null and inv.brolly_up, phone_open() and not snake_open(), shown, player.moving, player.sprinting)
 		var cw := _campus_world()
 		if cw != null and cw.lighting != null and cw.lighting.cam_light != null:

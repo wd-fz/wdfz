@@ -1,7 +1,6 @@
 class_name StudentAvatar
 extends Node3D
 ## The lobby and both game views use the same skinned asset and in-place clips.
-const LEGS := preload("res://game/presentation/actors/student_legs.gdshader")
 const LOCOMOTION := ["idle", "walk", "run", "back", "left", "right", "turn_left", "turn_right", "limp"]
 var character := ""
 var animation: AnimationPlayer
@@ -16,8 +15,16 @@ var _upper_action := ""
 var _upper_time := 0.0
 
 
-func dress(id: String, legs_only: bool = false) -> void:
+func dress(id: String) -> void:
 	id = StudentCast.resolve(id)
+	_load_actor(id, float(StudentCast.PEOPLE[id]["height"]))
+
+
+func dress_teacher() -> void:
+	_load_actor("teacher", 1.04)
+
+
+func _load_actor(id: String, height: float) -> void:
 	if id == character: return
 	if _model != null:
 		remove_child(_model)
@@ -30,17 +37,11 @@ func dress(id: String, legs_only: bool = false) -> void:
 	var scene := load("res://assets/characters/%s.glb" % id) as PackedScene
 	_model = scene.instantiate() as Node3D
 	add_child(_model)
-	_model.scale = Vector3.ONE * float(StudentCast.PEOPLE[id]["height"])
+	_model.scale = Vector3.ONE * height
 	animation = _model.get_node("AnimationPlayer")
 	animation.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	skeleton = _model.find_children("*", "Skeleton3D", true, false)[0]
 	for i in skeleton.get_bone_count(): _bones[skeleton.get_bone_name(i)] = i
-	if legs_only:
-		var mesh := skeleton.get_child(0) as MeshInstance3D
-		var mat := ShaderMaterial.new()
-		mat.shader = LEGS
-		mesh.material_override = mat
-		mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_goal = ""
 	clip = ""
 

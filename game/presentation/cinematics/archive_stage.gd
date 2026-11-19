@@ -18,7 +18,7 @@ var _skip: CanvasLayer
 var _stop: Button
 var _clock := 700.0
 
-func begin(entry: Dictionary, worlds: Array[WorldDefinition], view: GameUI, options: GameSettings, muted: bool = false) -> String:
+func begin(entry: Dictionary, worlds: Array[WorldDefinition], view: GameUI, options: GameSettings, muted: bool = false, character: String = StudentCast.DEFAULT) -> String:
 	ui = view
 	settings = options
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -47,7 +47,10 @@ func begin(entry: Dictionary, worlds: Array[WorldDefinition], view: GameUI, opti
 	var error := router.switch_to(stage)
 	if not error.is_empty(): return error
 	var pose: Dictionary
-	if stage == "out":
+	if kind == "opening":
+		pose = CampusData.rules().start_pose()
+		player.seated = true
+	elif stage == "out":
 		var at: Dictionary = CampusData.archive()["outdoor"]
 		var p := CampusGeometry.to_scene(null,Vector2(at["x"],at["y"]))
 		pose = {"position":[p.x,0,p.y],"yaw":CampusGeometry.yaw_from_ang(at["ang"]),"pitch":0.0}
@@ -78,7 +81,7 @@ func begin(entry: Dictionary, worlds: Array[WorldDefinition], view: GameUI, opti
 		add_child(opening)
 		opening.audio = audio
 		opening.finished.connect(func(_skipped: bool) -> void: _done())
-		opening.begin(router.world_instance(),CampusData.rules().room(stage),player,ui,false)
+		opening.begin(router.world_instance(),CampusData.rules().room(stage),player,ui,false,character)
 	elif kind in ["void_in","void_out"]:
 		var maze := MazeCut.new()
 		cut = maze

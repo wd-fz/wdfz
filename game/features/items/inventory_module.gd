@@ -462,8 +462,7 @@ func do_search(room_id: String, c: int, r: int) -> void:
 ## interact.js 'T': the own classroom's podium holds the handover note (InvestigationModule.notice, handled by the app);
 ## other podiums in teach1 have a piece of chalk.
 func podium(room_id: String, c: int, r: int) -> Dictionary:
-	var own: Array = _campus.get("own_podium", [])
-	if room_id == "teach1" and own.size() == 2 and int(own[0]) == c and int(own[1]) == r:
+	if CampusGeometry.is_handover_podium(_campus, room_id, [c, r]):
 		return {"notice": ""}
 	if room_id == "teach1":
 		if has("chalk"):

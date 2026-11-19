@@ -672,7 +672,19 @@ func _build_model() -> void:
 	# showed partitioning/CPU occlusion added overhead there; preserve its batches.
 	if scene_id != "garage1":
 		CampusBatches.optimize(model)
-		if resident and scene_id == "out": shells = CampusShell.partition(model, space)
+		if resident and scene_id == "out":
+			shells = CampusShell.partition(model, space)
+			var lining := StandardMaterial3D.new()
+			lining.albedo_color = Color("667278")
+			lining.roughness = .96
+			for bounds: AABB in space.lift_walls():
+				var panel := MeshInstance3D.new()
+				var box := BoxMesh.new()
+				box.size = bounds.size
+				box.material = lining
+				panel.mesh = box
+				panel.position = bounds.get_center()
+				model.add_child(panel)
 		CampusMeshCells.apply(model)
 		if not (resident and scene_id == "out"): CampusBatches.add_occluder(model)
 	visual_ground.set_model(model)
@@ -1214,20 +1226,31 @@ func _build_collision() -> void:
 		for r: Rect2 in lift_rects:
 			_lift_bodies.append(_add_box(doors, r, WALL_BOTTOM, _wall_top(), "lift_door"))
 	else:
+		var cuts: Array[Rect2] = []
+		var bridges: Array[AABB] = []
+		if resident:
+			cuts = space.shaft_footprints()
+			bridges = space.bridge_volumes()
+			for wall: AABB in space.lift_walls():
+				_add_box(body,Rect2(wall.position.x,wall.position.z,wall.size.x,wall.size.z),wall.position.y,wall.end.y,"lift_shaft")
 		for b: Dictionary in layout["boxes"]:
-			if resident and ((b.get("k") == "building" and space.has_building(String(b.get("id", "")))) or space.replaces_outside_rect(_rect_of(b))): continue
-			if resident:
-				var clipped := false
-				for bridge: AABB in space.bridge_volumes():
-					var rect := Rect2(Vector2(bridge.position.x,bridge.position.z),Vector2(bridge.size.x,bridge.size.z))
-					var overlap := _rect_of(b).intersection(rect)
-					if not overlap.has_area(): continue
-					for part: Rect2 in CampusSpace.subtract_rect(_rect_of(b),rect): _add_box(body,part,WALL_BOTTOM,WALL_TOP,String(b["k"]))
-					_add_box(body,overlap,WALL_BOTTOM,bridge.position.y,String(b["k"]))
-					clipped = true
-					break
-				if clipped: continue
-			_add_rect(body, b)
+			if resident and b.k=="building" and space.has_building(String(b.get("id",""))): continue
+			var parts: Array[Rect2]=[_rect_of(b)]
+			for cut in cuts:
+				if not _rect_of(b).intersects(cut): continue
+				var remaining: Array[Rect2]=[]
+				for part in parts: remaining.append_array(CampusSpace.subtract_rect(part,cut))
+				parts=remaining
+			for bridge: AABB in bridges:
+				var opening:=Rect2(bridge.position.x,bridge.position.z,bridge.size.x,bridge.size.z)
+				if not _rect_of(b).intersects(opening): continue
+				var remaining: Array[Rect2]=[]
+				for part in parts:
+					var below:=part.intersection(opening)
+					if below.has_area(): _add_box(body,below,WALL_BOTTOM,bridge.position.y,b.k)
+					remaining.append_array(CampusSpace.subtract_rect(part,opening))
+				parts=remaining
+			for part in parts: _add_box(body,part,WALL_BOTTOM,WALL_TOP,b.k)
 		var bd: Dictionary = layout["bound"]
 		var inner := Rect2(Vector2(bd["x0"], bd["z0"]), Vector2(float(bd["x1"]) - float(bd["x0"]), float(bd["z1"]) - float(bd["z0"])))
 		_ring(body, inner, [])

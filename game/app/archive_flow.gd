@@ -117,7 +117,10 @@ func play(id: String) -> bool:
 	stage = ArchiveStage.new()
 	add_child(stage)
 	stage.finished.connect(stop.bind(true))
-	var error := stage.begin(entry,app.router.worlds,app.ui,app.settings,app.audio.muted)
+	var character := StudentCast.DEFAULT
+	if entry.get("cut") == "opening" and _opening():
+		character = StudentCast.resolve(FileAccess.get_file_as_string(app.saves.side_path("opening_seen")).strip_edges())
+	var error := stage.begin(entry,app.router.worlds,app.ui,app.settings,app.audio.muted,character)
 	if error != "":
 		stop(true)
 		app.ui.show_notice("档案读取失败："+error)

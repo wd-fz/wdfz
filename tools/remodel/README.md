@@ -33,4 +33,4 @@ godot --headless --path . --import
 
 每件衣服是 GLB 里单独的网格，名字是 `dressed_<kind>_<衣物>`（skin、jacket、trim、zip、trousers、shoes、shirt），游戏按衣物分别给材质（`DeathShots._fig_cloth`）。各衣物之间的分界沿距离场的交界线把三角形切开（不是整块三角形归类），所以边缘不呈锯齿。2 毫米体素、每种约 2 万三角面；无脸的头作为 skin 保留（死亡演出在脖子上换成 `HorrorKit` 的头）。身高、站位与原人形相同（`tests/suites/remodel.gd` 的 `test_dressed` 对照包围盒）。
 
-**只给死亡演出用**：校园里的同学、老师、路人、巡察者仍用上面的无衣服人形（用户先前选定的「圆润无脸人形」）。
+这组死亡演出衣物供死亡镜头使用。开场的主角、老师和同班同学由 `student_cast.py` 生成。老师使用独立骨架模型，同班同学共用两种烘焙坐姿。进入里世界后，教室恢复剪影。

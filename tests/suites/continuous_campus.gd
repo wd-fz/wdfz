@@ -9,11 +9,22 @@ func test_collision() -> void:
 	var xf := Transform3D(Basis.IDENTITY,Vector3(0,5,0))
 	var floors := ["teach1","teach2","teach3","teach4"]
 	var parts := CampusShell._floor_parts(wall,xf,"teach2",{"teach2":floors},space)
-	check(parts.size()==4,"a tall facade is cut into four real height bands")
-	for id: String in parts:
+	check(parts.size()==5 and parts.has(CampusShell.ROOFLINE),"a tall facade retains the strips between its four playable storeys")
+	for id: String in floors:
 		var bounds: AABB=xf*(parts[id] as Mesh).get_aabb()
 		var y:=space.frame(id).origin.y
 		check(bounds.position.y>=y-.001 and bounds.end.y<=y+3.201,"facade "+id+" cannot cover another storey's open doorway")
+	var shafts: Array[Dictionary]=[{"rect":Rect2(-1,-1,2,2),"floors":["lift_teach"]}]
+	var broad_wall:=QuadMesh.new()
+	broad_wall.size=Vector2(34,2)
+	var flat:=Transform3D(Basis.IDENTITY,Vector3(0,1,0))
+	var pieces:=CampusShell._partition_faces(broad_wall,flat,shafts,space)
+	check(pieces.has("lift_teach") and pieces.has("") and absf((pieces.lift_teach as Mesh).get_aabb().size.x-2)<.001,"a 34 m exterior wall loses only the two metres inside the shaft footprint")
+	var area:=0.0
+	for part: Mesh in pieces.values():
+		var faces:=part.get_faces()
+		for i in range(0,faces.size(),3): area+=(faces[i+1]-faces[i]).cross(faces[i+2]-faces[i]).length()*.5
+	check(absf(area-68)<.001,"cutting across the shaft retains the complete visible wall area")
 	for id: String in space.frames:
 		var world := CampusWorld.new()
 		world.scene_id=id
@@ -57,6 +68,41 @@ func test_collision() -> void:
 		for d: float in [1.0,.4,0,-.7,-1.2]:
 			var local:=CampusGeometry.to_scene(space.rooms[id],lift.world(id,d,0))
 			free_at(space.frame(id)*Vector3(local.x,.92,local.y),"lift "+id+" "+str(d))
+	for world in worlds:
+		if world.layout.get("walls",[]).is_empty() or world.scene_id in ["lift_teach","lift_lab"]: continue
+		var missing: Array[Vector2]=[]
+		var expected:=world.get_node("Collision") as StaticBody3D
+		var cut:=space.cabin_cut(world.scene_id)
+		for wall_rect: Dictionary in world.layout.walls:
+			var rect:=Rect2(wall_rect.x0,wall_rect.z0,wall_rect.x1-wall_rect.x0,wall_rect.z1-wall_rect.z0)
+			for piece in CampusSpace.subtract_rect(rect,cut):
+				var center:=piece.get_center()
+				var query:=PhysicsPointQueryParameters3D.new()
+				query.position=world.to_global(Vector3(center.x,1.2,center.y))
+				query.collision_mask=1
+				var found:=false
+				for hit in root.world_3d.direct_space_state.intersect_point(query,32):
+					if hit.collider!=expected: continue
+					var owner:=expected.shape_owner_get_owner(expected.shape_find_owner(hit.shape))
+					if owner.get_meta("kind","")=="wall":
+						found=true
+						break
+				if not found: missing.append(center)
+		check(missing.is_empty(),"all exported wall segments block at eye height in "+world.scene_id+" "+str(missing))
+	# The garage stair only replaces the middle of a seven-metre outdoor obstruction.
+	for dir: float in [-1,1]:
+		var x:=66.7222 if dir<0 else 73.7222
+		var outside:=Vector3(x+.2*dir,1.2,119.6)
+		var ray:=PhysicsRayQueryParameters3D.create(outside,outside-Vector3.RIGHT*dir*.4,1)
+		var hit:=root.world_3d.direct_space_state.intersect_ray(ray)
+		check(not hit.is_empty() and hit.collider.get_parent().scene_id=="out","shaft cut retains the outdoor wall beyond each side")
+	for bounds: AABB in space.lift_walls():
+		var point:=bounds.get_center()
+		var across:=(Vector3.RIGHT if bounds.size.x<bounds.size.z else Vector3.BACK)*.19
+		for sign_value: float in [-1,1]:
+			var ray:=PhysicsRayQueryParameters3D.create(point+across*sign_value,point-across*sign_value,1)
+			var hit:=root.world_3d.direct_space_state.intersect_ray(ray)
+			check(not hit.is_empty(),"fixed shaft blocks from either side while car is downstairs")
 	for world: CampusWorld in worlds: world.queue_free()
 	await _frames(2)
 
@@ -105,6 +151,29 @@ func test_runtime() -> void:
 	for region: CampusWorld in school.regions.values():
 		check(region.get_world_3d() == app.player.get_world_3d(), region.scene_id+" shares the school physics world")
 		check(region.door_previews.is_empty() and region._shaft_levels.is_empty(), region.scene_id+" uses real neighbours without preview copies")
+	check(school.regions.out.get_node_or_null("Model/"+CampusShell.ROOFLINE)!=null,"the occupied school retains an independent exterior roof")
+	var rules:=app.campus()
+	for floor_index in range(1,6):
+		var floor_id:="teach%d" % floor_index
+		var room:=CampusData.layout(floor_id)
+		for col in [10,22,34,46]:
+			var desk:=CampusGeometry.tile_center(room,col,10)+Vector2(0,float(room.th)*.5)
+			for side: float in [-1,1]:
+				var standing:=desk+Vector2(0,side*9.0)
+				var aim:=_campus_pose(room,standing,-side*PI/2)
+				var reply:=rules.interact_at(floor_id,aim)
+				check(reply.get("podium")==[col,10],"the real desk can be used from both aisles at %s/%s" % [floor_id,col])
+			if floor_index==1 and col==46:
+				var exact:=_campus_pose(room,desk+Vector2(0,9),-PI/2)
+				app.player.place(exact)
+				check(rules.hint(floor_id,exact)=="看移交单","the handover prompt matches its desk")
+				app._campus_interact()
+				check(app.ui.choice_open() and app.investigation().visible("notice"),"using the lectern opens the transfer note in live single player")
+				if app.ui.choice_open(): app._choice_made(1)
+				check(app.items().has("chalk"),"the lectern choice really gives chalk")
+	app.player._look_pitch=-1.30
+	app._process(.03)
+	check(not app.player.has_node("FirstPersonBody") and is_instance_valid(app._hands),"looking down keeps the hand view without spawning a local body")
 	var port := CampusGeometry.door_port(CampusData.layout("teach1"), CampusData.campus().campus_doors.doors[0])
 	app.player.place(_campus_pose(CampusData.layout("teach1"),port.p,PI*.5))
 	app.player.set_touch_move(Vector2(0,-1))
@@ -260,6 +329,9 @@ func test_cooperation() -> void:
 	avatars.receive(snapshot,"a","out",room.members)
 	avatars._process(.2)
 	check(avatars.peers.has("b") and avatars.peers.b.global_position.distance_to(second.global_position)<.001,"remote avatar uses the school position instead of disappearing at a doorway")
+	var watched: Node3D = avatars.peers.b
+	avatars.remove_from_view("b")
+	check(not watched.visible and not avatars.peers.has("b"),"taking a teammate’s first-person view hides that body before the next motion packet")
 	var position := second.global_position
 	second.velocity=Vector3(.5,-2,1)
 	sim.travel(sim.actor("b"),"out",_pose(),true)

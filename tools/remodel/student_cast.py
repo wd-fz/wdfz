@@ -5,7 +5,7 @@ import hashlib
 import json
 import struct
 import urllib.request
-from math import cos, exp, pi, sin
+from math import cos, exp, pi, sin, tanh
 from pathlib import Path
 
 import numpy as np
@@ -21,7 +21,10 @@ CAST = {
     "qiao": ("ac3a43", "efe2cb", "f4cb80", "283950", "f2e8d6", "282326", "c28d73", 0.94, 0.93),
     "shen": ("536955", "cbc2a8", "d5bc82", "444950", "604b3a", "252326", "dbad91", 1.10, 1.08),
     "xu": ("ae7848", "c98e5d", "eee3bb", "444652", "473b35", "493134", "e0af98", 0.91, 0.91),
+    "teacher": ("47515a", "47515a", "8c8577", "343b45", "3d322e", "514b49", "c99e84", 1.10, 1.12),
 }
+SKIRT_PANELS = 12
+SKIRT_RINGS = (("Lap",.824,.199,.150),("Rim",.621,.241,.171),("Hem",.548,.252,.178))
 TAU = 2 * pi
 
 
@@ -42,7 +45,7 @@ def quaternion(euler):
     return [sx*cy*cz-cx*sy*sz, cx*sy*cz+sx*cy*sz, cx*cy*sz-sx*sy*cz, cx*cy*cz+sx*sy*sz]
 
 
-def skeleton(shoulder):
+def skeleton(shoulder, skirt=False):
     bones = {}
 
     def add(name, parent, x, y, z=0):
@@ -65,6 +68,11 @@ def skeleton(shoulder):
         limb("Knee", "Thigh"+side, .103, .488, -.014)
         limb("Foot", "Knee"+side, .110, .107, .004)
         limb("Toe", "Foot"+side, .111, .050, -.12)
+    if skirt:
+        for i in range(SKIRT_PANELS):
+            a = TAU * i / SKIRT_PANELS
+            for label, y, rx, rz in SKIRT_RINGS:
+                add(f"{label}{i:02}", "Hips", rx*sin(a), y, -rz*cos(a))
     return bones
 
 
@@ -167,9 +175,9 @@ def face_and_hands(mesh, role, source):
         width = 1 + (jaw-1) * (.35 + .65 * exp(-((y-6.5)/.65)**2))
         cheek=exp(-((y-6.98)/.36)**2-((abs(x)-.47)/.31)**2)
         nose=exp(-((y-6.98)/.28)**2-(x/.22)**2) if z>1.25 else 0
-        width*=1+{"lin":-.035,"qiao":.075,"shen":.0,"xu":.12}[role]*cheek
-        z+=nose*{"lin":.04,"qiao":-.09,"shen":.105,"xu":-.12}[role]
-        height={"lin":1.01,"qiao":.97,"shen":1.015,"xu":.95}[role]
+        width*=1+{"lin":-.035,"qiao":.075,"shen":.0,"xu":.12,"teacher":-.06}[role]*cheek
+        z+=nose*{"lin":.04,"qiao":-.09,"shen":.105,"xu":-.12,"teacher":.075}[role]
+        height={"lin":1.01,"qiao":.97,"shen":1.015,"xu":.95,"teacher":1.04}[role]
         return np.array([-x*scale*width, 1.47+(y-5.89)*scale*height, -(z-.42)*scale])
     face_points = vertices[np.unique(np.concatenate([f for f in faces if min(vertices[f,1])>5.53]))]
     def forehead(x,y):
@@ -249,7 +257,7 @@ def face_and_hands(mesh, role, source):
         edge=6.75+1.03*front**3+.055*sin(3*a+.45)
         if role=="lin": edge+=.23*sin(a+.12)*front
         if role=="qiao": edge=6.95+1.04*front**2
-        if role=="shen": edge=7.08+.61*front**2+.065*sin(6*a)
+        if role in ("shen","teacher"): edge=7.08+.61*front**2+.065*sin(6*a)
         if role=="xu":
             edge=5.51+2.23*np.clip((front-.52)/.40,0,1)**1.3+.18*sin(a)*front**3
         bot=np.arcsin(np.clip((edge-7.47)/1.11,-.98,.95))
@@ -292,6 +300,12 @@ def face_and_hands(mesh, role, source):
         length=(.016+.026*(1+sin(j*.9))/2) * (.48 if role in ("qiao","shen") else 1)
         q=p+[.022 if role!="shen" else -.010,-length,-.001]
         mesh.tube([scalp(a+.12,.19),p,q],[.007,.007,.0003],color(hair)*(1+.06*j),"Head",8)
+    if role=="teacher":
+        for s in (-1, 1):
+            for j in range(8):
+                a = s*(1.15 + .10*j)
+                strand = [scalp(a+.16*t, t) for t in np.linspace(.04,.54,7)]
+                mesh.tube(strand,.0016,"978e83","Head",5)
     if role=="qiao":
         p=head(.07,8.05,-.29)
         mesh.oval(p+[0,.028,-.003],(.043,.04,.046),hair,"Head")
@@ -308,7 +322,7 @@ def face_and_hands(mesh, role, source):
             a=j*TAU/10
             p=scalp(a,.59+.09*sin(2*a))
             mesh.oval(p,(.022,.016,.020),color(hair)*(1.08+.10*sin(a)), "Head",14)
-    if role=="shen":
+    if role in ("shen","teacher"):
         for s in (-1,1):
             ring=[head(s*(.317+.241*cos(a)),7.282+.175*sin(a),1.52-.10*cos(a)) for a in np.linspace(0,TAU,26)]
             mesh.tube(ring,.00195,"493e35","Head")
@@ -316,13 +330,18 @@ def face_and_hands(mesh, role, source):
         mesh.tube([head(-.085,7.31,1.55),head(0,7.345,1.565),head(.085,7.31,1.55)],.00195,"6e5845","Head")
 
 
-def outfit(m, role):
+def outfit(m, role, classroom=False):
     coat,sleeve,trim,pants,shoe,hair,skin,width,jaw=CAST[role]
+    if classroom:
+        coat,sleeve,trim,pants = "506780","d5d9d5","a7b9cc","414858"
     w=lambda x:x*width
     chest="Chest"
     def trunk(rows,c,paint=None):
         m.rings([(0,y,z,w(x),rz,b) for y,x,rz,z,b in rows],c,chest,32,paint)
-    trunk([(.849,.155,.105,.004,"Hips"),(.895,.177,.13,.004,"Hips"),(.976,.166,.121,0,"Spine")],pants)
+    if role == "xu":
+        trunk([(.823,.146,.092,0,"Hips"),(.898,.157,.113,0,"Hips"),(.962,.149,.105,0,"Hips")],"393e4b")
+    else:
+        trunk([(.849,.155,.105,.004,"Hips"),(.895,.177,.13,.004,"Hips"),(.976,.166,.121,0,"Spine")],pants)
     rows=[(.936,.170,.127,0,"Hips"),(.954,.177,.13,0,[("Hips",.67),("Spine",.33)]),
           (1.032,.166,.114,0,"Spine"),(1.14,.167,.118,-.004,[("Spine",.6),(chest,.4)]),
           (1.24,.180,.128,-.004,chest),(1.335,.191,.121,0,chest),(1.393,.192,.103,0,chest),
@@ -388,8 +407,13 @@ def outfit(m, role):
         leg=[(.122,.111,.053,.059,.006,knee),(.146,.111,.061,.068,.005,knee),(.277,.111,.067,.078,.012,knee),
              (.43,.104,.076,.086,0,knee),(.487,.103,.072,.078,-.012,[(thigh,.50),(knee,.50)]),
              (.54,.105,.081,.091,-.007,thigh),(.718,.100,.093,.102,0,thigh),(.865,.09,.099,.113,0,thigh),(.937,.085,.088,.11,0,"Hips")]
-        m.rings([(s*x,y,z,rx,rz,b) for y,x,rx,rz,z,b in leg],pants,thigh,22,
-                lambda i,a:trim if role=="qiao" and abs(sin(a)-s)<.017 else pants)
+        if role=="xu":
+            # Opaque tights and fitted undershorts leave room for the outer garment.
+            m.rings([(s*x,y,z,rx*.78,rz*.76,b) for y,x,rx,rz,z,b in leg],"373b47",thigh,22,
+                    lambda i,a: "323a48" if i>=6 else "454451")
+        else:
+            m.rings([(s*x,y,z,rx,rz,b) for y,x,rx,rz,z,b in leg],pants,thigh,22,
+                    lambda i,a:trim if role=="qiao" and abs(sin(a)-s)<.017 else pants)
         m.rings([(s*.11,.014,-.055,.067,.148),(s*.11,.025,-.056,.071,.151),(s*.11,.046,-.056,.073,.15)],"d6cdbb",foot,24)
         m.rings([(s*.11,.043,-.055,.071,.145),(s*.11,.067,-.058,.071,.143),(s*.11,.094,-.04,.066,.119),
                  (s*.11,.125,-.003,.056,.072),(s*.11,.154,.004,.052,.060)],shoe,foot,24)
@@ -398,27 +422,20 @@ def outfit(m, role):
                     [s*.11+.029,.094+j*.008,-.113+j*.014]],.0026,"dfd9cb",foot,6)
         # Piped cutlines, heel counter and flex creases survive the lower mesh LODs.
         for y,x,rad,z,bnd in [(1.113,.252,.065,-.001,elbow),(.493,.104,.078,-.018,knee)]:
+            if role=="xu" and bnd==knee: continue
             pts=[[s*(x+rad*k),y+.006*cos(k*2),z-rad*np.sqrt(max(.01,1-k*k))-.002] for k in np.linspace(-.68,.77,9)]
             m.tube(pts,.0018,color(sleeve if bnd==elbow else pants)*.60,bnd)
         m.tube([[s*.169,.059,-.086],[s*.179,.066,-.043],[s*.170,.079,.024],[s*.149,.093,.061]],
                .0034,trim,foot)
     if role=="xu":
-        # Pleated culottes follow each thigh when the student sits or takes a stride.
-        bands=[]
-        for i,(y,rx,rz) in enumerate([(.68,.213,.147),(.702,.21,.146),(.809,.194,.135),(.943,.164,.122)]):
-            band=[]
-            for j in range(64):
-                a=TAU*j/64
-                pleat=.95+.05*cos(16*a)
-                leg="Thigh"+("L" if sin(a)>=0 else "R")
-                w=[.91,.85,.45,.0][i]
-                band.append(m.vertex([rx*sin(a)*pleat,y,-rz*cos(a)*pleat+.003],
-                                     color("4e515b")*(.76+.21*cos(16*a)),[(leg,w),("Hips",1-w)]))
-            bands.append(band)
-        for lo,hi in zip(bands,bands[1:]):
-            for j in range(64):
-                k=(j+1)%64
-                m.tris.extend([[lo[j],hi[j],lo[k]],[lo[k],hi[j],hi[k]]])
+        pleated_skirt(m)
+    if classroom: return
+    if role=="teacher":
+        # Muted faculty jacket, tie, pen pocket and chalk at the right fingertips.
+        textile([(1.145,-.010,.010),(1.18,-.024,.024),(1.39,-.014,.014),(1.425,-.022,.022)],"485b6c")
+        m.patch([shell(x,y,.013) for x,y in [(.045,1.296),(.127,1.296),(.125,1.242),(.047,1.240)]],"3c454c",chest)
+        m.tube([shell(.105,1.28,.018),shell(.105,1.315,.018)],.003,"b4a891",chest)
+        textbook(m)
     if role=="lin":
         # Fabric camera sling crossing the jacket, camera housing, barrel and window.
         m.tube([[-.124,1.416,-.07],[-.083,1.327,-.127],[.005,1.204,-.132],[.077,1.090,-.111],[.138,1.011,-.078]],.013,"6e5040",chest,8)
@@ -440,12 +457,146 @@ def outfit(m, role):
         for s in (-1,1):
             m.tube([[s*.175,1.382,-.046],[s*.127,1.347,-.098],[s*.074,1.327,-.120]],.006,"eee3cc",chest)
         m.oval([-.264*width,.932,-.055],(.044,.017,.022),"443f3f","ElbowR")
-    else:
+    elif role=="xu":
         m.oval([0,1.427,.048],(.123,.074,.097),"b4aa91",chest,28)
         for s in (-1,1):
             m.oval([s*.091,1.419,-.079],(.034,.041,.036),"423b40",chest)
             m.oval([s*.106,1.417,-.101],(.024,.029,.021),"ab7555",chest)
         m.tube([[-.074,1.418,-.036],[-.083,1.462,.019],[0,1.483,.068],[.083,1.462,.019],[.074,1.418,-.036]],.009,"413d41",chest)
+
+
+def posed_bones(bones, shift, angles):
+    matrices = {}
+    for bone,(parent,rest) in bones.items():
+        local = np.eye(4)
+        local[:3,:3] = rotation(angles.get(bone,(0,0,0)))
+        local[:3,3] = rest-bones[parent][1] if parent else rest+shift
+        matrices[bone] = matrices[parent]@local if parent else local
+    return matrices
+
+
+def textbook(mesh):
+    pose_now = posed_bones(mesh.bones,*pose("read",.25))
+    left = pose_now["FingersL"][:3,3]
+    right = pose_now["FingersR"][:3,3]
+    middle = (left+right)*.5 + [0,.012,-.020]
+    grip = np.linalg.inv(pose_now["HandL"])
+    def point(x,y,z):
+        p = middle + [x,y+.30*abs(x)-.40*z,z]
+        return (grip@np.append(p,1))[:3]+mesh.bones["HandL"][1]
+    for side in (-1,1):
+        width = abs(left[0]-right[0])*.56
+        for height,margin,tint in [(0,.004,"683e37"),(.006,0,"ded4ad")]:
+            corners = [point(x,height,z) for x,z in
+                       [(0,-.088-margin),(side*(width+margin),-.088-margin),
+                        (side*(width+margin),.086+margin),(0,.086+margin)]]
+            indices = [mesh.vertex(p,tint,"HandL") for p in corners]
+            for a,b,c in [(0,1,2),(0,2,3)]:
+                face = [indices[a],indices[b],indices[c]]
+                mesh.tris.append(face)
+                mesh.tris.append([mesh.vertex(mesh.vertices[i],tint,"HandL") for i in reversed(face)])
+        for line in range(6):
+            z = -.058+.019*line
+            mesh.tube([point(side*.013,.007,z),point(side*(width-.012-.007*(line%2)),.007,z)],
+                      .0017,"756d5f","HandL",4)
+
+
+def pleated_skirt(mesh):
+    # One continuous tube: the turned-under hem is joined to the outer cloth.
+    # The waist is pinned; every lower vertex blends adjacent panels across the seam.
+    rings = []
+    sides = 96
+    for y, rx, rz, fullness, tint in [
+            (.894,.163,.128,.2,"343d50"), (.735,.217,.155,.78,"343d50"), (.621,.231,.163,1,"343d50"),
+            (.557,.242,.170,.90,"343d50"), (.544,.253,.179,1,"434d65"),
+            (.550,.252,.178,1,"a09785"), (.556,.252,.178,1,"535e76"),
+            (.621,.241,.171,1,"566178"), (.735,.226,.163,.78,"535e76"),
+            (.831,.197,.150,.49,"4d586d"), (.902,.175,.135,.2,"434e62"),
+            (.923,.173,.133,.05,"353e50"), (.952,.173,.133,0,"394256")]:
+        ring = []
+        for j in range(sides):
+            a = TAU*j/sides
+            fold = [1.,.985,.94,.90,.915,.956][j%6]
+            depth = 1 - (1-fold)*fullness
+            panel = j*SKIRT_PANELS/sides
+            k = int(panel)
+            u = panel-k
+            if y>=SKIRT_RINGS[0][1]:
+                follow = np.clip((.939-y)/(.939-SKIRT_RINGS[0][1]),0,1)
+                weights = [("Hips",1-follow),(f"Lap{k:02}",follow*(1-u)),
+                           (f"Lap{(k+1)%SKIRT_PANELS:02}",follow*u)]
+            else:
+                upper, lower = SKIRT_RINGS[:2] if y>=SKIRT_RINGS[1][1] else SKIRT_RINGS[1:]
+                blend = np.clip((upper[1]-y)/(upper[1]-lower[1]),0,1)
+                weights = [(f"{bone}{idx%SKIRT_PANELS:02}",w*t) for bone,w in ((upper[0],1-blend),(lower[0],blend))
+                           for idx,t in ((k,1-u),(k+1,u))]
+            ring.append(mesh.vertex((rx*depth*sin(a),y,-rz*depth*cos(a)),
+                                    color(tint)*(.82+.18*(fold-.90)/.10), weights))
+        rings.append(ring)
+    for lower, upper in zip(rings, rings[1:]):
+        for j in range(sides):
+            k = (j+1)%sides
+            mesh.tris.extend(((lower[j],upper[j],lower[k]),(lower[k],upper[j],upper[k])))
+
+
+def rotation(euler):
+    x,y,z,w = quaternion(euler)
+    return np.array([[1-2*(y*y+z*z),2*(x*y-z*w),2*(x*z+y*w)],
+                     [2*(x*y+z*w),1-2*(x*x+z*z),2*(y*z-x*w)],
+                     [2*(x*z-y*w),2*(y*z+x*w),1-2*(x*x+y*y)]])
+
+
+def drape(bones, angles, name):
+    # Each control samples the two posed legs at its height. Joint translation
+    # is baked into the clip so remote avatars need no runtime cloth solver.
+    a = TAU*int(name[3:])/SKIRT_PANELS
+    n = np.array([sin(a),0,-cos(a)])
+    front = tanh(2.8*cos(a))/tanh(2.8)
+    legs = [angles.get("Thigh"+s,(0,0,0)) for s in ("L","R")]
+    flex = sum(v[0] for v in legs)/2
+    rest = bones[name][1]
+    thighs, shins = [], []
+    for side,angles_at_hip in zip(("L","R"), legs):
+        hip = bones["Thigh"+side][1]
+        knee = bones["Knee"+side][1]
+        ankle = bones["Foot"+side][1]
+        leg = rotation(angles_at_hip)
+        bent_knee = hip+leg@(knee-hip)
+        bent_ankle = bent_knee+leg@rotation(angles.get("Knee"+side,(0,0,0)))@(ankle-knee)
+        thighs.append((hip,bent_knee))
+        shins.append((bent_knee,bent_ankle))
+    # Intersect the actual posed legs with each horizontal cloth station. A
+    # bind-length sample misses the forward knee when it rises above the hem.
+    y = rest[1] + .83*(.89-rest[1])*(1-min(cos(v[0]*pi/180) for v in legs))
+    centers = []
+    support = []
+    for thigh,shin in zip(thighs,shins):
+        top,bottom = thigh if y>=thigh[1][1] else shin
+        direction = bottom-top
+        fraction = np.clip((y-top[1])/min(-.001,direction[1]),0,1)
+        centers.append((top+direction*fraction)[[0,2]])
+        slope = np.abs(direction[[0,2]])/max(.12,abs(direction[1]))
+        support.append(.078*np.sqrt(1+np.minimum(1.8,slope)**2))
+    half = (centers[0]-centers[1])*.5
+    middle = (centers[0]+centers[1])*.5
+    direction = n[[0,2]]
+    spread = np.linalg.norm(half)
+    softness = max(.055,spread*.92)
+    side_weight = tanh(np.dot(direction,half)/softness)/max(.01,tanh(spread/softness))
+    radius = (support[0]*(1+side_weight)+support[1]*(1-side_weight))*.5
+    outline = middle + half*side_weight + (radius + [.048,.040])*direction
+    swing = min(1,max(max(abs(v[0]),abs(v[2])) for v in legs)/32)
+    target = (1-swing)*rest + swing*np.array([outline[0],y,outline[1]])
+    lift = np.clip((flex-25)/55,0,1)
+    lift = lift*lift*(3-2*lift)
+    if name.startswith("Lap"):
+        folded = np.array([.243*sin(a),.870+.148*front,-.120-.125*front])
+    elif name.startswith("Rim"):
+        folded = np.array([.255*sin(a),.864+.149*front,-.244-.226*front])
+    else:
+        folded = np.array([.251*sin(a),.775+.056*front,-.260-.253*front])
+    target = target*(1-lift) + folded*lift
+    return target-bones["Hips"][1]
 
 
 class GLB:
@@ -472,7 +623,7 @@ class GLB:
         self.doc["accessors"].append(acc)
         return len(self.doc["accessors"])-1
 
-    def build(self, mesh):
+    def build(self, mesh, clips=CLIPS):
         names = mesh.names
         nodes = self.doc["nodes"]
         nodes.append({"name":"Student","children":[1,len(names)+1]})
@@ -496,18 +647,30 @@ class GLB:
         normals/=np.maximum(1e-12,np.linalg.norm(normals,axis=1))[:,None]
         props={"POSITION":self.array(v,"VEC3",bounds=True),"NORMAL":self.array(normals,"VEC3"),
                "JOINTS_0":self.array(mesh.joints,"VEC4","B"),"WEIGHTS_0":self.array(mesh.weights,"VEC4")}
-        # A first-person material uses the bind-pose mask to show just the lower body.
-        lower = [float(names[j[0]].startswith(("Hips","Thigh","Knee","Foot","Toe"))) for j in mesh.joints]
-        props["TEXCOORD_0"]=self.array(np.column_stack((lower,np.zeros(len(v)))),"VEC2")
         rgba=np.column_stack((np.uint16(65535*np.clip(mesh.colors,0,1)),np.full(len(v),65535,dtype=np.uint16)))
         props["COLOR_0"]=self.array(rgba,"VEC4","H",normalized=True)
         self.doc["meshes"].append({"name":"CampusStudent","primitives":[{"attributes":props,
                                     "indices":self.array(faces.flatten(),"SCALAR","H"),"material":0}]})
-        for clip,length in CLIPS.items():
+        for clip,length in clips.items():
             phase=np.linspace(0,1,17)
             times=self.array(phase*length,"SCALAR",bounds=True)
             hold_times=self.array([0,length],"SCALAR",bounds=True)
             samples=[pose(clip,t) for t in phase]
+            if "Lap00" in mesh.bones and clip in ("sit","ride","sit_down","stand_up"):
+                for shift,angles in samples:
+                    seated = -shift[1]/.435
+                    for side in ("L","R"):
+                        arm = angles["Arm"+side]
+                        elbow = angles["Elbow"+side]
+                        angles["Arm"+side]=(arm[0]+9*seated,arm[1],arm[2])
+                        angles["Elbow"+side]=(elbow[0]+4*seated,elbow[1],elbow[2])
+            if "Lap00" in mesh.bones and clip in ("crouch","search","bandage"):
+                for _,angles in samples:
+                    for side,sign in (("L",1),("R",-1)):
+                        arm = angles["Arm"+side]
+                        elbow = angles["Elbow"+side]
+                        angles["Arm"+side]=(arm[0]+7,arm[1],arm[2]+sign*13)
+                        angles["Elbow"+side]=(elbow[0]+9,elbow[1],elbow[2])
             channels=[]; samplers=[]
             def channel(bone,path,values,kind):
                 input_keys=times
@@ -519,6 +682,10 @@ class GLB:
             channel("Hips","translation",[mesh.bones["Hips"][1]+shift for shift,_ in samples],"VEC3")
             for bone in names:
                 if bone.startswith("Clavicle") or bone=="Neck": continue
+                if bone.startswith(("Lap","Rim","Hem")):
+                    cloth=[drape(mesh.bones,rot,bone) for _,rot in samples]
+                    channel(bone,"translation",cloth,"VEC3")
+                    continue
                 values=[]
                 for _,rot in samples:
                     angles=rot.get(bone,(0,0,0))
@@ -528,6 +695,43 @@ class GLB:
                 channel(bone,"rotation",values,"VEC4")
             suffix="" if clip in ONE_SHOTS else "_loop"
             self.doc["animations"].append({"name":clip+suffix,"samplers":samplers,"channels":channels})
+
+    def seated_extra(self, mesh, name):
+        # Bake a shared, reduced mesh for background desks. The entire classroom
+        # can use two static meshes without evaluating dozens of skeletons.
+        shift, angles = pose("sit", .2)
+        matrices = posed_bones(mesh.bones,shift,angles)
+        v = np.column_stack((mesh.vertices, np.ones(len(mesh.vertices))))
+        skin = []
+        for bone,(_,rest) in mesh.bones.items():
+            inverse = np.eye(4)
+            inverse[:3,3] = -rest
+            skin.append((matrices[bone]@inverse)[:3,:])
+        weighted = np.einsum("vi,vijk->vjk", mesh.weights, np.asarray(skin)[mesh.joints])
+        posed = np.einsum("vij,vj->vi", weighted, v)
+        paint = np.array(mesh.colors)
+        cells, index = np.unique(np.round(posed/.016).astype(int),axis=0,return_inverse=True)
+        counts = np.bincount(index)[:,None]
+        positions = np.zeros((len(cells),3))
+        colors = np.zeros_like(positions)
+        np.add.at(positions,index,posed)
+        np.add.at(colors,index,paint)
+        positions /= counts
+        colors /= counts
+        faces = index[np.asarray(mesh.tris)]
+        faces = faces[(faces[:,0]!=faces[:,1]) & (faces[:,1]!=faces[:,2]) & (faces[:,2]!=faces[:,0])]
+        cross = np.cross(positions[faces[:,1]]-positions[faces[:,0]],positions[faces[:,2]]-positions[faces[:,0]])
+        normals = np.zeros_like(positions)
+        for k in range(3): np.add.at(normals,faces[:,k],cross)
+        normals /= np.maximum(1e-12,np.linalg.norm(normals,axis=1))[:,None]
+        rgb = np.column_stack((np.uint16(65535*np.clip(colors,0,1)),np.full(len(colors),65535)))
+        attributes = {"POSITION":self.array(positions,"VEC3",bounds=True),
+                      "NORMAL":self.array(normals,"VEC3"),"COLOR_0":self.array(rgb,"VEC4","H",normalized=True)}
+        node = len(self.doc["nodes"])
+        if node: self.doc["scenes"][0]["nodes"].append(node)
+        self.doc["nodes"].append({"name":name,"mesh":node})
+        self.doc["meshes"].append({"name":name,"primitives":[{"attributes":attributes,
+            "indices":self.array(faces.flatten(),"SCALAR","H"),"material":0}]})
 
     def save(self,path):
         self.doc["buffers"]=[{"byteLength":len(self.binary)}]
@@ -544,14 +748,25 @@ def main():
     source=anatomy(parser.parse_args().base)
     out=ROOT/"assets"/"characters"
     out.mkdir(parents=True,exist_ok=True)
+    classroom=GLB()
     for role,design in CAST.items():
-        mesh=Mesh(skeleton(design[-2]))
+        mesh=Mesh(skeleton(design[-2], skirt=role=="xu"))
         face_and_hands(mesh,role,source)
+        if role in ("lin","qiao"):
+            extra=Mesh(mesh.bones)
+            face_and_hands(extra,role,source)
+            outfit(extra,role,classroom=True)
+            classroom.seated_extra(extra,"Seated"+role.title())
         outfit(mesh,role)
         model=GLB()
-        model.build(mesh)
+        clips={c:CLIPS[c] for c in ("read","speak")} if role=="teacher" else CLIPS
+        model.build(mesh, clips)
         model.save(out/(role+".glb"))
-        print(f"{role}: {len(mesh.vertices)} vertices, {len(mesh.tris)} triangles, {len(mesh.bones)} bones, {len(CLIPS)} clips")
+        print(f"{role}: {len(mesh.vertices)} vertices, {len(mesh.tris)} triangles, {len(mesh.bones)} bones, {len(clips)} clips")
+
+    classroom.doc.pop("animations")
+    classroom.doc.pop("skins")
+    classroom.save(out/"classmates.glb")
 
 
 if __name__=="__main__":

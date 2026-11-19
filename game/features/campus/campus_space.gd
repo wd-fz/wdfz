@@ -145,13 +145,28 @@ func stair_bounds(id: String) -> Rect2:
 	return Rect2(Vector2(minf(a.x,b.x),minf(a.z,b.z)),Vector2(absf(b.x-a.x),absf(b.z-a.z)))
 
 
-func replaces_outside_rect(rect: Rect2) -> bool:
+## The exporter rounds footprints to four decimals. Cut only the part replaced
+## by a real shaft; obstacles which straddle its edge still block on the outside.
+func shaft_footprints() -> Array[Rect2]:
+	var cuts: Array[Rect2]=[]
 	for stair: Dictionary in campus.get("stair_layout", []):
-		var bounds := stair_bounds(stair.id)
-		if bounds.intersects(rect): return true
-	for id: String in ["lift_teach", "lift_lab"]:
-		if lift_bounds(id).intersects(rect): return true
-	return false
+		cuts.append(stair_bounds(stair.id).grow(.001))
+	for host: String in ElevatorModule.HOSTS:
+		cuts.append(lift_bounds("lift_"+host).grow(.001))
+	return cuts
+
+
+## Fixed shaft walls surround the travelling car. Each landing's floor model
+## supplies its own door on the open (-Z) side. Bounds also drive the rendering.
+func lift_walls() -> Array[AABB]:
+	var walls: Array[AABB]=[]
+	for host: String in ElevatorModule.HOSTS:
+		var ground:=frame("lift_"+host)
+		ground.origin.y=frame(host+"1").origin.y
+		var height:=frame(host+"5").origin.y+floor_height(host+"5")-ground.origin.y
+		for rect: Rect2 in [Rect2(-1.15,-1.0,.12,1.98),Rect2(1.03,-1.0,.12,1.98),Rect2(-1.03,.86,2.06,.12)]:
+			walls.append(ground*AABB(Vector3(rect.position.x,0,rect.position.y),Vector3(rect.size.x,height,rect.size.y)))
+	return walls
 
 
 func lift_bounds(id: String) -> Rect2:

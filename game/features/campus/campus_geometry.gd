@@ -59,6 +59,12 @@ static func tile_center(room: Dictionary, c: int, r: int) -> Vector2:
 	return Vector2(float(room["ox"]) + (c + 0.5) * float(room["tw"]), float(room["oy"]) + (r + 0.5) * float(room["th"]))
 
 
+## Exported layout coordinates are JSON numbers. Compare tile coordinates numerically.
+static func is_handover_podium(campus: Dictionary, world_id: String, tile: Array) -> bool:
+	var own: Array = campus.get("own_podium", [])
+	return world_id == "teach1" and own.size() == 2 and tile.size() == 2 and int(own[0]) == int(tile[0]) and int(own[1]) == int(tile[1])
+
+
 ## interact.js tileLOS: walls, solid stair cells and closed doors block; the target cell does not.
 static func tile_los(room: Dictionary, a: Vector2, b: Vector2, tc: int, tr: int, open_doors: Dictionary) -> bool:
 	var d := b - a
@@ -97,13 +103,20 @@ static func tile_visible(room: Dictionary, me: Vector2, hit: Dictionary, open_do
 static func near_tile(room: Dictionary, me: Vector2, ang: float, radius: float, open_doors: Dictionary) -> Dictionary:
 	var hits: Array[Dictionary] = []
 	var grid: Array = room["grid"]
-	for r in grid.size():
+	# Only targets within reach participate. Keep row-major order for equal scores.
+	var origin := Vector2(room["ox"], room["oy"])
+	var cell := Vector2(room["tw"], room["th"])
+	var lo := Vector2i(((me - origin - Vector2.ONE * radius) / cell).floor()) - Vector2i.ONE
+	var hi := Vector2i(((me - origin + Vector2.ONE * radius) / cell).floor())
+	for r in range(maxi(0,lo.y),mini(grid.size(),hi.y+1)):
 		var row := String(grid[r])
-		for c in row.length():
+		for c in range(maxi(0,lo.x),mini(row.length(),hi.x+1)):
 			var ch := row.substr(c, 1)
 			if ch == "#" or ch == ".":
 				continue
 			var w := tile_center(room, c, r)
+			# Classroom lecterns stand on the seam between this row and the next.
+			if ch == "T": w.y += float(room["th"]) * 0.5
 			var d := me.distance_to(w)
 			if d >= radius:
 				continue

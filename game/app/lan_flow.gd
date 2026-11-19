@@ -662,6 +662,7 @@ func _place_view(member: String, scene: int, destination: String, pose: Dictiona
 	var continuous := seam and scene == _view_scene + 1 and app.router.same_space(app.session.world_id, destination)
 	_watch_pose.clear()
 	_anchored = null
+	if is_instance_valid(avatars): avatars.remove_from_view(member)
 	_view_member = member
 	_view_scene = scene
 	if continuous:

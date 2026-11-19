@@ -141,6 +141,18 @@ func test_app() -> void:
 	flow.play("x.grade.SSS")
 	app.return_to_menu()
 	check(not flow.active() and not app.ui.results_panel.visible,"menu/new-session boundary clears archive grade page")
+	for value: String in ["1","xu"]:
+		var marker:=FileAccess.open(app.saves.side_path("opening_seen"),FileAccess.WRITE)
+		marker.store_string(value)
+		marker.close()
+		flow.open("演出")
+		check(flow.play("cut:opening"),"recorded opening can be replayed from the menu")
+		var replay:=flow.stage.cut as OpeningCut
+		check(replay._me.character==StudentCast.resolve(value) and flow.stage.player.seated,"archive restores the selected character and seat, including legacy markers")
+		replay._apply(.83)
+		check(not replay._me.visible,"archive first-person wake has no second player body")
+		flow.stop(false)
+		await _frames(1)
 	app.queue_free()
 	await _frames(3)
 	CampusData.clear_caches()

@@ -175,6 +175,9 @@ func extensions() -> void:
 	var podium: Array = CampusData.campus()["own_podium"]
 	check(aim(a, "teach1", int(podium[0]), int(podium[1])), "C10 actual transfer-note podium reachable")
 	command(a, "interact")
+	check(aim(b,"teach1",34,10),"C10 second member can face a different lectern")
+	command(b,"interact")
+	check(b.bag().has("chalk") and not a.choice.is_empty(),"C10 chalk pickup leaves the other player's handover note open")
 	command(a, "choice", {"index": -1})
 	var note := a.feature(&"story.investigation") as InvestigationModule
 	if not note.visible("notice"): print("PODIUM TRACE: ", a.pose, " / ", sim.campus().interact_at(a.location(), a.pose), " / ", a.events.slice(-4))
