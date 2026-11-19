@@ -789,6 +789,7 @@ func _process(delta: float) -> void:
 	for f: Node3D in _scatter.get_children():
 		var dir: Vector2 = _scatter_dirs[i]
 		f.position += Vector3(dir.x, 0.0, dir.y) * delta * SCATTER_SPEED
+		FigureGait.step(f, delta * SCATTER_SPEED, delta)
 		for mi: Node in f.find_children("*", "MeshInstance3D", true, false):
 			var m := (mi as MeshInstance3D).material_override as StandardMaterial3D
 			if m != null:
@@ -847,7 +848,7 @@ func show_silhouettes(points: Array, room: Variant, height: float) -> void:
 	add_child(_silhouettes)
 	for xy: Array in points:
 		var s := CampusGeometry.to_scene(room, Vector2(xy[0], xy[1]))
-		var fig := FigureModel.make("person", Color("030405"), true)
+		var fig := FigureModel.make("person", Color("030405"), true, 1.0, Color.BLACK, true, false, null, true)
 		fig.position = Vector3(s.x, height, s.y)
 		fig.rotation.y = PI
 		_silhouettes.add_child(fig)
@@ -890,7 +891,7 @@ func _scatter_dirs_of(group: Node3D, _room: Variant) -> Array:
 ## The patroller's figure (patEnsureFig / patRender): the exported teacher figure scaled 1.12,
 ## black and unlit, facing the supplied observed target or route. Positions/heights are metres.
 var _patrol_figure: Node3D
-const PATROL_FIGURE := "res://assets/campus/patrol/patrol_figure.glb"
+const PATROL_FIGURE := "res://assets/campus/figures/motion/patroller.glb"
 
 
 func show_patrol(visible_now: bool, scene_pos: Vector2, height: float, toward: Vector3) -> void:
@@ -899,19 +900,22 @@ func show_patrol(visible_now: bool, scene_pos: Vector2, height: float, toward: V
 			_patrol_figure.visible = false
 		return
 	if not is_instance_valid(_patrol_figure):
-		var packed := load(PATROL_FIGURE) as PackedScene
+		var packed := _patrol_asset if _patrol_asset != null else load(PATROL_FIGURE) as PackedScene
 		if packed == null:
 			return
 		_patrol_figure = packed.instantiate() as Node3D
 		_patrol_figure.name = "Patroller"
 		add_child(_patrol_figure)
+		FigureGait.attach(_patrol_figure)
 		for mi: MeshInstance3D in _patrol_figure.find_children("*", "MeshInstance3D", true, false):
 			for s in mi.mesh.get_surface_count():
 				var mat := mi.mesh.surface_get_material(s) as BaseMaterial3D
 				if mat != null:
 					mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_patrol_figure.visible = true
-	_patrol_figure.position = Vector3(scene_pos.x, height, scene_pos.y)
+	var next := Vector3(scene_pos.x, height, scene_pos.y)
+	FigureGait.step(_patrol_figure, _patrol_figure.position.distance_to(next), get_physics_process_delta_time())
+	_patrol_figure.position = next
 	_patrol_figure.rotation.y = atan2(toward.x - scene_pos.x, toward.z - scene_pos.y)
 
 

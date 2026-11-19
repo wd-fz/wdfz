@@ -18,6 +18,8 @@ signal touch_sprint_changed(value: bool)
 @onready var ray: RayCast3D = %InteractionRay
 
 var enabled := false
+## The cooperative flow samples, simulates and records one identical physics input.
+var network_driven := false
 ## Explicit developer freeze is independent of menu pause and input ownership.
 var debug_frozen := false
 ## Seated (old S.seated): the body stays on the chair, the view still turns.
@@ -59,12 +61,23 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if not enabled or debug_frozen:
-		return
-	var typing := editing_text()
-	if typing:
+	if not network_driven and enabled and not debug_frozen:
+		step_movement(movement_axis(), run_requested(), delta)
+
+
+func movement_axis() -> Vector2:
+	if editing_text():
 		_touch_move = Vector2.ZERO
-		set_touch_sprint(false)
+		if _touch_sprint: set_touch_sprint(false)
+		return Vector2.ZERO
+	return (Input.get_vector("move_left", "move_right", "move_forward", "move_back") + _touch_move).limit_length()
+
+
+func run_requested() -> bool:
+	return Input.is_action_pressed("sprint") or _touch_sprint
+
+
+func step_movement(direction: Vector2, run: bool, delta: float) -> void:
 	if seated or hiding:
 		# The seated body overlaps its chair (old S.seated skips moveBy entirely).
 		velocity = Vector3.ZERO
@@ -72,10 +85,7 @@ func _physics_process(delta: float) -> void:
 		sprinting = false
 		_update_focus()
 		return
-	var direction := Vector2.ZERO if typing else (Input.get_vector("move_left", "move_right", "move_forward", "move_back") + _touch_move).limit_length()
-	# The stick sets direction/strength; only the explicit run control selects speed.
-	var want_run := (Input.is_action_pressed("sprint") or _touch_sprint) and direction.length() > 0.08
-	sprinting = want_run and can_sprint
+	sprinting = run and direction.length() > 0.08 and can_sprint
 	var before := global_position
 	CharacterMotor.advance(self, direction, global_rotation.y, sprinting, speed_multiplier, delta, gravity_override if gravity_override > 0.0 else -get_gravity().y, max_fall_speed, walk_speed, sprint_speed)
 	moving = Vector2(global_position.x - before.x, global_position.z - before.z).length() > 0.0001 / 9.0

@@ -8,6 +8,7 @@ var clock := RunClock.new()
 var modules := ModuleHost.new()
 var world_id := ""
 var running := false
+var character_id := StudentCast.DEFAULT
 
 
 func start(location: String) -> void:
@@ -34,6 +35,7 @@ func capture(player_pose: Dictionary) -> Dictionary:
 		"format": SaveSchema.FORMAT,
 		"version": SaveSchema.VERSION,
 		"world_id": world_id,
+		"character": character_id,
 		"clock": clock.capture(),
 		"player": player_pose.duplicate(true),
 		"modules": modules.capture(),
@@ -53,6 +55,7 @@ func restore(data: Dictionary) -> void:
 	clock.restore(data["clock"])
 	modules.restore(data["modules"])
 	world_id = data["world_id"]
+	character_id = StudentCast.resolve(data.get("character"))
 	running = true
 
 

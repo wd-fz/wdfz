@@ -270,6 +270,10 @@ func test_app() -> void:
 	app._pick_talent("easy")
 	await _frames(3)
 	check(app.ui.selection_panel.selected == -1, "a new difficulty cannot reuse the canceled selection")
+	await _tap(app.ui.selection_panel.cast_button)
+	await _tap(app.ui.selection_panel.cast_picker.cards.qiao)
+	await _tap(app.ui.selection_panel.cast_picker.confirm)
+	check(app.ui.selection_panel.character_id=="qiao" and app.session==null, "touch confirmation of a solo character returns to talent selection")
 	await _tap(app.ui.selection_panel.cards[1])
 	await _tap(app.ui.selection_panel.confirm_button)
 	check(app.starting() and app.session == null and app.ui.loading() and app.ui.loading_screen.is_visible_in_tree(), "confirming a talent shows the loading screen before the run is built")
@@ -277,6 +281,7 @@ func test_app() -> void:
 	await _until_started(app)
 	check(not app.starting() and not app.ui.loading(), "the loading screen closes once the run has started")
 	var run := app.session
+	check(run != null and run.character_id == "qiao" and run.capture(app.player.capture_pose()).character == "qiao","the chosen solo model persists in the actual new game save")
 	check(run != null and app.talent().id == "code" and app.ui.opening_on() and not app.speedrun.active(), "confirmation installs the chosen talent and enters the actual opening")
 	app.ui.selection_panel._confirm()
 	check(app.session == run, "a late duplicate confirmation cannot replace the running session")

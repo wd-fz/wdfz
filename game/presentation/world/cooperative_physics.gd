@@ -91,7 +91,6 @@ func place(a: CooperativeActor, preserve_motion: bool = false) -> CharacterBody3
 
 func advance(a: CooperativeActor, dt: float) -> void:
 	var body := place(a)
-	a.processed_sequence = a.input_sequence
 	a.pose["yaw"] = a.input["yaw"]
 	a.pose["pitch"] = a.input["pitch"]
 	var blocked := (a.feature(&"story.knife") as KnifeModule).captured() or (a.feature(&"story.paper_plane") as PaperPlaneModule).phase() in ["read", "flight"] or not a.activities.game.is_empty() or a.vehicle or a.fate().over() or a.school().seated or bool(a.watcher().hide["on"]) or not a.choice.is_empty() or a.terminal or (a.feature(&"body.injury") as BodyModule).fall != null

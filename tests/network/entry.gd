@@ -174,6 +174,53 @@ func interface_checks() -> void:
 	await frames()
 
 
+func cast_picker_checks(panel: LanPanel, room: CooperativeRoom) -> void:
+	root.size = Vector2i(720,360)
+	panel.character_requested.connect(func(id: String) -> void:
+		room.select_character("a",id)
+		panel.show_room(room.public_state(),"a",""))
+	await frames(3)
+	panel._scroll.ensure_control_visible(panel._choose_cast)
+	await frames(3)
+	await tap(panel._choose_cast)
+	var picker := panel.cast_picker
+	check(picker.is_visible_in_tree(), "a touch opens the actual lobby character picker")
+	if not picker.visible: return
+	for card: Button in picker.cards.values():
+		check(root.get_visible_rect().encloses(card.get_global_rect()), "touch role card fits 720x360")
+	check(root.get_visible_rect().encloses(picker.confirm.get_global_rect()), "confirm is always visible on a small landscape phone")
+	await tap(picker.cards.qiao)
+	await tap(picker._pose)
+	check(picker.selected=="qiao" and picker.studio.action=="walk" and room.members.a.ready, "previewing a walking model preserves the reservation and readiness")
+	var stage := picker.studio
+	var start := stage.get_global_rect().get_center()
+	var angle := stage._angle
+	await finger(start,true)
+	var drag := InputEventScreenDrag.new()
+	drag.index = 0
+	drag.position = root.get_final_transform() * (start + Vector2(46,0))
+	drag.relative = root.get_final_transform().basis_xform(Vector2(46,0))
+	Input.parse_input_event(drag)
+	await frames(2)
+	await finger(start + Vector2(46,0),false)
+	check(absf(stage._angle-angle)>.22, "dragging the live student turns the 3D model")
+	await tap(picker._back)
+	check(not picker.visible and picker.studio==null and room.members.a.character=="" and room.members.a.ready, "cancel releases the renderer without committing a choice")
+	await tap(panel._choose_cast)
+	await tap(picker.cards.shen)
+	room.select_character("b","shen")
+	panel.show_room(room.public_state(),"a","")
+	check(picker.confirm.disabled and picker.selected=="shen", "a teammate reserving the previewed role live disables confirmation")
+	await tap(picker.cards.xu)
+	await tap(picker.confirm)
+	check(room.members.a.character=="xu" and not room.members.a.ready and panel._member_labels.a.text.contains("许棠"), "confirm reserves a specific student, updates the roster and releases readiness")
+	room.ready("a",true,"none")
+	room.ready("b",true,"none")
+	root.size = Vector2i(960,540)
+	panel.show_room(room.public_state(),"a","")
+	await frames(3)
+
+
 func team_experience_checks() -> void:
 	root.size = Vector2i(960, 540)
 	var panel := LanPanel.new()
@@ -193,6 +240,7 @@ func team_experience_checks() -> void:
 	room.ready("b", true, "none")
 	panel.show_room(room.public_state(), "a", "")
 	check(not panel.start_button.disabled and panel._heading.text.contains("好友校园"), "all-ready room shows its name and enables start")
+	await cast_picker_checks(panel, room)
 	var rows := panel.members.get_children()
 	panel.feedback("合作进度已保存。")
 	for i in 10: panel.show_room(room.public_state(), "a", "")

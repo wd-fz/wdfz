@@ -29,6 +29,7 @@ var initial_position: Array = []
 var slow_load := false
 var load_stalled := false
 var peers_verified := false
+var requested_character := false
 var restore_test := false
 var old_epoch := ""
 var saved_key := ""
@@ -132,7 +133,13 @@ func run() -> void:
 			finish())
 	network.room_changed.connect(func(_data: Dictionary) -> void:
 		if role == "host": _observe_guest_connection()
-		if network.room.phase == "lobby" and network.local_id != "" and network.room.members.has(network.local_id) and not network.room.members[network.local_id]["ready"]: network.ready(true, "watch")
+		if network.room.phase == "lobby" and network.room.members.has(network.local_id):
+			if role == "guest-1" and network.room.members[network.local_id].get("character","") != "xu":
+				if not requested_character:
+					requested_character = true
+					network.select_character("xu")
+				return
+			if not network.room.members[network.local_id]["ready"]: network.ready(true, "watch")
 		if role == "host" and not began and network.room.members.size() == count and network.room.can_start():
 			began = true
 			check(network.start().is_empty(), "host starts ready room"))
@@ -255,6 +262,7 @@ func _process(dt: float) -> bool:
 		check(not ending_test and network.room != null and network.room.phase == "playing", "room stays running / ending completes before timeout")
 		if role == "guest-1":
 			check(network.local_id == saved_identity, "reconnect keeps stable identity")
+			check(state["session"].get("character") == "xu" and network.room.members[network.local_id].get("character") == "xu", "reconnecting restores the selected student across real ENet")
 			if restore_test: check(network.room.epoch != old_epoch and state["session"]["world_id"] == "lab3", "restored guest loads the new epoch in its saved world")
 		finish()
 	return false
@@ -271,6 +279,12 @@ func _host_scenario() -> void:
 	if stage == 0 and elapsed > 3.0:
 		stage = -10 # The async UI activity checks must not be entered again next frame.
 		check(sim.actors.size() == count, "one authoritative actor per process")
+		for member_id: String in sim.room.members:
+			if sim.room.members[member_id].name == "guest-1":
+				check(sim.actor(member_id).session.character_id == "xu", "guest's confirmed lobby student reaches the authority")
+				if ui_mode:
+					var model: Node3D = app.lan.avatars.peers.get(member_id)
+					check(model != null and (model.get_child(0) as StudentAvatar).character == "xu", "host renders the guest's actual selected mesh")
 		var id := String(sim.actors.keys()[1])
 		sim.travel(sim.actor(id), "lab3", sim.spawn("lab3"))
 		check(sim.actor(network.local_id).location() == "teach1", "guest travel does not switch host room")

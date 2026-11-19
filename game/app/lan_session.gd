@@ -211,6 +211,10 @@ func ready(value: bool, gift: String) -> void:
 	_send({"kind": "ready", "ready": value, "talent": gift})
 
 
+func select_character(character: String) -> void:
+	_send({"kind": "character", "character": character})
+
+
 func start() -> String:
 	if not transport.serving or room == null or not room.can_start(): return "请让本局需加入的成员全部连接并准备；新局至少需要两人。"
 	if not room.begin(LanProtocol.token()): return "无法开始房间。"
@@ -318,6 +322,12 @@ func _control(peer_id: int, data: Dictionary) -> void:
 			if gift != "none" and not TalentModule.DEF.has(gift): return
 			room.ready(id, bool(data.get("ready", false)), gift)
 			_publish_room()
+		"character":
+			if not data.get("character") is String: return
+			var reason := room.select_character(id, data["character"])
+			if reason.is_empty(): _publish_room()
+			elif peer_id == 1: notice.emit(reason)
+			else: transport.send_control(peer_id, {"kind": "notice", "text": reason})
 		"loaded":
 			if data.get("epoch") != room.epoch: return
 			room.loaded(id)
@@ -335,7 +345,10 @@ func _control(peer_id: int, data: Dictionary) -> void:
 			else: transport.send_control(peer_id, result)
 		"pause":
 			if not data.get("value") is bool: return
-			if room.pause(id, bool(data.get("value", false))): _publish_room()
+			if room.pause(id, bool(data.get("value", false))):
+				if room.paused_left > 0.0 and simulation != null:
+					for actor: CooperativeActor in simulation.actors.values(): actor.clear_input()
+				_publish_room()
 		"save":
 			if id == room.host_id:
 				_queued_save = true

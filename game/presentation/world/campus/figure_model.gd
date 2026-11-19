@@ -15,7 +15,7 @@ static func available(kind: String) -> bool:
 
 ## A figure of the kind, tinted; scale multiplies the old size (1 = as built). unlit = the dark, unlit
 ## silhouette used by the anomalies. Returns an empty Node3D when the model is missing.
-static func make(kind: String, color: Color, unlit: bool = false, scale: float = 1.0, emission: Color = Color.BLACK, fog_enabled: bool = true, flat_shadow: bool = false, shared_material: StandardMaterial3D = null) -> Node3D:
+static func make(kind: String, color: Color, unlit: bool = false, scale: float = 1.0, emission: Color = Color.BLACK, fog_enabled: bool = true, flat_shadow: bool = false, shared_material: StandardMaterial3D = null, articulated: bool = false) -> Node3D:
 	var root := Node3D.new()
 	root.name = "Figure_" + kind
 	if not available(kind):
@@ -23,8 +23,10 @@ static func make(kind: String, color: Color, unlit: bool = false, scale: float =
 	# A projected window silhouette is a fixed shape, not a standing 3D character.
 	# Keep its original outline while ordinary and uncanny people use the new mesh.
 	var key := "window_shadow" if flat_shadow and kind == "person" else kind
+	var path := FigureGait.DIRECTORY % kind if articulated else "res://assets/campus/figures/%s.glb" % key
+	if articulated: key += "_mobile"
 	if not _cache.has(key):
-		_cache[key] = load("res://assets/campus/figures/%s.glb" % key)
+		_cache[key] = load(path)
 	var inst := (_cache[key] as PackedScene).instantiate() as Node3D
 	inst.rotation.y = PI
 	root.add_child(inst)
@@ -32,6 +34,7 @@ static func make(kind: String, color: Color, unlit: bool = false, scale: float =
 	for mi: Node in inst.find_children("*", "MeshInstance3D", true, false):
 		RenderMaterials.set_override((mi as MeshInstance3D), mat)
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if unlit else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	if articulated: FigureGait.attach(root)
 	root.scale = Vector3.ONE * scale
 	return root
 

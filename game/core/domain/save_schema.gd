@@ -45,6 +45,7 @@ static func validate(data: Dictionary, known_worlds: PackedStringArray) -> Strin
 		return "不支持的存档格式或版本；Web 版存档请使用「导入旧存档」"
 	if not data.get("world_id") is String or not known_worlds.has(data["world_id"]):
 		return "存档引用了未登记的场景"
+	if data.has("character") and not StudentCast.valid(data["character"]): return "存档角色无效"
 	if not data.get("clock") is Dictionary or not data.get("player") is Dictionary or not data.get("modules") is Dictionary:
 		return "存档缺少时钟、玩家或模块状态"
 	var clock: Dictionary = data["clock"]

@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--rules", action="store_true", help="run rule, transaction, save and six-route fixtures")
     parser.add_argument("--players", type=int, choices=(2, 4), default=2)
     parser.add_argument("--faults", action="store_true")
+    parser.add_argument("--walk", action="store_true", help="drive a real campus client and compare its footfalls and stopping position to the host")
     parser.add_argument("--ui", action="store_true")
     parser.add_argument("--soak", action="store_true")
     parser.add_argument("--slow-load", action="store_true", help="block the first client scene load for 12 seconds")
@@ -31,19 +32,20 @@ def main():
     args = parser.parse_args()
     # The ending fixture finishes as soon as the shared ending lands (about 20 s on CI). The limit only bounds a
     # real failure: 30 s left no room for the mid-route reconnect under 3 % loss on a loaded runner (2026-11-14).
+    if args.walk and (args.players != 2 or args.ui or args.renderer): parser.error("--walk runs two headless game applications")
     if args.ending: args.seconds = max(60, args.seconds)
     if args.restore: args.seconds = max(24, args.seconds)
     if args.rules:
         reports = ROOT / "build/reports/lan/rules"
         reports.mkdir(parents=True, exist_ok=True)
-        for script, label in (("run_unit", "UNIT"), ("authority", "AUTHORITY"), ("consistency", "CONSISTENCY"), ("edge_cases", "EDGES"), ("real_entry", "REAL-ENTRY"), ("entry", "ENTRY"), ("experience", "EXPERIENCE"), ("transport", "TRANSPORT"), ("routing", "ROUTING")):
+        for script, label in (("run_unit", "UNIT"), ("movement", "MOVEMENT"), ("authority", "AUTHORITY"), ("consistency", "CONSISTENCY"), ("edge_cases", "EDGES"), ("real_entry", "REAL-ENTRY"), ("entry", "ENTRY"), ("experience", "EXPERIENCE"), ("transport", "TRANSPORT"), ("routing", "ROUTING")):
             result = subprocess.run([ENGINE, "--headless", "--path", str(ROOT), "--script", f"res://tests/network/{script}.gd"], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=300)
             (reports / f"{script}.log").write_text(result.stdout)
             if result.returncode or "ERROR:" in result.stdout or not re.search(rf"LAN {label}: [1-9]\d* checks, 0 failures", result.stdout):
                 raise RuntimeError(result.stdout[-9000:])
             print(result.stdout.strip())
         return
-    reports = ROOT / "build/reports/lan" / (f"{args.players}-players" + ("-faults" if args.faults else "") + ("-soak" if args.soak else "") + ("-ending" if args.ending else "") + ("-slow-load" if args.slow_load else "") + ("-restore" if args.restore else "") + ("-ui-" + (args.renderer or "headless") if args.ui else ""))
+    reports = ROOT / "build/reports/lan" / (f"{args.players}-players" + ("-faults" if args.faults else "") + ("-soak" if args.soak else "") + ("-ending" if args.ending else "") + ("-walk" if args.walk else "") + ("-slow-load" if args.slow_load else "") + ("-restore" if args.restore else "") + ("-ui-" + (args.renderer or "headless") if args.ui else ""))
     reports.mkdir(parents=True, exist_ok=True)
     rendering = ["--windowed", "--rendering-method", args.renderer, "--rendering-driver", "vulkan", "--display-driver", args.display_driver] if args.renderer else ["--headless"]
     if args.ui:
@@ -71,7 +73,8 @@ def main():
                 proxy = LanProxy(port, seed=714 + index)
                 proxies.append(proxy)
                 join_port = proxy.port
-            command = [ENGINE, *rendering, "--path", str(ROOT), "--audio-driver", "Dummy", "--max-fps", "60", "--script", "res://tests/network/peer.gd", "--", f"--role={role}", f"--port={join_port}", f"--players={args.players}", f"--seconds={args.seconds}"]
+            peer_script = "walking_peer" if args.walk else "peer"
+            command = [ENGINE, *rendering, "--path", str(ROOT), "--audio-driver", "Dummy", "--max-fps", "60", "--script", f"res://tests/network/{peer_script}.gd", "--", f"--role={role}", f"--port={join_port}", f"--players={args.players}", f"--seconds={args.seconds}"]
             if args.ui: command.extend(["--ui", f"--screenshots={reports}"])
             if args.soak: command.append("--soak")
             if args.slow_load: command.append("--slow-load")
@@ -85,7 +88,7 @@ def main():
         # shared loading barrier. Allow that cold build and the rendered play
         # interval on a two-core runner; retain a bounded deadline and all
         # connection/reconnect assertions. Renderless transport keeps its limit.
-        startup_budget = 420 if args.ui and args.renderer else 180 if args.ui else 45
+        startup_budget = 420 if args.ui and args.renderer else 180 if args.ui or args.walk else 45
         deadline = time.monotonic() + args.seconds * 2 + startup_budget
         for process, output, path in children:
             code = process.wait(timeout=max(1, deadline - time.monotonic()))

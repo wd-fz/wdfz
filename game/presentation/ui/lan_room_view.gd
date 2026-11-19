@@ -48,6 +48,7 @@ static func summary(state: Dictionary) -> String:
 
 static func member_text(id: String, m: Dictionary, state: Dictionary, local_id: String, nearby: Dictionary = {}) -> String:
 	var who := String(m.get("name", "同学")) + ("（你）" if id == local_id else "") + (" · 房主" if id == state.get("host") else "")
+	if StudentCast.valid(m.get("character")): who += " · " + String(StudentCast.PEOPLE[m["character"]]["name"])
 	var detail := ""
 	if m.get("state") == "departed": detail = "已离队"
 	elif not m.get("connected", false): detail = "暂时断线 · 角色保留 %d 秒" % ceili(float(m.get("remaining", 0)))

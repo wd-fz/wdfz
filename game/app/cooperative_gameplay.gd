@@ -936,7 +936,7 @@ func departed(id: String) -> void:
 			passengers.clear()
 
 
-func cancel_actor_jobs(a: CooperativeActor) -> void:
+func cancel_actor_jobs(a: CooperativeActor, stop_movement: bool = true) -> void:
 	if a.id in boarding.get("members", []): boarding.clear()
 	a.activities.close()
 	if _radio_job.get("owner") == a.id: _radio_job.clear()
@@ -947,7 +947,7 @@ func cancel_actor_jobs(a: CooperativeActor) -> void:
 		study_owner = ""
 	(a.feature(&"phone.network") as PhoneModule).terminal_open = false
 	a.terminal = false
-	sim.release(a.id)
+	sim.release(a.id, stop_movement)
 
 
 func _lift_host(a: CooperativeActor) -> String:

@@ -19,6 +19,7 @@ static func validate(data: Dictionary) -> String:
 	var calendar: Dictionary = data["calendar"]
 	if not SaveSchema.number_in(calendar.get("tsec"), 0, 1500) or not SaveSchema.is_integer(calendar.get("day"), 1, 100000) or not SaveSchema.number_in(calendar.get("seconds"), 0, SaveSchema.MAX_SECONDS): return "合作日历无效。"
 	var seats := {}
+	var characters := {}
 	var candidate := SessionFactory.create()
 	var known := PackedStringArray(CampusData.rooms().keys())
 	known.append("out")
@@ -28,7 +29,12 @@ static func validate(data: Dictionary) -> String:
 		var actor_data: Variant = actors[id]
 		var member: Variant = room["members"].get(id)
 		if not actor_data is Dictionary or not member is Dictionary or not member.get("name") is String or not member.get("connected") is bool or (member.get("talent") != "none" and not TalentModule.DEF.has(member.get("talent"))): return "合作成员资料无效。"
+		if member.has("character"):
+			var character: Variant = member["character"]
+			if not StudentCast.valid(character) or characters.has(character): return "合作角色分配无效。"
+			characters[character] = true
 		if not actor_data.get("session") is Dictionary or not actor_data.get("life") is Dictionary or not actor_data.get("seat") is String: return "合作角色状态无效。"
+		if member.has("character") and actor_data["session"].has("character") and member["character"] != actor_data["session"]["character"]: return "成员与个人存档的角色不一致。"
 		if member.get("state") not in ["loading", "alive", "dead", "departed"] or not SaveSchema.number_in(member.get("remaining"), 0, CooperativeRoom.RESERVATION_SECONDS): return "合作成员阶段无效。"
 		if member.has("participation"):
 			var record: Variant = member["participation"]

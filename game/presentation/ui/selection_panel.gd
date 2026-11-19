@@ -13,6 +13,9 @@ var list_scroll: TouchScroll
 var detail_scroll: TouchScroll
 var confirm_button: Button
 var back_button: Button
+var cast_button: Button
+var cast_picker: StudentPicker
+var character_id := StudentCast.DEFAULT
 var shell: PanelContainer
 var _entries: Array = []
 var _title: Label
@@ -139,6 +142,15 @@ func _ready() -> void:
 	back_button.theme_type_variation = "QuietButton"
 	back_button.pressed.connect(_cancel)
 	footer.add_child(back_button)
+	cast_button = Button.new()
+	cast_button.name = "ChooseCharacter"
+	cast_button.pressed.connect(func() -> void: cast_picker.open(character_id))
+	footer.add_child(cast_button)
+	cast_picker = StudentPicker.new()
+	add_child(cast_picker)
+	cast_picker.picked.connect(func(id: String) -> void:
+		character_id = id
+		cast_button.text = "角色 · " + String(StudentCast.PEOPLE[id]["name"]))
 	_summary = _label("", UISkin.MUTED)
 	_summary.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -159,6 +171,9 @@ func _ready() -> void:
 
 func open(title: String, mode: String, entries: Array) -> void:
 	_return_focus = weakref(get_viewport().gui_get_focus_owner())
+	cast_picker.close()
+	character_id = StudentCast.DEFAULT
+	cast_button.text = "角色 · " + String(StudentCast.PEOPLE[character_id]["name"])
 	_entries = entries.duplicate(true)
 	selected = -1
 	_preview = -1
@@ -260,12 +275,13 @@ func _cancel() -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if not visible or not event is InputEventKey or not event.pressed or event.echo: return
+	if not visible or cast_picker.visible or not event is InputEventKey or not event.pressed or event.echo: return
 	var key: int = event.physical_keycode if event.physical_keycode != 0 else event.keycode
 	if key == KEY_TAB:
 		var targets: Array[Control] = []
 		for card in cards: targets.append(card)
 		targets.append(back_button)
+		targets.append(cast_button)
 		if not confirm_button.disabled: targets.append(confirm_button)
 		var at := targets.find(get_viewport().gui_get_focus_owner())
 		var next := wrapi(at + (-1 if event.shift_pressed else 1), 0, targets.size())
@@ -280,6 +296,8 @@ func _input(event: InputEvent) -> void:
 		var focus := get_viewport().gui_get_focus_owner()
 		if focus == back_button:
 			_cancel()
+		elif focus == cast_button:
+			cast_picker.open(character_id)
 		elif selected < 0 and focus in cards:
 			select(cards.find(focus))
 		else:

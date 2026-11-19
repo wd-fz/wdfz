@@ -9,7 +9,8 @@ var current: Dictionary = {}
 var _epoch := ""
 var _scene := -1
 var _input_seq := 0
-var _input_timer := 0.0
+var _host_ack := -1
+var _input_window: Array = []
 var _seen_event := 0
 var _shown_choice := -1
 var _last_motion := -1
@@ -32,6 +33,9 @@ var _watch: Button
 var _spectating := false
 var _observing := ""
 var _view_scene := -1
+var _view_member := ""
+var _watch_pose := {}
+var _anchored: Variant = null
 var prediction := LanPrediction.new()
 var _mic: MicPanel
 var _manual := false
@@ -75,6 +79,7 @@ func _ready() -> void:
 	panel.host_requested.connect(_host)
 	panel.join_requested.connect(_join)
 	panel.ready_requested.connect(network.ready)
+	panel.character_requested.connect(network.select_character)
 	panel.start_requested.connect(func() -> void:
 		if _remote_mode and not remote.available: return
 		var error := network.start()
@@ -302,6 +307,9 @@ func reconnect() -> void:
 	_cancel_preparation()
 	_reset_local_modals()
 	prediction.clear()
+	_input_window.clear()
+	_watch_pose.clear()
+	_view_member = ""
 	_view_scene = -1
 	_display_addresses = ""
 	_lost = false
@@ -415,6 +423,7 @@ func resume() -> void:
 
 
 func stop() -> void:
+	app.player.network_driven = false
 	_clear_maze_fx()
 	_cancel_preparation()
 	_reset_local_modals()
@@ -436,15 +445,17 @@ func stop() -> void:
 	_death_seen = false
 	_ended_seen = false
 	_last_motion = -1
+	_watch_pose.clear()
+	_view_member = ""
 	_view_scene = -1
 	_spectating = false
 	_observing = ""
 	prediction.clear()
+	_input_window.clear()
 	_time_prompt = ""
 	_ending_prompt = ""
 	_board_prompt = ""
 	_recorded = false
-	_input_timer = 0.0
 	_input_seq = 0
 	_remote_token = ""
 	_room_phase = ""
@@ -483,6 +494,8 @@ func _snapshot(data: Dictionary) -> void:
 	_observing = String(view.get("id", "")) if _spectating else ""
 	var source: Dictionary = view["session"]
 	var first := _epoch != network.room.epoch or not _installed
+	# A small motion datagram may already have moved this player to a newer region.
+	if not first and not _spectating and _view_member == network.local_id and int(view["scene"]) < _view_scene: return
 	if first and (not _preparing_epoch.is_empty() or (app.router.continuous_campus and not app.router.school_ready())):
 		_loading_snapshot = data.duplicate(true)
 		if _preparing_epoch != network.room.epoch:
@@ -505,6 +518,7 @@ func _snapshot(data: Dictionary) -> void:
 			network._lost(why)
 			return
 		_installed = true
+		app.player.network_driven = true
 		_epoch = network.room.epoch
 		_lost = false
 		_presented_frame = -1
@@ -524,7 +538,8 @@ func _snapshot(data: Dictionary) -> void:
 		_death_seen = false
 		_ended_seen = false
 		_last_motion = -1
-		_input_seq = int(data.get("input_seq", 0)) + 1
+		_host_ack = int(data.get("input_seq", -1))
+		_input_seq = maxi(0, _host_ack)
 		network._command_seq = int(data.get("command_seq", 0)) + 1
 		loaded.call_deferred()
 	else:
@@ -570,24 +585,17 @@ func _snapshot(data: Dictionary) -> void:
 	app.story().wake_pending = bool(life["wake"])
 	var phone := app.phone()
 	phone.terminal_open = bool(data["terminal"])
-	app.player.seated = app.school().seated
-	app.player.hiding = bool(app.patrol().hide["on"])
+	if _view_scene != int(view["scene"]) or _last_motion <= int(data["room"]["tick"]) or _spectating:
+		app.player.seated = app.school().seated
+		app.player.hiding = bool(app.patrol().hide["on"])
 	app.player.can_sprint = app.school().can_run(app.items().snack_active()) and app.body().can_run()
 	app.player.speed_multiplier = (1.5 if app.items().snack_active() else 1.0) * app.body().speed_mul()
 	_scene = int(data["scene"])
 	var next_scene := int(view["scene"])
-	var view_changed: bool = first or next_scene != _view_scene or app.session.world_id != source["world_id"]
+	var member := _observing if _spectating else network.local_id
+	var view_changed: bool = first or member != _view_member or next_scene != _view_scene or app.session.world_id != source["world_id"]
 	if view_changed:
-		_view_scene = next_scene
-		prediction.clear()
-		var continuous: bool = not first and app.session.world_id != source["world_id"] and app.router.same_space(app.session.world_id,String(source["world_id"]))
-		if app.session.world_id != source["world_id"]:
-			app.router.switch_to(String(source["world_id"]))
-			app.session.world_id = String(source["world_id"])
-		if continuous: app.player.place(source["player"], false)
-		else: app.player.restore_pose(source["player"])
-		app.inception_flow.changed_world()
-		app._sync_world()
+		_place_view(member, next_scene, String(source["world_id"]), source["player"], not first and not _spectating and view.get("seamless", false))
 	if app.story().dead and not _death_seen:
 		_death_seen = true
 		_death_t = 0.0
@@ -648,6 +656,31 @@ func _snapshot(data: Dictionary) -> void:
 	if app.phone_open(): app._phone_paint()
 	if not first and network.room.phase == "playing":
 		_longest_snapshot_us = maxi(_longest_snapshot_us, Time.get_ticks_usec() - started_at)
+
+
+func _place_view(member: String, scene: int, destination: String, pose: Dictionary, seam: bool) -> void:
+	var continuous := seam and scene == _view_scene + 1 and app.router.same_space(app.session.world_id, destination)
+	_watch_pose.clear()
+	_anchored = null
+	_view_member = member
+	_view_scene = scene
+	if continuous:
+		var space := app.router.resident.space
+		var frame := space.frame(destination).affine_inverse() * space.frame(app.session.world_id)
+		pose = space.local_pose(destination, space.global_pose(app.session.world_id, app.player.capture_pose()))
+		prediction.rebase(frame)
+		for sample: Array in _input_window:
+			sample[2] = wrapf(float(sample[2]) + frame.basis.get_euler().y, -PI, PI)
+	else:
+		prediction.clear()
+		_input_window.clear()
+	if app.session.world_id != destination:
+		app.router.switch_to(destination)
+		app.session.world_id = destination
+	if continuous: app.player.place(pose)
+	else: app.player.restore_pose(pose)
+	app.inception_flow.changed_world()
+	app._sync_world()
 
 
 func _finish_preparation(epoch: String) -> void:
@@ -752,15 +785,40 @@ func _update_offers() -> void:
 func _motion(data: Dictionary) -> void:
 	if not playing() or data.get("epoch") != _epoch or int(data.get("tick", -1)) <= _last_motion: return
 	_last_motion = int(data["tick"])
-	if avatars != null: avatars.receive(data, _observing if _spectating else network.local_id, app.session.world_id, network.room.members)
-	var own: Dictionary = data.get("players", {}).get(_observing if _spectating else network.local_id, {})
+	var member := _observing if _spectating else network.local_id
+	var own: Dictionary = data.get("players", {}).get(member, {})
+	if not own.is_empty() and not _spectating:
+		_host_ack = maxi(_host_ack, int(own["ack"]))
+		# All ordinary campus geometry is resident. A congested reliable baseline
+		# must not hold up a doorway, or cause the next input to use the old frame.
+		if int(own["scene"]) > _view_scene and app.router.same_space(app.session.world_id, own["world"]):
+			_scene = int(own["scene"])
+			_place_view(member, _scene, own["world"], own["pose"], own.get("seam", false))
+	if avatars != null: avatars.receive(data, member, app.session.world_id, network.room.members)
 	if own.is_empty() or own["world"] != app.session.world_id or int(own["scene"]) != _view_scene or bool(current.get("vehicle", false)): return
 	if _spectating:
-		app.player.restore_pose(own["pose"])
+		_watch_pose = own["pose"]
 		return
 	var p: Array = own["pose"]["position"]
 	var position := Vector3(p[0], p[1], p[2])
-	prediction.reconcile(app.player, position, int(own["ack"]), app.player.enabled and not app.player.seated and not app.player.hiding)
+	app.player.seated = bool(own["seated"])
+	app.player.hiding = bool(own["hiding"])
+	var fixed_pose: bool = app.player.seated or app.player.hiding or bool(own["dead"]) or own.get("act", "") in ["vault","fall","drive","ride"]
+	var transition: bool = _anchored != null and fixed_pose != _anchored
+	_anchored = fixed_pose
+	if transition: app.player.velocity = Vector3.ZERO
+	prediction.reconcile(app.player, position, int(own["ack"]), not fixed_pose and not transition)
+
+
+func _follow_observed(dt: float) -> void:
+	if _watch_pose.is_empty() or network.room.paused_left > 0: return
+	var p: Array = _watch_pose["position"]
+	var target := Vector3(p[0], p[1], p[2])
+	var player := app.player
+	var blend := 1.0 if target.distance_squared_to(player.position) > 2.25 else 1.0 - exp(-18.0 * dt)
+	player.position = player.position.lerp(target, blend)
+	player.rotation.y = lerp_angle(player.rotation.y, float(_watch_pose["yaw"]), blend)
+	player.set_pitch(lerpf(player._look_pitch, float(_watch_pose["pitch"]), blend))
 
 
 func _remote_step(at: Vector3, running: bool, world: String) -> void:
@@ -839,22 +897,46 @@ func _refresh_diagnostics() -> void:
 	panel.metrics.text = text
 
 
+func _step_input(dt: float) -> void:
+	var player := app.player
+	# If the host stalls, continue resending the recent ticks until it catches up.
+	# Capping prediction also bounds the amount of stale movement on release.
+	if not network.transport.serving and _input_seq - _host_ack >= CooperativeActor.MAX_INPUT_LEAD and not _input_window.is_empty():
+		if Engine.get_physics_frames() % 2 == 0:
+			network.input({"seq": _input_seq, "scene": _scene, "frames": _input_window, "phone": app.phone_open()})
+		player.moving = false
+		player.sprinting = false
+		return
+	var vehicle := bool(current.get("vehicle", false))
+	var active := (player.enabled or vehicle) and not _paused and not player.debug_frozen
+	var axis := player.movement_axis() if active else Vector2.ZERO
+	var run := active and player.run_requested() and not player.editing_text()
+	var vault := player.enabled and not player.editing_text() and Input.is_physical_key_pressed(KEY_SPACE)
+	var steer := app._paper_steer() if app._paper_owns_input() and not _paused else {}
+	_input_seq += 1
+	if not vehicle and not player.debug_frozen and not app.story().over() and app.body().fall == null:
+		var before := player.position
+		if active or not (player.seated or player.hiding):
+			player.step_movement(axis, run, dt)
+		prediction.advance(player, dt, player.position - before)
+	prediction.record(_input_seq, player.position)
+	_input_window.append([axis.x, axis.y, wrapf(player.rotation.y, -PI, PI), player._look_pitch, run, vault, steer])
+	if _input_window.size() > LanProtocol.INPUT_WINDOW: _input_window.pop_front()
+	# Two physics ticks per datagram, including enough prior ticks to repair loss.
+	if _input_seq % 2 == 0 or network.transport.serving:
+		var frames := [_input_window.back()] if network.transport.serving else _input_window
+		network.input({"seq": _input_seq, "scene": _scene, "frames": frames, "phone": app.phone_open()})
+
+
 func _physics_process(dt: float) -> void:
 	if not playing() or _lost: return
 	_sync_input()
-	var sampled_axis := Vector2.ZERO
-	if app.player.enabled and not app.player.editing_text(): sampled_axis = (Input.get_vector("move_left", "move_right", "move_forward", "move_back") + app.ui.movement_touch()).limit_length()
-	if not _spectating: prediction.record(_input_seq, sampled_axis, app.player.rotation.y, app.player.sprinting, app.player.speed_multiplier, dt)
-	_input_timer += dt
-	if _input_timer >= 1.0 / 30.0:
-		_input_timer = fmod(_input_timer, 1.0 / 30.0)
-		_input_seq += 1
-		var axis := Vector2.ZERO
-		var run := false
-		if (app.player.enabled or bool(current.get("vehicle", false))) and not app.player.editing_text() and not _paused:
-			axis = (Input.get_vector("move_left", "move_right", "move_forward", "move_back") + app.ui.movement_touch()).limit_length()
-			run = Input.is_action_pressed("sprint") or app.player._touch_sprint
-		network.input({"seq": _input_seq, "scene": _scene, "x": axis.x, "y": axis.y, "yaw": wrapf(app.player.rotation.y, -PI, PI), "pitch": app.player._look_pitch, "run": run, "vault": app.player.enabled and not app.player.editing_text() and Input.is_physical_key_pressed(KEY_SPACE), "steer": app._paper_steer() if app._paper_owns_input() and not _paused and not _spectating else {}})
+	if _spectating: _follow_observed(dt)
+	if network.room.phase == "playing" and network.room.paused_left <= 0 and not _spectating:
+		_step_input(dt)
+	else:
+		_input_window.clear()
+		prediction.clear()
 	if (app.player.enabled or app.knife_flow.captured()) and not app.player.editing_text():
 		if Input.is_action_just_pressed("bag"): app._open_bag()
 		if Input.is_action_just_pressed("torch"): send("item", {"item": "torch"})

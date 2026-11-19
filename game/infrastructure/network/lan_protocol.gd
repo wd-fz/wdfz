@@ -10,6 +10,7 @@ const MAX_BASELINE := 2 * 1024 * 1024
 const CHUNK := 16 * 1024
 const CHANNELS := 4
 const MAX_DEPTH := 24
+const INPUT_WINDOW := 12
 
 
 static func encode(value: Dictionary) -> PackedByteArray:
@@ -42,6 +43,23 @@ static func safe(value: Variant, depth: int = 0) -> bool:
 				if not (key is String or key is int) or str(key).length() > 256 or not safe(value[key], depth + 1): return false
 			return true
 	return false
+
+
+## A packet repeats the last six physics samples. Sequence numbers are implicit
+## in the ordered window, and the sender never supplies a simulation duration.
+static func inputs(data: Dictionary) -> Array:
+	var frames: Variant = data.get("frames")
+	if not frames is Array or frames.is_empty() or frames.size() > INPUT_WINDOW: return []
+	if not SaveSchema.is_integer(data.get("seq"), frames.size() - 1, 2147483647) or not SaveSchema.is_integer(data.get("scene"), 0, 2147483647): return []
+	var result := []
+	var sequence: int = int(data["seq"]) - frames.size() + 1
+	for frame: Variant in frames:
+		if not frame is Array or frame.size() != 7: return []
+		var sample := {"x": frame[0], "y": frame[1], "yaw": frame[2], "pitch": frame[3], "run": frame[4], "vault": frame[5], "steer": frame[6], "seq": sequence, "scene": data["scene"]}
+		if not input_valid(sample): return []
+		result.append(sample)
+		sequence += 1
+	return result
 
 
 static func input_valid(data: Dictionary) -> bool:

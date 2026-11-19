@@ -4,6 +4,7 @@ extends Control
 signal host_requested(name: String, nickname: String, port: int, resume: bool)
 signal join_requested(address: String, nickname: String)
 signal ready_requested(value: bool, talent: String)
+signal character_requested(id: String)
 signal start_requested
 signal leave_requested
 signal close_requested
@@ -23,6 +24,8 @@ var nickname: LineEdit
 var address: LineEdit
 var room_name: LineEdit
 var port: SpinBox
+var cast_picker: StudentPicker
+var _choose_cast: Button
 var talent: OptionButton
 var ready_button: CheckButton
 var status: Label
@@ -239,6 +242,10 @@ func _ready() -> void:
 	_copy_code = _button(invitation_row, "复制", func() -> void:
 		DisplayServer.clipboard_set(_invitation.text)
 		feedback("邀请码已复制，发给好友即可加入。"), "CopyInvitation")
+	_choose_cast = _button(lobby, "选择角色", _open_cast, "ChooseCharacter")
+	cast_picker = StudentPicker.new()
+	add_child(cast_picker)
+	cast_picker.picked.connect(func(id: String) -> void: character_requested.emit(id))
 	members = VBoxContainer.new()
 	lobby.add_child(members)
 	talent = OptionButton.new()
@@ -469,6 +476,8 @@ func _update_layout() -> void:
 	_team_actions.get_node("EscapeTeam").visible = running
 	transfer.visible = running
 	_details.get_node("HostDebug").visible = hosting and running
+	_choose_cast.visible = waiting
+	if not waiting: cast_picker.close()
 	talent.visible = waiting
 	_talent_info.visible = waiting
 	_actions.visible = waiting and not confirming
@@ -538,6 +547,10 @@ func show_room(state: Dictionary, local_id: String, addresses: String) -> void:
 					if transfer.selected >= 0 and transfer.get_item_metadata(transfer.selected) != null: give_requested.emit(id, String(transfer.get_item_metadata(transfer.selected))))
 			if hosting: _button(row, "移除", func() -> void: _ask_remove(id))
 	_update_members()
+	if state.get("phase") == "lobby":
+		var character: String = state["members"].get(local_id,{}).get("character", "")
+		_choose_cast.text = "选择角色  ·  " + (String(StudentCast.PEOPLE[character]["name"]) if StudentCast.valid(character) else "自动分配")
+		cast_picker.set_slots(_cast_owners())
 	if state["members"].has(local_id):
 		ready_button.set_pressed_no_signal(state["members"][local_id]["ready"])
 		var chosen := _gifts.find(state["members"][local_id]["talent"])
@@ -546,6 +559,26 @@ func show_room(state: Dictionary, local_id: String, addresses: String) -> void:
 	else:
 		_update_readiness()
 		_update_talent()
+
+
+func _cast_owners() -> Dictionary:
+	var owners := {}
+	for id: String in _state.get("members",{}):
+		var role: String = _state["members"][id].get("character", "")
+		if StudentCast.valid(role): owners[role] = id
+	return owners
+
+
+func _open_cast() -> void:
+	if _state.get("phase") != "lobby" or cast_picker.visible: return
+	var owners := _cast_owners()
+	var role: String = _state["members"].get(_local_id,{}).get("character","")
+	if role.is_empty():
+		for id: String in StudentCast.IDS:
+			if not owners.has(id):
+				role = id
+				break
+	cast_picker.open(role, owners, _local_id)
 
 
 func inventory(entries: Array) -> void:

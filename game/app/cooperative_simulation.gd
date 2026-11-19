@@ -24,9 +24,11 @@ func setup(state: CooperativeRoom, seed_value: int) -> void:
 	room = state
 	physics.name = "Physics"
 	add_child(physics)
+	room.assign_characters()
 	var slot := 0
 	for id: String in room.members:
 		var a := CooperativeFactory.actor(id, slot, room.difficulty, String(room.members[id]["talent"]), seed_value, shared)
+		a.session.character_id = String(room.members[id]["character"])
 		actors[id] = a
 		room.members[id]["seat"] = a.own_seat
 		inventory.reconcile(a)
@@ -93,7 +95,7 @@ func release_source(source: String, id: String) -> void:
 			lease_info.erase(key)
 
 
-func release(id: String) -> void:
+func release(id: String, stop_movement: bool = true) -> void:
 	for key: String in leases.keys():
 		if leases[key] == id:
 			leases.erase(key)
@@ -106,7 +108,7 @@ func release(id: String) -> void:
 		actors[id].choice.clear()
 		actors[id].terminal = false
 		actors[id].mic = false
-		actors[id].clear_input()
+		if stop_movement: actors[id].clear_input()
 
 
 func disconnect_member(id: String) -> void:
@@ -130,10 +132,10 @@ func tick(dt: float) -> void:
 	for i in 6 if gameplay.studying() else 1:
 		if room.phase != "playing": break
 		if i > 0 and not gameplay.studying(): break
-		_step(dt)
+		_step(dt, i == 0)
 
 
-func _step(dt: float) -> void:
+func _step(dt: float, physics_tick: bool = true) -> void:
 	var started := Time.get_ticks_usec()
 	for key: String in lease_info.keys():
 		if not lease_info.has(key): continue
@@ -158,6 +160,7 @@ func _step(dt: float) -> void:
 		a.input_age += dt
 		a.enter_cool = maxf(0.0, a.enter_cool - dt)
 		if a.input_age > 0.25 or not room.members[id]["connected"]: a.clear_input()
+		if physics_tick: a.consume_input()
 		a.school().advance_game_time(minutes)
 		a.session.clock.advance(dt)
 		if a.school().seated and (absf(float(a.input["x"])) + absf(float(a.input["y"]))) > 0.08 and a.choice.is_empty():
@@ -212,13 +215,13 @@ func travel(a: CooperativeActor, world: String, pose: Dictionary, continuous: bo
 	if a.id == patrol.target:
 		patrol.main.set_context(CooperativeContext.patrol(a))
 		patrol.main.left_scene(a.location(), world)
-	gameplay.cancel_actor_jobs(a)
+	var same_school := continuous and physics.space != null and physics.space.contains(a.location()) and physics.space.contains(world)
+	gameplay.cancel_actor_jobs(a, not same_school)
 	a.school().seated = false
 	a.school().seat_id = ""
-	var same_school := continuous and physics.space != null and physics.space.contains(a.location()) and physics.space.contains(world)
 	if same_school:
 		pose = physics.space.local_pose(world, physics.space.global_pose(a.location(), a.pose))
-	a.travel(world, pose)
+	a.travel(world, pose, same_school)
 	physics.place(a,same_school)
 
 
@@ -238,13 +241,18 @@ func command(id: String, data: Dictionary) -> Dictionary:
 			result = {"ok": true}
 	if room.phase == "playing" and not a.fate().over() and room.members[id]["connected"] and room.paused_left <= 0.0:
 		result = gameplay.command(a, data)
+	if result.get("ok", false) and data.get("action") in ["interact", "item", "pickup", "drop", "give", "camera_flash", "lift_close"]:
+		a.gesture_until = room.tick + roundi(.5 * Engine.physics_ticks_per_second)
 	room.remember(id, sequence, result)
 	inventory.reconcile(a)
 	return result
 
 
 func input(id: String, data: Dictionary) -> void:
-	if actors.has(id) and room.phase == "playing" and data.get("epoch") == room.epoch and room.members[id]["connected"] and LanProtocol.input_valid(data):
+	if not is_participating(id) or room.phase != "playing" or room.paused_left > 0 or data.get("epoch") != room.epoch or not room.members[id]["connected"]: return
+	if data.has("frames"):
+		actors[id].queue_inputs(LanProtocol.inputs(data), data.get("phone") == true and actor(id).bag().has("phone"))
+	elif LanProtocol.input_valid(data):
 		actors[id].accept_input(data)
 
 
@@ -276,6 +284,26 @@ func motion(for_id: String) -> Dictionary:
 		var school_pose := common and id != viewer.id
 		var pose := physics.space.global_pose(a.location(), a.pose) if school_pose else a.pose
 		data["players"][id] = {"pose": _motion_pose(pose), "school": school_pose, "world": a.location(), "scene": a.scene_version, "ack": a.processed_sequence, "moving": a.moving, "running": a.running, "seated": a.school().seated, "hiding": bool(a.watcher().hide["on"]), "dead": a.fate().dead}
+		var state: Dictionary = data["players"][id]
+		if a.seamless_from >= 0: state["seam"] = true
+		var body := a.feature(&"body.injury") as BodyModule
+		var act := ""
+		if a.vehicle: act = "drive" if gameplay.driver == id else "ride"
+		elif body.fall != null: act = "fall" if body.fall["kind"] == "roof" else "vault"
+		elif body.treat != null: act = "bandage"
+		elif a.bag().searching(): act = "search"
+		elif a.terminal or a.activities.game == "snake": act = "type"
+		elif a.mic: act = "speak"
+		elif (a.feature(&"story.knife") as KnifeModule).captured(): act = "crouch"
+		elif (a.feature(&"story.paper_plane") as PaperPlaneModule).phase() in ["read","flight"]: act = "read"
+		elif a.gesture_until > room.tick: act = "interact"
+		elif a.moving and not body.can_run(): act = "limp"
+		var gear := int(a.bag().torch_on) + 2 * int(a.bag().brolly_up)
+		if (a.held_phone or a.activities.game == "plane") and gear != 3:
+			gear |= 4
+			if act.is_empty() and not a.moving and not a.school().seated: act = "read"
+		if not act.is_empty(): state["act"] = act
+		if gear != 0: state["gear"] = gear
 	return data
 
 
@@ -347,6 +375,7 @@ func restore(data: Dictionary) -> void:
 	calendar.restore(data["calendar"])
 	for id: String in actors:
 		actors[id].restore(data["actors"][id])
+		actors[id].session.character_id = room.members[id]["character"]
 		room.members[id]["seat"] = actors[id].own_seat
 		if is_participating(id): physics.place(actors[id])
 		else: physics.remove_actor(id)

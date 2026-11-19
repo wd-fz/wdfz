@@ -46,7 +46,7 @@ func _pose(data: Dictionary, kind: String) -> void:
 		_material = FigureModel.material(tint, not normal)
 	# Bind the final shared material once. Replacing a just-created override releases
 	# its last reference while a streaming flush can still inspect the old renderer RID.
-	var model := FigureModel.make(kind, tint, not normal, 1.0, Color.BLACK, true, false, _material if CampusBatches.enabled else null)
+	var model := FigureModel.make(kind, tint, not normal, 1.0, Color.BLACK, true, false, _material if CampusBatches.enabled else null, kind in ["person","teacher"])
 	# FigureModel already turns students' meshes around; the teacher faces the class.
 	if data["teacher"]: model.rotation.y = PI
 	figure.add_child(model)
@@ -69,7 +69,11 @@ func advance(dt: float, me: Vector2, viol: float, door: Variant, staring: bool, 
 	for i in figures.size():
 		var d: Dictionary = figures[i]
 		var f: Node3D = d["node"]
-		if _depart(d,dt,bell,nav): continue
+		var previous := f.position
+		if _depart(d,dt,bell,nav):
+			FigureGait.step(f.get_child(0), f.position.distance_to(previous), dt)
+			continue
+		if viol < 70: FigureGait.step(f.get_child(0), 0, dt)
 		var home: Vector2 = d["home"]
 		if staring and viol < 70:
 			var want := atan2(f.position.x-player.x,f.position.z-player.y)
@@ -106,6 +110,7 @@ func advance(dt: float, me: Vector2, viol: float, door: Variant, staring: bool, 
 			offset = offset.normalized()*minf(offset.length(),dt*(1.9 if viol>=92 else 1.2))
 			f.position += Vector3(offset.x,0,offset.y)
 		f.rotation.y += wrapf(atan2(f.position.x-player.x,f.position.z-player.y)-f.rotation.y,-PI,PI)*minf(1,dt*2.5)
+		FigureGait.step(f.get_child(0), f.position.distance_to(previous), dt)
 
 func _depart(d: Dictionary, dt: float, bell: bool, nav: PatrolNav) -> bool:
 	if d["teacher"]: return false

@@ -492,12 +492,13 @@ func _pick_talent(difficulty: String, speed: bool = false) -> void:
 		if mine != _choice_count or index < 0 or index > TalentModule.KEYS.size():
 			return
 		var pick := String(TalentModule.KEYS[index]) if index < TalentModule.KEYS.size() else String(TalentModule.KEYS[randi() % TalentModule.KEYS.size()])
+		var character := ui.selection_panel.character_id
 		_load_then(initial_world, func() -> void:
 			if speed:
 				speedrun.arm(difficulty)
 			else:
 				speedrun.disarm()
-			start_new_game(difficulty, pick)
+			start_new_game(difficulty, pick, character)
 			_play_opening())
 	ui.show_selection("选择天赋", ("梦魇" if difficulty == "hard" else "预知梦") + (" · 速通" if speed else " · 每局一个"), entries)
 
@@ -614,7 +615,7 @@ func _continue_with_loading() -> void:
 	_load_then(String((result["data"] as Dictionary).get("world_id", "")), load_game)
 
 
-func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> void:
+func start_new_game(difficulty: String = "easy", talent_id: String = "none", character_id: String = StudentCast.DEFAULT) -> void:
 	var candidate := _make_session()
 	if candidate == null:
 		return
@@ -623,6 +624,7 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none") -> 
 		ui.show_notice(error)
 		return
 	candidate.start(initial_world)
+	candidate.character_id = StudentCast.resolve(character_id)
 	var fate := candidate.modules.get_module(&"story.death") as StoryModule
 	if fate != null:
 		fate.diff = difficulty if difficulty in StoryModule.DIFFICULTIES else "easy"
@@ -4303,7 +4305,7 @@ func _show_visit(visit: ExchangeModule) -> void:
 		for i in 7:
 			var coat := ["3a4a6a","7a5a3a","5a6a4a","8a6a6a"]
 			var fig := FigureModel.make("person" if i<4 else "tall",Color(coat[i] if i<4 else "22262a"),false,
-				(1.03 if i==0 else .97) if i<4 else 1.0,Color("101010" if i<4 else "0a0a0a"))
+				(1.03 if i==0 else .97) if i<4 else 1.0,Color("101010" if i<4 else "0a0a0a"),true,false,null,true)
 			_visit_nodes.add_child(fig)
 		# The bilingual reception sign outside the north gate of the administration building (exchange-fx.js sign()).
 		var gp: Vector2 = visit.members()[0]
@@ -4317,7 +4319,9 @@ func _show_visit(visit: ExchangeModule) -> void:
 		if not fig.visible: continue
 		var point: Vector2 = members[i]["p"] if i<4 else Vector2(search[i-4]["x"],search[i-4]["y"])
 		var sp := CampusGeometry.to_scene(null,point)
-		fig.position = Vector3(sp.x,0,sp.y)
+		var next := Vector3(sp.x,0,sp.y)
+		FigureGait.step(fig, fig.position.distance_to(next), get_physics_process_delta_time())
+		fig.position = next
 		fig.rotation.y = -PI*.5-float(members[i]["yaw"]) if i<4 else atan2(sp.x-player.position.x,sp.y-player.position.z)
 
 
@@ -5481,6 +5485,30 @@ func _interact(id: StringName) -> void:
 
 
 var _hands: HandsView
+var _self_avatar: StudentAvatar
+
+
+func _show_first_person_body(dt: float, shown: bool) -> void:
+	var visible_body := shown and ui._mode == "play" and player._look_pitch < -.45 and not player.hiding
+	if is_instance_valid(lan) and lan.playing():
+		visible_body = visible_body and not lan._spectating and not lan.current.get("vehicle", false)
+	if not visible_body:
+		if is_instance_valid(_self_avatar): _self_avatar.hide()
+		return
+	if not is_instance_valid(_self_avatar):
+		_self_avatar = StudentAvatar.new()
+		_self_avatar.name = "FirstPersonBody"
+		player.add_child(_self_avatar)
+	_self_avatar.dress(session.character_id, true)
+	_self_avatar.show()
+	var local_motion := player.global_basis.inverse() * player.velocity
+	var action := StudentAvatar.locomotion(local_motion, player.moving, player.sprinting)
+	if player.seated: action = "sit"
+	elif body() != null:
+		if body().fall != null: action = "fall" if body().fall["kind"] == "roof" else "vault"
+		elif body().treat != null: action = "bandage"
+		elif not body().can_run() and player.moving: action = "limp"
+	_self_avatar.advance(action, dt)
 
 
 ## While the launched app sits idle on the main menu the frame rate drops to 30 (or the player's lower limit);
@@ -5519,6 +5547,7 @@ func _process(delta: float) -> void:
 		var shown := not get_tree().paused and not story().dead and not driving() and not opening_busy() and not is_instance_valid(debug_flow.preview)
 		var inv := items()
 		var torch_lit := inv != null and inv.torch_on and inv.has("torch")
+		_show_first_person_body(delta, shown)
 		_hands.update(delta, torch_lit, inv != null and inv.brolly_up, phone_open() and not snake_open(), shown, player.moving, player.sprinting)
 		var cw := _campus_world()
 		if cw != null and cw.lighting != null and cw.lighting.cam_light != null:

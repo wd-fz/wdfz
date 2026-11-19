@@ -30,7 +30,7 @@ func add_member(id: String, nickname: String, is_host: bool = false) -> String:
 	if members.size() >= capacity: return "房间已满。"
 	var display_name := nickname.strip_edges().left(24)
 	if display_name.is_empty(): display_name = "同学"
-	members[id] = {"name": display_name, "ready": false, "talent": "none", "state": "lobby", "connected": true, "remaining": RESERVATION_SECONDS}
+	members[id] = {"name": display_name, "ready": false, "talent": "none", "character": "", "state": "lobby", "connected": true, "remaining": RESERVATION_SECONDS}
 	if is_host: host_id = id
 	return ""
 
@@ -40,6 +40,28 @@ func ready(id: String, value: bool, talent: String) -> bool:
 	members[id]["ready"] = value
 	members[id]["talent"] = talent
 	return true
+
+
+func select_character(id: String, character: String) -> String:
+	if phase != "lobby" or not members.has(id) or not members[id]["connected"]: return "请在准备房间里选择角色。"
+	if not StudentCast.valid(character): return "这个角色不存在。"
+	for other: String in members:
+		if other != id and members[other].get("character", "") == character: return "这名角色已由队友选择。"
+	if members[id].get("character", "") != character:
+		members[id]["character"] = character
+		members[id]["ready"] = false
+	return ""
+
+
+## Reserve explicit choices first. Automatic roles are assigned in join order,
+## including when restoring a checkpoint written before the cast was introduced.
+func assign_characters() -> void:
+	var available := StudentCast.IDS.duplicate()
+	for member: Dictionary in members.values():
+		available.erase(member.get("character", ""))
+	for member: Dictionary in members.values():
+		if not StudentCast.valid(member.get("character")):
+			member["character"] = available.pop_front()
 
 
 func can_start() -> bool:
@@ -54,6 +76,7 @@ func can_start() -> bool:
 
 func begin(new_epoch: String) -> bool:
 	if not can_start() or new_epoch.is_empty(): return false
+	assign_characters()
 	epoch = new_epoch
 	phase = "loading"
 	for member: Dictionary in members.values():

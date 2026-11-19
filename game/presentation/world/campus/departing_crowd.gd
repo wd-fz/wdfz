@@ -11,7 +11,7 @@ func _init() -> void:
 	_body.height = 1.2
 	for i in 16:
 		var person := Node3D.new()
-		var figure := FigureModel.make("person",Color("303c3d"),true)
+		var figure := FigureModel.make("person",Color("303c3d"),true,1,Color.BLACK,true,false,null,true)
 		figure.rotation.y = PI
 		person.add_child(figure)
 		var bag := MeshInstance3D.new()
@@ -50,5 +50,8 @@ func update(crowd: Dictionary, collides: Callable = Callable()) -> void:
 		var p := origin-direction*behind+Vector2(-direction.y,direction.x)*side
 		if collides.call(p) if collides.is_valid() else blocked(p): p = origin-direction*behind
 		var at := CampusGeometry.to_scene(null,p)
-		people[i].position = Vector3(at.x,.015*sin((60-float(crowd["left"]))*6+i),at.y)
+		var next := Vector3(at.x,.015*sin((60-float(crowd["left"]))*6+i),at.y)
+		var previous := Vector2(people[i].position.x, people[i].position.z)
+		FigureGait.step(people[i].get_child(0), previous.distance_to(at), get_physics_process_delta_time())
+		people[i].position = next
 		people[i].rotation.y = PI/2-angle

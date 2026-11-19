@@ -11,11 +11,18 @@ var id := ""
 var session: GameSession
 var pose := {"position": [0.0, 0.05, 0.0], "yaw": 0.0, "pitch": 0.0}
 var scene_version := 1
+var seamless_from := -1
+var frame_yaw := 0.0
+const MAX_INPUT_LEAD := 32
 var input_sequence := -1
 var processed_sequence := -1
+var _inputs: Array[Dictionary] = []
+var _tick_inputs := false
 var command_sequence := -1
 var input_age := 0.0
 var input := {"x": 0.0, "y": 0.0, "yaw": 0.0, "pitch": 0.0, "run": false}
+var held_phone := false
+var gesture_until := 0
 var moving := false
 var running := false
 var choice: Dictionary = {}
@@ -80,6 +87,13 @@ func event(kind: String, data: Dictionary = {}) -> void:
 
 
 func clear_input() -> void:
+	_inputs.clear()
+	held_phone = false
+	gesture_until = 0
+	_neutral_input()
+
+
+func _neutral_input() -> void:
 	input["x"] = 0.0
 	input["y"] = 0.0
 	input["run"] = false
@@ -93,17 +107,56 @@ func accept_input(data: Dictionary) -> bool:
 	if int(data.get("scene", -1)) != scene_version or int(data.get("seq", -1)) <= input_sequence: return false
 	input_sequence = int(data["seq"])
 	input_age = 0.0
-	input = {"x": float(data["x"]), "y": float(data["y"]), "yaw": float(data["yaw"]), "pitch": float(data["pitch"]), "run": bool(data["run"]), "vault": bool(data.get("vault", false)), "steer": data.get("steer", {}).duplicate()}
+	_tick_inputs = false
+	_apply_input(data)
 	return true
 
 
-func travel(world: String, at: Dictionary) -> void:
+func queue_inputs(frames: Array, phone: bool = false) -> void:
+	for data: Dictionary in frames:
+		var seq := int(data["seq"])
+		if seq <= input_sequence: continue
+		if int(data["scene"]) == seamless_from:
+			data["yaw"] = wrapf(float(data["yaw"]) + frame_yaw, -PI, PI)
+			data["scene"] = scene_version
+		if int(data["scene"]) != scene_version: continue
+		input_sequence = seq
+		input_age = 0.0
+		held_phone = phone
+		_tick_inputs = true
+		_inputs.append(data)
+	# After a stall the authority has a bounded amount of old intent to process.
+	while _inputs.size() > MAX_INPUT_LEAD: _inputs.pop_front()
+
+
+func consume_input() -> void:
+	if not _tick_inputs:
+		processed_sequence = input_sequence
+	elif _inputs.is_empty():
+		_neutral_input()
+	else:
+		var sample: Dictionary = _inputs.pop_front()
+		_apply_input(sample)
+		processed_sequence = int(sample["seq"])
+
+
+func _apply_input(data: Dictionary) -> void:
+	input = {"x": float(data["x"]), "y": float(data["y"]), "yaw": float(data["yaw"]), "pitch": float(data["pitch"]), "run": bool(data["run"]), "vault": bool(data.get("vault", false)), "steer": data.get("steer", {})}
+
+
+func travel(world: String, at: Dictionary, seamless: bool = false) -> void:
+	seamless_from = scene_version if seamless else -1
+	frame_yaw = wrapf(float(at["yaw"]) - float(pose["yaw"]), -PI, PI) if seamless else 0.0
 	session.world_id = world
 	pose = at.duplicate(true)
 	scene_version += 1
 	input["yaw"] = pose["yaw"]
 	input["pitch"] = pose["pitch"]
-	clear_input()
+	if seamless:
+		for sample: Dictionary in _inputs:
+			sample["scene"] = scene_version
+			sample["yaw"] = wrapf(float(sample["yaw"]) + frame_yaw, -PI, PI)
+	else: clear_input()
 	bag().cancel_search()
 	choice.clear()
 	terminal = false
@@ -117,7 +170,7 @@ func capture() -> Dictionary:
 		var extra := {}
 		for property: String in RUNTIME_FIELDS[key]: extra[property] = m.get(property)
 		if not extra.is_empty(): runtime[String(key)] = extra
-	return {"session": session.capture(pose), "scene": scene_version, "seat": own_seat, "input_seq": input_sequence, "command_seq": command_sequence,
+	return {"session": session.capture(pose), "scene": scene_version, "seamless": seamless_from >= 0, "seat": own_seat, "input_seq": input_sequence, "command_seq": command_sequence,
 		"life": {"dead": fate().dead, "ended": fate().ended, "fx": fate().death_fx, "msg": fate().death_msg, "source": fate().death_source, "wake": fate().wake_pending, "elapsed": death_elapsed},
 		"choice": choice.duplicate(true), "terminal": terminal, "mic": mic, "activities": activities.capture(), "phone_uid": phone_uid, "special_return": special_return.duplicate(true), "hidden_history": hidden_history.duplicate(), "tunnel_return": tunnel_return.duplicate(true), "locker": {"t": locker.t, "stage": locker.stage}, "vehicle": vehicle, "events": events.duplicate(true), "event_seq": event_sequence,
 		"search": bag()._job.duplicate(true), "pending": pending.duplicate(true), "runtime": runtime.duplicate(true)}
@@ -129,6 +182,7 @@ func restore(data: Dictionary) -> void:
 	own_seat = String(data["seat"])
 	school().assign_own_seat(own_seat)
 	scene_version = int(data["scene"]) + 1
+	seamless_from = -1
 	var life: Dictionary = data["life"]
 	fate().dead = bool(life["dead"])
 	fate().ended = String(life["ended"])

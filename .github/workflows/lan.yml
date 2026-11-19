@@ -34,6 +34,7 @@ jobs:
         run: python tools/test_remote.py --players 4
       - run: python tools/test_lan.py --rules
       - run: python tools/test_lan.py --players 2
+      - run: python tools/test_lan.py --players 2 --walk --faults
       - run: python tools/test_lan.py --players 2 --slow-load
       - run: python tools/test_lan.py --players 4 --faults
       - run: python tools/test_lan.py --players 2 --restore --faults
