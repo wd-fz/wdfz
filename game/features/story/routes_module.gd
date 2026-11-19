@@ -419,10 +419,12 @@ static func card(id: String, paper: RollcallCard = null, team_gate: String = "")
 	if e.is_empty():
 		return {}
 	var title: String = e["t"]
+	var memory := id
 	var lines: Array = e["l"]
 	if paper != null:
 		if id == "face" and (team_gate == "paper" or (team_gate.is_empty() and paper.clearance == 2)):
 			title = "《取回名字》"
+			memory = "facePaper"
 			lines = [paper.evidence() if paper.clearance == 2 else "同学递进那张底联，等在白线对面。我追上去，和大家一起出了校门。", "白线后面只有普通的车声。我一直走，没人拦我。",
 				"身后，喇叭又念了一次我的名字。", "这次，我让它空着。"]
 		elif id == "car":
@@ -433,4 +435,4 @@ static func card(id: String, paper: RollcallCard = null, team_gate: String = "")
 			lines = lines.slice(0, 3)
 			lines.append("北门外，同桌接过妹妹的书包。「我没忘。」这回，他用不着我捎话了。" if paper.heard_promise else "北门外，一个小姑娘喊了声「哥」。同桌跑过去，接过她的书包。")
 			lines.append("他们混进放学的人群，谈起晚上吃什么。")
-	return {"title": title, "tag": "假 结 局" if e.get("fake",false) else ("真 结 局" if e.get("true", false) else ""), "lines": lines,"fake":bool(e.get("fake",false))}
+	return {"title": title, "tag": "假 结 局" if e.get("fake",false) else ("真 结 局" if e.get("true", false) else ""), "lines": lines, "fake": bool(e.get("fake",false)), "memory": memory}

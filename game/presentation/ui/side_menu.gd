@@ -124,8 +124,8 @@ func setup(source: VBoxContainer) -> void:
 	_utilities.columns = 2
 	_front.add_child(_utilities)
 	_add_group(source, pages, "Rebirth", "自选开局与玩法")
-	_add_group(source, pages, "Gallery", "档案与记录")
 	_move_action(source, _utilities, "SettingsMenu")
+	_add_group(source, pages, "Gallery", "档案与记录")
 	_add_group(source, pages, "QuickOptions", "快捷选项")
 	for button: Button in _utilities.get_children():
 		button.theme_type_variation = "RailButton"

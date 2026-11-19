@@ -223,6 +223,8 @@ func test_west_gate_walk(attendance: String = "ink") -> void:
 	Input.action_release("move_forward")
 	check(app.story().ended == "face" and app.school().seat_card.clearance == 2, "ordinary walking through the actual collision map reaches the first-day exit")
 	check(app._last_result.get("routeName") == "《取回名字》" and not app.achievements().unlocked.has("e.whitelist"), "the grade reports this run's ending without awarding the electronic quiz")
+	if is_instance_valid(app._ending_cut) and app._ending_cut.on: app._ending_cut.end(true)
+	check(is_instance_valid(app.ui._ending_art) and app.ui._ending_art.texture != null and app.ui._ending_art.texture == UIArt.memory("end:facePaper"), "the finished walk displays the illustrated paper receipt on the result card")
 	var archive := ArchiveRules.new(CampusData.archive())
 	var seen: Dictionary = app._read_side("ends.json")
 	check(archive.real(archive.entries["end:facePaper"], seen, false) and not archive.real(archive.entries["end:face"], seen, false), "the archive remembers the walk separately from the quiz")

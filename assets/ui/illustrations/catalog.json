@@ -168,7 +168,8 @@
     "end:knife": "res://assets/ui/illustrations/memories/end_knife.tres",
     "end:inception": "res://assets/ui/illustrations/memories/end_inception.tres",
     "cut:void_in": "res://assets/ui/illustrations/memories/cut_void_in.tres",
-    "cut:void_out": "res://assets/ui/illustrations/memories/cut_void_out.tres"
+    "cut:void_out": "res://assets/ui/illustrations/memories/cut_void_out.tres",
+    "end:facePaper": "res://assets/ui/illustrations/memories/end_facePaper.tres"
   },
   "grades": {
     "F": "res://assets/ui/illustrations/grades/F.tres",

@@ -536,6 +536,7 @@ func test_paper_evidence() -> void:
 	card.crossed_line(true, desk, gate)
 	check(card.crossed_line(true, gate + Vector2(22, -RollcallCard.EXIT_NORTH), gate) and not card.crossed_line(true, gate, gate), "a single westward crossing completes the clearance")
 	check(RoutesModule.card("face",card).title == "《取回名字》" and RoutesModule.card("face").title == "《白名单》", "the two gate endings keep their own titles")
+	check(RoutesModule.card("face", RollcallCard.new(), "paper").memory == "facePaper" and RoutesModule.card("face", card, "electronic").memory == "face", "the whole team sees the picture for the route that qualified")
 	card.restore({"answered":"1:0","checked":true})
 	check(card.gate_question(false).text.contains("是谁") and not card.evidence().contains("食堂"), "a legacy receipt uses a known answer without inventing its location")
 	check(not RollcallCard.valid({"proof":"present","clearance":1}) and not RollcallCard.valid({"clearance":2}), "forged or incomplete proof is rejected")

@@ -5257,7 +5257,8 @@ func _reach_ending(id: String) -> void:
 	player.enabled = false
 	player.clear_input()
 	audio.stop_all()
-	var paper_exit := id == "face" and school().seat_card.clearance == 2
+	var memory: String = card["memory"]
+	var paper_exit := memory == "facePaper"
 	if not paper_exit: audio.play("ui.achieve.epic")
 	ui.hide_choice()
 	ui.hide_bag()
@@ -5272,7 +5273,7 @@ func _reach_ending(id: String) -> void:
 		ui.set_save_available(saves.exists())
 	else:
 		var rec_e := _read_speedrun()
-		run_line = _speedrun_result(speedrun.finish("facePaper" if paper_exit else id, rec_e), rec_e)
+		run_line = _speedrun_result(speedrun.finish(memory, rec_e), rec_e)
 		ui.speedrun_text = ""
 	var path := saves.side_path("ends.json")
 	var seen_ends: Dictionary = {}
@@ -5305,7 +5306,7 @@ func _reach_ending(id: String) -> void:
 		if session != ending_session:
 			return
 		ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta, achievements().run_new_labels() if achievements() != null else PackedStringArray(),
-			"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""), id)
+			"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""), memory)
 		ui.set_ending_wake(fake)
 	var world := _campus_world()
 	if (id == "dismissal" or id == "cyber") and session != null and session.world_id != "out" and DisplayServer.get_name() != "headless":
