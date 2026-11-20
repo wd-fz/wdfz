@@ -15,6 +15,8 @@ class BoundaryTests(unittest.TestCase):
         project = (Path(__file__).resolve().parents[2] / "project.godot").read_text()
         self.assertEqual(rendering_errors(project), [])
         for broken in [project.replace('driver.android="vulkan"', 'driver.android="opengl3"'),
+                       project.replace('driver.ios="metal"', 'driver.ios="vulkan"'),
+                       project.replace('fallback_to_vulkan.ios=false', 'fallback_to_vulkan.ios=true'),
                        project.replace('fallback_to_opengl3=false', 'fallback_to_opengl3=true'),
                        project.replace('fallback_to_d3d12=false', 'fallback_to_d3d12=true'),
                        project.replace('rendering_method.mobile="mobile"', 'rendering_method.mobile="gl_compatibility"'),

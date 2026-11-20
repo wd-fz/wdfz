@@ -37,7 +37,7 @@ class PublicReleaseTests(unittest.TestCase):
         self.apk.with_suffix(".apk.sha256").write_text(f"{digest}  {self.apk.name}\n")
         self.add_ios()
 
-    def add_ios(self, *, platform=2, cpu=0x0100000C, signature=False, extra=None, pack=b"GDPCfixture"):
+    def add_ios(self, *, platform=2, cpu=0x0100000C, signature=False, extra=None, pack=b"GDPCfixture", metal=True):
         name = f"wdfz-{RELEASE_VERSION}-ios-arm64-unsigned"
         ipa = self.folder / (name + ".ipa")
         orientations = ["UIInterfaceOrientationLandscapeRight", "UIInterfaceOrientationLandscapeLeft"]
@@ -48,9 +48,16 @@ class PublicReleaseTests(unittest.TestCase):
                  "UISupportedInterfaceOrientations~ipad": orientations, "UIDeviceFamily": [1, 2],
                  "NSLocalNetworkUsageDescription": "Connect to local players"}
         commands = struct.pack("<6I", 0x32, 24, platform, 0xE0000, 0x120000, 0)
+        count = 1
+        if metal:
+            lib = b"/System/Library/Frameworks/Metal.framework/Metal" + bytes(1)
+            lib = lib.ljust((len(lib) + 7) // 8 * 8, bytes(1))
+            commands += struct.pack("<6I", 0xC, 24 + len(lib), 24, 0, 0, 0) + lib
+            count += 1
         if signature:
+            count += 1
             commands += struct.pack("<4I", 0x1D, 16, 0, 0)
-        binary = struct.pack("<8I", 0xFEEDFACF, cpu, 0, 2, 2 if signature else 1, len(commands), 0, 0) + commands
+        binary = struct.pack("<8I", 0xFEEDFACF, cpu, 0, 2, count, len(commands), 0, 0) + commands
         root = "Payload/wdfz.app/"
         with zipfile.ZipFile(ipa, "w") as bundle:
             executable = zipfile.ZipInfo(root + "wdfz")
@@ -64,7 +71,8 @@ class PublicReleaseTests(unittest.TestCase):
         info = {"passed": True, "release": True, "signed": False, "working_tree_dirty": False,
                 "revision": self.sha, "platform": "ios", "sdk": "iphoneos", "architecture": "arm64",
                 "package": "org.wdfz.godot", "version": RELEASE_VERSION, "build_number": RELEASE_VERSION_CODE,
-                "minimum_os": "14.0", "rendering_driver": "vulkan", "rendering_method": "mobile",
+                "minimum_os": "14.0", "rendering_driver": "metal", "rendering_method": "mobile",
+                "vulkan_fallback": False, "packed_renderer_verified": True,
                 "runtime_verified": False, "file": ipa.name, "bytes": ipa.stat().st_size, "sha256": digest}
         ipa.with_suffix(".build.json").write_text(json.dumps(info))
         ipa.with_suffix(".ipa.sha256").write_text(f"{digest}  {ipa.name}\n")
@@ -73,7 +81,7 @@ class PublicReleaseTests(unittest.TestCase):
     def test_ipa_rejects_simulator_signatures_profiles_and_missing_game_data(self):
         for options in ({"platform": 7}, {"cpu": 0x01000007}, {"signature": True},
                         {"extra": "embedded.mobileprovision"}, {"extra": "Frameworks/F.framework/_CodeSignature/CodeResources"},
-                        {"pack": b"wrong"}):
+                        {"pack": b"wrong"}, {"metal": False}):
             with self.subTest(options=options):
                 self.add_ios(**options)
                 with self.assertRaises(ValueError):
@@ -87,6 +95,15 @@ class PublicReleaseTests(unittest.TestCase):
             out.write(b"modified")
         with self.assertRaises(ValueError):
             validate_ios(self.folder, self.sha)
+
+    def test_ios_release_requires_metal_and_disabled_fallback(self):
+        meta = self.add_ios().with_suffix(".build.json")
+        info = json.loads(meta.read_text())
+        for key, value in {"rendering_driver": "vulkan", "vulkan_fallback": True, "packed_renderer_verified": False}.items():
+            with self.subTest(key=key):
+                meta.write_text(json.dumps({**info, key: value}))
+                with self.assertRaises(ValueError):
+                    validate_ios(self.folder, self.sha)
 
     def test_all_three_verified_files_are_selected(self):
         self.assertEqual(len(validate_bundle(self.folder,self.sha)), 3)
@@ -235,7 +252,9 @@ class PublicReleaseTests(unittest.TestCase):
 
         argv = ["publish_release.py", "--assets", str(self.folder), "--tag", "v" + RELEASE_VERSION, "--notes", str(notes), "--draft-only"]
         with patch.dict(os.environ, {"GITHUB_SHA": self.sha, "GITHUB_REPOSITORY": "fixture/game"}), \
-             patch.object(sys, "argv", argv), patch.object(publish_release.subprocess, "run", side_effect=run):
+             patch.object(sys, "argv", argv), patch.object(publish_release.subprocess, "run", side_effect=run), \
+             patch.object(publish_release.ios_bundle, "verify_packed_renderer") as verify_renderer:
             publish_release.main()
+        verify_renderer.assert_called_once()
         self.assertEqual(set(uploaded), {f.name for f in files})
         self.assertFalse(any(c[:3] == ["gh", "release", "edit"] for c in calls), "a draft-only run never publishes")

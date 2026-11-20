@@ -1,14 +1,14 @@
 # 渲染与 Vulkan 验证
 
-当前 main 的原生渲染统一使用 Vulkan。渲染路径在 `project.godot` 固定；画面菜单支持独立模型／材质／粒子、渲染比例、阴影、抗锯齿、后期、帧率上限与垂直同步；五档预设仍作快捷入口，不切换图形 API。用法与兼容规则见[自定义画质与帧率](自定义画质与帧率.md)。
+Android、Windows 和 Linux 使用 Vulkan，iOS 使用原生 Metal。渲染路径在 `project.godot` 固定；画面菜单支持独立模型／材质／粒子、渲染比例、阴影、抗锯齿、后期、帧率上限与垂直同步；五档预设仍作快捷入口，不切换图形 API。用法与兼容规则见[自定义画质与帧率](自定义画质与帧率.md)。
 
 | 导出目标 | Godot 渲染器 | 驱动 |
 | --- | --- | --- |
 | Linux / Windows x86_64 | Forward+ | Vulkan |
 | Android ARM64 | Mobile | Vulkan |
-| iPhone／iPad ARM64 | Mobile | Vulkan，经官方模板中的 MoltenVK 使用 Metal |
+| iPhone／iPad ARM64 | Mobile | 原生 Metal |
 
-`rendering_device/driver` 及四个导出目标的覆盖值均为 `vulkan`；关闭 `fallback_to_opengl3` 与 `fallback_to_d3d12`。设备或驱动不满足 Godot 的 Vulkan 要求时应报告初始化失败，不静默运行另一套后端。
+iOS 导出将 `rendering_device/driver.ios` 设为 `metal`，使用 Godot Mobile，并关闭 iOS 的 Vulkan 回退。其他三个平台固定使用 Vulkan。所有平台均关闭 OpenGL 回退。
 
 Android 继续要求 API 24+、ARM64。Android 版本达到要求不等于 GPU 满足 Vulkan 要求；官方模板根据 Mobile + Vulkan 自动写入必需的 `android.hardware.vulkan.version` 功能，以及 `org.godotengine.rendering.method=mobile` 元数据。导出脚本读取 APK 的实际 Manifest 验证这两项。横屏启动、强制全屏的启动参数、签名、16 KB 对齐和资源校验继续执行。
 

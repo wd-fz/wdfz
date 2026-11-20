@@ -1,9 +1,13 @@
 """Inspect the shipping IPA itself on either macOS or the Linux release runner."""
 import plistlib
+import shutil
 import stat
 import struct
+import tempfile
 import zipfile
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
+
+from ci.common import ENGINE, ROOT, run
 
 BUNDLE_ID = "org.wdfz.godot"
 MINIMUM_OS = "14.0"
@@ -27,6 +31,7 @@ def inspect_macho(stream, executable):
     commands = stream.read(size)
     offset = 0
     device = False
+    metal = False
     for _ in range(count):
         if offset + 8 > len(commands):
             raise ValueError("Truncated Mach-O command")
@@ -41,9 +46,16 @@ def inspect_macho(stream, executable):
             device = True
         elif cmd == 0x25 and length >= 16:  # LC_VERSION_MIN_IPHONEOS in older device libraries
             device = True
+        elif cmd in (0xC, 0x80000018) and length >= 24:  # LC_LOAD_DYLIB / LC_LOAD_WEAK_DYLIB
+            start = struct.unpack_from("<I", commands, offset + 8)[0]
+            name = commands[offset + start:offset + length].split(b"\0", 1)[0]
+            if name == b"/System/Library/Frameworks/Metal.framework/Metal":
+                metal = True
         offset += length
     if offset != size or not device:
         raise ValueError("Missing iPhoneOS deployment target in Mach-O")
+    if executable and not metal:
+        raise ValueError("The device executable does not link Apple's Metal framework")
 
 
 def inspect_ipa(path, version, build_number):
@@ -86,3 +98,32 @@ def inspect_ipa(path, version, build_number):
                 raise ValueError("IPA does not contain the Godot game pack")
         if archive.testzip() is not None:
             raise ValueError("Corrupt IPA archive")
+
+
+def verify_packed_renderer(ipa, reports, probe_mac=False):
+    """Check the shipped project settings using Godot's own PCK parser."""
+    with tempfile.TemporaryDirectory(prefix="wdfz-ios-renderer-") as temp:
+        directory = Path(temp)
+        pack = directory / "wdfz.pck"
+        with zipfile.ZipFile(ipa) as archive, archive.open(APP + pack.name) as src, pack.open("wb") as out:
+            shutil.copyfileobj(src, out, length=1024 * 1024)
+        args = ["--main-pack", str(pack), "--script", str(ROOT / "tools/ci/ios_renderer.gd")]
+        output = run("packed-renderer", [ENGINE, "--headless", *args], reports, cwd=directory, timeout=60)
+        if "IPA RENDERER SETTINGS: metal / mobile" not in output:
+            raise ValueError("Could not confirm native Metal in the archived game pack")
+        if not probe_mac:
+            return False
+        probe = run("metal-device", ["xcrun", "swift", "-e",
+                    'import Metal; print(MTLCreateSystemDefaultDevice() == nil ? "absent" : "available")'],
+                    reports, cwd=directory, timeout=120).strip().splitlines()
+        if probe and probe[-1] == "absent":
+            print("No Metal device on the macOS build host; verified archived renderer settings.", flush=True)
+            return False
+        if not probe or probe[-1] != "available":
+            raise ValueError("Could not determine availability of a Metal device")
+        output = run("metal-frame", [ENGINE, "--rendering-driver", "metal", "--rendering-method", "mobile",
+                     "--windowed", "--resolution", "256x144", "--audio-driver", "Dummy", "--text-driver", "Dummy",
+                     *args, "--", "--verify-metal-frame"], reports, cwd=directory, timeout=120)
+        if "IPA METAL FRAME: passed" not in output:
+            raise ValueError("The macOS host did not verify a native Metal frame")
+        return True

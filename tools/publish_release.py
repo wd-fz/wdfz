@@ -88,7 +88,8 @@ def validate_ios(folder, revision):
     expected = {"passed": True, "release": True, "signed": False, "working_tree_dirty": False,
                 "revision": revision, "platform": "ios", "sdk": "iphoneos", "architecture": "arm64",
                 "package": ios_bundle.BUNDLE_ID, "version": RELEASE_VERSION, "build_number": RELEASE_VERSION_CODE,
-                "minimum_os": ios_bundle.MINIMUM_OS, "rendering_driver": "vulkan", "rendering_method": "mobile",
+                "minimum_os": ios_bundle.MINIMUM_OS, "rendering_driver": "metal", "rendering_method": "mobile",
+                "vulkan_fallback": False, "packed_renderer_verified": True,
                 "runtime_verified": False, "file": ipa.name}
     if any(info.get(key) != value for key, value in expected.items()):
         raise ValueError("Unsigned iOS release metadata does not match the expected source or device build")
@@ -122,6 +123,8 @@ def main():
         raise ValueError("Tag must match the release version")
     revision = os.environ["GITHUB_SHA"]
     files = validate_bundle(args.assets, revision)
+    ipa = next(file for file in files if file.suffix == ".ipa")
+    ios_bundle.verify_packed_renderer(ipa, Path("build/reports/release-ios").resolve())
     repo = os.environ["GITHUB_REPOSITORY"]
 
     def api(path, optional=False):

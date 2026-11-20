@@ -37,12 +37,18 @@ def rendering_errors(text):
     expected = {"renderer/rendering_method": '"forward_plus"',
                 "renderer/rendering_method.mobile": '"mobile"',
                 "rendering_device/driver": '"vulkan"',
-                **{f"rendering_device/driver.{platform}": '"vulkan"' for platform in ("linuxbsd", "windows", "android", "ios")},
+                **{f"rendering_device/driver.{platform}": '"vulkan"' for platform in ("linuxbsd", "windows", "android")},
+                "rendering_device/driver.ios": '"metal"', "rendering_device/fallback_to_vulkan.ios": "false",
                 "rendering_device/fallback_to_d3d12": "false", "rendering_device/fallback_to_opengl3": "false"}
     errors = [f"project.godot: {key} must be {value}" for key, value in expected.items() if rendering.get(key) != value]
     for key, value in rendering.items():
-        if key.startswith("rendering_device/driver") and value != '"vulkan"':
-            errors.append(f"project.godot: {key} selects a non-Vulkan driver")
+        base, *features = key.split(".")
+        if base == "rendering_device/driver" and key not in expected:
+            driver = '"metal"' if "ios" in features else '"vulkan"'
+            if value != driver:
+                errors.append(f"project.godot: {key} must be {driver}")
+        if "ios" in features and base in ("rendering_device/fallback_to_vulkan", "rendering_device/fallback_to_opengl3") and value != "false":
+            errors.append(f"project.godot: {key} enables an iOS renderer fallback")
         if key.startswith("renderer/rendering_method") and value not in ('"forward_plus"', '"mobile"'):
             errors.append(f"project.godot: {key} selects a non-Vulkan renderer")
     return errors

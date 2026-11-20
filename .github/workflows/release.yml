@@ -175,6 +175,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-godot
       - uses: actions/download-artifact@v4
         with:
           name: android-public-release-${{ github.sha }}

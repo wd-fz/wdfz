@@ -56,13 +56,15 @@ def main():
         archive = directory / ipa.name
         subprocess.run(["/usr/bin/zip", "-qry", str(archive), "Payload"], cwd=directory, check=True)
         ios_bundle.inspect_ipa(archive, RELEASE_VERSION, RELEASE_VERSION_CODE)
+        host_frame = ios_bundle.verify_packed_renderer(archive, reports, probe_mac=True)
         shutil.move(archive, ipa)
     digest = file_digest(ipa)
     info = {"passed": True, "revision": revision, "working_tree_dirty": False, "engine": engine, "xcode": xcode,
             "version": RELEASE_VERSION, "build_number": RELEASE_VERSION_CODE, "package": ios_bundle.BUNDLE_ID,
             "platform": "ios", "sdk": "iphoneos", "architecture": "arm64", "minimum_os": ios_bundle.MINIMUM_OS,
             "release": True, "signed": False, "runtime_verified": False,
-            "rendering_driver": "vulkan", "rendering_method": "mobile", "package_optimization": optimization,
+            "rendering_driver": "metal", "rendering_method": "mobile", "vulkan_fallback": False,
+            "packed_renderer_verified": True, "macos_metal_frame_verified": host_frame, "package_optimization": optimization,
             "file": ipa.name, "bytes": ipa.stat().st_size, "sha256": digest}
     (packages / (name + ".build.json")).write_text(json.dumps(info, indent=2) + "\n")
     ipa.with_suffix(".ipa.sha256").write_text(f"{digest}  {ipa.name}\n")
