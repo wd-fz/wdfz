@@ -411,6 +411,7 @@ func _play_opening() -> void:
 			_opening_done(skipped))
 		_opening_cut.audio = audio
 		var at := CampusGeometry.to_world(room,player.position.x,player.position.z)
+		CampusEntryLog.mark("opening actors " + session.world_id)
 		_show_classmates(classmates(),room,at,0)
 		_opening_cut.begin(world, room, player, ui, FileAccess.file_exists(seen), session.character_id)
 		return
@@ -418,6 +419,7 @@ func _play_opening() -> void:
 
 
 func _opening_done(_skipped: bool) -> void:
+	CampusEntryLog.mark("playable")
 	if _skipped and playtest.recording:
 		playtest.horror.skip()
 	get_tree().paused = false
@@ -511,8 +513,7 @@ func _start_at_desk(difficulty: String, pick: String, character: String, speed: 
 	_load_then(initial_world, func() -> void:
 		if speed: speedrun.arm(difficulty)
 		else: speedrun.disarm()
-		start_new_game(difficulty, pick, character)
-		_play_opening())
+		if start_new_game(difficulty, pick, character): _play_opening())
 
 
 ## Carry what can be carried of an old Web save into a new run (game/features/compatibility/legacy_save.gd). Returns "" or why not.
@@ -560,15 +561,15 @@ func starting() -> bool:
 	return _starting
 
 
-## Prepare the ordinary school before control begins. Special/standalone worlds
-## retain the streaming adapter; walking inside the school never builds geometry.
-func _load_then(world_id: String, work: Callable) -> void:
+## Prepare the shared physics world and the models visible at the entry pose.
+func _load_then(world_id: String, work: Callable, entry_pose: Variant = null) -> void:
 	if _starting:
 		return
 	_starting = true
+	CampusEntryLog.mark("load %s tier=%d" % [world_id, CampusData.tier])
 	_load_generation += 1
 	var generation := _load_generation
-	ui.show_loading("读取校园")
+	var curtain := ui.show_loading("读取校园")
 	await get_tree().process_frame
 	await get_tree().process_frame
 	if generation != _load_generation: return
@@ -579,6 +580,12 @@ func _load_then(world_id: String, work: Callable) -> void:
 			var pose := CampusData.rules().start_pose() if world_id == initial_world else CampusData.rules().default_spawn(world_id)
 			var p: Array = pose["position"]
 			at = Vector3(p[0], p[1], p[2])
+		if entry_pose is Dictionary:
+			var location: Variant = entry_pose.get("position")
+			if location is Array and location.size() == 3 and location.all(func(v: Variant) -> bool: return SaveSchema.number_in(v, -10000, 10000)):
+				at = Vector3(location[0], location[1], location[2])
+		var nearby := router.continuous_campus and router.resident.nearby_visuals
+		var school_at := router.resident.space.frame(world_id) * at if nearby else Vector3.ZERO
 		# Real devices warm exits too. Headless tools have no GPU and run deterministic explicit prefetch tests.
 		if not router.continuous_campus and router.stream.automatic():
 			ids.append_array(CampusConnections.nearby(world_id, at))
@@ -594,7 +601,10 @@ func _load_then(world_id: String, work: Callable) -> void:
 			ui.set_loading(float(i) / ids.size(), "准备校园")
 			await get_tree().process_frame
 			if generation != _load_generation: return
-			router.prepare_background(ids[i])
+			var with_model := not nearby or router.resident.near_view(ids[i], school_at, world_id, 5.0)
+			if with_model and CampusEntryLog.available():
+				CampusEntryLog.mark("model " + ids[i])
+			router.prepare_background(ids[i], with_model)
 			var waited := 0.0
 			while not router.warm(ids[i]) and router.pending(ids[i]):
 				router.poll_preparation()
@@ -605,11 +615,18 @@ func _load_then(world_id: String, work: Callable) -> void:
 	ui.set_loading(0.95, "进入校园")
 	await get_tree().process_frame
 	if generation != _load_generation: return
+	CampusEntryLog.mark("activate " + world_id)
 	work.call()
 	if generation != _load_generation: return
 	ui.set_loading(1.0)
 	ui.hide_loading()
 	_starting = false
+	if CampusEntryLog.available() and session != null:
+		# Wait until the opaque loading curtain has left the tree and a game frame has drawn.
+		if is_instance_valid(curtain) and curtain.is_inside_tree(): await curtain.tree_exited
+		await RenderingServer.frame_post_draw
+		if generation == _load_generation and session != null:
+			CampusEntryLog.mark("first frame " + session.world_id)
 
 
 func cancel_loading() -> void:
@@ -628,17 +645,18 @@ func _continue_with_loading() -> void:
 	if result.has("error") or not (result["data"] is Dictionary):
 		load_game()
 		return
-	_load_then(String((result["data"] as Dictionary).get("world_id", "")), load_game)
+	var saved: Dictionary = result["data"]
+	_load_then(String(saved.get("world_id", "")), load_game, saved.get("player"))
 
 
-func start_new_game(difficulty: String = "easy", talent_id: String = "none", character_id: String = StudentCast.DEFAULT) -> void:
+func start_new_game(difficulty: String = "easy", talent_id: String = "none", character_id: String = StudentCast.DEFAULT) -> bool:
 	var candidate := _make_session()
 	if candidate == null:
-		return
+		return false
 	var error := router.switch_to(initial_world)
 	if not error.is_empty():
 		ui.show_notice(error)
-		return
+		return false
 	candidate.start(initial_world)
 	candidate.character_id = StudentCast.resolve(character_id)
 	var fate := candidate.modules.get_module(&"story.death") as StoryModule
@@ -720,6 +738,7 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none", cha
 		ui.show_notice(String(rules.room(initial_world)["name"]) if rules.room(initial_world) != null else "武大附中 · 校园")
 	else:
 		ui.show_notice("走到前方告示牌，按 E 或触屏交互。这里用于验证移植接口。")
+	return true
 
 
 ## Break the callback links between the rule modules of a finished session (they reference

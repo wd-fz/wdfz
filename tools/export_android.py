@@ -39,6 +39,7 @@ def verify_campus_assets(archive):
                 raise RuntimeError(f"Android cannot directly map {info.filename}")
     mobile = ROOT / "assets/campus_q0"
     sources = [*(mobile / "scenes").glob("*.glb"), *(mobile / "textures").glob("*.png"),
+               *(ROOT / "assets/characters").glob("*.glb"), *(ROOT / "assets/campus/figures/otherworld").glob("*.glb"),
                ROOT / "assets/ui/menu_panorama.jpg"]
     for source in sources:
         name = "assets/" + source.relative_to(ROOT).as_posix()

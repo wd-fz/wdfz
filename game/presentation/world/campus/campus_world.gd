@@ -61,8 +61,10 @@ func _ready() -> void:
 	set_process(false)
 	layout = CampusData.layout(scene_id)
 	if collision_only:
-		_build_collision()
+		prepare_collision()
 		return
+	# The resident may attach just the permanent physics while a distant model is cold.
+	if resident and has_node("Collision"): return
 	prepare_geometry()
 	if resident: return
 	activate()
@@ -158,8 +160,13 @@ func set_collision_enabled(value: bool) -> void:
 		if body != null: body.collision_layer = 1 if value else 0
 
 
-## Detached static work only. The stream prepares this before activation; lights, viewports,
-## effects and other live adapters are created on the main thread by _ready.
+## Physics belongs to the shared school, independently of the lifetime of its models.
+func prepare_collision() -> void:
+	if has_node("Collision"): return
+	layout = CampusData.layout(scene_id)
+	_build_collision()
+
+
 func prepare_geometry() -> void:
 	if geometry_ready:
 		return
@@ -170,7 +177,7 @@ func prepare_geometry() -> void:
 		_patrol_asset = load(PATROL_FIGURE) as PackedScene
 	_build_model()
 	if not has_node("Model"): return
-	_build_collision()
+	prepare_collision()
 	if resident:
 		geometry_ready = true
 		return
@@ -612,10 +619,24 @@ func configure_rendering(options: Dictionary, camera: Camera3D = null) -> void:
 		lighting._select_local_lights(camera)
 
 
+## Drop only derived visuals. Doors, lift bodies and their rule state stay in the shared World3D.
+func discard_resident_model() -> void:
+	var model := get_node_or_null("Model")
+	if model == null or runtime_active or scene_id == "out": return
+	visual_ground.set_model(null)
+	_door_leaves.clear()
+	_lift_leaves.clear()
+	model.free()
+	visual_tier = -1
+	geometry_ready = false
+
+
 ## Replace rendering nodes while physics, interactions and rule modules remain alive.
 func reload_models(player_position: Vector3) -> void:
 	if visual_tier == CampusData.tier:
 		return
+	var replacement := CampusData.instantiate_model(scene_id)
+	if replacement == null: return
 	var doors := _open_doors.duplicate()
 	var lift_amount := _lift_amount
 	for model: Node3D in _visual_models():
@@ -630,7 +651,7 @@ func reload_models(player_position: Vector3) -> void:
 	_preview_doors.clear()
 	_preview_lifts.clear()
 	_lift_amount = -1.0
-	_build_model()
+	_build_model(replacement)
 	if resident:
 		apply_doors(doors)
 		set_lift_doors(maxf(0.0, lift_amount))
@@ -650,8 +671,8 @@ func reload_models(player_position: Vector3) -> void:
 	if traces!=null: traces.build(scene_id,layout if is_room() else null,_trace_data)
 
 
-func _build_model() -> void:
-	var model := CampusData.instantiate_model(scene_id)
+func _build_model(model: Node3D = null) -> void:
+	if model == null: model = CampusData.instantiate_model(scene_id)
 	if model == null:
 		push_error("校园模型加载失败：%s（画质 %d）" % [scene_id, CampusData.tier])
 		return
@@ -684,7 +705,11 @@ func _build_model() -> void:
 				_door_leaves[key] = {}
 			_door_leaves[key][String(extras["state"])] = holder
 	for key: String in _door_leaves:
-		set_door_open(key, false)
+		set_door_open(key, _open_doors.has(key))
+	if not _lift_leaves.is_empty() and _lift_amount >= 0:
+		var amount := _lift_amount
+		_lift_amount = -1
+		set_lift_doors(amount)
 	SceneMaterials.apply(model, material_quality())
 	# The open garage has almost no hidden geometry from its normal view. Profiling
 	# showed partitioning/CPU occlusion added overhead there; preserve its batches.
@@ -703,7 +728,7 @@ func _build_model() -> void:
 				panel.mesh = box
 				panel.position = bounds.get_center()
 				model.add_child(panel)
-		CampusMeshCells.apply(model)
+		CampusMeshCells.apply(model, not resident)
 		if not (resident and scene_id == "out"): CampusBatches.add_occluder(model)
 	visual_ground.set_model(model)
 

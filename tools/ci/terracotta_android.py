@@ -31,6 +31,7 @@ def install(root: Path, template: Path, library: Path):
     # Official template uses standard src/main/java; no custom engine build needed.
     shutil.copytree(source, project / 'src/main/java', dirs_exist_ok=True)
     shutil.copytree(root / 'platform/android/lan/src', project / 'src/main/java', dirs_exist_ok=True)
+    shutil.copytree(root / 'platform/android/diagnostics/src', project / 'src/main/java', dirs_exist_ok=True)
     for variant in ('debug', 'release'):
         destination = project / 'libs' / variant / 'arm64-v8a'
         destination.mkdir(parents=True, exist_ok=True)
@@ -58,10 +59,11 @@ def install(root: Path, template: Path, library: Path):
         if name not in existing: ET.SubElement(main, 'uses-permission', {key('name'): name})
     application = main.find('application')
     for node in list(application):
-        if node.get(key('name')) in ('org.godotengine.plugin.v2.WdfzTerracotta', 'org.godotengine.plugin.v2.WdfzLanNetwork', 'org.wdfz.terracotta.TerracottaVpnService'):
+        if node.get(key('name')) in ('org.godotengine.plugin.v2.WdfzTerracotta', 'org.godotengine.plugin.v2.WdfzLanNetwork', 'org.godotengine.plugin.v2.WdfzEntryDiagnostics', 'org.wdfz.terracotta.TerracottaVpnService'):
             application.remove(node)
     ET.SubElement(application, 'meta-data', {key('name'): 'org.godotengine.plugin.v2.WdfzTerracotta', key('value'): 'org.wdfz.terracotta.WdfzTerracotta'})
     ET.SubElement(application, 'meta-data', {key('name'): 'org.godotengine.plugin.v2.WdfzLanNetwork', key('value'): 'org.wdfz.lan.WdfzLanNetwork'})
+    ET.SubElement(application, 'meta-data', {key('name'): 'org.godotengine.plugin.v2.WdfzEntryDiagnostics', key('value'): 'org.wdfz.diagnostics.WdfzEntryDiagnostics'})
     service = ET.SubElement(application, 'service', {
         key('name'): 'org.wdfz.terracotta.TerracottaVpnService', key('exported'): 'false',
         key('permission'): 'android.permission.BIND_VPN_SERVICE', key('foregroundServiceType'): 'specialUse'})
@@ -75,6 +77,7 @@ def verify(tree, names):
     for entry in ('org.godotengine.plugin.v2.WdfzTerracotta', 'org.wdfz.terracotta.TerracottaVpnService',
                   'android.permission.BIND_VPN_SERVICE', 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE',
                   'org.godotengine.plugin.v2.WdfzLanNetwork', 'org.wdfz.lan.WdfzLanNetwork',
+                  'org.godotengine.plugin.v2.WdfzEntryDiagnostics', 'org.wdfz.diagnostics.WdfzEntryDiagnostics',
                   'android.permission.ACCESS_NETWORK_STATE', 'android.permission.CHANGE_NETWORK_STATE'):
         if entry not in tree: raise RuntimeError('APK Terracotta manifest entry missing: ' + entry)
     for entry in ('lib/arm64-v8a/libterracotta.so', 'assets/terracotta/LICENSE', 'assets/terracotta/NOTICE.md'):

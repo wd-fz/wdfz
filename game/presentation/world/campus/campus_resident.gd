@@ -6,9 +6,10 @@ var space: CampusSpace
 var configure: Callable
 var active := ""
 var builds := 0
-## Initial geometry is built one region per loading-screen frame. Mesh clipping
-## reads renderer buffers; keeping it on the main thread avoids thousands of
-## worker/render-server round trips. Ordinary play performs no geometry work.
+## Physics stays resident everywhere. Android loads detail near the player and keeps
+## the outdoor facades visible until the replacement models are ready.
+var nearby_visuals := OS.get_name() == "Android"
+var _retry_after: Dictionary = {}
 var _visibility_acc := 0.0
 
 
@@ -29,14 +30,13 @@ func _accept(world: CampusWorld) -> void:
 	builds += 1
 
 
-func prepare(id: String) -> CampusWorld:
-	if regions.has(id):
-		var cached: CampusWorld = regions[id]
-		if not cached.geometry_ready: cached.prepare_geometry()
-		return cached
-	var world := _make(id)
-	world.prepare_geometry()
-	_accept(world)
+func prepare(id: String, with_model: bool = true) -> CampusWorld:
+	var world := regions.get(id) as CampusWorld
+	var fresh := world == null
+	if fresh: world = _make(id)
+	if with_model and not world.geometry_ready: world.prepare_geometry()
+	world.prepare_collision()
+	if fresh: _accept(world)
 	return world
 
 
@@ -62,23 +62,39 @@ func resume() -> void:
 	for world: CampusWorld in regions.values(): world.set_collision_enabled(true)
 
 
+func near_view(id: String, at: Vector3, focus: String, margin: float = 0.0) -> bool:
+	if id == "out" or id == focus: return true
+	var local := space.frame(id).affine_inverse() * at
+	var point := Vector2(local.x, local.z)
+	var rect := space.local_bounds(id)
+	var distance := point.distance_to(point.clamp(rect.position, rect.end))
+	if space.rooms[id].get("flags", {}).get("stairwell", false):
+		return distance < 35.0 + margin
+	return distance < 26.0 + margin and absf(local.y) < 5.0 + margin * .2
+
+
 func update_view(at: Vector3, dt: float = 0.0) -> void:
 	_visibility_acc += dt
 	if dt > 0.0 and _visibility_acc < 0.2: return
 	_visibility_acc = 0.0
 	var outside := regions.get("out") as CampusWorld
+	var loaded_one := false
 	for id: String in regions:
 		var world: CampusWorld = regions[id]
-		var local := world.to_local(at)
-		var rect := space.local_bounds(id)
-		var nearest := Vector2(clampf(local.x, rect.position.x, rect.end.x), clampf(local.z, rect.position.y, rect.end.y))
-		var distance := Vector2(local.x, local.z).distance_to(nearest)
-		var detail := id == "out" or id == active or (distance < 26.0 and absf(local.y) < 5.0)
-		if world.layout.get("flags", {}).get("stairwell", false): detail = id == active or distance < 35.0
-		if outside == null or not outside.shells.has(id): detail = true
+		var detail := near_view(id, at, active)
+		var shell := outside.shells.get(id) as Node3D if outside != null else null
+		if nearby_visuals:
+			if not world.geometry_ready and not loaded_one and near_view(id, at, active, 5.0) and Time.get_ticks_msec() >= int(_retry_after.get(id, 0)):
+				world.prepare_geometry()
+				loaded_one = true
+				if not world.geometry_ready: _retry_after[id] = Time.get_ticks_msec() + 10000
+			elif world.geometry_ready and not near_view(id, at, active, 22.0):
+				world.discard_resident_model()
+		elif shell == null:
+			detail = true
 		var model := world.get_node_or_null("Model") as Node3D
 		if model != null: model.visible = detail
-		if outside != null and outside.shells.has(id): (outside.shells[id] as Node3D).visible = not detail
+		if shell != null: shell.visible = not detail or model == null
 
 
 func update_lifts(lifts: ElevatorModule) -> void:
@@ -100,5 +116,5 @@ func apply_doors(doors: Dictionary) -> void:
 func configure_graphics(options: Dictionary, camera: Camera3D) -> void:
 	for world: CampusWorld in regions.values():
 		world.configure_rendering(options, camera)
-		if world.visual_tier != CampusData.tier: world.reload_models(world.to_local(camera.global_position))
+		if world.geometry_ready and world.visual_tier != CampusData.tier: world.reload_models(world.to_local(camera.global_position))
 	update_view(camera.global_position)

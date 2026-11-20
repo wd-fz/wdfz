@@ -235,17 +235,19 @@ func _apply(kk: float) -> void:
 	if is_instance_valid(_classroom): _classroom.set_normal(kk<.72)
 	var read_until := minf(kk, .455)
 	var book := _teacher.animation
-	if book.current_animation != "read": book.play("read")
+	if book != null and book.has_animation("read") and book.current_animation != "read": book.play("read")
 	# The reading stops, repeats, then freezes along with the chalk.
 	var read_time := read_until if read_until < .34 else maxf(0.0,read_until-.36)+.24
-	book.seek(fmod(read_time*DUR_FULL,book.current_animation_length),true)
+	if book != null and book.is_playing() and book.current_animation_length > 0:
+		book.seek(fmod(read_time*DUR_FULL,book.current_animation_length),true)
 	_teacher.visible = kk < .72
 	_other_teacher.visible = kk >= .72
 	_other_teacher.face.rotation = Vector3(-.18, .7*phase(kk,.72,.79), -.11)
 	_me.visible = kk < .735
-	_me.animation.seek(fmod(minf(kk,.455)*DUR_FULL,_me.animation.current_animation_length),true)
-	var spine := _me.skeleton.find_bone("Spine")
-	_me.skeleton.set_bone_pose_rotation(spine,_me.skeleton.get_bone_pose_rotation(spine)*Quaternion(Vector3.RIGHT,-.55*phase(kk,.60,.68)))
+	if _me.animation != null and _me.animation.is_playing() and _me.animation.current_animation_length > 0:
+		_me.animation.seek(fmod(minf(kk,.455)*DUR_FULL,_me.animation.current_animation_length),true)
+	var spine := _me.skeleton.find_bone("Spine") if _me.skeleton != null else -1
+	if spine >= 0: _me.skeleton.set_bone_pose_rotation(spine,_me.skeleton.get_bone_pose_rotation(spine)*Quaternion(Vector3.RIGHT,-.55*phase(kk,.60,.68)))
 	_ui.cut_fade(0.0)
 	for m: Dictionary in _mates:
 		if is_instance_valid(m["node"]):

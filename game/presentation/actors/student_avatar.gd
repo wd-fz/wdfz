@@ -34,13 +34,21 @@ func _load_actor(id: String, height: float) -> void:
 	_upper_tracks.clear()
 	_upper_action = ""
 	character = id
-	var scene := load("res://assets/characters/%s.glb" % id) as PackedScene
-	_model = scene.instantiate() as Node3D
+	animation = null
+	skeleton = null
+	var scene := CampusData.actor_scene("res://assets/characters/%s.glb" % id)
+	_model = scene.instantiate() as Node3D if scene != null else null
+	if _model == null: return
 	add_child(_model)
 	_model.scale = Vector3.ONE * height
-	animation = _model.get_node("AnimationPlayer")
+	animation = _model.get_node_or_null("AnimationPlayer")
+	var rigs := _model.find_children("*", "Skeleton3D", true, false)
+	if animation == null or rigs.is_empty():
+		CampusEntryLog.resource_issue("人物缺少动画或骨架 · " + id)
+		animation = null
+		return
 	animation.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
-	skeleton = _model.find_children("*", "Skeleton3D", true, false)[0]
+	skeleton = rigs[0]
 	for i in skeleton.get_bone_count(): _bones[skeleton.get_bone_name(i)] = i
 	_goal = ""
 	clip = ""
@@ -74,7 +82,8 @@ func advance(action: String, dt: float, pace: float = 1.0, gear: int = 0, pitch:
 	if upper_action != "": _upper_body(upper_action, dt)
 	# The runtime look offsets the baked head pose. The animation samples it
 	# anew on every advance, including a zero-delta initial placement.
-	var head: int = _bones[&"Head"]
+	var head := skeleton.find_bone(&"Head")
+	if head < 0: return
 	var aim := Quaternion(Vector3.RIGHT, clampf(pitch * .64, -.65, .65))
 	skeleton.set_bone_pose_rotation(head, skeleton.get_bone_pose_rotation(head) * aim)
 	if gear != 0 or not _props.is_empty(): _equipment(gear)

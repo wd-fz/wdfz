@@ -228,6 +228,32 @@ func _test_model_tiers() -> void:
 	CampusData.tier = was
 
 
+func test_opening_asset_recovery() -> void:
+	var view := ClassmatesView.new()
+	view.normal = true
+	var actor := Node3D.new()
+	view.add_child(actor)
+	var uniforms := ClassmatesView._uniforms
+	ClassmatesView._uniforms = []
+	view._checked_uniforms = true
+	view._show_mode({"actor": actor, "node": view, "kind": "sit", "teacher": false, "seat": 4, "civilian": null})
+	check(actor.visible, "an unreadable uniform library leaves the pupil visible without indexing an empty array")
+	ClassmatesView._uniforms = uniforms
+	view.free()
+	for path: String in ["res://assets/characters/classmates.glb", "res://assets/characters/teacher.glb",
+			"res://assets/characters/" + StudentCast.DEFAULT + ".glb", OtherworldFigure.DIRECTORY % "sit"]:
+		var scene := CampusData.decode_actor(FileAccess.get_file_as_bytes(path), path)
+		check(scene != null and scene.can_instantiate(), "the original cast model can be decoded and packed: " + path)
+		if scene == null or not scene.can_instantiate(): continue
+		var rebuilt := scene.instantiate()
+		check(not rebuilt.find_children("*", "MeshInstance3D", true, false).is_empty(), "recovered pupils and opening actors retain their meshes: " + path)
+		if path.ends_with("/teacher.glb") or path.ends_with("/" + StudentCast.DEFAULT + ".glb"):
+			var animation := rebuilt.find_child("AnimationPlayer", true, false) as AnimationPlayer
+			check(animation != null and animation.has_animation("read" if path.ends_with("/teacher.glb") else "sit"), "the opening can play the original animation on the recovered model")
+			check(not rebuilt.find_children("*", "Skeleton3D", true, false).is_empty(), "the opening actor keeps a poseable skeleton")
+		rebuilt.free()
+
+
 func _test_weather_fx() -> void:
 	check(WeatherFx.wetness(0.0) == 0.0 and WeatherFx.wetness(5.0) == 0.5 and WeatherFx.wetness(30.0) == 1.0, "the puddles fill in ten seconds")
 	check(WeatherFx.threat(0.0, false) == 0.0 and WeatherFx.threat(6.5, false) == 1.0 and WeatherFx.threat(4.5, true) == 1.0 and WeatherFx.threat(3.0, true) > WeatherFx.threat(3.0, false), "the swarm closes in faster on nightmare")

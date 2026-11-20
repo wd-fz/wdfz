@@ -67,6 +67,8 @@ class TerracottaBuildTests(unittest.TestCase):
             self.assertEqual(len(final.findall('uses-permission')), 5)
             self.assertEqual(sum(node.get(key('name')) == 'org.godotengine.plugin.v2.WdfzLanNetwork' for node in app.findall('meta-data')), 1)
             self.assertTrue((template / 'build/src/main/java/org/wdfz/lan/WdfzLanNetwork.java').is_file())
+            self.assertEqual(sum(node.get(key('name')) == 'org.godotengine.plugin.v2.WdfzEntryDiagnostics' for node in app.findall('meta-data')), 1)
+            self.assertTrue((template / 'build/src/main/java/org/wdfz/diagnostics/WdfzEntryDiagnostics.java').is_file())
             for variant in ('debug', 'release'):
                 self.assertEqual((template / f'build/libs/{variant}/arm64-v8a/libterracotta.so').read_bytes(), library.read_bytes())
             self.assertEqual((template / '.build_version').read_text(), '4.6.3.stable\n')

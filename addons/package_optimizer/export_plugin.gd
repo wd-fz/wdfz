@@ -24,7 +24,8 @@ func _export_file(path: String, type: String, features: PackedStringArray) -> vo
 	# Keep one directly decodable model per region and its shared PNGs on Android.
 	# FileAccess can read these even if a device cannot instantiate an imported scene.
 	if "android" in features:
-		if path.begins_with("res://assets/campus_q0/scenes/") and path.ends_with(".glb"):
+		var entry_model := path.begins_with("res://assets/campus_q0/scenes/") or path.begins_with("res://assets/characters/") or path.begins_with("res://assets/campus/figures/otherworld/")
+		if entry_model and path.ends_with(".glb"):
 			add_file(path + ".source", FileAccess.get_file_as_bytes(path), false)
 		elif path.begins_with("res://assets/campus_q0/textures/") and path.ends_with(".png"):
 			add_file(path, FileAccess.get_file_as_bytes(path), false)

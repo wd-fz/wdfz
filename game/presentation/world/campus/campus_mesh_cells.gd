@@ -10,10 +10,10 @@ const CACHE_LIMIT := 48
 static var _cache: Dictionary = {}
 
 
-static func _pieces(mesh: Mesh) -> Array[ArrayMesh]:
+static func _pieces(mesh: Mesh, cache: bool = true) -> Array[ArrayMesh]:
 	if mesh is ArrayMesh and mesh.get_blend_shape_count()>0: return []
 	var id := mesh.get_instance_id()
-	if _cache.has(id) and _cache[id].source.get_ref() == mesh: return _cache[id].pieces
+	if cache and _cache.has(id) and _cache[id].source.get_ref() == mesh: return _cache[id].pieces
 	var buckets := {}
 	for s in mesh.get_surface_count():
 		if CampusBatches._primitive(mesh,s) != Mesh.PRIMITIVE_TRIANGLES: return []
@@ -64,12 +64,13 @@ static func _pieces(mesh: Mesh) -> Array[ArrayMesh]:
 		# Keep imported-style LODs instead of forcing full detail on every distant cell.
 		builder.generate_lods(60,25,[])
 		pieces.append(builder.get_mesh())
-	while _cache.size() >= CACHE_LIMIT: _cache.erase(_cache.keys()[0])
-	_cache[id] = {"source": weakref(mesh), "pieces": pieces}
+	if cache:
+		while _cache.size() >= CACHE_LIMIT: _cache.erase(_cache.keys()[0])
+		_cache[id] = {"source": weakref(mesh), "pieces": pieces}
 	return pieces
 
 
-static func apply(model: Node3D) -> int:
+static func apply(model: Node3D, cache: bool = true) -> int:
 	if not CampusBatches.enabled: return 0
 	var count := 0
 	for source: MeshInstance3D in model.find_children("*","MeshInstance3D",true,false):
@@ -88,7 +89,7 @@ static func apply(model: Node3D) -> int:
 		# Small wall/floor batches cost less to submit than many additional draws. In
 		# open spaces (e.g. the garage) splitting them creates work without occlusion.
 		if triangles<MIN_TRIANGLES: continue
-		var pieces := _pieces(source.mesh)
+		var pieces := _pieces(source.mesh, cache)
 		if pieces.is_empty(): continue
 		for piece in pieces:
 			var node := MeshInstance3D.new()

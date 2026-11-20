@@ -22,6 +22,8 @@ window/size/viewport_width=1280
 window/size/viewport_height=720
 window/size/mode=0
 window/size/mode.android=3
+; Present directly through Vulkan. Swappy can return VK_INCOMPLETE before the first frame.
+window/frame_pacing/android/enable_frame_pacing=false
 window/size/mode.ios=3
 window/size/window_width_override=1280
 window/size/window_height_override=720

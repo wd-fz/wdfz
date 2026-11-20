@@ -5,6 +5,7 @@ extends Control
 
 signal quit_requested
 signal backdrop_requested
+signal entry_report_copied
 
 const GROUPS := {
 	"Rebirth": ["CustomGame", "HardGame", "Speedrun", "DlcMenu", "ImportMenu"],
@@ -127,6 +128,11 @@ func setup(source: VBoxContainer) -> void:
 	_move_action(source, _utilities, "SettingsMenu")
 	_add_group(source, pages, "Gallery", "档案与记录")
 	_add_group(source, pages, "QuickOptions", "快捷选项")
+	if CampusEntryLog.available():
+		var diagnostics := _action(groups["QuickOptions"], "CampusEntryReport", "复制入校诊断")
+		diagnostics.pressed.connect(func() -> void:
+			DisplayServer.clipboard_set(CampusEntryLog.report())
+			entry_report_copied.emit())
 	for button: Button in _utilities.get_children():
 		button.theme_type_variation = "RailButton"
 	_build_footer()

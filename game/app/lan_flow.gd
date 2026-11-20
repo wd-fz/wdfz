@@ -503,7 +503,7 @@ func _snapshot(data: Dictionary) -> void:
 			if not _preparing_epoch.is_empty(): app.cancel_loading()
 			_preparing_epoch = network.room.epoch
 			# Yield between regions so ENet keeps polling throughout initial load.
-			app._load_then(String(source["world_id"]),_finish_preparation.bind(_preparing_epoch))
+			app._load_then(String(source["world_id"]), _finish_preparation.bind(_preparing_epoch), source.get("player"))
 		return
 	if first:
 		var candidate := SessionFactory.create()

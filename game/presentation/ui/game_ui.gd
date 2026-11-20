@@ -318,7 +318,12 @@ func _build_side_menu() -> SideMenu:
 	var side := SideMenu.new()
 	menu.add_child(side)
 	side.setup(content)
+	menu_preview.load_failed.connect(func() -> void:
+		side.set_backdrop_orbit(false)
+		menu_rain.visible = not reduce_motion
+		show_notice("校园实景读取失败，可点右下角重试。"))
 	side.quit_requested.connect(func() -> void: quit_requested.emit())
+	side.entry_report_copied.connect(func() -> void: show_notice("入校诊断已复制。"))
 	side.backdrop_requested.connect(func() -> void: setting_changed.emit("menu_orbit", int(not menu_preview.orbit)))
 	menu.get_node("Margin").hide()
 	menu.get_node("Margin").queue_free()
@@ -340,8 +345,8 @@ func set_menu_presentation(reduced: bool, orbit: bool) -> void:
 	menu_screen.set_reduce_motion(reduced)
 	menu_preview.still = reduced
 	menu_preview.set_orbit(orbit)
-	menu_screen.set_backdrop_orbit(orbit)
-	menu_rain.visible = not reduced and not orbit
+	menu_screen.set_backdrop_orbit(menu_preview.orbit)
+	menu_rain.visible = not reduced and not menu_preview.orbit
 	if reduced and is_instance_valid(menu_wake): menu_wake.finish()
 	if is_instance_valid(settings_panel): settings_panel.set_reduce_motion(reduced)
 	if is_instance_valid(selection_panel): selection_panel.set_reduce_motion(reduced)

@@ -8,6 +8,7 @@ var normal := false
 var teacher: Node3D
 signal room_sound(cue: String, point: Vector3)
 static var _uniforms: Array[Mesh] = []
+var _checked_uniforms := false
 var _gaze_time := 0.0
 var _face_step := 0.0
 var _sound_wait := 3.0
@@ -144,10 +145,18 @@ func _show_mode(data: Dictionary) -> void:
 	if normal and data.civilian == null:
 		var civilian: Node3D
 		if data.kind == "sit":
+			if _uniforms.is_empty() and not _checked_uniforms:
+				_checked_uniforms = true
+				var scene := CampusData.actor_scene("res://assets/characters/classmates.glb")
+				var extras := scene.instantiate() if scene != null else null
+				if extras != null:
+					for mesh: MeshInstance3D in extras.find_children("*","MeshInstance3D",true,false):
+						if mesh.mesh != null: _uniforms.append(mesh.mesh)
+					extras.free()
+				if _uniforms.is_empty(): CampusEntryLog.resource_issue("同学模型缺少可用网格 · classmates.glb")
 			if _uniforms.is_empty():
-				var extras := (load("res://assets/characters/classmates.glb") as PackedScene).instantiate()
-				for mesh: MeshInstance3D in extras.find_children("*","MeshInstance3D",true,false): _uniforms.append(mesh.mesh)
-				extras.free()
+				(data.actor as Node3D).show()
+				return
 			var pupil := MeshInstance3D.new()
 			pupil.mesh = _uniforms[int(data.seat) % _uniforms.size()]
 			pupil.scale = Vector3.ONE * (.96 + .016 * float(int(data.seat)*7 % 6))

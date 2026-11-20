@@ -10,10 +10,11 @@ var _instances: Dictionary={}
 
 
 func set_model(model: Node3D) -> void:
-	_frame = model.get_parent() as Node3D
+	_frame = model.get_parent() as Node3D if model != null else null
 	_nodes.clear()
 	_trees.clear()
 	_instances.clear()
+	if model == null: return
 	for n: Node in model.find_children("*","GeometryInstance3D",true,false):
 		if n is MeshInstance3D or n is MultiMeshInstance3D: _nodes.append(n)
 

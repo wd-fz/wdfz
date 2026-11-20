@@ -35,11 +35,13 @@ func switch_to(id: String) -> String:
 	if continuous_campus:
 		_ensure_resident()
 		if resident.space.contains(id):
-			# One initial build. Ordinary crossings only select the rules adapter.
+			# Validate the destination before changing the current room or moving the player.
 			if not resident.prepare(id).geometry_ready:
 				return "校园模型读取失败：%s。请重新进入校园。" % id
-			for region: String in resident.space.frames:
-				if region != id: resident.prepare(region)
+			if id != "out" and not resident.regions.has("out"): resident.prepare("out")
+			if not school_ready():
+				for region: String in resident.space.frames:
+					resident.prepare(region, not resident.nearby_visuals)
 			if is_instance_valid(_instance) and not _instance is CampusWorld:
 				_instance.get_parent().remove_child(_instance)
 				_instance.queue_free()
@@ -150,11 +152,11 @@ func prepare(id: String) -> void:
 		return
 
 
-func prepare_background(id: String) -> void:
+func prepare_background(id: String, with_model: bool = true) -> void:
 	if continuous_campus:
 		_ensure_resident()
 		if resident.space.contains(id):
-			resident.prepare(id)
+			resident.prepare(id, with_model)
 			return
 	prepare(id)
 

@@ -1,5 +1,6 @@
 class_name MenuPreview
 extends TextureRect
+signal load_failed
 ## The campus behind the main menu: a 360° panorama of the real outdoor campus in the 18:00 evening fog,
 ## from the courtyard between the teaching and lab buildings, panned slowly round (re-baked 2026-11-13).
 ##
@@ -84,6 +85,9 @@ func begin_load() -> void:
 	if texture == null:
 		texture = load(PANORAMA) as Texture2D
 	if texture == null:
+		set_orbit(false)
+		CampusEntryLog.resource_issue("校园全景图读取失败 · " + PANORAMA)
+		load_failed.emit()
 		return
 	var shader := Shader.new()
 	shader.code = SHADER

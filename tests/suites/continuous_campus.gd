@@ -360,6 +360,41 @@ func check_presentations(app: GameApp) -> void:
 	await _frames(2)
 
 
+func test_nearby_visuals() -> void:
+	var app: GameApp = APP.instantiate()
+	app.saves = SaveStore.new(_test_path.get_base_dir() + "/nearby/slot.json")
+	app.settings = GameSettings.new(app.saves.side_path("settings.json"))
+	root.add_child(app)
+	app._setting_changed("quality", 0)
+	app.router.school_ids()
+	var school := app.router.resident
+	school.nearby_visuals = true
+	await app._load_then("teach1", app.start_new_game)
+	var models := 0
+	for world: CampusWorld in school.regions.values():
+		check(world.has_node("Collision"), "a cold Android room keeps its physical floor: " + world.scene_id)
+		if world.geometry_ready: models += 1
+	check(school.regions.size() == 40 and models < 12 and school.regions.out.geometry_ready and school.regions.teach1.geometry_ready, "mobile entry loads just the nearby models and all 40 regions share physics")
+	var lab: CampusWorld = school.regions.lab4
+	var body := lab.get_node("Collision")
+	var door: String = lab.door_keys()[0]
+	app.campus().restore({"open_doors": [door]})
+	app._sync_world()
+	await _frames(2)
+	check(not lab.has_node("Model") and lab._door_bodies[door].disabled, "a distant floor receives door changes without loading its meshes")
+	school.configure_graphics(app.settings.graphics(), app.player.camera)
+	check(not lab.has_node("Model"), "changing graphics leaves distant floors cold")
+	app.travel("lab4", CampusData.rules().default_spawn("lab4"), false)
+	var leaf := lab._door_leaves[door]["open"] as Node3D
+	check(lab.geometry_ready and leaf.visible and lab._door_bodies[door].disabled and lab.get_node("Collision") == body, "arriving obtains the model with the existing open door and physics")
+	app.travel("teach1", CampusData.rules().start_pose(), false)
+	check(not lab.has_node("Model") and lab.get_node("Collision") == body and lab.visual_ground._nodes.is_empty(), "leaving a distant building frees its visuals and retains its collider")
+	app.travel("lab4", CampusData.rules().default_spawn("lab4"), false)
+	check(lab.geometry_ready and lab._door_leaves[door]["open"].visible and lab.get_node("Collision") == body, "revisiting restores the correct mesh and door pose")
+	app.queue_free()
+	await _frames(2)
+
+
 func test_cooperation() -> void:
 	var room := CooperativeRoom.new()
 	room.add_member("a","房主",true)

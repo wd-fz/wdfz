@@ -15,8 +15,14 @@ var _patrol_time := 0.0
 
 static func make(kind: String, packed: PackedScene = null, variant: int = 0) -> OtherworldFigure:
 	var actor := OtherworldFigure.new()
-	if not _models.has(kind): _models[kind] = packed if packed != null else load(DIRECTORY % kind)
-	var model := (_models[kind] as PackedScene).instantiate() as Node3D
+	var scene := _models.get(kind, packed) as PackedScene
+	if scene == null or not scene.can_instantiate(): scene = CampusData.actor_scene(DIRECTORY % kind)
+	var model := scene.instantiate() as Node3D if scene != null else null
+	if model == null:
+		actor.face = MeshInstance3D.new()
+		actor.add_child(actor.face)
+		return actor
+	_models[kind] = scene
 	model.scale = PROPORTIONS[kind]
 	actor.add_child(model)
 	if _cloth == null:
@@ -28,13 +34,19 @@ static func make(kind: String, packed: PackedScene = null, variant: int = 0) -> 
 	actor.face = model.find_child("Visage", true, false) as MeshInstance3D
 	var alternate := model.find_child("VisageAlt",true,false) as MeshInstance3D
 	if alternate != null:
-		if variant%2 == 1:
-			actor.face.free()
+		if actor.face == null or variant%2 == 1:
+			if actor.face != null: actor.face.free()
 			actor.face = alternate
 		else: alternate.free()
+	if actor.face == null:
+		actor.face = MeshInstance3D.new()
+		model.add_child(actor.face)
 	actor.animation = model.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	if actor.animation != null:
 		var rig := model.find_child("Skeleton3D", true, false) as Skeleton3D
+		if rig == null:
+			actor.animation = null
+			return actor
 		var mount := BoneAttachment3D.new()
 		rig.add_child(mount)
 		mount.bone_name = "Head"
@@ -63,6 +75,7 @@ func patrol_pose(dt: float, distance: float, behavior: String) -> void:
 func exercise_pose(elapsed: float, index: int, to_player: Vector2) -> void:
 	# One pupil completes the count late. The held pose exposes a separately turning head.
 	var t := fposmod(elapsed - (.23 if index == 4 else 0.0), 3.4)
+	if animation == null or not animation.has_animation("drill"): return
 	if animation.current_animation != "drill": animation.play("drill", 0)
 	animation.seek(t, true)
 	var hold := smoothstep(1.48,1.84,t) * (1.0-smoothstep(2.61,3.1,t))

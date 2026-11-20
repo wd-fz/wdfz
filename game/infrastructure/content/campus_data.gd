@@ -23,13 +23,24 @@ static func scene_path(id: String) -> String:
 	return SCENE_DIR + id + ".glb"
 
 
+static func _has_mesh(scene: PackedScene) -> bool:
+	if scene == null or not scene.can_instantiate(): return false
+	var state := scene.get_state()
+	for i in state.get_node_count():
+		if state.get_node_type(i) != &"MeshInstance3D": continue
+		for j in state.get_node_property_count(i):
+			if state.get_node_property_name(i, j) == &"mesh" and state.get_node_property_value(i, j) is Mesh: return true
+	return false
+
+
 static func load_scene(id: String) -> PackedScene:
 	var path := scene_path(id)
 	var packed := ResourceLoader.load(path, "PackedScene") as PackedScene
+	if _has_mesh(packed): return packed
 	var base := SCENE_DIR + id + ".glb"
-	if (packed == null or not packed.can_instantiate()) and path != base:
-		packed = ResourceLoader.load(base, "PackedScene") as PackedScene
-	return packed if packed != null and packed.can_instantiate() else null
+	if path == base: return null
+	packed = ResourceLoader.load(base, "PackedScene") as PackedScene
+	return packed if _has_mesh(packed) else null
 
 
 static func instantiate_model(id: String) -> Node3D:
@@ -42,8 +53,55 @@ static func instantiate_model(id: String) -> Node3D:
 			root.free()
 	var source := MOBILE_SCENE_DIR + id + ".glb.source"
 	if not FileAccess.file_exists(source):
+		CampusEntryLog.resource_issue("模型 %s · 导入模型未能实例化，备用文件不存在 · %s" % [id, scene_path(id)])
 		return null
-	return decode_model(FileAccess.get_file_as_bytes(source), source)
+	var bytes := FileAccess.get_file_as_bytes(source)
+	var recovered := decode_model(bytes, source)
+	var selected := scene_path(id)
+	var remap := ConfigFile.new()
+	var native := selected if remap.load(selected + ".remap") != OK else String(remap.get_value("remap", "path", selected))
+	var file := FileAccess.open(native, FileAccess.READ)
+	var evidence := "%s (%s)" % [native, "%d B" % file.get_length() if file != null else error_string(FileAccess.get_open_error())]
+	CampusEntryLog.resource_issue("模型 %s · 原生 %s · 备用 glTF %d B · %s" % [id, evidence, bytes.size(), "已恢复" if recovered != null else "读取失败"])
+	return recovered
+
+
+## The opening uses actors immediately after the world is ready. Keep a successfully
+## decoded fallback scene so a classroom of pupils does not decode the same rig repeatedly.
+static var _recovered_actors: Dictionary = {}
+
+
+static func actor_scene(path: String) -> PackedScene:
+	if _recovered_actors.has(path): return _recovered_actors[path]
+	var scene := ResourceLoader.load(path, "PackedScene") as PackedScene
+	if _has_mesh(scene): return scene
+	var source := path + ".source"
+	if FileAccess.file_exists(source):
+		scene = decode_actor(FileAccess.get_file_as_bytes(source), source)
+		if scene != null:
+			_recovered_actors[path] = scene
+			CampusEntryLog.resource_issue("开场人物已从原始 glTF 恢复 · " + path)
+			return scene
+	CampusEntryLog.resource_issue("开场人物读取失败 · " + path)
+	return null
+
+
+static func decode_actor(bytes: PackedByteArray, path: String) -> PackedScene:
+	var model := decode_model(bytes, path)
+	if model == null: return null
+	# The editor importer strips the _loop suffix and enables looping. Match it
+	# so existing game calls to read, sit and walk work on either loading path.
+	for player: AnimationPlayer in model.find_children("*", "AnimationPlayer", true, false):
+		for library_id in player.get_animation_library_list():
+			var library := player.get_animation_library(library_id)
+			for clip in library.get_animation_list():
+				if String(clip).ends_with("_loop"):
+					library.get_animation(clip).loop_mode = Animation.LOOP_LINEAR
+					library.rename_animation(clip, String(clip).trim_suffix("_loop"))
+	var packed := PackedScene.new()
+	var result := packed.pack(model)
+	model.free()
+	return packed if result == OK else null
 
 
 ## Use the original low-detail geometry, extras and materials through Godot's runtime glTF loader.
