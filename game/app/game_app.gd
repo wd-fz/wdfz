@@ -165,7 +165,6 @@ func _ready() -> void:
 	lan.app = self
 	add_child(lan)
 	if play_boot or get_tree().current_scene == self:
-		ui.menu_preview.enabled = true
 		ui.menu_entrance = true
 		ui.play_boot(settings.get_int("reduce_flash") == 1)
 
@@ -583,7 +582,11 @@ func _load_then(world_id: String, work: Callable) -> void:
 		# Real devices warm exits too. Headless tools have no GPU and run deterministic explicit prefetch tests.
 		if not router.continuous_campus and router.stream.automatic():
 			ids.append_array(CampusConnections.nearby(world_id, at))
-		if ids.has("out"):
+		if router.continuous_campus and ids.has(world_id):
+			# Allocate the playable region before the rest of the resident school on mobile.
+			ids.erase(world_id)
+			ids.insert(0, world_id)
+		elif ids.has("out"):
 			# Reuse the campus geometry for the classroom's outward view instead of processing it twice.
 			ids.erase("out")
 			ids.insert(0, "out")
@@ -2792,9 +2795,6 @@ func _apply_settings() -> void:
 
 
 func _configure_world_rendering(world: Node3D) -> void:
-	# A world is about to load its model synchronously: finish (or drop) the menu preview's background
-	# load of the same scene first, so the worker pool never waits on a request nobody collects.
-	ui.menu_preview.release()
 	if world is CampusWorld: world.render_options=settings.graphics()
 
 
@@ -5623,7 +5623,7 @@ var _menu_fps_capped := false
 
 
 func _menu_frame_cap() -> void:
-	var cap := ui.menu_preview.enabled and session == null and ui.menu_idle()
+	var cap := ui.menu_entrance and session == null and ui.menu_idle()
 	if cap == _menu_fps_capped: return
 	_menu_fps_capped = cap
 	var limit := settings.get_int("fps_limit")

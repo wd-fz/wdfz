@@ -132,7 +132,6 @@ func test_boot_and_preview() -> void:
 	check(again.get_int("menu_orbit") == 1, "an explicit switch to the panorama is kept")
 	DirAccess.remove_absolute(old_path)
 	preview.set_orbit(false)
-	preview.enabled = true
 	preview.begin_load()
 	check(preview.texture == null and preview.material == null, "with the orbit off no panorama is loaded")
 	check(MenuPreview.supported(), "the baked panorama ships with the game")
@@ -178,10 +177,16 @@ func test_app_boot() -> void:
 	root.add_child(app)
 	await _frames(3)
 	check(not app.ui.boot_playing(), "embedded apps (tests, capture scripts) skip the boot animation")
-	check(not app.ui.menu_preview.enabled and app.ui.menu_preview.texture == null, "embedded apps keep the static photo (no panorama)")
+	check(app.ui.menu_preview.texture == null, "embedded apps keep the static photo (no panorama)")
 	app.ui._last_input_ms = -100000
 	app._menu_frame_cap()
 	check(not app._menu_fps_capped, "embedded apps are never frame-capped on the menu")
+	var switcher := app.ui.menu_screen.find_child("MenuBackdrop", true, false) as Button
+	app._setting_changed("menu_orbit", 0)
+	await _tap(switcher)
+	check(switcher.text == "雨夜封面" and app.ui.menu_preview.ready_to_show(), "one tap displays the campus even without the boot animation")
+	await _tap(switcher)
+	check(switcher.text == "校园实景" and app.ui.menu_preview.texture == null, "a second tap restores the rainy cover")
 	app.queue_free()
 	await _frames(2)
 	var shown: GameApp = APP.instantiate()
@@ -191,7 +196,7 @@ func test_app_boot() -> void:
 	root.add_child(shown)
 	await _frames(3)
 	check(shown.ui.boot_playing() and shown.ui.menu.visible and shown.session == null, "the launched app opens on the boot animation over the menu")
-	check(shown.ui.menu_preview.enabled, "the launched app turns the panorama on (shown when the setting allows)")
+	check(shown.ui.menu_entrance, "the launched app plays its menu entrance")
 	var shown_splash := shown.ui.boot_splash
 	shown_splash.set_process(false)
 	shown_splash.skip()

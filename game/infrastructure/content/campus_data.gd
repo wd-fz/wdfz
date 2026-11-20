@@ -8,6 +8,7 @@ const SCENE_DIR := "res://assets/campus/scenes/"
 ## The model tier the player chose (GameSettings model_detail 0–3; the default tier is 2, the one in SCENE_DIR). A tier's exports live in
 ## res://assets/campus_q<N>/scenes/ (tools/export_scenes/export_scenes.py --quality N --out assets/campus_qN); a scene missing there falls
 ## back to the default tier, so tiers can be added one by one. Only the models change: the layout and the collision are the same.
+const MOBILE_SCENE_DIR := "res://assets/campus_q0/scenes/"
 const DEFAULT_TIER := 2
 const MODEL_TIERS := [0, 1, 2, 3]
 static var tier := DEFAULT_TIER
@@ -29,6 +30,34 @@ static func load_scene(id: String) -> PackedScene:
 	if (packed == null or not packed.can_instantiate()) and path != base:
 		packed = ResourceLoader.load(base, "PackedScene") as PackedScene
 	return packed if packed != null and packed.can_instantiate() else null
+
+
+static func instantiate_model(id: String) -> Node3D:
+	var packed := load_scene(id)
+	if packed != null:
+		var root := packed.instantiate()
+		if root is Node3D:
+			return root
+		if root != null:
+			root.free()
+	var source := MOBILE_SCENE_DIR + id + ".glb.source"
+	if not FileAccess.file_exists(source):
+		return null
+	return decode_model(FileAccess.get_file_as_bytes(source), source)
+
+
+## Use the original low-detail geometry, extras and materials through Godot's runtime glTF loader.
+static func decode_model(bytes: PackedByteArray, source: String) -> Node3D:
+	var state := GLTFState.new()
+	var document := GLTFDocument.new()
+	if bytes.is_empty() or document.append_from_buffer(bytes, source, state) != OK:
+		return null
+	var root := document.generate_scene(state)
+	if root is Node3D:
+		return root
+	if root != null:
+		root.free()
+	return null
 
 
 static func tiers_available() -> Array:
@@ -89,7 +118,7 @@ static func room_ids() -> PackedStringArray:
 		var id := file.get_basename()
 		if id in ["campus", "out"]:
 			continue
-		if ResourceLoader.exists(SCENE_DIR + id + ".glb"):
+		if ResourceLoader.exists(SCENE_DIR + id + ".glb") or FileAccess.file_exists(MOBILE_SCENE_DIR + id + ".glb.source"):
 			result.append(id)
 	result.sort()
 	_room_ids = result

@@ -37,6 +37,15 @@ def verify_campus_assets(archive):
         if info.filename.startswith("assets/") and info.filename.endswith((".scn", ".ctex")):
             if info.compress_type != zipfile.ZIP_STORED:
                 raise RuntimeError(f"Android cannot directly map {info.filename}")
+    mobile = ROOT / "assets/campus_q0"
+    sources = [*(mobile / "scenes").glob("*.glb"), *(mobile / "textures").glob("*.png"),
+               ROOT / "assets/ui/menu_panorama.jpg"]
+    for source in sources:
+        name = "assets/" + source.relative_to(ROOT).as_posix()
+        if source.suffix in {".glb", ".jpg"}:
+            name += ".source"
+        if archive.read(name) != source.read_bytes():
+            raise RuntimeError(f"Android source asset differs from the original: {name}")
     layouts = sorted((ROOT / "assets/campus/layout").glob("*.json"))
     for layout in layouts:
         archive.getinfo("assets/assets/campus/layout/" + layout.name)

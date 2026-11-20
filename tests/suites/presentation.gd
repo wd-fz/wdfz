@@ -202,6 +202,18 @@ func _test_model_tiers() -> void:
 	check(CampusData.scene_path("teach1") == CampusData.SCENE_DIR + "teach1.glb" and CampusData.tiers_available().has(CampusData.DEFAULT_TIER), "the default tier loads from the usual folder")
 	CampusData.tier = 0
 	check(CampusData.scene_path("teach1") == "res://assets/campus_q0/scenes/teach1.glb" and CampusData.tiers_available() == [0, 1, 2, 3], "all four supported model tiers are exported and tier 0 loads its own model")
+	var source := CampusData.scene_path("teach1")
+	var rebuilt := CampusData.decode_model(FileAccess.get_file_as_bytes(source), source)
+	var imported := CampusData.instantiate_model("teach1")
+	check(rebuilt != null and imported != null, "the classroom loads from both the imported and original model")
+	if rebuilt != null and imported != null:
+		check(rebuilt.find_children("*", "MeshInstance3D", true, false).size() == imported.find_children("*", "MeshInstance3D", true, false).size(), "the Android recovery classroom has every mesh")
+		for child in imported.get_children():
+			if child.has_meta("extras") and child.get_meta("extras").has("door_key"):
+				var door := rebuilt.get_node_or_null(NodePath(child.name))
+				check(door != null and door.get_meta("extras", {}) == child.get_meta("extras"), "source geometry preserves the door and its gameplay metadata")
+	if rebuilt != null: rebuilt.free()
+	if imported != null: imported.free()
 	CampusData.tier = 3
 	check(CampusData.scene_path("lab2") == "res://assets/campus_q3/scenes/lab2.glb" and ResourceLoader.exists(CampusData.scene_path("stair_garage")), "every scene exists in every tier, stairwells included")
 	for t in [0, 1, 3]:

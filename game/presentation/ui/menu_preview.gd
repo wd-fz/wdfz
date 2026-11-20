@@ -1,5 +1,5 @@
 class_name MenuPreview
-extends ColorRect
+extends TextureRect
 ## The campus behind the main menu: a 360° panorama of the real outdoor campus in the 18:00 evening fog,
 ## from the courtyard between the teaching and lab buildings, panned slowly round (re-baked 2026-11-13).
 ##
@@ -16,7 +16,6 @@ const CLOCK := 1080.0                   # 18:00 in minutes: the time the panoram
 const EYE := Vector3(118.0, 2.2, 181.0)
 const SHADER := """
 shader_type canvas_item;
-uniform sampler2D pano : source_color, filter_linear, repeat_enable;
 uniform float yaw = 0.0;      // the view's centre, as a fraction of the full circle
 uniform float span = 0.28;    // how much of the circle the width shows
 uniform float tall = 0.85;    // how much of the panorama's height the height shows
@@ -27,12 +26,12 @@ uniform float gamma = 1.3;
 uniform float zoom = 1.0;     // > 1 during the menu's entrance push-in
 void fragment() {
 	vec2 uv = (UV - .5) / zoom;
-	vec3 c = texture(pano, vec2(yaw + uv.x * span, centre + uv.y * tall)).rgb;
+	vec3 c = texture(TEXTURE, vec2(fract(yaw + uv.x * span), centre + uv.y * tall)).rgb;
 	c = pow(clamp((c - black) / max(0.01, white - black), 0.0, 1.0), vec3(gamma));
 	// The stretch widens the JPEG's sky steps into bands; a little ordered noise hides them.
 	float n = fract(sin(dot(FRAGCOORD.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
 	vec3 grade = c * vec3(0.74, 0.89, 1.04) + vec3(0.014, 0.024, 0.044);
-	COLOR = vec4(grade + n * 3.0 / 255.0, 1.0);
+	COLOR = vec4(grade + n * 3.0 / 255.0, COLOR.a);
 }
 """
 
@@ -49,20 +48,20 @@ void fragment() {
 var zoom := 1.0
 
 var still := false                      # reduced motion: hold one angle
-## Only the launched app turns the panorama on (GameApp, together with the boot animation); embedded apps in
-## tests and tools keep the static photo.
-var enabled := false
-## The player's setting (menu_orbit). Both this and enabled are needed before anything is shown.
+## The panorama follows the player’s setting even when the startup animation is skipped.
 var orbit := false
 var angle := 0.25                       # turns: looking west down the courtyard into the fog at the start
-var texture: Texture2D
+var _attempted := false
 var render_options: Dictionary = {}     # kept for callers; the baked picture does not depend on them
 var _fade := 0.0
 
 
 func _init() -> void:
 	name = "MenuPreview"
-	color = Color.BLACK
+	expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	stretch_mode = TextureRect.STRETCH_SCALE
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	modulate.a = 0.0
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -70,19 +69,27 @@ func _init() -> void:
 
 ## A display is not needed any more (a picture works everywhere); kept for callers and tests.
 static func supported() -> bool:
-	return ResourceLoader.exists(PANORAMA)
+	return FileAccess.file_exists(PANORAMA + ".source") or ResourceLoader.exists(PANORAMA)
 
 
 ## Load the panorama (small and synchronous; safe to call more than once).
 func begin_load() -> void:
-	if not enabled or not orbit or texture != null or not supported():
+	if not orbit or _attempted:
 		return
-	texture = load(PANORAMA)
+	_attempted = true
+	if FileAccess.file_exists(PANORAMA + ".source"):
+		var picture := Image.new()
+		if picture.load_jpg_from_buffer(FileAccess.get_file_as_bytes(PANORAMA + ".source")) == OK:
+			texture = ImageTexture.create_from_image(picture)
+	if texture == null:
+		texture = load(PANORAMA) as Texture2D
+	if texture == null:
+		return
 	var shader := Shader.new()
 	shader.code = SHADER
 	var mat := ShaderMaterial.new()
 	mat.shader = shader
-	mat.set_shader_parameter("pano", texture)
+	mat.set_shader_parameter("yaw", angle)
 	material = mat
 	_layout()
 
@@ -120,7 +127,6 @@ func _process(delta: float) -> void:
 	if not is_visible_in_tree():
 		return
 	if texture == null:
-		begin_load()
 		return
 	if not still:
 		angle = fposmod(angle + delta / maxf(10.0, orbit_seconds), 1.0)
@@ -132,6 +138,7 @@ func _process(delta: float) -> void:
 
 ## Leaving the menu or switching off: drop the picture so play never holds it.
 func release() -> void:
+	_attempted = false
 	material = null
 	texture = null
 	_fade = 0.0

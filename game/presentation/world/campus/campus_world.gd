@@ -403,9 +403,8 @@ func _load_visual(id: String) -> Node3D:
 ## A scene's visual model, processed for display (instances, materials, batches, spatial cells). It only
 ## touches a detached node tree and static helpers, so it may run on a worker thread.
 static func build_visual(id: String, quality: int) -> Node3D:
-	var packed := CampusData.load_scene(id)
-	if packed == null: return null
-	var model := packed.instantiate() as Node3D
+	var model := CampusData.instantiate_model(id)
+	if model == null: return null
 	StairLining.add_to_model(model, id)
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
@@ -652,11 +651,10 @@ func reload_models(player_position: Vector3) -> void:
 
 
 func _build_model() -> void:
-	var packed := CampusData.load_scene(scene_id)
-	if packed == null:
-		push_error("校园模型缺失：%s" % scene_id)
+	var model := CampusData.instantiate_model(scene_id)
+	if model == null:
+		push_error("校园模型加载失败：%s（画质 %d）" % [scene_id, CampusData.tier])
 		return
-	var model := packed.instantiate() as Node3D
 	visual_tier = CampusData.tier
 	model.name = "Model"
 	add_child(model)

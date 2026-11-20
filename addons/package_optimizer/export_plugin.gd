@@ -19,8 +19,17 @@ func _export_begin(_features: PackedStringArray, _debug: bool, path: String, _fl
 	add_file("res://assets/package_policy.json", JSON.stringify(POLICY).to_utf8_buffer(), false)
 
 
-func _export_file(path: String, type: String, _features: PackedStringArray) -> void:
+func _export_file(path: String, type: String, features: PackedStringArray) -> void:
 	if not path.begins_with("res://assets/") or not FileAccess.file_exists(path + ".import"): return
+	# Keep one directly decodable model per region and its shared PNGs on Android.
+	# FileAccess can read these even if a device cannot instantiate an imported scene.
+	if "android" in features:
+		if path.begins_with("res://assets/campus_q0/scenes/") and path.ends_with(".glb"):
+			add_file(path + ".source", FileAccess.get_file_as_bytes(path), false)
+		elif path.begins_with("res://assets/campus_q0/textures/") and path.ends_with(".png"):
+			add_file(path, FileAccess.get_file_as_bytes(path), false)
+		elif path == "res://assets/ui/menu_panorama.jpg":
+			add_file(path + ".source", FileAccess.get_file_as_bytes(path), false)
 	var config := ConfigFile.new()
 	if config.load(path + ".import") != OK: return
 	# Feature-specific GPU texture variants remain under the engine's exporter.
