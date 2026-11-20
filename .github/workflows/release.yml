@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Formal version for Android, Windows and Linux
+        description: Formal version for Android, iOS (unsigned), Windows and Linux
         required: true
         default: v0.6.0
         type: string
       draft:
-        description: Stop at a verified draft release (all nine assets uploaded, not published)
+        description: Stop at a verified draft release after uploading all twelve assets
         required: true
         default: true
         type: boolean
@@ -162,9 +162,13 @@ jobs:
             build/reports/android-release/alignment.log
           retention-days: 14
 
+  ios:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ios-unsigned.yml
+
   publish:
     name: Publish verified public release
-    needs: [regression, build, desktop]
+    needs: [regression, build, desktop, ios]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -179,7 +183,11 @@ jobs:
         with:
           name: desktop-public-release-${{ github.sha }}
           path: release-assets
-      - name: Verify all nine assets before publishing
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-unsigned-${{ github.sha }}
+          path: release-assets
+      - name: Verify all twelve assets before publishing
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}

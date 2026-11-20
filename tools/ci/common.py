@@ -1,4 +1,5 @@
 """Shared command runner with durable logs and Godot printed-error handling."""
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -7,6 +8,14 @@ import time
 
 ROOT = Path(__file__).resolve().parents[2]
 ENGINE = os.environ.get("GODOT_BIN", "godot")
+
+
+def file_digest(path):
+    sha = hashlib.sha256()
+    with path.open("rb") as source:
+        for block in iter(lambda: source.read(1024 * 1024), b""):
+            sha.update(block)
+    return sha.hexdigest()
 
 
 def run(label, command, reports, timeout=600, cwd=ROOT, env=None):

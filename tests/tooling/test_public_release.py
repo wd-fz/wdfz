@@ -1,6 +1,8 @@
 import hashlib
 import json
 from pathlib import Path
+import plistlib
+import struct
 import sys
 import tempfile
 import unittest
@@ -9,6 +11,7 @@ import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 from publish_release import validate_android as validate_bundle
 from publish_release import validate_bundle as validate_all
+from publish_release import validate_ios
 from export_android import RELEASE_VERSION, RELEASE_VERSION_CODE
 import terracotta
 
@@ -32,6 +35,58 @@ class PublicReleaseTests(unittest.TestCase):
         self.meta = self.apk.with_suffix(".build.json")
         self.meta.write_text(json.dumps(self.info))
         self.apk.with_suffix(".apk.sha256").write_text(f"{digest}  {self.apk.name}\n")
+        self.add_ios()
+
+    def add_ios(self, *, platform=2, cpu=0x0100000C, signature=False, extra=None, pack=b"GDPCfixture"):
+        name = f"wdfz-{RELEASE_VERSION}-ios-arm64-unsigned"
+        ipa = self.folder / (name + ".ipa")
+        orientations = ["UIInterfaceOrientationLandscapeRight", "UIInterfaceOrientationLandscapeLeft"]
+        plist = {"CFBundlePackageType": "APPL", "CFBundleIdentifier": "org.wdfz.godot",
+                 "CFBundleShortVersionString": RELEASE_VERSION, "CFBundleVersion": str(RELEASE_VERSION_CODE),
+                 "CFBundleExecutable": "wdfz", "CFBundleSupportedPlatforms": ["iPhoneOS"], "MinimumOSVersion": "14.0",
+                 "UIRequiresFullScreen": True, "UISupportedInterfaceOrientations": orientations,
+                 "UISupportedInterfaceOrientations~ipad": orientations, "UIDeviceFamily": [1, 2],
+                 "NSLocalNetworkUsageDescription": "Connect to local players"}
+        commands = struct.pack("<6I", 0x32, 24, platform, 0xE0000, 0x120000, 0)
+        if signature:
+            commands += struct.pack("<4I", 0x1D, 16, 0, 0)
+        binary = struct.pack("<8I", 0xFEEDFACF, cpu, 0, 2, 2 if signature else 1, len(commands), 0, 0) + commands
+        root = "Payload/wdfz.app/"
+        with zipfile.ZipFile(ipa, "w") as bundle:
+            executable = zipfile.ZipInfo(root + "wdfz")
+            executable.external_attr = 0o100755 << 16
+            bundle.writestr(executable, binary)
+            bundle.writestr(root + "Info.plist", plistlib.dumps(plist, fmt=plistlib.FMT_BINARY))
+            bundle.writestr(root + "wdfz.pck", pack)
+            if extra:
+                bundle.writestr(root + extra, b"fixture")
+        digest = hashlib.sha256(ipa.read_bytes()).hexdigest()
+        info = {"passed": True, "release": True, "signed": False, "working_tree_dirty": False,
+                "revision": self.sha, "platform": "ios", "sdk": "iphoneos", "architecture": "arm64",
+                "package": "org.wdfz.godot", "version": RELEASE_VERSION, "build_number": RELEASE_VERSION_CODE,
+                "minimum_os": "14.0", "rendering_driver": "vulkan", "rendering_method": "mobile",
+                "runtime_verified": False, "file": ipa.name, "bytes": ipa.stat().st_size, "sha256": digest}
+        ipa.with_suffix(".build.json").write_text(json.dumps(info))
+        ipa.with_suffix(".ipa.sha256").write_text(f"{digest}  {ipa.name}\n")
+        return ipa
+
+    def test_ipa_rejects_simulator_signatures_profiles_and_missing_game_data(self):
+        for options in ({"platform": 7}, {"cpu": 0x01000007}, {"signature": True},
+                        {"extra": "embedded.mobileprovision"}, {"extra": "Frameworks/F.framework/_CodeSignature/CodeResources"},
+                        {"pack": b"wrong"}):
+            with self.subTest(options=options):
+                self.add_ios(**options)
+                with self.assertRaises(ValueError):
+                    validate_ios(self.folder, self.sha)
+
+    def test_ipa_rejects_stale_source_and_file_tampering(self):
+        ipa = self.add_ios()
+        with self.assertRaises(ValueError):
+            validate_ios(self.folder, "2" * 40)
+        with ipa.open("ab") as out:
+            out.write(b"modified")
+        with self.assertRaises(ValueError):
+            validate_ios(self.folder, self.sha)
 
     def test_all_three_verified_files_are_selected(self):
         self.assertEqual(len(validate_bundle(self.folder,self.sha)), 3)
@@ -86,7 +141,9 @@ class PublicReleaseTests(unittest.TestCase):
         self.add_desktop("windows")
         with self.assertRaises(FileNotFoundError): validate_all(self.folder, self.sha)
         self.add_desktop("linux")
-        self.assertEqual(len(validate_all(self.folder, self.sha)), 9)
+        self.assertEqual(len(validate_all(self.folder, self.sha)), 12)
+        self.add_ios().unlink()
+        with self.assertRaises(FileNotFoundError): validate_all(self.folder, self.sha)
 
     def test_unverified_wayland_or_stale_source_blocks_publication(self):
         self.add_desktop("windows")
@@ -132,6 +189,11 @@ class PublicReleaseTests(unittest.TestCase):
         self.assertEqual(presets['preset.3.options']['version/name'], f'"{RELEASE_VERSION}"')
         self.assertEqual(int(presets['preset.3.options']['version/code']), RELEASE_VERSION_CODE)
         self.assertEqual(presets['preset.3.options']['screen/immersive_mode'], 'true')
+        ios = presets['preset.4.options']
+        self.assertEqual(ios['application/version'], f'"{RELEASE_VERSION_CODE}"')
+        self.assertEqual(ios['application/short_version'], '""')  # inherits project version
+        self.assertEqual(ios['application/bundle_identifier'], '"org.wdfz.godot"')
+        self.assertEqual(ios['application/export_project_only'], 'true')
 
     def test_draft_only_uploads_and_verifies_but_never_publishes(self):
         # 2026-11-14: the release workflow defaults to stopping at a verified draft.

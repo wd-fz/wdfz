@@ -37,7 +37,7 @@ def rendering_errors(text):
     expected = {"renderer/rendering_method": '"forward_plus"',
                 "renderer/rendering_method.mobile": '"mobile"',
                 "rendering_device/driver": '"vulkan"',
-                **{f"rendering_device/driver.{platform}": '"vulkan"' for platform in ("linuxbsd", "windows", "android")},
+                **{f"rendering_device/driver.{platform}": '"vulkan"' for platform in ("linuxbsd", "windows", "android", "ios")},
                 "rendering_device/fallback_to_d3d12": "false", "rendering_device/fallback_to_opengl3": "false"}
     errors = [f"project.godot: {key} must be {value}" for key, value in expected.items() if rendering.get(key) != value]
     for key, value in rendering.items():

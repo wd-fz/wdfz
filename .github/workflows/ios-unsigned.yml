@@ -1,0 +1,33 @@
+name: Unsigned iOS IPA
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    name: Build and verify unsigned iPhoneOS IPA
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-godot
+        with:
+          ios: 'true'
+      - name: Build ARM64 device release without signing
+        run: python tools/export_ios.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned-${{ github.sha }}
+          path: build/packages/wdfz-*-ios-arm64-unsigned.*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ios-export-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/reports/ios/

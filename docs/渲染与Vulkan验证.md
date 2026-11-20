@@ -6,8 +6,9 @@
 | --- | --- | --- |
 | Linux / Windows x86_64 | Forward+ | Vulkan |
 | Android ARM64 | Mobile | Vulkan |
+| iPhone／iPad ARM64 | Mobile | Vulkan，经官方模板中的 MoltenVK 使用 Metal |
 
-`rendering_device/driver` 及三个导出目标的覆盖值均为 `vulkan`；关闭 `fallback_to_opengl3` 与 `fallback_to_d3d12`。设备或驱动不满足 Godot 的 Vulkan 要求时应报告初始化失败，不静默运行另一套后端。当前不导出 Web、macOS 或 iOS。
+`rendering_device/driver` 及四个导出目标的覆盖值均为 `vulkan`；关闭 `fallback_to_opengl3` 与 `fallback_to_d3d12`。设备或驱动不满足 Godot 的 Vulkan 要求时应报告初始化失败，不静默运行另一套后端。
 
 Android 继续要求 API 24+、ARM64。Android 版本达到要求不等于 GPU 满足 Vulkan 要求；官方模板根据 Mobile + Vulkan 自动写入必需的 `android.hardware.vulkan.version` 功能，以及 `org.godotengine.rendering.method=mobile` 元数据。导出脚本读取 APK 的实际 Manifest 验证这两项。横屏启动、强制全屏的启动参数、签名、16 KB 对齐和资源校验继续执行。
 

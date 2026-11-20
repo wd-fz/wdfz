@@ -1,5 +1,5 @@
 name: Set up pinned Godot
-description: Cache the official Linux editor and selected export templates after SHA512 verification.
+description: Cache the official editor and selected export templates after SHA512 verification.
 inputs:
   templates:
     description: Install Linux and Windows release export templates
@@ -10,6 +10,9 @@ inputs:
   android-release:
     description: Install the Android Gradle export template with prebuilt engine libraries
     default: 'false'
+  ios:
+    description: Install the iOS template for the macOS runner
+    default: 'false'
 runs:
   using: composite
   steps:
@@ -19,17 +22,19 @@ runs:
     - uses: actions/cache@v4
       with:
         path: ${{ runner.tool_cache }}/wdfz-godot
-        key: godot-${{ runner.os }}-${{ hashFiles('.godot-version') }}-templates-${{ inputs.templates }}-android-${{ inputs.android-debug }}-release-${{ inputs.android-release }}-v4
+        key: godot-${{ runner.os }}-${{ hashFiles('.godot-version') }}-templates-${{ inputs.templates }}-android-${{ inputs.android-debug }}-release-${{ inputs.android-release }}-v4${{ inputs.ios == 'true' && '-ios' || '' }}
     - name: Install verified Godot
       shell: bash
       env:
         INSTALL_TEMPLATES: ${{ inputs.templates }}
         INSTALL_ANDROID_DEBUG: ${{ inputs.android-debug }}
         INSTALL_ANDROID_RELEASE: ${{ inputs.android-release }}
+        INSTALL_IOS: ${{ inputs.ios }}
         GODOT_CACHE: ${{ runner.tool_cache }}/wdfz-godot
       run: |
         args=(--cache "$GODOT_CACHE")
         if [[ "$INSTALL_TEMPLATES" == true ]]; then args+=(--templates); fi
         if [[ "$INSTALL_ANDROID_DEBUG" == true ]]; then args+=(--android-debug); fi
         if [[ "$INSTALL_ANDROID_RELEASE" == true ]]; then args+=(--android-release); fi
+        if [[ "$INSTALL_IOS" == true ]]; then args+=(--ios); fi
         python tools/ci/install_godot.py "${args[@]}"

@@ -148,7 +148,7 @@ func test_launch_defaults() -> void:
 	var fresh := GameSettings.new(settings.path+"-fresh","Android")
 	fresh.load_file(true)
 	check(fresh.get_int("full_screen") == 1, "fresh Android profiles are fullscreen")
-	check(not GameSettings.can_toggle_fullscreen("Android") and GameSettings.can_toggle_fullscreen("Windows") and GameSettings.can_toggle_fullscreen("Linux"), "only Android locks fullscreen; touch emulation does not change desktop policy")
+	check(not GameSettings.can_toggle_fullscreen("Android") and not GameSettings.can_toggle_fullscreen("iOS") and GameSettings.can_toggle_fullscreen("Windows") and GameSettings.can_toggle_fullscreen("Linux"), "phones lock fullscreen and desktop platforms retain their window controls")
 
 
 func test_android_fullscreen_ui() -> void:

@@ -2,9 +2,9 @@
 
 后续开发在本仓库进行。[旧 Web 版仓库](https://github.com/wd-fz/wd-fz.github.io)已停止维护，仅作为移植参考。
 
-**v0.6.0《替我答到》** 提供 Android ARM64、Windows x86_64 和 Linux x86_64 正式包，三个平台均使用 Vulkan。Android 可覆盖升级此前的正式版，也可与 Debug 包同时安装。[下载正式版](https://github.com/wd-fz/wdfz/releases/latest) · [发布说明](docs/releases/0.6.0.md)
+**v0.6.0《替我答到》** 提供 Android ARM64、Windows／Linux x86_64 正式包，以及供自行签名的 iOS ARM64 IPA。iPhone 和 iPad 需要 iOS／iPadOS 14 或更新版本，使用 AltStore Classic 或 Sideloadly 等工具签名后安装。Android 可覆盖升级此前的正式版，也可与 Debug 包同时安装。[下载正式版](https://github.com/wd-fz/wdfz/releases/latest) · [发布说明](docs/releases/0.6.0.md)
 
-**Android 启动即横屏并强制全屏；Windows / Linux 默认窗口化；竖屏不受维护。** 桌面与移动端都以横屏游玩为目标，优先适配常见横屏比例下的视野、界面和触屏操作。竖屏不作为后续迁移、回归或发布验收目标；早期竖屏截图与验证记录仅保留为历史证据。
+**Android 与 iOS 横屏全屏，Windows / Linux 默认窗口化。竖屏不受维护。** 桌面与移动端都以横屏游玩为目标，优先适配常见横屏比例下的视野、界面和触屏操作。竖屏不作为后续迁移、回归或发布验收目标；早期竖屏截图与验证记录仅保留为历史证据。
 
 **当前已具备正式校园与主要公开玩法。** 42 个室内场景、室外校园、楼梯／连廊／电梯、校园日程、背包与调查、巡察与异象、公开结局路线均已接入；声音、演出与设置也已有移植实现。不同系统的验收范围和剩余缺口见[计划目录](docs/plan/README.md)，不能把开发验证包视为完整发行验收。
 

@@ -6,6 +6,7 @@
 | `python tools/check.py` | 结构、依赖边界、真实 Godot 导入与回归 |
 | `python tools/export.py` | Linux／Windows 开发包与 Linux Vulkan 启动／包内容检查（需显示服务） |
 | `python tools/export_android.py` | Linux 上生成并验证签名 Android Debug APK（ARM64） |
+| `python tools/export_ios.py` | 在 macOS 上用 Xcode 构建并验证未签名的 iPhone／iPad ARM64 IPA，先用 `python tools/ci/install_godot.py --ios` 安装匹配的编辑器与模板 |
 | [导出体积优化插件](../addons/package_optimizer/plugin.gd) | 导出时无损重排场景压缩块、共享相同纹理；自动生成体积与校验报告 |
 | `python tools/ci/install_godot.py --templates` | Linux 上安装固定版本官方引擎和两个桌面 release 模板 |
 | `python tools/ci/install_godot.py --android-debug` | 安装同版本 Android Gradle 模板与预编译引擎库 |

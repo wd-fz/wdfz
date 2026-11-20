@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Install the pinned official Linux editor and selected official export templates."""
+"""Install the pinned official editor and selected export templates."""
 import argparse
 import hashlib
 import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import sys
 import urllib.request
 import zipfile
@@ -53,6 +54,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cache", type=Path, default=Path.home() / ".cache/wdfz-godot")
     parser.add_argument("--templates", action="store_true")
+    parser.add_argument("--ios", action="store_true", help="install the official iOS export template on macOS")
     parser.add_argument("--android-debug", action="store_true", help="install the official Android Gradle template with prebuilt engine libraries")
     parser.add_argument("--android-release", action="store_true", help="install the official Android Gradle template with prebuilt engine libraries")
     args = parser.parse_args()
@@ -63,13 +65,24 @@ def main():
     cache.mkdir(parents=True, exist_ok=True)
     release = f"https://github.com/godotengine/godot-builds/releases/download/{version}-stable"
     engine = cache / "bin/godot"
+    mac = sys.platform == "darwin"
+    if args.ios and not mac:
+        parser.error("Building an iPhoneOS application requires macOS and Xcode")
     if not engine.exists():
-        name = f"Godot_v{version}-stable_linux.x86_64"
+        platform = "macos.universal" if mac else "linux.x86_64"
+        name = f"Godot_v{version}-stable_{platform}"
         archive = verified_archive(release, name + ".zip", cache)
-        extract_member(archive, name, engine)
-        engine.chmod(0o755)
+        if mac:
+            engine.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["ditto", "-x", "-k", archive, engine.parent], check=True)
+            engine.symlink_to("Godot.app/Contents/MacOS/Godot")
+        else:
+            extract_member(archive, name, engine)
+            engine.chmod(0o755)
         archive.unlink()
     selected = list(TEMPLATES) if args.templates else []
+    if args.ios:
+        selected += [name for name in ("ios.zip", "version.txt") if name not in selected]
     if args.android_debug or args.android_release:
         selected += [name for name in ("android_source.zip", "version.txt") if name not in selected]
     if selected:
@@ -80,7 +93,8 @@ def main():
                 extract_member(archive, "templates/" + name, template_cache / name)
             archive.unlink()
         data_home = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
-        destination = data_home / "godot/export_templates" / f"{version}.stable"
+        godot_data = Path.home() / "Library/Application Support/Godot" if mac else data_home / "godot"
+        destination = godot_data / "export_templates" / f"{version}.stable"
         destination.mkdir(parents=True, exist_ok=True)
         for name in selected:
             shutil.copy2(template_cache / name, destination / name)

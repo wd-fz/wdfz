@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Publish Android, Windows and Linux together after verifying every release asset."""
+"""Publish Android, iOS, Windows and Linux together after verifying every release asset."""
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import zipfile
+from ci import ios_bundle
+from ci.common import file_digest
 from export_android import RELEASE_PACKAGE, RELEASE_VERSION, RELEASE_VERSION_CODE
 import terracotta
 
@@ -78,21 +79,35 @@ def validate_desktop(folder, revision, platform):
     return [archive, checksum, metadata]
 
 
+def validate_ios(folder, revision):
+    name = f"wdfz-{RELEASE_VERSION}-ios-arm64-unsigned"
+    ipa = folder / (name + ".ipa")
+    checksum = folder / (name + ".ipa.sha256")
+    metadata = folder / (name + ".build.json")
+    info = json.loads(metadata.read_text())
+    expected = {"passed": True, "release": True, "signed": False, "working_tree_dirty": False,
+                "revision": revision, "platform": "ios", "sdk": "iphoneos", "architecture": "arm64",
+                "package": ios_bundle.BUNDLE_ID, "version": RELEASE_VERSION, "build_number": RELEASE_VERSION_CODE,
+                "minimum_os": ios_bundle.MINIMUM_OS, "rendering_driver": "vulkan", "rendering_method": "mobile",
+                "runtime_verified": False, "file": ipa.name}
+    if any(info.get(key) != value for key, value in expected.items()):
+        raise ValueError("Unsigned iOS release metadata does not match the expected source or device build")
+    digest = file_digest(ipa)
+    if (digest != info.get("sha256") or ipa.stat().st_size != info.get("bytes")
+            or checksum.read_text().strip() != f"{digest}  {ipa.name}"):
+        raise ValueError("IPA, metadata and checksum do not agree")
+    ios_bundle.inspect_ipa(ipa, RELEASE_VERSION, RELEASE_VERSION_CODE)
+    return [ipa, checksum, metadata]
+
+
 def validate_bundle(folder, revision):
     files = validate_android(folder, revision)
     for platform in ("windows", "linux"):
         files.extend(validate_desktop(folder, revision, platform))
+    files.extend(validate_ios(folder, revision))
     if set(path.name for path in folder.iterdir()) != set(path.name for path in files):
         raise ValueError("Release folder contains unexpected assets")
     return files
-
-
-def file_digest(path):
-    sha = hashlib.sha256()
-    with path.open("rb") as source:
-        for block in iter(lambda: source.read(1024 * 1024), b""):
-            sha.update(block)
-    return sha.hexdigest()
 
 
 def main():
@@ -140,7 +155,7 @@ def main():
     release = release_by_tag()
     if release is None:
         subprocess.run(["gh", "release", "create", args.tag, "--repo", repo, "--draft", "--target", revision,
-                        "--title", f"{args.tag} · Android / Windows / Linux", "--notes-file", str(args.notes)], check=True)
+                        "--title", f"{args.tag} · Android / iOS / Windows / Linux", "--notes-file", str(args.notes)], check=True)
         release = release_by_tag()
     if not release["draft"] or release["target_commitish"] != revision:
         raise ValueError("Refusing to modify a public release or a draft for different source")

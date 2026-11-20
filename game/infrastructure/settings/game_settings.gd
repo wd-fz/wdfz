@@ -10,7 +10,7 @@ extends RefCounted
 ## quality 0–4 presets / 5 custom; GraphicsProfile expands independent parameters.
 ## fps_limit 0 unlimited / 20–360. VSync is independent. menu_orbit 1/0 selects the baked campus panorama
 ## or the rainy campus cover. auto_land rotates between landscape sides only.
-## Desktop defaults to windowed; Android always uses immersive fullscreen.
+## Desktop defaults to windowed. Android and iOS use fullscreen.
 ## The Web "graphics mode" (WebGL / WebGPU) is replaced by Godot's renderer. Touch layout is
 ## stored separately from numeric settings and from gameplay saves.
 
@@ -53,7 +53,7 @@ func _init(file: String = "user://settings.json", platform_name: String = OS.get
 
 
 static func can_toggle_fullscreen(platform_name: String = OS.get_name()) -> bool:
-	return platform_name != "Android"
+	return platform_name not in ["Android", "iOS"]
 
 
 func _enforce_platform() -> void:
