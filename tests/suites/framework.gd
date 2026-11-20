@@ -110,7 +110,8 @@ func _test_storage() -> void:
 func _test_app() -> void:
 	var app: GameApp = APP.instantiate()
 	app.initial_world = "migration_lab" # Framework regression keeps the sandbox room.
-	app.saves = SaveStore.new(_test_path)
+	app.saves = SaveStore.new(_test_path.get_base_dir() + "/framework/save.json")
+	app.saves.clear()
 	root.size = Vector2i(1280, 720)
 	root.add_child(app)
 	await _frames()
@@ -119,14 +120,9 @@ func _test_app() -> void:
 	app.ui.menu_screen.reveal(app.ui.get_node("%NewGame"))
 	await _frames(3)
 	await _tap(app.ui.get_node("%NewGame"))
-	await _frames()
-	check(app.session == null and app.ui.choice_open(), "real touch tap on menu opens the talent pick")
-	await _tap(app.ui.selection_panel.cards[0])
-	check(app.session == null, "browsing a talent does not start the run")
-	await _tap(app.ui.selection_panel.confirm_button)
 	await _until_started(app)
 	await _frames()
-	check(app.session != null and app.talent().id == "tech" and app.items().has("phone"), "confirming the first talent starts the run with it (科技党 starts with a phone)")
+	check(app.session != null and app.talent().id == "none" and app.session.character_id == StudentCast.DEFAULT, "one touch walks an ordinary student into the classroom")
 	check(app.ui.opening_on() and paused and not app.player.enabled, "the prologue plays first, with the game waiting")
 	var t0 := app.school().tsec
 	for _i in TalentModule.KEYS.size() + 6:
@@ -193,14 +189,19 @@ func _test_app() -> void:
 	app.return_to_menu()
 	check(app.session == null and app.router.get_child_count() == 0, "return to menu releases the world and session")
 	check(not paused and not app.player.enabled, "menu leaves no paused-tree or active-player residue")
+	var saved_bytes := FileAccess.get_file_as_bytes(app.saves.path)
+	app.ui.new_requested.emit()
+	check(app.ui.choice_open() and app.session == null, "walking into class with an existing save waits for the returning player's decision")
+	app._choice_made(0)
+	check(app.session == null and FileAccess.get_file_as_bytes(app.saves.path) == saved_bytes, "keeping a previous game leaves its slot intact")
 	for viewport_size: Vector2i in [Vector2i(1280, 720), Vector2i(390, 844), Vector2i(844, 390)]:
 		root.size = viewport_size
 		await _frames()
-		app.ui.menu_screen.reveal(app.ui.get_node("%NewGame"))
+		app.ui.menu_screen.reveal(app.ui.menu_screen.find_child("CustomGame",true,false))
 		await _frames(3)
 		var content: ScrollContainer = app.ui.menu_screen.scroll
 		check(root.get_visible_rect().encloses(content.get_global_rect()), "scrollable menu fits viewport %s" % viewport_size)
-		await _tap(app.ui.get_node("%NewGame"))
+		await _tap(app.ui.menu_screen.find_child("CustomGame",true,false))
 		check(app.ui.choice_open(), "the talent pick opens after resize %s" % viewport_size)
 		check(root.get_visible_rect().encloses(app.ui.selection_panel.shell.get_global_rect()), "the talent pick fits viewport %s" % viewport_size)
 		var random_card: Control = app.ui.selection_panel.cards[TalentModule.KEYS.size()]

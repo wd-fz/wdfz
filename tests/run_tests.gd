@@ -45,6 +45,19 @@ func _run() -> void:
 	var rendering := preload("res://tests/suites/rendering.gd").new(self)
 	print("CASE: rendering.test_backend")
 	rendering.test_backend()
+	var suites := "all"
+	for arg: String in OS.get_cmdline_user_args():
+		if arg.begins_with("--suites="): suites = arg.trim_prefix("--suites=")
+	if suites not in ["all", "features", "integration"]:
+		push_error("Unknown regression suites: " + suites)
+		quit(1)
+		return
+	if suites in ["all", "features"]: await _run_features()
+	if suites in ["all", "integration"]: await _run_integration()
+	_finish()
+
+
+func _run_features() -> void:
 	var streaming := preload("res://tests/suites/campus_streaming.gd").new(self)
 	print("CASE: campus_streaming")
 	streaming.test_connections()
@@ -287,7 +300,6 @@ func _run() -> void:
 	var atmosphere := preload("res://tests/suites/atmosphere.gd").new(self)
 	var progress := preload("res://tests/suites/progress.gd").new(self)
 	var presentation := preload("res://tests/suites/presentation.gd").new(self)
-	var integration := preload("res://tests/suites/integration.gd").new(self)
 	var geometry := preload("res://tests/suites/geometry.gd").new(self)
 	var migration := preload("res://tests/suites/migration.gd").new(self)
 	var maze := preload("res://tests/suites/maze.gd").new(self)
@@ -337,6 +349,9 @@ func _run() -> void:
 	var player_controls := preload("res://tests/suites/player_controls.gd").new(self)
 	print("CASE: player_controls.test_seated_prompt")
 	await player_controls.test_seated_prompt()
+	print("CASE: player_controls.test_west_gate_walk")
+	for attendance: String in ["ink", "present", "proxy"]:
+		await player_controls.test_west_gate_walk(attendance)
 	print("CASE: player_controls.test_touch_sprint")
 	await player_controls.test_touch_sprint()
 	var settings_ui := preload("res://tests/suites/settings_ui.gd").new(self)
@@ -435,6 +450,7 @@ func _run() -> void:
 	print("CASE: school._test_school_rules")
 	school._test_school_rules()
 	school.test_rollcall_card()
+	school.test_paper_evidence()
 	print("CASE: school._test_night_dorm_rules")
 	school._test_night_dorm_rules()
 	print("CASE: campus._test_inventory_rules")
@@ -595,10 +611,18 @@ func _run() -> void:
 	presentation._test_broadcast_props()
 	print("CASE: presentation._test_inspection_scatter")
 	presentation._test_inspection_scatter()
+
+
+func _run_integration() -> void:
+	var integration := preload("res://tests/suites/integration.gd").new(self)
+	var presentation := preload("res://tests/suites/presentation.gd").new(self)
 	print("CASE: integration._test_campus_app")
 	await integration._test_campus_app()
 	print("CASE: presentation._test_legacy_import")
 	await presentation._test_legacy_import()
+
+
+func _finish() -> void:
 	for suffix: String in ["", ".bak", ".tmp"]:
 		if FileAccess.file_exists(_test_path + suffix):
 			DirAccess.remove_absolute(_test_path + suffix)

@@ -7,7 +7,8 @@ import time
 
 REQUIRED_JOBS = {
     'godot.yml': {'Structure and tooling', 'Regression (headless)', 'Regression (windowed)',
-                  'Regression (Vulkan Mobile)', 'Desktop builds'},
+                  'Regression (Vulkan Mobile)', 'Regression (windowed integration)',
+                  'Regression (Vulkan Mobile integration)', 'Desktop builds'},
     'lan.yml': {'LAN authority and ENet', 'LAN interface (forward_plus, x11)',
                 'LAN interface (forward_plus, wayland)', 'LAN interface (mobile, x11)',
                 'LAN desktop packages'},

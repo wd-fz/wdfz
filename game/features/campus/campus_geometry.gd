@@ -17,6 +17,11 @@ const NORMALS := {"n": Vector2(0, -1), "s": Vector2(0, 1), "w": Vector2(-1, 0), 
 const SOLID_CH := "#S"
 
 
+static func gate_center(campus: Dictionary, key: String) -> Vector2:
+	var g: Dictionary = campus.get("gates", {}).get(key, {})
+	return Vector2(g.get("x", 0), g.get("y", 0)) * 2.0
+
+
 static func yaw_from_ang(ang: float) -> float:
 	return wrapf(-ang - PI * 0.5, -PI, PI)
 

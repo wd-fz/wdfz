@@ -127,7 +127,8 @@ func _ready() -> void:
 			(n as BaseButton).pressed.connect(func() -> void: audio.play("ui.click")))
 	for b: Node in ui.find_children("*", "BaseButton", true, false):
 		(b as BaseButton).pressed.connect(func() -> void: audio.play("ui.click"))
-	ui.new_requested.connect(_pick_talent.bind("easy", false))
+	ui.new_requested.connect(_enter_classroom)
+	ui.custom_game_requested.connect(_pick_talent.bind("easy", false))
 	ui.new_hard_requested.connect(_pick_talent.bind("hard", false))
 	ui.speedrun_requested.connect(_speedrun_menu)
 	ui.achievements_requested.connect(_show_achievements)
@@ -492,15 +493,27 @@ func _pick_talent(difficulty: String, speed: bool = false) -> void:
 		if mine != _choice_count or index < 0 or index > TalentModule.KEYS.size():
 			return
 		var pick := String(TalentModule.KEYS[index]) if index < TalentModule.KEYS.size() else String(TalentModule.KEYS[randi() % TalentModule.KEYS.size()])
-		var character := ui.selection_panel.character_id
-		_load_then(initial_world, func() -> void:
-			if speed:
-				speedrun.arm(difficulty)
-			else:
-				speedrun.disarm()
-			start_new_game(difficulty, pick, character)
-			_play_opening())
+		_start_at_desk(difficulty, pick, ui.selection_panel.character_id, speed)
 	ui.show_selection("选择天赋", ("梦魇" if difficulty == "hard" else "预知梦") + (" · 速通" if speed else " · 每局一个"), entries)
+
+
+func _enter_classroom() -> void:
+	if not saves.exists():
+		_start_at_desk("easy", "none", StudentCast.DEFAULT, false)
+		return
+	_choice_count += 1
+	var mine := _choice_count
+	_choice_handler = func(index: int) -> void:
+		if index == 1 and mine == _choice_count: _start_at_desk("easy", "none", StudentCast.DEFAULT, false)
+	ui.show_choice("这里有一局单人进度。重新走进教室后，下次保存会写入新周目。", ["保留原进度", "从第一天重新开始"])
+
+
+func _start_at_desk(difficulty: String, pick: String, character: String, speed: bool) -> void:
+	_load_then(initial_world, func() -> void:
+		if speed: speedrun.arm(difficulty)
+		else: speedrun.disarm()
+		start_new_game(difficulty, pick, character)
+		_play_opening())
 
 
 ## Carry what can be carried of an old Web save into a new run (game/features/compatibility/legacy_save.gd). Returns "" or why not.
@@ -858,6 +871,9 @@ func load_game() -> void:
 		return
 	candidate.restore(data)
 	_install_session(candidate, data["player"])
+	var old_paper: Dictionary = data["modules"].get("school.day", {}).get("data", {}).get("seat_card", {})
+	if not old_paper.has("proof") and school() != null and investigation() != null and investigation().visible("parking"):
+		school().seat_card.recall_counterfoil()
 	_restore_loaded_world()
 	ui.show_notice("已恢复进度；读档不会再次触发交互奖励。")
 
@@ -900,8 +916,22 @@ func pause_game() -> void:
 	get_tree().paused = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	ui.set_mode("pause")
-	if talent() != null and session != null:
-		ui.show_pause_detail(talent().pause_text())
+	var detail := investigation_brief()
+	if talent() != null and talent().id != "none": detail += "\n" + talent().pause_text()
+	ui.show_pause_detail(detail)
+
+
+func investigation_brief() -> String:
+	var inv := investigation()
+	if inv == null: return ""
+	inv.set_context(_invest_context())
+	var paper := school().seat_card
+	var last := paper.evidence() if inv.current_focus() == "identity" else ""
+	if last.is_empty() and paper.outstanding(): last = paper.entry()
+	if last.is_empty() and not inv.recent.is_empty():
+		last = String(inv.entries[inv.recent.back()]["text"])
+	if last.is_empty(): last = paper.entry()
+	return inv.goal() + ("\n" + last if not last.is_empty() else "")
 
 
 func resume_game() -> void:
@@ -1039,6 +1069,7 @@ func _sync_world(seed_view: bool = true) -> void:
 		if is_instance_valid(router.resident): router.resident.apply_doors(doors)
 		if not world.resident: world.apply_doors(doors)
 		world.set_player_scene(player.position)
+		if world.scene_id == "out" and school() != null: world.show_west_clearance(school().seat_card.clearance > 0)
 	var lift := elevator()
 	if lift != null and is_instance_valid(router.resident):
 		router.resident.update_lifts(lift)
@@ -1190,7 +1221,9 @@ func _refresh_interaction_prompt() -> void:
 		if radio_hint == "" and exchange() != null:
 			exchange().set_context(_exchange_context())
 			radio_hint = exchange().hint()
-		ui.show_prompt(radio_hint if radio_hint != "" else rules.hint(session.world_id, player.capture_pose()))
+		var hint := radio_hint if radio_hint != "" else rules.hint(session.world_id, player.capture_pose())
+		if hint == "西小门" and school().seat_card.clearance == 1 and not routes().data_synced: hint = ""
+		ui.show_prompt(hint)
 
 
 func _lift_crowd_step(delta: float) -> void:
@@ -1342,7 +1375,7 @@ func _apply_result(result: Dictionary) -> void:
 		_apply_route_events(routes())
 		return
 	if result.has("gate") and routes() != null:
-		routes().use_gate(String(result["gate"]), school().day)
+		routes().use_gate(String(result["gate"]), school().day, school().seat_card)
 		_apply_route_events(routes())
 		return
 	if result.has("facility") and phone() != null and session.world_id == "lab3" and String(result["facility"][0]) in ["n", "K"]:
@@ -2170,7 +2203,7 @@ func _patrol_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, 
 		elif e["kind"] == "exam":
 			fact({"kind": "exam", "phase": e["phase"], "pass": e.get("pass", false), "day": e.get("day", 1)})
 		elif e["kind"] == "inspection":
-			fact({"kind": "inspection", "day": e["day"], "slot": e["slot"], "compliant": e["compliant"]})
+			fact(e)
 		elif e["kind"] == "rollcall_sound":
 			audio.play(e["cue"], {"k": .65, "caption": e["caption"]})
 	watcher.set_context(_patrol_context(room, pose))
@@ -2924,6 +2957,8 @@ func _invest_context() -> Dictionary:
 		row = int(cars.car_right.split(":")[1]) + 1
 	return {"day": school().day, "place": school().place_name(session.world_id, float(p[1])), "has_key": has_key, "has_phone": bag != null and bag.has("phone"),
 		"reader": school().name_card_seat() if is_instance_valid(lan) and lan.playing() else "solo",
+		"paper_goal": school().seat_card.gate_goal(),
+		"paper_debt": school().seat_card.outstanding(),
 		"radio_goal": broadcast().notebook_goal(bag.has, school().day) if broadcast() != null and bag != null else "",
 		"exchange_goal": exchange().notebook_goal() if exchange() != null else "",
 		"has_coin": bag != null and bag.has("coin"), "has_pill": bag != null and bag.has("pill"), "bag_full": bag != null and bag.bag.size() >= 8,
@@ -2940,7 +2975,7 @@ func _record(e: Dictionary) -> void:
 		return
 	inv.set_context(_invest_context())
 	inv.record(String(e["id"]), String(e["text"]), String(e.get("kind", "事实")), String(e.get("source", "")))
-	if e["id"] == "parking": school().seat_card.check_counterfoil()
+	if e["id"] == "parking": school().seat_card.check_counterfoil(school().active_seconds)
 
 
 func _invest_do(action: Callable) -> void:
@@ -3011,7 +3046,8 @@ func _show_notes(query: String = "") -> void:
 	var listing := inv.list(query)
 	ui.show_notes({"goal": inv.goal(), "focus": focus, "routes": routes, "recent": listing["recent"], "groups": listing["groups"],
 		"progress": inv.progress(), "found": listing["found"], "query": query,
-		"seat_record": school().seat_card.entry(), "duty": school().duty_summary(), "permanent": bool(patrol().pat["permanent"])})
+		"landmark": inv.paper_landmark(),
+		"seat_record": school().seat_card.journal(), "duty": school().duty_summary(), "permanent": bool(patrol().pat["permanent"])})
 
 
 func _notes_focus(route: String) -> void:
@@ -3086,10 +3122,12 @@ func _show_map(selected: String = "") -> void:
 	var pose := player.capture_pose()
 	var yaw_ang := CampusGeometry.ang_from_yaw(float(pose["yaw"]))
 	if selected == "campus":
-		var view := ui.open_map(options, selected, "走过 %d 处室内" % ids.size(), "")
+		var notebook := investigation()
+		notebook.set_context(_invest_context())
+		var landmark := notebook.paper_landmark()
 		var out: Dictionary = CampusData.layout("out")
 		var objects: Array = out["objects"]
-		var me := Vector2.ZERO
+		var me := Vector2.INF
 		var p: Array = pose["position"]
 		var sc := float(out.get("SC", 2.0))
 		if here_room != null:
@@ -3100,8 +3138,17 @@ func _show_map(selected: String = "") -> void:
 			var w1 := CampusGeometry.to_world(null, float(p[0]), float(p[2]))
 			me = w1 / sc
 		var plan := CampusData.campus_map().duplicate()
+		if landmark == "西小门": plan["target"] = CampusGeometry.gate_center(CampusData.campus(), "w") / sc
+		elif landmark == "保安岗":
+			for o: Dictionary in objects:
+				if o.get("id") == "guard": plan["target"] = Vector2(o["x"] + o["w"] / 2.0, o["y"] + o["h"] / 2.0)
+		var head := "你在%s　北 ↑" % (String(here_room["name"]) if here_room != null else "校园室外")
+		var note := "走过 %d 处室内" % ids.size()
+		if plan.has("target"):
+			note = MapView.landmark_note(landmark, plan["target"] - me, here_room != null, school().seat_card.clearance > 0)
 		plan["me"] = me
 		plan["ang"] = yaw_ang
+		var view := ui.open_map(options, selected, head, note)
 		view.show_plan(plan)
 		return
 	var r: Dictionary = campus().room(selected)
@@ -4645,7 +4692,7 @@ func _route_hint(route: String) -> void:
 			if session.world_id != "out" or r.gate_at(w) != "w":
 				ui.show_notice("我：还得去西小门的闸机前。")
 			else:
-				r.use_gate("w", school().day)
+				r.use_gate("w", school().day, school().seat_card)
 				_apply_route_events(r)
 	elif route == "trash":
 		if session.world_id != "trash1":
@@ -5149,11 +5196,19 @@ func _routes_step(delta: float) -> void:
 		return
 	route.tick(delta)
 	_apply_route_events(route)
+	var paper := school().seat_card
+	if paper.clearance == 1:
+		var at := CampusGeometry.to_world(null, player.position.x, player.position.z)
+		if paper.crossed_line(session.world_id == "out", at, route.west_gate_center()): _reach_ending("face")
 
 
 func _apply_route_events(route: RoutesModule) -> void:
 	for e: Dictionary in route.take_events():
 		match e["kind"]:
+			"gate_chime":
+				var world := _campus_world()
+				if world != null: world.show_west_clearance(true)
+				audio.play("ui.beep")
 			"save":
 				save_game(true)
 			"fact_face":
@@ -5167,13 +5222,17 @@ func _apply_route_events(route: RoutesModule) -> void:
 			"san":
 				var after := school().san + float(e["amount"])
 				school().san = maxf(after, float(e.get("min", -INF)))
-			"choice":
+			"choice", "paper_gate":
 				_choice_count += 1
 				var mine := _choice_count
 				_choice_handler = func(index: int) -> void:
 					var r := routes()
 					if r != null and mine == _choice_count:
-						r.choose(index, story().diff if story() != null else "easy")
+						if e["kind"] == "paper_gate":
+							var at := CampusGeometry.to_world(null, player.position.x, player.position.z)
+							r.return_paper(school().seat_card, e, index, session.world_id, at)
+						else:
+							r.choose(index, story().diff if story() != null else "easy")
 						_apply_route_events(r)
 				player.enabled = false
 				player.clear_input()
@@ -5190,7 +5249,7 @@ func _apply_route_events(route: RoutesModule) -> void:
 ## story.js triggerEnding: the run is over; the save is cleared; the ending is recorded.
 func _reach_ending(id: String) -> void:
 	var fate := story()
-	var card := fate.trigger_ending(id) if fate != null else {}
+	var card := fate.trigger_ending(id, school().seat_card) if fate != null else {}
 	if card.is_empty():
 		return
 	var fake := bool(card.get("fake",false))
@@ -5198,7 +5257,9 @@ func _reach_ending(id: String) -> void:
 	player.enabled = false
 	player.clear_input()
 	audio.stop_all()
-	audio.play("ui.achieve.epic")
+	var memory: String = card["memory"]
+	var paper_exit := memory == "facePaper"
+	if not paper_exit: audio.play("ui.achieve.epic")
 	ui.hide_choice()
 	ui.hide_bag()
 	if items() != null:
@@ -5212,7 +5273,7 @@ func _reach_ending(id: String) -> void:
 		ui.set_save_available(saves.exists())
 	else:
 		var rec_e := _read_speedrun()
-		run_line = _speedrun_result(speedrun.finish(id, rec_e), rec_e)
+		run_line = _speedrun_result(speedrun.finish(memory, rec_e), rec_e)
 		ui.speedrun_text = ""
 	var path := saves.side_path("ends.json")
 	var seen_ends: Dictionary = {}
@@ -5220,6 +5281,10 @@ func _reach_ending(id: String) -> void:
 		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
 		if parsed is Dictionary:
 			seen_ends = parsed
+	if id == "face":
+		if not paper_exit or (seen_ends.has("face") and not seen_ends.has("facePaper")):
+			seen_ends["faceElectronic"] = 1
+		if paper_exit: seen_ends["facePaper"] = 1
 	seen_ends[id] = 1
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
@@ -5229,7 +5294,7 @@ func _reach_ending(id: String) -> void:
 	if achievements() != null and routes() != null:
 		achievements().face_wrong = maxi(0, routes().wrong_answers())
 	if not fake: _write_side("last_life.json", null)
-	fact({"kind": "ending", "id": id, "fake":fake, "legit":not fake, "day": school().day, "diff": story().diff, "talent": talent().id if talent() != null else "none"})
+	fact({"kind": "ending", "id": id, "paper_exit": paper_exit, "fake":fake, "legit":not fake, "day": school().day, "diff": story().diff, "talent": talent().id if talent() != null else "none"})
 	_last_result = {} if fake else _score_ending(id, String(card["title"]))
 	var meta := "第 %d 天" % school().day
 	if (items() != null and items().has_clock()) or (talent() != null and talent().has("watch")):
@@ -5241,7 +5306,7 @@ func _reach_ending(id: String) -> void:
 		if session != ending_session:
 			return
 		ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta, achievements().run_new_labels() if achievements() != null else PackedStringArray(),
-			"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""), id)
+			"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""), memory)
 		ui.set_ending_wake(fake)
 	var world := _campus_world()
 	if (id == "dismissal" or id == "cyber") and session != null and session.world_id != "out" and DisplayServer.get_name() != "headless":
@@ -5267,7 +5332,7 @@ func _reach_ending(id: String) -> void:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 			show_card.call())
 		_ending_cut.audio = audio
-		_ending_cut.begin(id, world, CampusData.campus(), player, ui, func() -> void: audio.play("ui.click"), {"how": String(exchange().s.get("how", "exam")) if exchange() != null else "exam","tsec":school().tsec})
+		_ending_cut.begin(id, world, CampusData.campus(), player, ui, func() -> void: audio.play("ui.click"), {"how": String(exchange().s.get("how", "exam")) if exchange() != null else "exam","tsec":school().tsec, "paper_exit":paper_exit})
 		return
 	show_card.call()
 
@@ -5293,6 +5358,7 @@ func _anomaly_context(room: Variant, pose: Dictionary) -> Dictionary:
 		"item_names": item_names, "dead": story() != null and story().dead, "hiding": watcher != null and bool(watcher.hide["on"]),
 		"patrol_chase": watcher != null and watcher.local_chase(), "choice_open": ui.choice_open(), "brolly": items() != null and items().brolly_up,
 		"inspection_quiet": day_rules.inspection_pending() or day_rules.inspection_upcoming() or float(day_rules.inspection.get("calm", 0.0)) > 0.0,
+		"reading_counterfoil": day_rules.seat_card.reading(session.world_id, day_rules.active_seconds),
 		"in_lift": session.world_id in ElevatorModule.RIDE_ROOMS, "can_stand": _can_stand.bind(room, float(p[1])), "drain_mul": _drain_mul()}
 
 
@@ -5367,6 +5433,7 @@ func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 			tw.update_shaft_previews(float(pose["position"][1]))
 	_phantom_step(delta, day_rules, room, pose, weird)
 	weird.tick(delta)
+	var omen := weird.hear_rain(weird.rain_cycle(), session.world_id, weird.is_active())
 	for e: Dictionary in weird.take_events():
 		match e["kind"]:
 			"clue":
@@ -5418,6 +5485,8 @@ func _anomaly_step(delta: float, day_rules: SchoolModule, room: Variant, pose: D
 			"kill":
 				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
 				return
+
+	if not omen.is_empty(): ui.show_notice(omen)
 
 
 func _open_anomaly_choice(e: Dictionary) -> void:

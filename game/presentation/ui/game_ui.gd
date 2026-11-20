@@ -4,6 +4,7 @@ extends CanvasLayer
 const BASE_THEME: Theme = preload("res://content/ui/theme.tres")
 
 signal new_requested
+signal custom_game_requested
 signal new_hard_requested
 signal death_menu_requested
 signal load_requested
@@ -108,6 +109,11 @@ func _ready() -> void:
 	hard.custom_minimum_size = Vector2(0, 48)
 	hard.pressed.connect(func() -> void: new_hard_requested.emit())
 	%NewGame.add_sibling(hard)
+	var custom := Button.new()
+	custom.name = "CustomGame"
+	custom.text = "自选角色与天赋"
+	custom.pressed.connect(func() -> void: custom_game_requested.emit())
+	%NewGame.add_sibling(custom)
 	var ach := Button.new()
 	ach.name = "Achievements"
 	ach.text = "成就"
@@ -1950,6 +1956,14 @@ func show_notes(data: Dictionary) -> void:
 		_notes_search.text = query
 	UIArt.heading(_notes_box, "当前调查" + ("  ·  %s路线" % _route_name(data) if not String(data.get("focus", "")).is_empty() else ""), UIArt.route_hint(String(data.get("focus", ""))), UISkin.ACCENT)
 	_note_label(String(data["goal"]), Color.WHITE)
+	if not String(data.get("landmark", "")).is_empty():
+		var locate := Button.new()
+		locate.text = "在校园图上找" + String(data["landmark"])
+		locate.custom_minimum_size.y = 44
+		locate.pressed.connect(func() -> void:
+			notes_panel.hide()
+			map_requested.emit("campus"))
+		_notes_box.add_child(locate)
 	if not String(data.get("seat_record", "")).is_empty():
 		_note_label(String(data["seat_record"]), UISkin.WARM)
 	var routes: Array = data["routes"]
@@ -2070,7 +2084,7 @@ func open_map(options: Array, selected: String, head: String, note: String) -> M
 		outer.add_child(_map_scroll)
 		_map_note = Label.new()
 		_map_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_map_note.modulate = Color(1, 1, 1, 0.6)
+		_map_note.modulate = Color(1, 1, 1, 0.88)
 		outer.add_child(_map_note)
 		_map_close_button = Button.new()
 		_map_close_button.text = "关闭"

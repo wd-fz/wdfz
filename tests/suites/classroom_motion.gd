@@ -158,6 +158,11 @@ func test_app() -> void:
 	for _i in 90: app._classmates_step(1.0/60)
 	check(view.figures[0]["kind"]=="person","real rule state drives standing figures")
 	var before := app.session.capture(app.player.capture_pose()).duplicate(true)
+	var seat := app.school().name_card_seat()
+	view.show_seat_witness(seat, "xu", CampusGeometry.tile_center(view.room, 48, 11), 5.0)
+	var double: Node3D = view._echoes[seat].node
+	var card_pose := view._card.transform
+	var double_pose := double.transform
 	var cut := OpeningCut.new()
 	app.add_child(cut)
 	cut.begin(app._campus_world(),CampusData.rules().room("teach1"),app.player,app.ui,false,app.session.character_id)
@@ -167,6 +172,9 @@ func test_app() -> void:
 	check(view.normal and not view.teacher.visible,"full opening uses normal classmates and only one teacher")
 	check(cut._me.character=="xu" and cut._me.clip=="sit" and cut._teacher.animation.has_animation("read"),"opening actors are dressed and posed for this run")
 	cut._apply(.75)
+	var seated := view.figures.filter(func(figure: Dictionary) -> bool: return not figure.teacher)
+	check(cut._mates.map(func(mate: Dictionary) -> Node3D: return mate.node) == seated.map(func(figure: Dictionary) -> Node3D: return figure.node), "only occupied student seats receive classroom choreography")
+	check(view._card.transform.is_equal_approx(card_pose) and double.transform.is_equal_approx(double_pose), "the desk card and summoned witness keep their own poses throughout the opening")
 	check(not cut._me.visible,"the cinematic body is gone before first-person handover")
 	check(witness.actor.visible and not witness.civilian.visible and cut._other_teacher.visible and not cut._teacher.visible,"the flip reveals the articulated students and lectern teacher together")
 	check(not view.normal,"opening hands the classroom to its otherworld cast")

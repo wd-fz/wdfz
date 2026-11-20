@@ -141,17 +141,14 @@ func begin(world: Node3D, room: Dictionary, player: PlayerController, ui: GameUI
 	_me.advance("sit", 0.0)
 	_build_dust()
 	# The classmates' small movements: some write (nodding forward again and again), some turn a page (a little turn), some stay.
-	var crowd := world.get_node_or_null("Classmates")
-	_classroom = crowd as ClassmatesView
-	if _classroom != null and is_instance_valid(_classroom.teacher): _classroom.teacher.hide()
-	if crowd != null:
+	_classroom = world.get_node_or_null("Classmates") as ClassmatesView
+	if _classroom != null:
+		if is_instance_valid(_classroom.teacher): _classroom.teacher.hide()
 		var mr := RandomNumberGenerator.new()
 		mr.seed = 4141
-		for n: Node in crowd.get_children():
-			if n.get_meta("teacher",false): continue
-			var node := n as Node3D
-			if node == null:
-				continue
+		for figure: Dictionary in _classroom.figures:
+			if figure.teacher: continue
+			var node: Node3D = figure.node
 			var r := mr.randf()
 			var kind := "write" if r < 0.5 else ("turn" if r < 0.78 else "still")
 			node.rotation_order = EULER_ORDER_YXZ

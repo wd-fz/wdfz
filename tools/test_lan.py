@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 from ci.lan_proxy import LanProxy
-from ci.common import ENGINE
+from ci.common import ENGINE, run
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -49,17 +49,17 @@ def main():
     reports.mkdir(parents=True, exist_ok=True)
     rendering = ["--windowed", "--rendering-method", args.renderer, "--rendering-driver", "vulkan", "--display-driver", args.display_driver] if args.renderer else ["--headless"]
     if args.ui:
-        entry = subprocess.run([ENGINE, *rendering, "--path", str(ROOT), "--audio-driver", "Dummy",
-                                "--script", "res://tests/network/entry.gd", "--", f"--screenshots={reports / 'entry'}"],
-                               cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120)
-        (reports / "entry.log").write_text(entry.stdout)
-        if entry.returncode or "ERROR:" in entry.stdout or not re.search(r"LAN ENTRY: [1-9]\d* checks, 0 failures", entry.stdout):
-            raise RuntimeError(entry.stdout[-9000:])
+        entry = run("entry", [ENGINE, *rendering, "--path", str(ROOT), "--audio-driver", "Dummy",
+                              "--disable-vsync", "--max-fps", "60", "--script", "res://tests/network/entry.gd",
+                              "--", f"--screenshots={reports / 'entry'}"], reports, timeout=120)
+        if not re.search(r"LAN ENTRY: [1-9]\d* checks, 0 failures", entry):
+            raise RuntimeError(entry[-9000:])
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
     children = []
-    summaries = []
+    summaries = [None] * args.players
+    guest_results = reports / f".guests-finished-{os.getpid()}-{time.monotonic_ns()}"
     proxies = []
     try:
         for index in range(args.players):
@@ -75,6 +75,8 @@ def main():
                 join_port = proxy.port
             peer_script = "walking_peer" if args.walk else "peer"
             command = [ENGINE, *rendering, "--path", str(ROOT), "--audio-driver", "Dummy", "--max-fps", "60", "--script", f"res://tests/network/{peer_script}.gd", "--", f"--role={role}", f"--port={join_port}", f"--players={args.players}", f"--seconds={args.seconds}"]
+            if index == 0 and not args.walk and not args.ending:
+                command.append(f"--guest-results={guest_results}")
             if args.ui: command.extend(["--ui", f"--screenshots={reports}"])
             if args.soak: command.append("--soak")
             if args.slow_load: command.append("--slow-load")
@@ -90,7 +92,10 @@ def main():
         # connection/reconnect assertions. Renderless transport keeps its limit.
         startup_budget = 420 if args.ui and args.renderer else 180 if args.ui or args.walk else 45
         deadline = time.monotonic() + args.seconds * 2 + startup_budget
-        for process, output, path in children:
+        for index in [*range(1, len(children)), 0]:
+            process, output, path = children[index]
+            if index == 0:
+                guest_results.touch()
             code = process.wait(timeout=max(1, deadline - time.monotonic()))
             output.flush()
             text = path.read_text()
@@ -104,7 +109,7 @@ def main():
             summary = json.loads(match[1])
             if summary["failures"]:
                 raise RuntimeError(f"{path.name}: {summary}")
-            summaries.append(summary)
+            summaries[index] = summary
         (reports / "summary.json").write_text(json.dumps(summaries, indent=2) + "\n")
         (reports / "impairment.json").write_text(json.dumps([{"forwarded": p.forwarded, "dropped": p.dropped, "duplicated": p.duplicated} for p in proxies], indent=2) + "\n")
         print(f"LAN ENet: {args.players} independent processes, {sum(s['checks'] for s in summaries)} checks passed")
@@ -120,6 +125,7 @@ def main():
             output.close()
         for proxy in proxies:
             proxy.close()
+        guest_results.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

@@ -65,7 +65,7 @@ const LIST := {
 	"n.torch": ["n", "照亮", "光打过去的时候，它往后退了一步。"],
 	"e.end_car": ["e", "《闸门》", "车灯照亮了北门。后视镜里，教学楼一层层暗下去。"],
 	"e.firstcar": ["e", "一次就对", "引擎一下就着了。"],
-	"e.end_face": ["e", "《白名单》", "闸机亮了一下。我的名字留在了最后一行。"],
+	"e.end_face": ["e", "西小门放行", "读卡器响了一声，我走出了西小门。"],
 	"e.day1": ["e", "当天离校", "那一天还没结束，我就已经不在学校里了。"],
 	"e.hard": ["e", "梦魇", "没有惊醒，也没有第二次。我还是出来了。"],
 	"e.attendance": ["e", "全勤", "两次点名，我都在。"],
@@ -393,7 +393,7 @@ func _test(id: String, f: Dictionary) -> bool:
 					bad += 1
 			return ok >= 2 and bad == 0
 		"e.whitelist":
-			return kind == "ending" and f["id"] == "face" and face_wrong == 0
+			return kind == "ending" and f["id"] == "face" and not f.get("paper_exit", false) and face_wrong == 0
 		"e.explore":
 			if kind != "room":
 				return false

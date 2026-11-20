@@ -168,6 +168,8 @@ func _test_score_rules() -> void:
 	sc.fact({"kind": "inspection", "compliant": true})
 	sc.fact({"kind": "inspection", "compliant": false})
 	sc.fact({"kind": "inspection", "compliant": false, "excused": true})
+	sc.fact({"kind": "inspection", "compliant": false, "result": "proxy"})
+	check(logged.back() == ["inspection", "学生会检查 · 空座替我答到", 0], "a borrowed answer is logged in its own words without the absence penalty")
 	var pts := []
 	for e: Dictionary in sc.ledger.slice(2):
 		pts.append(int(e["pts"]))

@@ -178,6 +178,9 @@ func fact(f: Dictionary) -> void:
 			else:
 				_log("exam", "撞响了钟楼的钟")
 		"inspection":
+			if f.get("result") == "proxy":
+				_log("inspection", "学生会检查 · 空座替我答到")
+				return
 			if bool(f.get("excused", false)) or f.get("result") == "excused":
 				return
 			_add("校规与巡察", "学生会检查 · 在教室" if bool(f["compliant"]) else "学生会检查 · 缺席", int(P["inspectOk"]) if bool(f["compliant"]) else int(P["inspectAbsent"]), "inspection")

@@ -64,6 +64,7 @@ var an: Dictionary = {}
 var hist: Array = []
 var seen: Dictionary = {}
 var pre_told := false
+var rain_heard := -1
 var cola_pending: Variant = null
 var cola_seq := 0
 var cola_done := 0
@@ -99,6 +100,7 @@ func reset() -> void:
 	hist = []
 	seen = {}
 	pre_told = false
+	rain_heard = -1
 	cola_pending = null
 	cola_seq = 0
 	cola_done = 0
@@ -119,11 +121,12 @@ func begin_run(diff: String) -> void:
 
 
 func capture() -> Dictionary:
-	return {"an": an.duplicate(true), "hist": hist.duplicate(), "seen": seen.duplicate(), "pre_told": pre_told, "cola_pending": cola_pending,
+	return {"an": an.duplicate(true), "hist": hist.duplicate(), "seen": seen.duplicate(), "pre_told": pre_told, "rain_heard": rain_heard, "cola_pending": cola_pending,
 		"cola_seq": cola_seq, "cola_done": cola_done, "cola_wait": cola_wait, "clues": clues.duplicate(), "traces": traces.duplicate(true), "rng_seed": str(_rng.seed), "rng_state": str(_rng.state)}
 
 
 func validate(data: Dictionary) -> String:
+	if not SaveSchema.is_integer(data.get("rain_heard", -1), -1, 2147483647): return "雨声记录无效"
 	var a: Variant = data.get("an")
 	if not a is Dictionary or not String(a.get("id", "")) in IDS + [""] or not a.get("active") is bool or not a.get("data") is Dictionary:
 		return "异象状态无效"
@@ -151,6 +154,7 @@ func restore(data: Dictionary) -> void:
 	hist = data["hist"].duplicate()
 	seen = data["seen"].duplicate()
 	pre_told = bool(data.get("pre_told", false))
+	rain_heard = int(data.get("rain_heard", -1))
 	traces = (data.get("traces", []) as Array).duplicate(true)
 	cola_pending = data.get("cola_pending")
 	cola_seq = int(data.get("cola_seq", 0))
@@ -221,6 +225,20 @@ func warning_seen(visible_now: bool) -> void:
 
 func warning_visible() -> bool:
 	return not bool(an["active"]) and an["pre"] != "" and DEFS[an["pre"]].get("warn", false) and _allowed(String(an["pre"])) and float(an["next"]) > 0.0
+
+
+## The outdoor omen uses the shared weather clock; having heard it is personal.
+func rain_cycle() -> int:
+	if an["active"]: return int(an["next0"]) if an["id"] == "rain" else -1
+	if an["pre"] == "rain" and float(an["next"]) <= FORECAST_LEAD and warning_visible(): return int(an["next0"])
+	return -1
+
+
+func hear_rain(cycle: int, world: String, falling: bool) -> String:
+	if world != "out" or cycle < 0 or rain_heard == cycle: return ""
+	rain_heard = cycle
+	if falling: return "雨已经落下来了，连廊底下的砖还是干的。去有顶的地方，等这场雨过去。"
+	return "天还没下雨，露天的地砖却一块块湿了。只有屋檐底下是干的。先去连廊或车棚。"
 
 
 # ---- place predicates (anomaly.js helpers) ----
@@ -1297,7 +1315,7 @@ func tick(dt: float) -> void:
 			return
 		if _cola_drive(dt):
 			return
-		if bool(_c.get("inspection_quiet", false)):
+		if bool(_c.get("inspection_quiet", false)) or bool(_c.get("reading_counterfoil", false)):
 			return
 		an["next"] = float(an["next"]) - dt
 		# 2026-11-14 scare-overlap audit (docs/plan/中式与西式恐怖及吓人手法.md, item 1): while the patroller

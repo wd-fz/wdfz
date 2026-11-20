@@ -8,6 +8,17 @@ import tempfile
 import time
 
 
+def stop(process):
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
 def main():
     if len(sys.argv) < 2:
         raise SystemExit('Usage: python tools/ci/with_wayland.py COMMAND [ARG ...]')
@@ -29,14 +40,24 @@ def main():
                     if compositor.poll() is not None or time.monotonic() > deadline:
                         raise RuntimeError('Native Wayland compositor failed; see build/reports/wayland/weston.log')
                     time.sleep(.1)
-                return subprocess.call(sys.argv[1:], env=env)
-            finally:
-                compositor.terminate()
+                child = subprocess.Popen(sys.argv[1:], env=env)
                 try:
-                    compositor.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    compositor.kill()
-                    compositor.wait()
+                    while True:
+                        try:
+                            return child.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            if compositor.poll() is not None:
+                                raise RuntimeError('Native Wayland compositor exited; see build/reports/wayland/weston.log')
+                            # Godot 4.6.3 can consume its own shutdown roundtrip while
+                            # its Wayland Events thread is still blocked in poll(). An
+                            # unchanged Xvfb keymap makes Weston notify every keyboard
+                            # resource, even after the last game surface is destroyed.
+                            subprocess.run(['setxkbmap', '-layout', 'us'], env=env,
+                                           stdout=log, stderr=subprocess.STDOUT, check=True, timeout=5)
+                finally:
+                    stop(child)
+            finally:
+                stop(compositor)
 
 
 if __name__ == '__main__':

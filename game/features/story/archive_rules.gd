@@ -68,6 +68,7 @@ func real(entry: Dictionary, ends: Dictionary, opening: bool) -> bool:
 	var id: String = entry["id"]
 	if entry.has("cut"):
 		if entry.get("seen",false): return bool(state["seen"].get(id,false))
+		if entry.get("end") == "face" and ends.has("facePaper"): return bool(ends.get("faceElectronic", false))
 		return bool(ends.get(entry["end"],false)) if entry.has("end") else opening
 	return bool(state["unlocked"].get(id,false))
 

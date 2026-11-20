@@ -522,7 +522,8 @@ func _guard() -> void:
 	if borrowed:
 		line = "我抽出底联。签名最后一笔也是歪的，跟我写的一样。同化可以自然回落了。"
 	elif not first:
-		line = "签收底联还在这里。"
+		line = "我核过登记簿，收好签着我名字的那联。"
+	line += " 底联右下角盖着「西小门核验」。"
 	if _has("key") or _c.get("hotwire", false):
 		line += " 登记写着「车库西侧，第 %d 排」。" % int(_c.get("car_row", 1))
 	else:
@@ -535,7 +536,7 @@ func _guard() -> void:
 
 ## investigation.js parking: the register and the guard's note (the same two records every time).
 func _parking_records() -> void:
-	_record("parking", "停车登记：可用车辆在车库靠西侧，第 %d 排。记录的签名与教室停车单相同，离校栏却始终空着。" % int(_c.get("car_row", 1)), "事实", "保安岗 · 停车登记")
+	_record("parking", "停车登记：可用车辆在车库靠西侧，第 %d 排。签名旁边的离校栏空着，底联盖着「西小门核验」。" % int(_c.get("car_row", 1)), "事实", "保安岗 · 停车登记")
 	_record("garageSafety", "车道上的黑影会靠近。手电持续照射能暂时逼退它；硬币可把它引开。拉车门前，先确认它离开车辆。", "事实", "保安岗 · 值班便签")
 
 

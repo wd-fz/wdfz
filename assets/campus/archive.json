@@ -345,6 +345,16 @@
       "stage": "lift_dream",
       "secret": 1,
       "no": 12
+    },
+    {
+      "id": "end:facePaper",
+      "cut": "face",
+      "end": "facePaper",
+      "n": "《取回名字》",
+      "d": "闸机盖章，白线那边有车声。身后再次叫名，这次可以让它空着。",
+      "stage": "out",
+      "secret": 1,
+      "no": 13
     }
   ],
   "outdoor": {

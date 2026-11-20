@@ -404,7 +404,7 @@ func pause() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	app.ui.set_mode("pause")
 	var mode := "远程合作" if _remote_mode else "局域网合作"
-	app.ui.pause_screen.set_context(mode + "\n队友仍在游戏中，可在「队伍」里发起全队暂停。", true)
+	app.ui.pause_screen.set_context(app.investigation_brief() + "\n" + mode + " · 队友仍在游戏中，可在「队伍」里发起全队暂停。", true)
 
 
 func resume() -> void:
@@ -553,6 +553,9 @@ func _snapshot(data: Dictionary) -> void:
 		app.session.clock.restore(source["clock"])
 		app.session.character_id = StudentCast.resolve(source.get("character"))
 	current = data
+	if is_instance_valid(app._mates_nodes) and not app._mates_nodes._echoes.is_empty():
+		for person: Dictionary in data.get("team", {}).values():
+			if person.get("seated", false): app._mates_nodes.clear_seat_witness(person.get("seat_id", ""))
 	if network.room.phase == "ended" and not _recorded:
 		_recorded = true
 		var error := network.store.result(network.room.public_state(), network.local_id, data["life"])
@@ -618,8 +621,9 @@ func _snapshot(data: Dictionary) -> void:
 		_watch.hide()
 		app.ui.hide_death()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		var card := RoutesModule.card(app.story().ended)
-		app.ui.show_ending(String(card.get("title", card.get("t", "合作通关"))), "合作通关", card.get("lines", card.get("l", [])), "本局为局域网合作，个人记录与单人分开。", PackedStringArray(), "", app.story().ended)
+		var gate := "paper" if data.get("qualified", {}).get("paper", false) else "electronic"
+		var card := RoutesModule.card(app.story().ended, app.school().seat_card, gate)
+		app.ui.show_ending(String(card.get("title", card.get("t", "合作通关"))), "合作通关", card.get("lines", card.get("l", [])), "本局为局域网合作，个人记录与单人分开。", PackedStringArray(), "", card.get("memory", app.story().ended))
 	for event: Dictionary in data.get("events", []):
 		if int(event["seq"]) <= _seen_event: continue
 		_seen_event = int(event["seq"])
@@ -715,6 +719,15 @@ func loaded() -> void:
 
 func _event(e: Dictionary) -> void:
 	match e["kind"]:
+		"seat_witness":
+			if app.session.world_id != "teach1" or app.story().over(): return
+			var left := minf(6.0, float(e["expires"]) - app.school().active_seconds)
+			if left <= 0: return
+			var room: Dictionary = CampusData.rooms()["teach1"]
+			app._show_classmates(app.classmates(), room, CampusGeometry.to_world(room, app.player.position.x, app.player.position.z), 0)
+			if is_instance_valid(app._mates_nodes):
+				app._mates_nodes.show_seat_witness(e["seat"], e["person"], Vector2(e["x"], e["y"]), left)
+				app.audio.play("dread.call", {"k": .5, "caption": "%s的座位上传来一声「到」" % StudentCast.PEOPLE[e["person"]]["name"]})
 		"invert", "invert_end", "shadow_show", "shadow_hide":
 			_sync_maze_fx()
 			if is_instance_valid(_maze_fx): _maze_fx.event(e)
