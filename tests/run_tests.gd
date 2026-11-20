@@ -211,6 +211,7 @@ func _run_features() -> void:
 	await archive.test_app()
 	var interface := preload("res://tests/suites/interface.gd").new(self)
 	print("CASE: interface.test_theme_and_clock")
+	interface.test_chinese_fonts()
 	await interface.test_theme_and_clock()
 	print("CASE: interface.test_records_layout")
 	await interface.test_records_layout()
@@ -434,6 +435,7 @@ func _run_features() -> void:
 	geometry.test_instances()
 	print("CASE: geometry.test_campus_joins")
 	await geometry.test_campus_joins()
+	await geometry.test_stair_entrances()
 	# Keep the original execution order; splitting suites must not drop coverage.
 	print("CASE: framework._test_clock")
 	framework._test_clock()
@@ -445,6 +447,7 @@ func _run_features() -> void:
 	await framework._test_app()
 	print("CASE: campus._test_campus_rules")
 	campus._test_campus_rules()
+	campus.test_action_targets()
 	print("CASE: campus._test_elevator_rules")
 	campus._test_elevator_rules()
 	print("CASE: school._test_school_rules")

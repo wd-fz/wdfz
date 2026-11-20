@@ -1,5 +1,25 @@
 extends "res://tests/support/test_suite.gd"
 
+func test_chinese_fonts() -> void:
+	var bundled: FontFile = preload("res://content/fonts/campus-sc.res")
+	var server := TextServerManager.get_primary_interface()
+	var sample := "巡察者在教学楼钟楼碰到闸机，攥紧钥匙。"
+	var face := bundled.get_rids()[0]
+	for ch in sample:
+		check(server.font_has_char(face, ch.unicode_at(0)), "bundled glyph for " + ch)
+	var cut := CutScreen.new()
+	cut.setup("log", 320, 120)
+	var fonts: Array[Font] = [GameUI.BASE_THEME.default_font, GameUI.BASE_THEME.get_font("font", "HeadingLabel"),
+		ThemeDB.get_default_theme().get_font("font", "Label3D"), cut._mono, cut._bold_mono, cut._bold]
+	for font in fonts:
+		check(font == bundled or font.fallbacks.has(bundled), "HUD, headings, unthemed 3D labels and cutscenes have a packaged Chinese face")
+		var line := TextLine.new()
+		line.add_string(sample, font, 24)
+		var glyphs := server.shaped_text_get_glyphs(line.get_rid())
+		check(glyphs.size() == sample.length() and glyphs.all(func(g: Dictionary) -> bool: return g.font_rid.is_valid() and g.index != 0), "every Chinese glyph shapes with a real face")
+	cut.free()
+
+
 func test_theme_and_clock() -> void:
 	var ui: GameUI = preload("res://game/presentation/ui/game_ui.tscn").instantiate()
 	root.add_child(ui)

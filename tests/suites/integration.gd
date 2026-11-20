@@ -1023,6 +1023,14 @@ func _test_spiral_walk(app: GameApp) -> void:
 		points.append(c + Vector2(cos(a), sin(a)) * rm)
 	await _walk(app, points, 120)
 	check(app.player.position.y > float(sp["topH"]) - 0.2, "walking the spiral two turns reaches the top ring (y=%.2f)" % app.player.position.y)
+	var previous_time := app.school().tsec
+	app.school().tsec = 700.0 # Inside the fourth period, independent of the climb duration.
+	check(app.campus().hint("bell1", app.player.capture_pose()) == "撞钟", "the bell is within reach after a physical climb")
+	app.player.request_interaction()
+	await _frames(2)
+	check(app.school().exam and app.school().exam_cur == 690 and app.school().exam_tot > 0, "the normal use button rings the bell and the fourth-period exam advances")
+	app.school().exam_end()
+	app.school().tsec = previous_time
 	app.travel("bell1", {"position": [c.x + cos(th0 + 2.0) * 3.4, 0.05, c.y + sin(th0 + 2.0) * 3.4], "yaw": 0.0, "pitch": 0.0}, false)
 	await _frames(3)
 	await _walk(app, [c + Vector2(cos(th0 + 2.0), sin(th0 + 2.0)) * rm], 90)

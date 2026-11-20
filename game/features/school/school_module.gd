@@ -165,7 +165,11 @@ func restore(data: Dictionary) -> void:
 	danger_seen = (data.get("danger_seen", {}) as Dictionary).duplicate() if data.get("danger_seen") is Dictionary else {}
 	exam = bool(data.get("exam", false))
 	tt_hold_until = maxf(0.0, float(data.get("tt_hold_until", 0.0)))
-	exam_cur = data.get("exam_cur") if data.get("exam_cur") is String else null
+	# Web and JSON store the period start as a number; earlier native saves accepted a string.
+	var period: Variant = data.get("exam_cur")
+	exam_cur = null
+	if period is int or period is float or (period is String and period.is_valid_int()):
+		exam_cur = int(period)
 	exam_seat = maxf(0.0, float(data.get("exam_seat", 0.0)))
 	exam_tot = maxf(0.0, float(data.get("exam_tot", 0.0)))
 	leave_until = maxf(0.0, float(data.get("leave_until", 0.0)))
@@ -604,7 +608,7 @@ func _exam_tick(dt: float, world_id: String, w: Vector2) -> void:
 		_say("我：熄灯了。今天的考试结束了。")
 		return
 	var p := SchoolClock.period_at(tsec)
-	var cur: Variant = String(p[0]) if p[3] == "教室" else null
+	var cur: Variant = p[0] if p[3] == "教室" else null
 	if cur != exam_cur:
 		if exam_cur != null and exam_tot > 4.0:
 			var passed := exam_seat / exam_tot >= 0.7

@@ -116,6 +116,51 @@ func test_campus_joins() -> void:
 	await _frames()
 
 
+## The old geometry had collision but daylight came through laterally at the threshold.
+func test_stair_entrances() -> void:
+	var space := CampusSpace.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
+	for stair: Dictionary in space.campus.stair_layout:
+		var world := CampusWorld.new()
+		world.scene_id = stair.id
+		world.space = space
+		world.resident = true
+		root.add_child(world)
+		await _frames(2)
+		var lining := world.get_node_or_null("Model/StairEntranceLining") as MeshInstance3D
+		check(lining != null, "the resident shaft has a visible lining: " + String(stair.id))
+		if lining != null:
+			var mesh := lining.mesh.generate_triangle_mesh()
+			for level in stair.rooms.size():
+				var eye := Vector3(0, level * float(stair.rise) + 1.58, -2.0)
+				for side: float in [-1.0, 1.0]:
+					var outside := eye + Vector3.RIGHT * 1.4 * side
+					for ray: Array in [[eye, outside], [outside, eye]]:
+						var physics := PhysicsRayQueryParameters3D.create(ray[0], ray[1], 1)
+						var solid := not world.get_world_3d().direct_space_state.intersect_ray(physics).is_empty()
+						check(solid and not mesh.intersect_segment(ray[0], ray[1]).is_empty(), "%s %s side %s has a solid, visible return" % [stair.id, level, side])
+				var start := Vector3(0, eye.y, -3.2)
+				var end := Vector3(0, eye.y, -0.8)
+				check(mesh.intersect_segment(start, end).is_empty() and world.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(start, end, 1)).is_empty(), "the centre passage stays clear at %s %s" % [stair.id, level])
+		world.queue_free()
+		await _frames(2)
+	var initial_tier := CampusData.tier
+	for tier: int in CampusData.tiers_available():
+		CampusData.tier = tier
+		var floor_model := CampusWorld.build_visual("teach1", tier)
+		var lining := floor_model.get_node_or_null("StairEntranceLining") as MeshInstance3D
+		check(lining != null, "streamed teaching floor has jambs at tier %d" % tier)
+		if lining != null:
+			var mesh := lining.mesh.generate_triangle_mesh()
+			for door: Dictionary in CampusData.rules().stair_doorways("teach1"):
+				var mid: Vector2 = door.center - door.normal * .25
+				var a := Vector3(mid.x, 1.58, mid.y)
+				var lateral := Vector3(door.lateral.x, 0, door.lateral.y)
+				for side: float in [-1.0, 1.0]:
+					check(not mesh.intersect_segment(a, a + lateral * side * 1.4).is_empty(), "both teaching entrances have visible floor-side jambs at tier %d" % tier)
+		floor_model.free()
+	CampusData.tier = initial_tier
+
+
 func _mesh_hit(node: Node3D, from: Vector3, to: Vector3) -> bool:
 	for child: Node in node.find_children("*", "MeshInstance3D", true, false):
 		var mesh := child as MeshInstance3D

@@ -406,6 +406,7 @@ static func build_visual(id: String, quality: int) -> Node3D:
 	if not ResourceLoader.exists(path):
 		return null
 	var model := (load(path) as PackedScene).instantiate() as Node3D
+	StairLining.add_to_model(model, id)
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
 			_to_multimesh(mesh)
@@ -670,7 +671,8 @@ func _build_model() -> void:
 		var cut := space.cabin_cut(scene_id)
 		if cut.has_area(): CampusShell.carve_box(model, AABB(Vector3(cut.position.x,-.4,cut.position.y),Vector3(cut.size.x,space.floor_height(scene_id)+.5,cut.size.y)))
 	if resident and layout.get("flags", {}).get("stairwell", false):
-		CampusPreview.clip(model, Plane(Vector3.BACK, -2.8))
+		CampusPreview.clip(model, Plane(Vector3.BACK, StairLining.THRESHOLD))
+	StairLining.add_to_model(model, scene_id)
 	if resident and scene_id == "teach6":
 		CampusShell.carve_box(model, AABB(Vector3(-2.85,0,7.5),Vector3(1.7,4,3)))
 	for holder: Node in model.get_children():
@@ -1333,7 +1335,7 @@ func _build_stairwell(body: StaticBody3D, surfaces: Array[Dictionary]) -> void:
 		Rect2(-3.2, -1.2, 1.0, 8.4), Rect2(2.2, -1.2, 1.0, 8.4),          # outer side walls
 		Rect2(-3.2, 7.2, 6.4, 1.0),                                        # back wall
 		Rect2(-3.2, -2.2, 2.35, 1.0), Rect2(0.85, -2.2, 2.35, 1.0),       # front wall beside the corridor
-		Rect2(-1.85, -4.5, 1.0, 3.3), Rect2(0.85, -4.5, 1.0, 3.3),        # corridor walls
+		Rect2(-1.85, -4.5, 1.0, 1.7), Rect2(0.85, -4.5, 1.0, 1.7),        # legacy annex up to the threshold
 		Rect2(-1.85, -4.5, 3.7, 1.0),                                      # corridor end
 		Rect2(-0.3, 0.8, 0.6, 4.8),                                        # slot between the two flights
 	]
@@ -1342,7 +1344,11 @@ func _build_stairwell(body: StaticBody3D, surfaces: Array[Dictionary]) -> void:
 		# the neighbouring bridge in a shared 3D world; use the visible shell.
 		walls = [Rect2(-2.32,-1.2,.12,8.4),Rect2(2.2,-1.2,.12,8.4),
 			Rect2(-2.32,7.2,4.64,.12),Rect2(-2.32,-1.32,1.47,.12),Rect2(.85,-1.32,1.47,.12),
-			Rect2(-.97,-2.8,.12,1.6),Rect2(.85,-2.8,.12,1.6),Rect2(-.3,.8,.6,4.8)]
+			Rect2(-.3,.8,.6,4.8)]
+	var stair := CampusPortals.stair_config(CampusData.campus().stair_layout, scene_id)
+	for panel: AABB in StairLining.shaft_panels(stair):
+		var rect := Rect2(panel.position.x, panel.position.z, panel.size.x, panel.size.z)
+		_add_box(body, rect, panel.position.y, panel.end.y, "stairwell")
 	for r: Rect2 in walls:
 		_add_box(body, r, y0, y1, "stairwell")
 	# Under the first upper flight (level 0, x 0.3..2.2) there is no surface at ground height.

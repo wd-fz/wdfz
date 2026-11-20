@@ -22,6 +22,18 @@ static func gate_center(campus: Dictionary, key: String) -> Vector2:
 	return Vector2(g.get("x", 0), g.get("y", 0)) * 2.0
 
 
+## spiral.js bellReach: the central bell is usable from the top platform within 2.1 m.
+## A height tolerance admits the native capsule's floor margin, but not the last flight.
+static func bell_reachable(spiral: Dictionary, feet: Vector3) -> bool:
+	if absf(feet.y - float(spiral.topH)) > 0.15:
+		return false
+	var offset := Vector2(feet.x - float(spiral.cx), feet.z - float(spiral.cz))
+	if offset.length() < float(spiral.rIn) or offset.length() >= 2.1:
+		return false
+	var arc := fposmod(offset.angle() - float(spiral.th0) - float(spiral.amax), TAU)
+	return arc <= TAU - float(spiral.hole) or is_equal_approx(arc, TAU)
+
+
 static func yaw_from_ang(ang: float) -> float:
 	return wrapf(-ang - PI * 0.5, -PI, PI)
 
@@ -105,7 +117,7 @@ static func tile_visible(room: Dictionary, me: Vector2, hit: Dictionary, open_do
 
 
 ## interact.js nearWorld (indoor branch): facing cells first, nearer sideways/behind cells only.
-static func near_tile(room: Dictionary, me: Vector2, ang: float, radius: float, open_doors: Dictionary) -> Dictionary:
+static func near_tile(room: Dictionary, me: Vector2, ang: float, radius: float, open_doors: Dictionary, accepts: Callable = Callable()) -> Dictionary:
 	var hits: Array[Dictionary] = []
 	var grid: Array = room["grid"]
 	# Only targets within reach participate. Keep row-major order for equal scores.
@@ -131,17 +143,17 @@ static func near_tile(room: Dictionary, me: Vector2, ang: float, radius: float, 
 			hits.append({"ch": ch, "c": c, "r": r, "w": w, "d": d, "score": off * 32.0 + d})
 	hits.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["score"] < b["score"])
 	for hit: Dictionary in hits:
-		if tile_visible(room, me, hit, open_doors):
+		if (not accepts.is_valid() or accepts.call(hit)) and tile_visible(room, me, hit, open_doors):
 			return hit
 	return {}
 
 
 ## interact.js nearWorld (outdoor branch): nearest building door within 70 units.
-static func near_building(outside: Dictionary, me: Vector2) -> Dictionary:
+static func near_building(outside: Dictionary, me: Vector2, entries: Dictionary) -> Dictionary:
 	var best := {}
 	var best_d := 1e9
 	for o: Dictionary in outside["objects"]:
-		if o["k"] != "roof" or o.get("door_world") == null:
+		if o["k"] != "roof" or o.get("door_world") == null or not entries.has(o["id"]):
 			continue
 		var dw := Vector2(o["door_world"]["x"], o["door_world"]["y"])
 		var d := me.distance_to(dw)

@@ -9,18 +9,18 @@ extends FeatureModule
 ## results are returned as plain data and the app performs world switches.
 
 const STATE_VERSION := 1
-## interact.js tryInteract: outdoor E entries. Seamless hosts answer "门开着" instead.
+## Outdoor destinations from interact.js. Continuous entrances are removed when the layout is loaded.
 const ENTRY_ROOMS := {
 	"teach": "teach1", "admin": "admin1", "lab": "lab1", "canteen": "canteen1",
 	"dormN": "dorm1", "dormS": "dorm4", "garage": "garage1", "garw": "garage1",
 	"trash": "trash1", "guard": "guard1", "gear": "gear1", "bell": "bell1",
 }
 const OPEN_LINES := ["我：门开了。", "我：门开了。合页的声音拖得很长。", "我：门开了。里面比外面冷。"]
-## interact.js TILE_HINT (static texts); tiles without an entry are searched ('翻找').
-const TILE_HINT := {"H": "躲进柜子", "Q": "看服务器终端", "S": "沿楼梯行走", "j": "打开门", "u": "翻看日记", "c": "上车",
+## Static prompts for tiles with an action; navigation markers are filtered before picking.
+const TILE_HINT := {"H": "躲进柜子", "Q": "看服务器终端", "S": "从楼梯离开", "j": "打开门", "u": "翻看日记",
 	"X": "钻进去", "Z": "放开单摆", "C": "开离心机", "N": "看显微镜", "Y": "转地球仪", "p": "弹琴", "U": "撞钟", "A": "看供桌",
 	"x": "看挂图", "B": "隔间", "G": "隔间", "w": "洗把脸", "b": "床", "n": "用电脑", "M": "售货机", "k": "看柜台", "t": "看餐桌",
-	"V": "看车牌", "D": "使用终端", "K": "看实验台", "L": ""}
+	"V": "看车牌", "D": "使用终端", "K": "看实验台"}
 const SEARCHABLE := "dfRq"
 
 signal door_changed(key: String, open: bool)
@@ -30,6 +30,8 @@ var _outside: Dictionary = {}
 var _campus: Dictionary = {}
 var _open_doors: Dictionary = {}
 var _line := 0
+var _walk_stair_rooms := {}
+var _entry_actions := {}
 ## Plate and tried state for the 'V' hint (the garage module).
 var car_hint: Callable
 ## Facility hints and the outdoor rest (the facilities module).
@@ -49,6 +51,12 @@ func _init(rooms: Dictionary = {}, outside: Dictionary = {}, campus: Dictionary 
 	_rooms = rooms
 	_outside = outside
 	_campus = campus
+	for stair: Dictionary in _stair_layout():
+		for id: String in stair["rooms"]:
+			_walk_stair_rooms[id] = true
+	for host: String in ENTRY_ROOMS:
+		if host != "garw" and not _continuous_host(host):
+			_entry_actions[host] = ENTRY_ROOMS[host]
 
 
 func module_id() -> StringName:
@@ -294,28 +302,51 @@ func gate_at(w: Vector2) -> String:
 	return ""
 
 
-## Prompt shown for the current spot (subset of interact.js interactHint that is ported).
+## One target for the HUD, the use button and co-op reservations. A walk-through
+## doorway or a decorative prop must never mask an actionable tile behind it.
+func interaction_hit(world_id: String, pose: Dictionary) -> Dictionary:
+	if not _rooms.has(world_id) or is_stairwell(world_id):
+		return {}
+	var room: Dictionary = _rooms[world_id]
+	var p: Array = pose["position"]
+	var me := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
+	var spiral: Dictionary = _campus.get("spiral", {})
+	if world_id == spiral.get("room") and float(p[1]) > 0.15:
+		if CampusGeometry.bell_reachable(spiral, Vector3(p[0], p[1], p[2])):
+			var bell := CampusGeometry.to_world(room, spiral.cx, spiral.cz)
+			var col := floori((bell.x - float(room.ox)) / float(room.tw))
+			var row := floori((bell.y - float(room.oy)) / float(room.th))
+			return {"ch": "U", "c": col, "r": row, "w": bell}
+		return {} # The altar and the exit are on the ground floor.
+	var ang := CampusGeometry.ang_from_yaw(float(pose["yaw"]))
+	return CampusGeometry.near_tile(room, me, ang, CampusGeometry.NEAR_ROOM, _open_doors, _tile_actionable.bind(room))
+
+
+func _tile_actionable(hit: Dictionary, room: Dictionary) -> bool:
+	var ch := String(hit["ch"])
+	match ch:
+		"S": return not _walk_stair_rooms.has(room.id) and room.get("exit_world") != null
+		"O": return not _exit_is_open(room, hit.w) and (room.get("exit_world") != null or int(room.get("floor", 0)) > 1)
+	return ch in ["=", "J", "P", "T"] or SEARCHABLE.contains(ch) or TILE_HINT.has(ch)
+
+
+## Prompt shown for the current spot.
 func hint(world_id: String, pose: Dictionary) -> String:
 	var p: Array = pose["position"]
-	var ang := CampusGeometry.ang_from_yaw(float(pose["yaw"]))
 	if world_id == "out":
 		var here_w := CampusGeometry.to_world(null, float(p[0]), float(p[2]))
-		var nb := CampusGeometry.near_building(_outside, here_w)
+		var nb := CampusGeometry.near_building(_outside, here_w, _entry_actions)
 		if nb.is_empty():
 			var act := String(rest_out.call(here_w)) if rest_out.is_valid() else ""
 			if act != "":
 				return FacilitiesModule.rest_hint(act)
 			var gate := gate_at(here_w)
 			return RoutesModule.gate_name(gate) if gate != "" else ""
-		if _continuous_host(nb["obj"]["id"]):
-			return ""
-		return "沿楼梯下到车库" if nb["obj"]["id"] == "garw" else "进入 " + String(nb["obj"]["name"])
-	if is_stairwell(world_id):
-		return ""
-	var r: Dictionary = _rooms[world_id]
-	var hit := CampusGeometry.near_tile(r, CampusGeometry.to_world(r, float(p[0]), float(p[2])), ang, CampusGeometry.NEAR_ROOM, _open_doors)
+		return "进入 " + String(nb["obj"]["name"])
+	var hit := interaction_hit(world_id, pose)
 	if hit.is_empty():
 		return ""
+	var r: Dictionary = _rooms[world_id]
 	var ch := String(hit["ch"])
 	if ch in ["P", "d"] and seat_query.is_valid():
 		var seat: Dictionary = seat_query.call(world_id, int(hit["c"]), int(hit["r"]))
@@ -347,12 +378,12 @@ func hint(world_id: String, pose: Dictionary) -> String:
 		"k":
 			return "查看值班台" if r.get("host") == "guard" else "看柜台"
 		"O":
-			return "" if _exit_is_open(r, hit["w"]) else "出去"
+			return "查看封住的窗户" if int(r.get("floor", 0)) > 1 else "出去"
 		"V":
 			return car_hint.call(int(hit["c"]), int(hit["r"])) if car_hint.is_valid() else "看车牌"
-	if SEARCHABLE.contains(ch) or not TILE_HINT.has(ch):
+	if SEARCHABLE.contains(ch):
 		return "翻找"
-	return String(TILE_HINT[ch])
+	return String(TILE_HINT.get(ch, ""))
 
 
 func _exit_is_open(r: Dictionary, w: Vector2) -> bool:
@@ -370,7 +401,7 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 	var ang := CampusGeometry.ang_from_yaw(float(pose["yaw"]))
 	if world_id == "out":
 		var me := CampusGeometry.to_world(null, float(p[0]), float(p[2]))
-		var nb := CampusGeometry.near_building(_outside, me)
+		var nb := CampusGeometry.near_building(_outside, me, _entry_actions)
 		if nb.is_empty():
 			var act := String(rest_out.call(me)) if rest_out.is_valid() else ""
 			if act != "":
@@ -378,23 +409,14 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 			var gate := gate_at(me)
 			if gate != "":
 				return {"notice": "", "gate": gate}
-			return {"notice": "我：这里摸不到什么。"}
-		var id := String(nb["obj"]["id"])
-		if id == "garw":
-			return {"notice": "我：入口就在前面，沿台阶走下去。"}
-		if ENTRY_ROOMS.has(id) and _continuous_host(id):
-			return {"notice": "我：门开着，直接走进去就行。"}
-		if ENTRY_ROOMS.has(id):
-			var target := String(ENTRY_ROOMS[id])
-			return {"notice": String(_rooms[target]["name"]), "travel": {"world": target, "pose": default_spawn(target)}}
-		return {"notice": ""}
-	if is_stairwell(world_id):
+			return {"notice": ""}
+		var target := String(_entry_actions[nb["obj"]["id"]])
+		return {"notice": String(_rooms[target]["name"]), "travel": {"world": target, "pose": default_spawn(target)}}
+	var hit := interaction_hit(world_id, pose)
+	if hit.is_empty():
 		return {"notice": ""}
 	var r: Dictionary = _rooms[world_id]
 	var me_in := CampusGeometry.to_world(r, float(p[0]), float(p[2]))
-	var hit := CampusGeometry.near_tile(r, me_in, ang, CampusGeometry.NEAR_ROOM, _open_doors)
-	if hit.is_empty():
-		return {"notice": "我：这里什么都没有。"}
 	if hit["ch"] in ["P", "d"] and seat_query.is_valid():
 		var seat: Dictionary = seat_query.call(world_id, int(hit["c"]), int(hit["r"]))
 		if not seat.is_empty(): return {"notice": "这个座位已经有人了。"} if seat["occupied"] else {"seat": [hit["c"], hit["r"]]}
@@ -402,8 +424,6 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 		"=":
 			return _toggle_door(r, hit, me_in)
 		"O":
-			if _exit_is_open(r, hit["w"]):
-				return {"notice": "我：门开着，直接走出去就行。"}
 			var floor_value: Variant = r.get("floor")
 			if floor_value != null and int(floor_value) > 1:
 				return {"notice": "我：这是%d楼。这边的窗子封死了。" % int(floor_value)}
@@ -431,17 +451,13 @@ func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
 				return {"notice": "我：他坐在这儿。我不能翻他的抽屉。"}
 			return {"notice": "", "search": [hit["c"], hit["r"]]}
 		"S":
-			# interact.js stairGo: shafts are walked; a room without one (canteen) has its stair as a way out.
-			for st: Dictionary in _stair_layout():
-				if (st["rooms"] as Array).has(world_id):
-					return {"notice": "沿台阶走到下一层，门外就是走廊。"}
 			var ex: Variant = r.get("exit_world")
 			if ex == null:
 				return {"notice": ""}
 			return {"notice": "武大附中 · 校园", "travel": {"world": "out", "pose": _pose(CampusGeometry.to_scene(null, Vector2(ex["x"], ex["y"])), ang, float(pose["pitch"]))}}
 	if FACILITY.contains(String(hit["ch"])):
 		return {"notice": "", "facility": [String(hit["ch"]), hit["c"], hit["r"]]}
-	return {"notice": "（Godot 版尚未移植这里的交互：%s）" % hit["ch"]}
+	return {"notice": ""}
 
 
 func _toggle_door(r: Dictionary, hit: Dictionary, me: Vector2) -> Dictionary:

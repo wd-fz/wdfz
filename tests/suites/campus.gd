@@ -44,7 +44,7 @@ func _test_campus_rules() -> void:
 	var garage := campus.interact_at("out", _campus_pose(null, Vector2(956, 326), PI * 0.5))
 	check(garage.get("travel", {}).get("world") == "garage1", "E at the garage entrance enters garage1")
 	var at_teach := campus.interact_at("out", _campus_pose(null, Vector2(1077.5, 1975), -PI * 0.5))
-	check(at_teach["notice"] == "我：门开着，直接走进去就行。", "seamless buildings answer like the Web version")
+	check(at_teach == {"notice": ""}, "the seamless teaching entrance needs no button action")
 	var exit_room: Dictionary = rooms["trash1"]
 	check(exit_room["exit_world"] != null, "rooms know where their host door is outside")
 	# Stairwell threshold (stairwell.js): teach1 west stair cell (6..7, 21) opens to stair_teach_w.
@@ -70,6 +70,51 @@ func _test_campus_rules() -> void:
 	check(back_t2.is_empty(), "arriving on the bridge does not bounce back")
 	var canteen_stair := campus.interact_at("canteen1", _campus_pose(rooms["canteen1"], CampusGeometry.tile_center(rooms["canteen1"], 4, 25), PI * 0.5))
 	check(canteen_stair.get("travel", {}).get("world") == "out", "canteen stair without a shaft leads outside like stairGo")
+
+
+func test_action_targets() -> void:
+	var campus := CampusData.make_module()
+	for stair: Dictionary in CampusData.campus().stair_layout:
+		for level in stair.rooms.size():
+			var id: String = stair.rooms[level]
+			var room: Variant = CampusData.rooms().get(id)
+			var port := CampusPortals.stair_port(stair, level, CampusData.rooms(), CampusData.layout("out"))
+			var pose := _campus_pose(room, port.p - port.n * 6.0, (port.n as Vector2).angle())
+			check(campus.hint(id, pose) == "" and campus.interact_at(id, pose) == {"notice": ""},
+				"walking through %s at %s never offers a stair action" % [stair.id, id])
+	for id: String in ["canteen1", "gear1", "lab2", "link1"]:
+		var room: Dictionary = CampusData.layout(id)
+		var symbol: String = {"canteen1": "S", "gear1": "v", "lab2": "l", "link1": "L"}[id]
+		var row := 0
+		while not String(room.grid[row]).contains(symbol): row += 1
+		var col := String(room.grid[row]).find(symbol)
+		var pose := _campus_pose(room, CampusGeometry.tile_center(room, col, row), 0)
+		if id == "canteen1":
+			check(campus.hint(id, pose) == "从楼梯离开" and campus.interact_at(id, pose).get("travel", {}).get("world") == "out", "the canteen stair still exits")
+		else:
+			check(campus.interaction_hit(id, pose).get("ch", "") != symbol, "decorative %s in %s is skipped" % [symbol,id])
+	var room := CampusData.layout("gear1").duplicate(true)
+	room.grid = ["#####", "#.vR#", "#####"]
+	room.rows = 3
+	room.cols = 5
+	var near := CampusModule.new({"gear1": room})
+	var pose := _campus_pose(room, CampusGeometry.tile_center(room, 1, 1), 0)
+	check(near.hint("gear1", pose) == "翻找" and near.interact_at("gear1", pose).get("search") == [3,1],
+		"the decorative bin in front cannot steal a reachable shelf's prompt or action")
+	for obj: Dictionary in CampusData.layout("out").objects:
+		if obj.get("id") == "shed":
+			var at_shed := _campus_pose(null, Vector2(obj.door_world.x,obj.door_world.y), 0)
+			check(not campus.hint("out", at_shed).begins_with("进入") and not campus.interact_at("out", at_shed).has("travel"), "the bike shed is not a building entry")
+	var bell := {"position": [-1.5, 6.45, -1.0], "yaw": 0.0, "pitch": 0.0}
+	check(campus.hint("bell1", bell) == "撞钟" and campus.interact_at("bell1", bell).get("facility", [null])[0] == "U", "the actual bell is reachable on the top platform")
+	for feet: Array in [[-1.5,3.2,-1.0], [1.5,6.4,-1.0], [-2.2,6.4,-1.0], [-1.5,.05,-1.0]]:
+		bell.position = feet
+		check(campus.interaction_hit("bell1", bell).get("ch") != "U", "no bell from the lower turn, stair opening, far rail or ground: %s" % str(feet))
+	var tower: Dictionary = CampusData.layout("bell1")
+	var altar := _campus_pose(tower, CampusGeometry.tile_center(tower, 2, 13), 0)
+	check(campus.hint("bell1", altar) == "看供桌", "the altar is still readable on the ground")
+	altar.position[1] = 3.2
+	check(campus.hint("bell1", altar) == "", "ground objects cannot be used through the spiral floor")
 
 
 func _test_elevator_rules() -> void:
@@ -563,6 +608,26 @@ func _test_facility_rules() -> void:
 	day.reset()
 	day.tsec = 1200.0
 	check(day.exam_start() and day.exam, "the bell turns the day into exams")
+	day.tsec = 690.0
+	var own: Dictionary = CampusData.campus().own_seat
+	var at_desk := day.start_seated(own.room)
+	var desk := CampusGeometry.to_world(rooms[own.room], at_desk.position[0], at_desk.position[2])
+	var exam_ctx := {"world_id": own.room, "w": desk, "calendar": false}
+	day.step(6.0, exam_ctx)
+	check(day.exam_cur == 690 and day.exam_seat >= 6.0, "classroom time accrues toward the bell exam")
+	var exam_save: Dictionary = JSON.parse_string(JSON.stringify(day.capture()))
+	for period: Variant in [exam_save.exam_cur, "690"]:
+		var resumed := SchoolModule.new(rooms, CampusData.layout("out"), CampusData.campus())
+		exam_save.exam_cur = period
+		resumed.restore(exam_save)
+		resumed.step(1.0, exam_ctx)
+		check(resumed.exam_cur == 690 and resumed.exam_seat >= 7.0, "JSON and string period IDs resume the same exam")
+		resumed.tsec = 735.0
+		resumed.step(.1, exam_ctx)
+		var papers := _of_kind(resumed.take_events(), "exam")
+		check(papers.size() == 1 and papers[0].get("pass", false), "leaving the class settles the resumed paper exactly once")
+		resumed.step(.1, exam_ctx)
+		check(_of_kind(resumed.take_events(), "exam").is_empty(), "the settled paper never awards twice")
 	var night := SchoolModule.new(rooms, CampusData.layout("out"), CampusData.campus())
 	night.reset()
 	night.tsec = 1350.0

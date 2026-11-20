@@ -43,9 +43,10 @@ func aim(a: CooperativeActor, world: String, c: int, r: int) -> bool:
 	for i in 16:
 		var angle := float(i) * TAU / 16
 		var at := target - Vector2.from_angle(angle) * float(map["tw"]) * 1.5
-		var hit := CampusGeometry.near_tile(map, at, angle, CampusGeometry.NEAR_ROOM, sim.campus()._open_doors)
-		if hit.get("c") != c or hit.get("r") != r: continue
 		var p := CampusGeometry.to_scene(map, at)
+		var pose := {"position": [p.x, 0.05, p.y], "yaw": CampusGeometry.yaw_from_ang(angle), "pitch": 0.0}
+		var hit := sim.campus().interaction_hit(world, pose)
+		if hit.get("c") != c or hit.get("r") != r: continue
 		var shape := CapsuleShape3D.new()
 		shape.radius = 0.34
 		shape.height = 1.75
@@ -54,7 +55,7 @@ func aim(a: CooperativeActor, world: String, c: int, r: int) -> bool:
 		query.collision_mask = 3
 		query.transform.origin = sim.physics.space.frame(world) * Vector3(p.x, 0.95, p.y)
 		if not sim.physics.zone(world).find_world_3d().direct_space_state.intersect_shape(query, 1).is_empty(): continue
-		sim.travel(a, world, {"position": [p.x, 0.05, p.y], "yaw": CampusGeometry.yaw_from_ang(angle), "pitch": 0.0})
+		sim.travel(a, world, pose)
 		return true
 	return false
 
@@ -62,6 +63,16 @@ func run() -> void:
 	await fresh()
 	var a := sim.actor("a")
 	var b := sim.actor("b")
+	sim.travel(b, "bell1", {"position": [-1.5, 3.2, -1.0], "yaw": 0.0, "pitch": 0.0})
+	command(b, "interact")
+	check(not a.school().exam and not b.school().exam, "a client cannot ring the bell through the lower turn")
+	sim.travel(b, "bell1", {"position": [-1.5, 6.45, -1.0], "yaw": 0.0, "pitch": 0.0})
+	command(b, "interact")
+	check(a.school().exam and b.school().exam, "a client's real upper-platform bell command starts exams for everyone")
+	check(b.events.any(func(e: Dictionary) -> bool: return e.get("kind") == "sound" and e.get("cue") == "event.bigBell"), "the client hears the bell it rang")
+	await fresh()
+	a = sim.actor("a")
+	b = sim.actor("b")
 	command(a, "think")
 	check(sim.leases.is_empty(), "C02 instant escape hint releases the facility seat")
 	command(b, "think")

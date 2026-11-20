@@ -2457,11 +2457,10 @@ func _apply_facility_events() -> void:
 				if anomaly() != null:
 					anomaly().end_now()
 			"exam_start":
-				audio.play("event.bigBell", {"k": 1.0})
 				if school().exam_start():
 					ui.show_notice("考试模式 · 今天剩下的课都是考试，熄灯后结束")
 			"bell":
-				audio.play("event.bigBell")
+				audio.play("event.bigBell", {"k": e.get("strength", 1.0)})
 			"save":
 				save_game(true)
 			"map":

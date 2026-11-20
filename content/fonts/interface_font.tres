@@ -1,0 +1,7 @@
+[gd_resource type="SystemFont" load_steps=2 format=3]
+
+[ext_resource type="FontFile" path="res://content/fonts/campus-sc.res" id="sc"]
+
+[resource]
+font_names = PackedStringArray("Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", "sans-serif")
+fallbacks = Array[Font]([ExtResource("sc")])

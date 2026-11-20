@@ -1,4 +1,4 @@
-[gd_resource type="Theme" load_steps=34 format=3]
+[gd_resource type="Theme" load_steps=35 format=3]
 
 [ext_resource type="Texture2D" path="res://content/ui/icons/checked.svg" id="checked"]
 
@@ -10,8 +10,8 @@
 
 [ext_resource type="Texture2D" path="res://content/ui/icons/thumb.svg" id="thumb"]
 
-[sub_resource type="SystemFont" id="Font"]
-font_names = PackedStringArray("Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", "sans-serif")
+[ext_resource type="SystemFont" path="res://content/fonts/interface_font.tres" id="Font"]
+[ext_resource type="FontFile" path="res://content/fonts/campus-sc.res" id="sc"]
 
 [sub_resource type="StyleBoxFlat" id="Normal"]
 bg_color = Color(0.10980, 0.15686, 0.20784, 1.0)
@@ -306,6 +306,7 @@ corner_radius_bottom_right = 10
 
 [sub_resource type="SystemFont" id="Heading"]
 font_names = PackedStringArray("Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "SimSun", "serif")
+fallbacks = Array[Font]([ExtResource("sc")])
 font_weight = 600
 
 [sub_resource type="StyleBoxFlat" id="PrimaryPressed"]
@@ -429,7 +430,7 @@ corner_radius_bottom_left = 2
 corner_radius_bottom_right = 2
 
 [resource]
-default_font = SubResource("Font")
+default_font = ExtResource("Font")
 default_font_size = 16
 Button/styles/normal = SubResource("Normal")
 Button/styles/hover = SubResource("Hover")

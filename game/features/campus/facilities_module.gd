@@ -475,7 +475,9 @@ func _geo_map() -> void:
 
 func _bell() -> void:
 	var an: Dictionary = _c.get("anomaly", {})
-	if bool(an.get("active", false)) and an.get("id") == "bell13":
+	var thirteenth: bool = an.get("active", false) and an.get("id") == "bell13"
+	_emit("bell", {"strength": 0.3 if _c.get("exam", false) and not thirteenth else 1.0})
+	if thirteenth:
 		_say("我：我抱住撞木，用力撞了一下。钟声和那第十三下撞在一起——两边都没了。")
 		_san(8.0)
 		_emit("anomaly_end")

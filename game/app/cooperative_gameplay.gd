@@ -48,8 +48,7 @@ func operation_id(a: CooperativeActor) -> String:
 func lease(a: CooperativeActor, source: String, quiet: bool = false) -> bool:
 	var key := source
 	if source in ["facilities", "investigation", "marks", "routes", "garage", "terminal"]:
-		var map: Variant = CampusData.rooms().get(a.location())
-		var hit := CampusGeometry.near_tile(map, a.point(CampusData.rooms()), CampusGeometry.ang_from_yaw(a.pose["yaw"]), CampusGeometry.NEAR_ROOM, sim.campus()._open_doors) if map is Dictionary else {}
+		var hit := sim.campus().interaction_hit(a.location(), a.pose)
 		key += "|%s:%s:%s" % [a.location(), hit.get("c", "personal-" + a.id), hit.get("r", "")]
 	if sim.lease(key, a.id): return true
 	if not quiet: a.event("notice", {"text": "队友正在操作这里，请稍等或使用其他设施。"})
@@ -722,6 +721,10 @@ func apply_event(a: CooperativeActor, source: String, e: Dictionary) -> void:
 			for name: String in e["names"]: (a.feature(&"campus.facilities") as FacilitiesModule).spots[name] = true
 		"anomaly_lock": (a.feature(&"anomaly.world") as AnomalyModule).lock_forecast()
 		"anomaly_end": (a.feature(&"anomaly.world") as AnomalyModule).end_now()
+		"bell":
+			for listener: CooperativeActor in sim.active_actors():
+				if listener.location() == a.location():
+					listener.event("sound", {"cue": "event.bigBell", "options": {"k": e.get("strength", 1.0)}})
 		"exam_start":
 			for other: CooperativeActor in sim.active_actors(): other.school().exam_start()
 		"later": a.pending.append({"kind": "portal_ask", "world": a.location(), "left": float(e["seconds"])})

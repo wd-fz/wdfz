@@ -69,6 +69,7 @@ func setup(screen_mode: String, w: int, h: int) -> void:
 	if _bold is SystemFont: _bold.font_weight = 700
 	_mono = SystemFont.new()
 	_mono.font_names = PackedStringArray(["Noto Sans Mono","monospace","Noto Sans CJK SC"])
+	_mono.fallbacks = _canvas.theme.default_font.fallbacks
 	_bold_mono = _mono.duplicate()
 	_bold_mono.font_weight = 700
 	_canvas.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
