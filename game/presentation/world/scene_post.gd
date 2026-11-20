@@ -13,22 +13,27 @@ var clock := 0.0
 var gaze_level := 0.0
 const GRADE_SHADER := preload("res://game/presentation/world/scene_post.gdshader")
 const BLUR_SHADER := preload("res://game/presentation/world/scene_post_blur.gdshader")
+const OVERLAY_SHADER := preload("res://game/presentation/world/scene_overlay.gdshader")
 var _parameters: Dictionary = {}
 var _mipmaps := false
+var _direct_scene: bool
 
-func _init() -> void:
+func _init(direct_scene: bool = OS.has_feature("android")) -> void:
+	_direct_scene = direct_scene
 	name = "ScenePost"
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var mat := ShaderMaterial.new()
-	mat.shader = GRADE_SHADER
+	mat.shader = OVERLAY_SHADER if direct_scene else GRADE_SHADER
+	# If the overlay material is unavailable, the ordinary ColorRect is transparent.
+	if direct_scene: color = Color.TRANSPARENT
 	material = mat
 
 func parameter(key: String, value: Variant) -> void:
 	if _parameters.has(key) and _parameters[key] == value: return
 	_parameters[key] = value
 	(material as ShaderMaterial).set_shader_parameter(key,value)
-	if key in ["blur", "focus", "normal"]:
+	if not _direct_scene and key in ["blur", "focus", "normal"]:
 		var radius := (13.0 * float(_parameters.get("blur",0.0)) + 4.5 * float(_parameters.get("focus",0.0))) * (1.0-float(_parameters.get("normal",0.0)))
 		var needs_mips := radius >= .3
 		if needs_mips != _mipmaps:

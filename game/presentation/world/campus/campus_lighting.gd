@@ -93,8 +93,8 @@ func setup(id: String, room_data: Variant, model: Node, stair_rise: float) -> vo
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
-	# ScenePost owns the original curve; applying ACES twice destroys dark detail.
-	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	# Android grades the 3D target before the transparent sensory overlay.
+	env.tonemap_mode = Environment.TONE_MAPPER_ACES if OS.has_feature("android") else Environment.TONE_MAPPER_LINEAR
 	# The old sky is only a gradient backdrop (makeSky); a flat colour avoids a radiance Sky per scene.
 	env.background_mode = Environment.BG_COLOR
 	var we := WorldEnvironment.new()
@@ -370,7 +370,7 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	env.adjustment_brightness = 1.0
 	# lighting.js dayExpo: outdoors the picture is pressed down to 0.6 at noon (DAY_K).
 	post_exposure = 1.0 if indoor and not shared_sky else 1.0 - .4*float(sun["day"])*(1.0-world_normal)
-	env.tonemap_exposure = 1.0
+	env.tonemap_exposure = brightness * post_exposure if OS.has_feature("android") else 1.0
 	var sum := 0.0
 	for i in room_lights.size():
 		var flick := 0.94 if reduce_flash else room_flicker(i, time, day) * lamp_health(i)

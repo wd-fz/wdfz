@@ -22,6 +22,15 @@ static func scene_path(id: String) -> String:
 	return SCENE_DIR + id + ".glb"
 
 
+static func load_scene(id: String) -> PackedScene:
+	var path := scene_path(id)
+	var packed := ResourceLoader.load(path, "PackedScene") as PackedScene
+	var base := SCENE_DIR + id + ".glb"
+	if (packed == null or not packed.can_instantiate()) and path != base:
+		packed = ResourceLoader.load(base, "PackedScene") as PackedScene
+	return packed if packed != null and packed.can_instantiate() else null
+
+
 static func tiers_available() -> Array:
 	var out: Array = [DEFAULT_TIER]
 	for q in MODEL_TIERS:

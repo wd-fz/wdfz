@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "digest": "abdac5d802382c7d3811015a104e89dff4604abf7d588b9304d627d466b7c53e",
+  "digest": "9981071f28e515c1619f53eebadde7ef1397f69ebc0ec5692cc1d6cd9362c1a4",
   "files": {
     "assets/campus/archive.json": "ee245d710d39d01b2c5d43dea49b9b02536f30a9449c8a56aa628e66643fe39a",
     "assets/campus/death_geometry.json": "5b7a718919d12b00fa380efc95ffa2ed41262d680d11714d218603053cd52326",
@@ -175,13 +175,13 @@
     "game/presentation/world/campus/broadcast_props.gd": "a2cf52930f47bdd72f38955e27ba156576b106848c6e9f174b6fac6b3b8b60fb",
     "game/presentation/world/campus/campus_batches.gd": "bf2a82171404df7fa94308b9e0c1adcf31668151c38a6d77d6da6d967937d6d2",
     "game/presentation/world/campus/campus_connections.gd": "9fb5785b9fbdd0b18eacafefb6b6dbdeacab23ec97957c941f8205c6fc523d29",
-    "game/presentation/world/campus/campus_lighting.gd": "447182380e4d4b0d632457806cab8540da165df4c05ff70a01b6b74e69d0d4ba",
+    "game/presentation/world/campus/campus_lighting.gd": "f73bfd307f76d0903d7eb07d83bca1ce1f9c03810cf621d05cf2617bdc239e2b",
     "game/presentation/world/campus/campus_mesh_cells.gd": "952862aaaab51810229df872a988b874622a4bb626eca1756d6108fc0b8bc2ee",
     "game/presentation/world/campus/campus_preview.gd": "bf9106178cb930659b5473c5a9cd8c59f22486d6ebc6d430986462017d629cb1",
-    "game/presentation/world/campus/campus_resident.gd": "726815afdd315c39c9e93ea338dd60c5de5d8c7bc85ed0be5dc87ef48bba6aca",
+    "game/presentation/world/campus/campus_resident.gd": "289437296eb5cc71397bcb2f5653e7fff95be42b386d0e67c50207142f09c75c",
     "game/presentation/world/campus/campus_shell.gd": "a8564ff16e5fe2c4f08757319e782f4b7492db19ca654fbf6d672ee7c373a747",
     "game/presentation/world/campus/campus_stream.gd": "cf5a811b8f61af3364d91739544adcf160bae430a5b64e9e6daa04b5f44e7863",
-    "game/presentation/world/campus/campus_world.gd": "9785c61714f0562d9595442760f098c83ae5d5df002a653aa4486f311bf069c3",
+    "game/presentation/world/campus/campus_world.gd": "28f6a3dad7f4e951375e13d288507a714bba3d1a4ff3441dedf60cd1542b42e7",
     "game/presentation/world/campus/canteen_view.gd": "37739e92bc23caf9c95e7545e8efbb63a32e858c20c3265b8947cc29f18b9d84",
     "game/presentation/world/campus/car_chase_view.gd": "90584a48870808ec32e56000091f75909f3c560d5b9e4186c5ab535fcca73872",
     "game/presentation/world/campus/chalk_notes.gd": "3d8e95d1b27fbf834f559fbd6e31552591d7a4f2fc1b4d89ff593999a68bd35b",
@@ -217,9 +217,9 @@
     "game/presentation/world/lift_crowd_fx.gd": "f04892239974ce0f6971f6e74e247ce3e7ce9aa4a035dceeb706e1ebb27842ea",
     "game/presentation/world/render_materials.gd": "610c1855ff375bc041742b25820a5ae8ed9c3e02517cfc50b996a7817965cae7",
     "game/presentation/world/render_quality.gd": "3af8f572da73e73a009fb742c33e1bacf335a94ce49c6addbed03dfbc4b02e07",
-    "game/presentation/world/scene_post.gd": "b151cd612d98947dba8a427a04d59755570a67a060809642c21e7afbadec3975",
+    "game/presentation/world/scene_post.gd": "8cdb22d45f504254a49fb3bf9e1c2611bfde204e72309c7700cc78618659264b",
     "game/presentation/world/top_model.gd": "b3c47745cbee9d5c97e603a2fccf9d3071691dd3007c6db02767f01faaabdf98",
     "game/presentation/world/world_definition.gd": "5005e6ac7814e4c57a3afca9b450d67318223636fff0317d154277bfa9ef9dce",
-    "game/presentation/world/world_router.gd": "6b6c39816906248718109f745573a8bceaf269698c5ec7e14c85d33f4514c104"
+    "game/presentation/world/world_router.gd": "5b752a96a71b15da818d9fc23015f1e024f1d85bbe2e0c74f1e41510fcdd3ebe"
   }
 }

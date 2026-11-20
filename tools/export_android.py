@@ -23,6 +23,35 @@ RELEASE_VERSION = "0.6.1"
 RELEASE_VERSION_CODE = 9
 
 
+def configure_streamed_assets(gradle):
+    # Godot seeks inside its own compressed scene blocks and imported textures.
+    # STORE lets Android map them directly instead of inflating a second ZIP layer.
+    setting = "android.androidResources.noCompress += ['scn', 'ctex']"
+    text = gradle.read_text(encoding="utf-8")
+    if setting not in text.splitlines():
+        gradle.write_text(text + "\n" + setting + "\n", encoding="utf-8")
+
+
+def verify_campus_assets(archive):
+    for info in archive.infolist():
+        if info.filename.startswith("assets/") and info.filename.endswith((".scn", ".ctex")):
+            if info.compress_type != zipfile.ZIP_STORED:
+                raise RuntimeError(f"Android cannot directly map {info.filename}")
+    layouts = sorted((ROOT / "assets/campus/layout").glob("*.json"))
+    for layout in layouts:
+        archive.getinfo("assets/assets/campus/layout/" + layout.name)
+        if layout.stem == "campus":
+            continue
+        for folder in ("campus", "campus_q0", "campus_q1", "campus_q3"):
+            source = f"assets/{folder}/scenes/{layout.stem}.glb"
+            if folder != "campus" and not (ROOT / source).exists():
+                continue
+            mapping = archive.read("assets/" + source + ".remap").decode("utf-8")
+            target = re.search(r'^path="res://([^"]+\.scn)"$', mapping, re.M)
+            if not target or not archive.getinfo("assets/" + target[1]).file_size:
+                raise RuntimeError(f"Android campus scene is unavailable: {source}")
+
+
 def verify_fullscreen_launch(raw):
     """The Android export must enter immersive mode before the first scene loads."""
     try:
@@ -208,6 +237,7 @@ def main():
             source_zip = data_home / 'godot/export_templates' / expected / 'android_source.zip'
             terracotta_android.install_template(template, source_zip, expected)
         terracotta_android.install(ROOT, template, terracotta.prepare('android'))
+        configure_streamed_assets(template / "build/build.gradle")
         summary['terracotta'] = terracotta.VERSION
         package_budget.clear_report(ROOT, unsigned)
         run("export-android", [ENGINE, "--headless", "--path", str(ROOT), "--export-release" if args.release else "--export-debug",
@@ -237,6 +267,7 @@ def main():
         summary.update(verify_vulkan_manifest(manifest_tree))
         with zipfile.ZipFile(apk) as archive:
             package_budget.verify_apk(archive)
+            verify_campus_assets(archive)
             summary['fullscreen_forced'] = verify_fullscreen_launch(archive.read('assets/_cl_'))
             names = archive.namelist()
             terracotta_android.verify(manifest_tree, names)

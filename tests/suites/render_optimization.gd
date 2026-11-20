@@ -194,7 +194,7 @@ func test_occlusion() -> void:
 
 
 func test_post_path() -> void:
-	var post:=ScenePost.new()
+	var post:=ScenePost.new(false)
 	var mat:=post.material as ShaderMaterial
 	check(mat.shader==ScenePost.GRADE_SHADER,"ordinary grading does not request a screen mip pyramid")
 	post.parameter("brightness",1.2)
@@ -229,6 +229,52 @@ func test_post_path() -> void:
 		vp.queue_free()
 		await _frames(1)
 	else: post.free()
+	await _test_android_scene_overlay()
+
+
+func _test_android_scene_overlay() -> void:
+	var post := ScenePost.new(true)
+	post.parameter("blur", 0.8)
+	check((post.material as ShaderMaterial).shader == ScenePost.OVERLAY_SHADER,
+		"Android defocus keeps the directly presented scene")
+	post.reset()
+	if DisplayServer.get_name() == "headless":
+		post.free()
+		return
+	var vp := SubViewport.new()
+	vp.own_world_3d = true
+	vp.size = Vector2i(160, 72)
+	vp.scaling_3d_scale = 0.5
+	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	root.add_child(vp)
+	var camera := Camera3D.new()
+	var env := Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color.BLUE
+	camera.environment = env
+	vp.add_child(camera)
+	var subject := MeshInstance3D.new()
+	subject.mesh = BoxMesh.new()
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color.GREEN
+	subject.material_override = mat
+	subject.position.z = -2
+	vp.add_child(subject)
+	vp.add_child(post)
+	for closed: bool in [false, true, false]:
+		post.parameter("blink", 1.0 if closed else 0.0)
+		await _frames(2)
+		await RenderingServer.frame_post_draw
+		var frame := vp.get_texture().get_image()
+		var object_pixel := frame.get_pixel(80, 36)
+		var sky := frame.get_pixel(16, 36)
+		if closed:
+			check(object_pixel.v < 0.03 and sky.v < 0.03, "intentional Android blink closes over both world and sky")
+		else:
+			check(object_pixel.g > 0.5 and sky.b > 0.5, "Android presents the 3D object and sky before and after blinking")
+	vp.queue_free()
+	await _frames(1)
 
 
 func test_lazy_portals() -> void:

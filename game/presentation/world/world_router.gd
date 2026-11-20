@@ -37,6 +37,8 @@ func switch_to(id: String) -> String:
 		if resident.space.contains(id):
 			# One initial build. Ordinary crossings only select the rules adapter.
 			for region: String in resident.space.frames: resident.prepare(region)
+			if not (resident.regions[id] as CampusWorld).geometry_ready:
+				return "校园模型读取失败：%s。请重新进入校园。" % id
 			if is_instance_valid(_instance) and not _instance is CampusWorld:
 				_instance.get_parent().remove_child(_instance)
 				_instance.queue_free()

@@ -30,7 +30,10 @@ func _accept(world: CampusWorld) -> void:
 
 
 func prepare(id: String) -> CampusWorld:
-	if regions.has(id): return regions[id]
+	if regions.has(id):
+		var cached: CampusWorld = regions[id]
+		if not cached.geometry_ready: cached.prepare_geometry()
+		return cached
 	var world := _make(id)
 	world.prepare_geometry()
 	_accept(world)
