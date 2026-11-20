@@ -24,15 +24,17 @@ def main():
     reports = ROOT / "build/reports/ios"
     engine = check_version(reports)
     xcode = run("xcode", ["xcodebuild", "-version"], reports).strip()
-    run("import", [ENGINE, "--headless", "--path", str(ROOT), "--editor", "--import"], reports, timeout=900)
+    # The headless macOS editor otherwise previews system font collections that FreeType
+    # cannot open on the hosted runner. This flag only applies to these tooling processes.
+    editor = [ENGINE, "--headless", "--text-driver", "Dummy", "--path", str(ROOT)]
+    run("import", [*editor, "--editor", "--import"], reports, timeout=900)
     name = f"wdfz-{RELEASE_VERSION}-ios-arm64-unsigned"
     ipa = packages / (name + ".ipa")
     with tempfile.TemporaryDirectory(prefix="wdfz-iphoneos-") as temp:
         directory = Path(temp)
         project = directory / "wdfz.xcodeproj"
         package_budget.clear_report(ROOT, project)
-        run("export", [ENGINE, "--headless", "--path", str(ROOT),
-                       "--export-release", "iOS Unsigned", str(project)], reports, timeout=900)
+        run("export", [*editor, "--export-release", "iOS Unsigned", str(project)], reports, timeout=900)
         optimization = package_budget.read_report(ROOT, project)
         run("build", ["xcodebuild", "-project", str(project), "-scheme", "wdfz", "-configuration", "Release",
                       "-sdk", "iphoneos", "-destination", "generic/platform=iOS", "-derivedDataPath", str(directory / "Derived"),
