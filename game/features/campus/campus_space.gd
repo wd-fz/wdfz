@@ -30,7 +30,7 @@ func _init(room_data: Dictionary = {}, out_data: Dictionary = {}, campus_data: D
 		var p := CampusGeometry.to_scene(rooms.get(levels[level]), port["p"])
 		var n: Vector2 = port["n"]
 		var basis := Basis(Vector3.UP, -CampusPortals.stair_turn(n))
-		var origin := parent * Vector3(p.x + n.x * 2.8, -level * float(stair["rise"]), p.y + n.y * 2.8)
+		var origin := parent * Vector3(p.x - n.x * CampusPortals.THRESHOLD_Z, -level * float(stair["rise"]), p.y - n.y * CampusPortals.THRESHOLD_Z)
 		frames[stair["id"]] = Transform3D(parent.basis * basis, origin)
 		# The old roof and underground floor use different origins. Their landing
 		# must meet the real shaft, not teleport across the building at the door.
@@ -39,7 +39,7 @@ func _init(room_data: Dictionary = {}, out_data: Dictionary = {}, campus_data: D
 			if id not in ["teach6", "garage1"]: continue
 			var door := CampusPortals.stair_port(stair, i, rooms, outside)
 			var local := CampusGeometry.to_scene(rooms[id], door["p"])
-			var target: Vector3 = frames[stair["id"]] * Vector3(0, i * float(stair["rise"]), -2.8)
+			var target: Vector3 = frames[stair["id"]] * Vector3(0, i * float(stair["rise"]), CampusPortals.THRESHOLD_Z)
 			frames[id] = Transform3D(Basis.IDENTITY, target - Vector3(local.x, 0, local.y))
 	# The old bridge annex overlaps the laboratory stair shaft by one metre.
 	# Move the physical bridge within the existing 3 m doorway overlap.
@@ -119,11 +119,40 @@ func has_building(host: String) -> bool:
 	return false
 
 
-func garage_hole() -> Rect2:
-	var t := frame("stair_garage")
-	var a := t * Vector3(-2.7, 0, -2.8)
-	var b := t * Vector3(2.7, 0, 7.8)
-	return Rect2(Vector2(minf(a.x,b.x), minf(a.z,b.z)), Vector2(absf(b.x-a.x),absf(b.z-a.z)))
+## At street level only the narrow entry slab and the switchback replace the pavement.
+## Cutting the shaft's bounding box also removes the ground beside both door jambs.
+func garage_openings() -> Array[Rect2]:
+	var shaft := frame("stair_garage")
+	return [
+		_footprint(shaft, CampusPortals.DOOR_HALF, CampusPortals.THRESHOLD_Z, CampusPortals.SHAFT_FRONT),
+		_footprint(shaft, CampusPortals.SHAFT_HALF_WIDTH, CampusPortals.SHAFT_FRONT, CampusPortals.SHAFT_BACK),
+	]
+
+
+static func _footprint(t: Transform3D, half_width: float, front: float, back: float) -> Rect2:
+	var a := t * Vector3(-half_width, 0, front)
+	var b := t * Vector3(half_width, 0, back)
+	return Rect2(Vector2(a.x, a.z), Vector2(b.x - a.x, b.z - a.z)).abs()
+
+
+## Older saves can have feet below the missing pavement or even below the basement.
+## All three regions save floor-relative coordinates. A legitimate basement pose has y near zero.
+func garage_resume_pose(id: String, pose: Dictionary) -> Dictionary:
+	if id not in ["out", "stair_garage", "garage1"]: return pose
+	var p: Array = pose["position"]
+	if float(p[1]) >= -0.15: return pose
+	var safe := Vector3(0, 0.05, 0) # bottom landing in shaft-local coordinates
+	if id == "out":
+		# A still-falling player can have moved away from the opening below the school.
+		if float(p[1]) >= frame("garage1").origin.y - 0.15 and not stair_bounds("stair_garage").grow(2.0).has_point(Vector2(p[0], p[2])): return pose
+		safe = frame("stair_garage") * Vector3(0, 0, CampusPortals.ENTRY_START - 0.75)
+		safe.y = 0.05
+	elif id == "garage1":
+		var spawn: Dictionary = rooms[id]["spawn"]
+		safe = Vector3(spawn.scene_x, 0.05, spawn.scene_z)
+	var restored := pose.duplicate()
+	restored["position"] = [safe.x, safe.y, safe.z]
+	return restored
 
 
 static func subtract_rect(rect: Rect2, hole: Rect2) -> Array[Rect2]:
@@ -139,10 +168,7 @@ static func subtract_rect(rect: Rect2, hole: Rect2) -> Array[Rect2]:
 
 
 func stair_bounds(id: String) -> Rect2:
-	var t := frame(id)
-	var a := t * Vector3(-2.4,0,-2.3)
-	var b := t * Vector3(2.4,0,7.3)
-	return Rect2(Vector2(minf(a.x,b.x),minf(a.z,b.z)),Vector2(absf(b.x-a.x),absf(b.z-a.z)))
+	return _footprint(frame(id), 2.4, -2.3, 7.3)
 
 
 ## The exporter rounds footprints to four decimals. Cut only the part replaced
@@ -170,10 +196,7 @@ func lift_walls() -> Array[AABB]:
 
 
 func lift_bounds(id: String) -> Rect2:
-	var t := frame(id)
-	var a := t * Vector3(-1.2,0,-1.0)
-	var b := t * Vector3(1.2,0,1.0)
-	return Rect2(Vector2(minf(a.x,b.x),minf(a.z,b.z)),Vector2(absf(b.x-a.x),absf(b.z-a.z)))
+	return _footprint(frame(id), 1.2, -1.0, 1.0)
 
 
 func cabin_cut(id: String) -> Rect2:

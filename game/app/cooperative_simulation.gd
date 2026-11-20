@@ -375,10 +375,12 @@ func capture() -> Dictionary:
 func restore(data: Dictionary) -> void:
 	calendar.restore(data["calendar"])
 	for id: String in actors:
-		actors[id].restore(data["actors"][id])
-		actors[id].session.character_id = room.members[id]["character"]
-		room.members[id]["seat"] = actors[id].own_seat
-		if is_participating(id): physics.place(actors[id])
+		var member := actor(id)
+		member.restore(data["actors"][id])
+		member.pose = physics.space.garage_resume_pose(member.location(), member.pose)
+		member.session.character_id = room.members[id]["character"]
+		room.members[id]["seat"] = member.own_seat
+		if is_participating(id): physics.place(member)
 		else: physics.remove_actor(id)
 	inventory.restore(data["items"])
 	patrol.restore(data["patrol"])

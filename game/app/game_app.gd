@@ -870,7 +870,10 @@ func load_game() -> void:
 		ui.show_notice(error)
 		return
 	candidate.restore(data)
-	_install_session(candidate, data["player"])
+	var pose: Dictionary = data["player"]
+	if is_instance_valid(router.resident):
+		pose = router.resident.space.garage_resume_pose(candidate.world_id, pose)
+	_install_session(candidate, pose)
 	var old_paper: Dictionary = data["modules"].get("school.day", {}).get("data", {}).get("seat_card", {})
 	if not old_paper.has("proof") and school() != null and investigation() != null and investigation().visible("parking"):
 		school().seat_card.recall_counterfoil()

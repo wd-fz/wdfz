@@ -23,6 +23,10 @@ const STINGERS := ["dread.knock", "dread.whisper", "dread.steps", "distant.slam"
 	"dread.chair", "distant.ball", "distant.giggle", "dread.door", "dread.run"]
 const MEL := [[220.0, 261.6, 293.7, 311.1, 392.0, 440.0, 523.3], [207.7, 246.9, 277.2, 311.1, 370.0, 415.3, 493.9]]
 const BUSES := ["Sfx", "SfxSoft", "SfxMuffled", "Ui", "Beds"]
+## The baked Web takes have quiet transients. Give cues headroom above the continuous pads.
+const OUTPUT_GAIN_DB := 16.0
+const BED_GAIN_DB := 4.0
+const STEP_TRIM_DB := 8.0
 
 var volume := 0.7:
 	set(value):
@@ -99,7 +103,7 @@ func _ready() -> void:
 	_apply_volume()
 
 
-# ---- buses: category → (muffled) → Sfx (reverb) → Master (compressor) ----
+# ---- buses: category → (muffled) → Sfx (reverb) → Master (compressor, limiter) ----
 
 func _make_buses() -> void:
 	for b: String in BUSES:
@@ -110,7 +114,9 @@ func _make_buses() -> void:
 	AudioServer.set_bus_send(AudioServer.get_bus_index("SfxSoft"), "Sfx")
 	AudioServer.set_bus_send(AudioServer.get_bus_index("SfxMuffled"), "Sfx")
 	AudioServer.set_bus_send(AudioServer.get_bus_index("Ui"), "Master")
-	AudioServer.set_bus_send(AudioServer.get_bus_index("Beds"), "Master")
+	var beds_bus := AudioServer.get_bus_index("Beds")
+	AudioServer.set_bus_send(beds_bus, "Master")
+	AudioServer.set_bus_volume_db(beds_bus, BED_GAIN_DB - OUTPUT_GAIN_DB)
 	# Muffled: audio.js chain() lowpass 350 + 9000·lp² (lp 0.35–0.55 behind a wall; 0.6–0.7 softer).
 	_ensure_effect("SfxMuffled", "AudioEffectLowPassFilter", func() -> AudioEffect:
 		var lp := AudioEffectLowPassFilter.new()
@@ -139,6 +145,11 @@ func _make_buses() -> void:
 		c.attack_us = 4000.0
 		c.release_ms = 250.0
 		return c)
+	_ensure_effect("Master", "AudioEffectHardLimiter", func() -> AudioEffect:
+		var limiter := AudioEffectHardLimiter.new()
+		limiter.pre_gain_db = OUTPUT_GAIN_DB
+		limiter.ceiling_db = -1.0
+		return limiter)
 
 
 func _ensure_effect(bus: String, kind: String, make: Callable) -> void:
@@ -161,11 +172,15 @@ func _reverb() -> AudioEffectReverb:
 func _apply_volume() -> void:
 	var bus := AudioServer.get_bus_index("Master")
 	if bus >= 0:
-		AudioServer.set_bus_mute(bus, muted)
+		AudioServer.set_bus_mute(bus, muted or volume == 0.0)
 		AudioServer.set_bus_volume_db(bus, linear_to_db(maxf(volume, 0.0001)))
 
 
 # ---- the bank ----
+
+static func _voice_db(take: Dictionary, category: String, gain: float) -> float:
+	return float(take["db"]) + (STEP_TRIM_DB if category == "step" else 0.0) + linear_to_db(gain)
+
 
 func has(id: String) -> bool:
 	return (_index.get("sfx", {}) as Dictionary).has(id)
@@ -208,7 +223,8 @@ func audition(id: String) -> bool:
 	_audition.stop()
 	_audition.stream = _stream("sfx/"+String(take["file"]),false)
 	_audition.bus = "Ui" if d["cat"] == "ui" else "Sfx"
-	_audition.volume_db = float(take["db"])+linear_to_db(maxf(.001,1+_audition_rng.randf_range(-1,1)*float(vary.get("g",0))))
+	var gain := 1.0 + _audition_rng.randf_range(-1, 1) * float(vary.get("g", 0))
+	_audition.volume_db = _voice_db(take, d.cat, maxf(.001, gain))
 	_audition.pitch_scale = maxf(.05,1+_audition_rng.randf_range(-1,1)*float(vary.get("p",0)))
 	_audition.play()
 	return true
@@ -255,7 +271,7 @@ func play(id: String, opts: Dictionary = {}) -> bool:
 	var k := maxf(0.0, float(opts.get("k", 1.0))) * (1.0 + (_rng.randf() * 2.0 - 1.0) * float(vary.get("g", 0.0)))
 	if k < 0.0005:
 		return true
-	var db := float(take["db"]) + linear_to_db(k)
+	var db := _voice_db(take, d.cat, k)
 	var pitch := maxf(0.05, float(opts.get("pitch", 1.0)) * (1.0 + (_rng.randf() * 2.0 - 1.0) * float(vary.get("p", 0.0))))
 	var lp := float(opts.get("lp", 1.0))
 	var bus := "Ui" if d["cat"] == "ui" else ("SfxMuffled" if lp < 0.5 else ("SfxSoft" if lp < 0.98 else "Sfx"))
@@ -780,7 +796,8 @@ func preview_play(id: String, opts: Dictionary = {}) -> bool:
 	var voice:=AudioStreamPlayer.new()
 	voice.stream=_stream("sfx/"+String(take.file),false)
 	voice.bus="Ui" if d.cat=="ui" else "Sfx"
-	voice.volume_db=float(take.db)+linear_to_db(maxf(.001,float(opts.get("k",1))*(1+_audition_rng.randf_range(-1,1)*float(vary.get("g",0)))))
+	var gain := float(opts.get("k", 1)) * (1.0 + _audition_rng.randf_range(-1, 1) * float(vary.get("g", 0)))
+	voice.volume_db = _voice_db(take, d.cat, maxf(.001, gain))
 	voice.pitch_scale=maxf(.05,float(opts.get("pitch",1))*(1+_audition_rng.randf_range(-1,1)*float(vary.get("p",0))))
 	voice.process_mode=Node.PROCESS_MODE_ALWAYS
 	add_child(voice)

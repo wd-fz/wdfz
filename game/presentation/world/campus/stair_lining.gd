@@ -3,7 +3,7 @@ extends RefCounted
 ## The floor GLBs omit S tiles and the stair GLBs start their front wall at z=-1.2.
 ## Each region owns its side of the shared threshold so previews can still be clipped there.
 
-const THRESHOLD := -2.8
+const THRESHOLD := CampusPortals.THRESHOLD_Z
 const FRONT := -1.2
 const HALF_TILE := CampusGeometry.TTILE * CampusGeometry.U2M * 0.5
 const OUTER_HALF_WIDTH := HALF_TILE * 2.0

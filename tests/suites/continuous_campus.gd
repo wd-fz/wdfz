@@ -96,6 +96,7 @@ func test_collision() -> void:
 		var ray:=PhysicsRayQueryParameters3D.create(outside,outside-Vector3.RIGHT*dir*.4,1)
 		var hit:=root.world_3d.direct_space_state.intersect_ray(ray)
 		check(not hit.is_empty() and hit.collider.get_parent().scene_id=="out","shaft cut retains the outdoor wall beyond each side")
+	await _check_garage_entrance(space)
 	for bounds: AABB in space.lift_walls():
 		var point:=bounds.get_center()
 		var across:=(Vector3.RIGHT if bounds.size.x<bounds.size.z else Vector3.BACK)*.19
@@ -105,6 +106,67 @@ func test_collision() -> void:
 			check(not hit.is_empty(),"fixed shaft blocks from either side while car is downstairs")
 	for world: CampusWorld in worlds: world.queue_free()
 	await _frames(2)
+
+
+func _check_garage_entrance(space: CampusSpace) -> void:
+	var shaft := space.frame("stair_garage")
+	var street := space.frame("out").origin.y
+	var physics := root.world_3d.direct_space_state
+	var model := Node3D.new()
+	var paving := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(12, 24)
+	paving.mesh = plane
+	paving.position = Vector3(shaft.origin.x, street, shaft.origin.z)
+	model.add_child(paving)
+	CampusShell.partition(model, space)
+	var visible_paving := paving.mesh.generate_triangle_mesh()
+	var edges: Array[Vector2] = [Vector2(-1.6, -2.05), Vector2(1.6, -2.05), Vector2(0, -3.15)]
+	for z: float in [-0.7, 3.4, 7.05]:
+		edges.append(Vector2(-2.48, z))
+		edges.append(Vector2(2.48, z))
+	for x: float in [-1.7, 0.0, 1.7]:
+		edges.append(Vector2(x, 7.52))
+	for edge in edges:
+		var p := shaft * Vector3(edge.x, 0, edge.y)
+		p.y = street
+		var hit := physics.intersect_ray(PhysicsRayQueryParameters3D.create(p + Vector3.UP * .15, p - Vector3.UP * .3, 1))
+		check(not hit.is_empty() and absf(hit.position.y - street) < .02, "pavement supports the garage perimeter at %s" % edge)
+		var local := p - paving.position
+		check(not visible_paving.intersect_segment(local + Vector3.UP, local - Vector3.UP).is_empty(), "visible street reaches the same garage edge at %s" % edge)
+	for x: float in [-1.25, 1.25]:
+		var p := shaft * Vector3(x, 0, 3.2)
+		p.y = street
+		var hit := physics.intersect_ray(PhysicsRayQueryParameters3D.create(p + Vector3.UP * .15, p - Vector3.UP * 4.0, 1))
+		var depth := 2.4 if x < 0 else .8
+		check(not hit.is_empty() and absf(hit.position.y - (street - depth)) < .03, "both descending flights remain open at %s" % x)
+		var local := p - paving.position
+		check(visible_paving.intersect_segment(local + Vector3.UP, local - Vector3.UP).is_empty(), "outdoor paving leaves the visible flight open at %s" % x)
+	model.free()
+	var player: PlayerController = preload("res://game/presentation/actors/player.tscn").instantiate()
+	root.add_child(player)
+	player.set_physics_process(false)
+	for side: float in [-1.0, 1.0]:
+		var start := shaft * Vector3(side * 1.65, 0, -4.3)
+		start.y = street + .04
+		player.global_position = start
+		player.velocity = Vector3.ZERO
+		for tick in 105:
+			await physics_frame
+			var axis := Vector2.DOWN if tick < 36 else Vector2.ZERO
+			CharacterMotor.advance(player, axis, shaft.basis.get_euler().y, true, 1.0, 1.0 / 60.0)
+		var finish := shaft.affine_inverse() * player.global_position
+		check(finish.z > -2.2 and player.is_on_floor() and absf(player.global_position.y - street) < .03, "sprinting past the garage entrance jamb stays on the pavement on side %s" % side)
+	player.queue_free()
+	for id: String in ["stair_garage", "garage1"]:
+		var valid_pose := {"position": [0.0, 0.0, 0.0], "yaw": 1.0, "pitch": -.2}
+		check(space.garage_resume_pose(id, valid_pose) == valid_pose, "legal below-street saves use the local floor in " + id)
+		var fallen := {"position": [0.0, -25.0, 0.0], "yaw": 1.0, "pitch": -.2}
+		var rescued := space.garage_resume_pose(id, fallen)
+		var at: Array = rescued.position
+		var feet := space.frame(id) * Vector3(at[0], at[1], at[2])
+		var ground := physics.intersect_ray(PhysicsRayQueryParameters3D.create(feet, feet - Vector3.UP * .12, 1))
+		check(not ground.is_empty() and fallen.position[1] == -25.0 and rescued.yaw == fallen.yaw and rescued.pitch == fallen.pitch, "load restores solid footing and the saved view in " + id)
 
 
 func free_at(p: Vector3,label: String) -> void:
@@ -229,6 +291,12 @@ func test_runtime() -> void:
 	check(app._campus_world().lighting.clock_minutes==1380,"read restores night lighting before the first frame")
 	var environments := school.find_children("*","WorldEnvironment",true,false)
 	check(environments.size()==1,"only one environment controls the persistent school")
+	var damaged := {"position": [68.55, -24.0, 124.58], "yaw": .7, "pitch": -.3}
+	app.travel("out", damaged, false)
+	app.save_game(true)
+	app.load_game()
+	var restored := app.player.capture_pose()
+	check(app.session.world_id == "out" and absf(app.player.global_position.y - .05) < .001 and absf(restored.yaw - damaged.yaw) < .001 and absf(restored.pitch - damaged.pitch) < .001, "loading a run saved under the old garage rim puts the player on the street with the same view")
 	await check_presentations(app)
 	app.return_to_menu()
 	await _frames(2)
@@ -339,6 +407,11 @@ func test_cooperation() -> void:
 	check(second.velocity==Vector3(.5,-2,1),"authority crossing preserves world-space momentum")
 	sim.travel(sim.actor("b"),"portal_tunnel",CampusData.rules().default_spawn("portal_tunnel"))
 	check(first.get_world_3d()!=second.get_world_3d() and not sim.motion("a").players.has("b"),"special worlds stay physically and visually separate in cooperation")
+	var checkpoint := sim.capture()
+	checkpoint.actors.a.session.player.position = [68.55, -24.0, 124.58]
+	sim.restore(checkpoint)
+	var reported: Array = sim.actor("a").pose.position
+	check(absf(first.global_position.y - .05) < .001 and first.position.is_equal_approx(Vector3(reported[0], reported[1], reported[2])), "cooperative restore moves the authority and replicated pose back onto the garage pavement")
 	avatars.queue_free()
 	sim.queue_free()
 	await _frames(2)

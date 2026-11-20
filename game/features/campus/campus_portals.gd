@@ -8,6 +8,11 @@ extends RefCounted
 
 const U2M := CampusGeometry.U2M
 const DOOR_HALF := 0.85        # stair doorway half width (m), portalAt / doorwayFree
+const THRESHOLD_Z := -2.8
+const ENTRY_START := -3.5
+const SHAFT_FRONT := -1.2
+const SHAFT_BACK := 7.2
+const SHAFT_HALF_WIDTH := 2.2
 const ENTER_Z := -2.79         # walk past this shaft z to enter the stairwell
 const EXIT_Z := -2.85          # walk below this shaft z on a landing to leave it
 const LEVEL_TOLERANCE := 0.08
@@ -19,13 +24,13 @@ const LEVEL_TOLERANCE := 0.08
 static func stair_surfaces(levels: int, rise: float) -> Array[Dictionary]:
 	var a: Array[Dictionary] = []
 	for f in levels:
-		a.append({"x0": -2.2, "x1": 2.2, "z0": -1.2, "z1": 0.8, "h0": f * rise, "h1": f * rise})
-		a.append({"x0": -0.85, "x1": 0.85, "z0": -3.5, "z1": -1.2, "h0": f * rise, "h1": f * rise})
+		a.append({"x0": -SHAFT_HALF_WIDTH, "x1": SHAFT_HALF_WIDTH, "z0": SHAFT_FRONT, "z1": 0.8, "h0": f * rise, "h1": f * rise})
+		a.append({"x0": -DOOR_HALF, "x1": DOOR_HALF, "z0": ENTRY_START, "z1": SHAFT_FRONT, "h0": f * rise, "h1": f * rise})
 		if f == levels - 1:
 			continue
-		a.append({"x0": -2.2, "x1": -0.3, "z0": 0.8, "z1": 5.6, "h0": f * rise, "h1": (f + 0.5) * rise})
-		a.append({"x0": -2.2, "x1": 2.2, "z0": 5.6, "z1": 7.2, "h0": (f + 0.5) * rise, "h1": (f + 0.5) * rise})
-		a.append({"x0": 0.3, "x1": 2.2, "z0": 0.8, "z1": 5.6, "h0": (f + 1) * rise, "h1": (f + 0.5) * rise})
+		a.append({"x0": -SHAFT_HALF_WIDTH, "x1": -0.3, "z0": 0.8, "z1": 5.6, "h0": f * rise, "h1": (f + 0.5) * rise})
+		a.append({"x0": -SHAFT_HALF_WIDTH, "x1": SHAFT_HALF_WIDTH, "z0": 5.6, "z1": SHAFT_BACK, "h0": (f + 0.5) * rise, "h1": (f + 0.5) * rise})
+		a.append({"x0": 0.3, "x1": SHAFT_HALF_WIDTH, "z0": 0.8, "z1": 5.6, "h0": (f + 1) * rise, "h1": (f + 0.5) * rise})
 	return a
 
 
@@ -81,13 +86,14 @@ static func to_shaft(port: Dictionary, w: Vector2) -> Vector2:
 	var n: Vector2 = port["n"]
 	var dx := (w.x - p.x) * U2M
 	var dy := (w.y - p.y) * U2M
-	return Vector2(dx * n.y - dy * n.x, dx * n.x + dy * n.y - 2.8)
+	return Vector2(dx * n.y - dy * n.x, dx * n.x + dy * n.y + THRESHOLD_Z)
 
 
 static func from_shaft(port: Dictionary, q: Vector2) -> Vector2:
 	var p: Vector2 = port["p"]
 	var n: Vector2 = port["n"]
-	return Vector2(p.x + (q.x * n.y + (q.y + 2.8) * n.x) / U2M, p.y + (-q.x * n.x + (q.y + 2.8) * n.y) / U2M)
+	var depth := q.y - THRESHOLD_Z
+	return Vector2(p.x + (q.x * n.y + depth * n.x) / U2M, p.y + (-q.x * n.x + depth * n.y) / U2M)
 
 
 static func stair_turn(n: Vector2) -> float:
@@ -243,7 +249,7 @@ static func stair_los(list: Array[Dictionary], a: Dictionary, b: Dictionary) -> 
 		var x: float = a["x"] + (b["x"] - a["x"]) * t
 		var z: float = a["z"] + (b["z"] - a["z"]) * t
 		var h: float = a["h"] + (b["h"] - a["h"]) * t + 1.4
-		if absf(x) > 2.2 or z < -3.5 or z > 7.2:
+		if absf(x) > SHAFT_HALF_WIDTH or z < ENTRY_START or z > SHAFT_BACK:
 			return false
 		for s: Dictionary in list:
 			var y := surface_height(s, z)

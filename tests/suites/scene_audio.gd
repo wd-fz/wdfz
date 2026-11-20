@@ -61,6 +61,30 @@ func test_voices() -> void:
 	var camera := Camera3D.new()
 	root.add_child(camera)
 	camera.make_current()
+	var master := AudioServer.get_bus_index("Master")
+	var count := AudioServer.get_bus_effect_count(master)
+	audio._make_buses()
+	check(count == AudioServer.get_bus_effect_count(master), "returning to the menu cannot stack master gain")
+	var limiter := AudioServer.get_bus_effect(master, count - 1) as AudioEffectHardLimiter
+	check(limiter != null and limiter.pre_gain_db == 16.0 and limiter.ceiling_db <= -1.0, "the output raises quiet cues and limits overlapping peaks before the player volume")
+	var beds := AudioServer.get_bus_index("Beds")
+	check(limiter != null and is_equal_approx(AudioServer.get_bus_volume_db(beds) + limiter.pre_gain_db, 4.0), "ambient loops get a smaller lift than foreground cues")
+	audio.step_on("tile")
+	var step := audio._pool3[posmod(audio._next3 - 1, AudioFx.POOL_3D)]
+	var step_file := step.stream.resource_path.get_file()
+	var step_trim := -INF
+	for take: Dictionary in audio._index.sfx["step.tile"].files:
+		if take.file == step_file: step_trim = step.volume_db - float(take.db)
+	check(step_trim > 6.0 and step_trim < 10.0, "a walking footstep receives its trim on the positional voice, including take variation")
+	audio.volume = 0.0
+	check(AudioServer.is_bus_mute(master), "zero on the settings slider produces digital silence")
+	audio.muted = true
+	audio.volume = 0.35
+	check(AudioServer.is_bus_mute(master), "moving the slider while muted keeps the output silent")
+	audio.muted = false
+	check(not AudioServer.is_bus_mute(master) and is_equal_approx(db_to_linear(AudioServer.get_bus_volume_db(master)), .35), "unmuting restores the player's exact volume")
+	audio.volume = .7
+	audio.stop_all()
 	for spatial in [false,true]:
 		audio.play("dread.hum",{"owner":"atmos.scene","pan":.4 if spatial else 0.0})
 		var index := posmod((audio._next3 if spatial else audio._next)-1,AudioFx.POOL_3D if spatial else AudioFx.POOL)

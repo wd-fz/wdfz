@@ -1211,7 +1211,11 @@ func _build_collision() -> void:
 		_build_stairwell(body, rules.stair_surfaces(scene_id))
 		return
 	var floors: Array[Rect2] = [extent if resident and is_room() else Rect2(extent.position - Vector2.ONE * 2, extent.size + Vector2.ONE * 4)]
-	if resident and scene_id == "out": floors = CampusSpace.subtract_rect(floors[0], space.garage_hole())
+	if resident and scene_id == "out":
+		for opening in space.garage_openings():
+			var remaining: Array[Rect2] = []
+			for rect in floors: remaining.append_array(CampusSpace.subtract_rect(rect, opening))
+			floors = remaining
 	for floor_rect: Rect2 in floors: _add_box(body, floor_rect, -0.12 if resident else -1.0, 0.0, "floor")
 	if is_room():
 		var cut := space.cabin_cut(scene_id) if resident else Rect2()
