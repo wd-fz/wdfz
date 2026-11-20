@@ -34,9 +34,17 @@ func prepare(id: String, with_model: bool = true) -> CampusWorld:
 	var world := regions.get(id) as CampusWorld
 	var fresh := world == null
 	if fresh: world = _make(id)
-	if with_model and not world.geometry_ready: world.prepare_geometry()
+	var loading_detail := with_model and not world.geometry_ready
+	if loading_detail: world.prepare_geometry()
 	world.prepare_collision()
 	if fresh: _accept(world)
+	if loading_detail and world.geometry_ready:
+		if id == "out":
+			for region: CampusWorld in regions.values():
+				var model := region.get_node_or_null("Model") as Node3D
+				_show_detail(region, model != null and model.visible, world)
+		else:
+			_show_detail(world, true, regions.get("out") as CampusWorld)
 	return world
 
 
@@ -45,6 +53,7 @@ func select(id: String) -> CampusWorld:
 		(regions[active] as CampusWorld).deactivate()
 	active = id
 	var world := prepare(id)
+	_show_detail(world, true, regions.get("out") as CampusWorld)
 	world.activate()
 	return world
 
@@ -92,8 +101,14 @@ func update_view(at: Vector3, dt: float = 0.0) -> void:
 				world.discard_resident_model()
 		elif shell == null:
 			detail = true
-		var model := world.get_node_or_null("Model") as Node3D
-		if model != null: model.visible = detail
+		_show_detail(world, detail, outside)
+
+
+func _show_detail(world: CampusWorld, detail: bool, outside: CampusWorld) -> void:
+	var model := world.get_node_or_null("Model") as Node3D
+	if model != null: model.visible = detail
+	if outside != null:
+		var shell := outside.shells.get(world.scene_id) as Node3D
 		if shell != null: shell.visible = not detail or model == null
 
 

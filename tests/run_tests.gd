@@ -438,6 +438,7 @@ func _run_features() -> void:
 	print("CASE: geometry.test_campus_joins")
 	await geometry.test_campus_joins()
 	await geometry.test_stair_entrances()
+	await geometry.test_resident_doorways()
 	# Keep the original execution order; splitting suites must not drop coverage.
 	print("CASE: framework._test_clock")
 	framework._test_clock()

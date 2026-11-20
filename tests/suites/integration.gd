@@ -47,8 +47,8 @@ func _test_campus_app() -> void:
 	await _frames(60)
 	Input.action_release("move_forward")
 	var at_door: Array = app.player.capture_pose()["position"]
-	var door_edge := CampusGeometry.to_scene(t1, Vector2(0, float(t1["oy"]) + 16 * float(t1["th"])))
-	check(at_door[2] > door_edge.y + 0.3, "closed door blocks the corridor side")
+	var door_edge := CampusGeometry.door_leaf_rect(t1.doors[0], false).end.y
+	check(absf(at_door[2] - door_edge - CampusGeometry.PRAD * CampusGeometry.U2M) < .08, "the capsule stops against the corridor face of the closed leaf")
 	app.player.request_interaction()
 	await _frames(3)
 	check(app.campus().is_open("teach1:10:15"), "E with no raycast target reaches the campus rules")
@@ -56,7 +56,7 @@ func _test_campus_app() -> void:
 	await _frames(90)
 	Input.action_release("move_forward")
 	var through: Array = app.player.capture_pose()["position"]
-	check(through[2] < door_edge.y - 1.0, "open door lets the body into the classroom")
+	check(through[2] < door_edge - 1.0, "open door lets the body into the classroom")
 	# Walk out of the seamless south door and back in.
 	var spec: Dictionary = CampusData.campus()["campus_doors"]["doors"][0]
 	var port := CampusGeometry.door_port(t1, spec)

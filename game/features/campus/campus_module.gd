@@ -467,15 +467,24 @@ func _toggle_door(r: Dictionary, hit: Dictionary, me: Vector2) -> Dictionary:
 	var locks: Dictionary = _campus.get("door_locks", {})
 	if locks.has(key) and not is_open(key) and not has_item.call(String(locks[key]["item"])):
 		return {"notice": "我：门锁着。锁孔是圆的，很新。", "toast": "需要「%s」· 校长办公室可能有" % locks[key]["name"]}
-	if not is_open(key):
+	var opening := not is_open(key)
+	var position := CampusGeometry.to_scene(r, me)
+	for door: Dictionary in r.doors:
+		if door.key != key or not door.has("leaf"): continue
+		var footprint := CampusGeometry.door_leaf_rect(door, opening)
+		if not opening:
+			# Keep the occupied swing clear when closing from either side of the frame.
+			footprint = footprint.merge(CampusGeometry.door_leaf_rect(door, true))
+		var nearest := position.clamp(footprint.position, footprint.end)
+		if nearest.distance_squared_to(position) < pow(CampusGeometry.PRAD * CampusGeometry.U2M, 2):
+			return {"notice": "我：先让开门口。"}
+		break
+	if opening:
 		_open_doors[key] = true
 		var line: String = OPEN_LINES[_line % OPEN_LINES.size()]
 		_line += 1
 		door_changed.emit(key, true)
 		return {"notice": line, "door": {"key": key, "open": true}}
-	var w: Vector2 = hit["w"]
-	if absf(me.x - w.x) < float(r["tw"]) * 0.5 + CampusGeometry.PRAD and absf(me.y - w.y) < float(r["th"]) * 0.5 + CampusGeometry.PRAD:
-		return {"notice": "我：先让开门口。"}
 	_open_doors.erase(key)
 	door_changed.emit(key, false)
 	return {"notice": "", "door": {"key": key, "open": false}}

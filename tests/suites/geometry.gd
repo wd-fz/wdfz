@@ -138,6 +138,11 @@ func test_stair_entrances() -> void:
 						var physics := PhysicsRayQueryParameters3D.create(ray[0], ray[1], 1)
 						var solid := not world.get_world_3d().direct_space_state.intersect_ray(physics).is_empty()
 						check(solid and not mesh.intersect_segment(ray[0], ray[1]).is_empty(), "%s %s side %s has a solid, visible return" % [stair.id, level, side])
+				if stair.rooms[level] != "out":
+					var below := Vector3(0, level * float(stair.rise) + 2.20, -2.0)
+					var above := below + Vector3.UP * .25
+					var head := world.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(below, above, 1))
+					check(not head.is_empty() and not mesh.intersect_segment(below, above).is_empty(), "the doorway lintel meets the baked shaft at 2.30 m")
 				var start := Vector3(0, eye.y, -3.2)
 				var end := Vector3(0, eye.y, -0.8)
 				check(mesh.intersect_segment(start, end).is_empty() and world.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(start, end, 1)).is_empty(), "the centre passage stays clear at %s %s" % [stair.id, level])
@@ -161,16 +166,88 @@ func test_stair_entrances() -> void:
 	CampusData.tier = initial_tier
 
 
+## A separate room preview cannot reproduce a far facade obstructing a resident room.
+func test_resident_doorways() -> void:
+	var original_tier := CampusData.tier
+	CampusData.tier = 0
+	var campus := CampusResident.new()
+	campus.space = CampusSpace.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
+	campus.nearby_visuals = true
+	root.add_child(campus)
+	var hall := campus.prepare("teach1")
+	var outside := campus.prepare("out")
+	var shaft := campus.prepare("stair_teach_e")
+	var facade: Node3D = outside.shells.teach1
+	var tower: Node3D = outside.shells.stair_teach_e
+	check(not facade.visible and not tower.visible, "detail replaces both outdoor proxies before the first visibility tick")
+	campus.select("teach1")
+	var frame := hall.global_transform
+	await _frames(2)
+	# Force the loading overlap and test the actual outdoor triangles from both sides.
+	facade.show()
+	tower.show()
+	var body := hall.get_world_3d().direct_space_state
+	for height: float in [.45, 1.58]:
+		var paths := [[Vector3(23.6, height, 8.45), Vector3(27, height, 8.45)],
+			[Vector3(24.5, height, 8.5), Vector3(24.5, height, 12.2)]]
+		for path: Array in paths:
+			var a: Vector3 = frame * path[0]
+			var b: Vector3 = frame * path[1]
+			check(not _mesh_hit(outside, a, b) and not _mesh_hit(outside, b, a), "outdoor models leave the drinking fountain corridor and east stairs clear at %s m" % height)
+			check(body.intersect_ray(PhysicsRayQueryParameters3D.create(a, b, 1)).is_empty(), "no invisible collider across the same passage")
+	for stair: Dictionary in campus.space.campus.stair_layout:
+		var transform := campus.space.frame(stair.id)
+		var proxy: Node3D = outside.shells[stair.id]
+		var levels: Array = stair.rooms
+		proxy.show()
+		for level in levels.size():
+			var floor_proxy := outside.shells.get(levels[level]) as Node3D
+			if floor_proxy != null: floor_proxy.show()
+			for h: float in [.45, 1.58]:
+				for x: float in [-.55, 0.0, .55]:
+					var a := transform * Vector3(x, level * float(stair.rise) + h, -4.15)
+					var b := transform * Vector3(x, level * float(stair.rise) + h, -1.0)
+					var clear := not _mesh_hit(proxy, a, b) and not _mesh_hit(proxy, b, a)
+					if clear and floor_proxy != null:
+						clear = not _mesh_hit(floor_proxy, a, b) and not _mesh_hit(floor_proxy, b, a)
+					check(clear, "outdoor stair entrance open at %s / %s (x %.2f, h %.2f)" % [stair.id, levels[level], x, h])
+	campus.select(shaft.scene_id)
+	check(not tower.visible, "selecting a streamed shaft replaces its facade immediately")
+	var door: Dictionary = hall.layout.doors[0]
+	for opened: bool in [false, true, false]:
+		hall.set_door_open(door.key, opened)
+		await _frames(2)
+		for pose: bool in [false, true]:
+			var rect := CampusGeometry.door_leaf_rect(door, pose)
+			var middle := rect.get_center()
+			var side := Vector3.RIGHT if pose else Vector3.BACK
+			var a: Vector3 = frame * (Vector3(middle.x, 1.0, middle.y) - side * .12)
+			var b: Vector3 = frame * (Vector3(middle.x, 1.0, middle.y) + side * .12)
+			var leaves: Dictionary = hall._door_leaves[door.key]
+			var mesh: Node3D = leaves["open" if pose else "closed"]
+			var solid := not body.intersect_ray(PhysicsRayQueryParameters3D.create(a, b, 1)).is_empty()
+			check(solid == (pose == opened) and _mesh_hit(mesh, a, b) == solid, "rendered door panel and physical panel agree for %s / %s" % [opened, pose])
+	campus.queue_free()
+	await _frames(2)
+	CampusData.tier = original_tier
+
+
 func _mesh_hit(node: Node3D, from: Vector3, to: Vector3) -> bool:
-	for child: Node in node.find_children("*", "MeshInstance3D", true, false):
-		var mesh := child as MeshInstance3D
-		if not mesh.is_visible_in_tree() or mesh.mesh == null:
-			continue
-		var inv := mesh.global_transform.affine_inverse()
-		var a := inv * from
-		var b := inv * to
-		var faces := mesh.mesh.get_faces()
-		for i in range(0, faces.size(), 3):
-			if Geometry3D.segment_intersects_triangle(a, b, faces[i], faces[i + 1], faces[i + 2]) != null:
-				return true
+	for child: GeometryInstance3D in node.find_children("*", "GeometryInstance3D", true, false):
+		if not child.is_visible_in_tree(): continue
+		if child is MeshInstance3D:
+			if _mesh_segment(child.mesh, child.global_transform, from, to): return true
+		elif child is MultiMeshInstance3D:
+			for i in child.multimesh.instance_count:
+				if _mesh_segment(child.multimesh.mesh, child.global_transform * CampusPreview.instance_transform(child, i), from, to): return true
 	return false
+
+
+func _mesh_segment(mesh: Mesh, transform: Transform3D, from: Vector3, to: Vector3) -> bool:
+	if mesh == null or is_zero_approx(transform.basis.determinant()): return false
+	var inv := transform.affine_inverse()
+	var a := inv * from
+	var b := inv * to
+	if mesh.get_aabb().grow(.001).intersects_segment(a, b) == null: return false
+	var triangles := mesh.generate_triangle_mesh()
+	return triangles != null and not triangles.intersect_segment(a, b).is_empty()

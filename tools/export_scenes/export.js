@@ -259,6 +259,18 @@
     });
     return out.map(function(o){ return toM(R.ox + o.c0 * R.tw, R.oy + o.r0 * R.th, R.ox + (o.c1 + 1) * R.tw, R.oy + (o.r1 + 1) * R.th, 'wall'); });
   }
+  function wallRects(cells, R, toM){
+    var groups = {};
+    cells.forEach(function(cell){
+      var kind = window.NativeCampus.partition(R, cell[0], cell[1]);
+      (groups[kind] || (groups[kind]=[])).push(cell);
+    });
+    return Object.keys(groups).flatMap(function(kind){
+      return mergeCells(groups[kind], R, toM).map(function(rect){
+        return Object.assign(rect, window.NativeCampus.bounds(kind, rect.x0, rect.z0, rect.x1, rect.z1));
+      });
+    });
+  }
   function pose(R, x, y, ang){ return {x:x, y:y, ang:ang, scene_x:round((x - R.cx) * U), scene_z:round((y - R.cy) * U)}; }
   /* 旧版 doEnterRoom 没有指定落点时的位置：车库固定点，其余先放南墙内侧中间，再找出入口（'O'，没有就 'O'/'S'/'L'）旁能站的一格 */
   function defaultSpawn(R){
@@ -306,7 +318,7 @@
         var t = R.grid[r][c], cx = R.ox + (c + 0.5) * R.tw, cy = R.oy + (r + 0.5) * R.th;
         if(t === '#'){ walls.push([c, r]); continue; }
         if(t === 'S'){ stairs.push(toM(R.ox + c * R.tw, R.oy + r * R.th, R.ox + (c + 1) * R.tw, R.oy + (r + 1) * R.th, 'stair', {c:c, r:r})); continue; }
-        if(t === '='){ doors.push(toM(R.ox + c * R.tw, R.oy + r * R.th, R.ox + (c + 1) * R.tw, R.oy + (r + 1) * R.th, 'door', {c:c, r:r, key:window.doorKeyAt(R, c, r)})); continue; }
+        if(t === '='){ doors.push(toM(R.ox + c * R.tw, R.oy + r * R.th, R.ox + (c + 1) * R.tw, R.oy + (r + 1) * R.th, 'door', {c:c, r:r, key:window.doorKeyAt(R, c, r), leaf:window.NativeCampus.leaves(R, c, r, (cx-R.cx)*U, (cy-R.cy)*U)})); continue; }
         var f = R.foot ? undefined : window.FURN_SOLID[t];
         if(f !== undefined) boxes.push(toM(cx - R.tw * f / 2, cy - R.th * f / 2, cx + R.tw * f / 2, cy + R.th * f / 2, 'furn', {ch:t}));
       }
@@ -328,7 +340,7 @@
       cols:R.cols, rows:R.rows, tw:R.tw, th:R.th, ox:R.ox, oy:R.oy, cx:R.cx, cy:R.cy,
       shift:shift, exit_world:exit, grid:grid, spawn:spawn, start:start, seats:seatList(R),
       flags:{principal:!!R.principal, stairwell:!!R.stairwell, spiral:!!R.spiral, custom:!!R.build, collide:!!R.collide, noClock:!!R.noClock, gallery:!!R.gallery, noMap:!!R.noMap,noAnomaly:!!R.noAnomaly},
-      walls:mergeCells(walls, R, toM), boxes:boxes, doors:doors, stairs:stairs
+      walls:wallRects(walls, R, toM), boxes:boxes, doors:doors, stairs:stairs
     };
   }
   function outLayout(){

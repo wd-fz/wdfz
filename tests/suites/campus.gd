@@ -9,6 +9,11 @@ func _test_campus_rules() -> void:
 	check(campus.start_world() == "teach1", "run starts in teach1 like the Web version")
 	var t1: Dictionary = rooms["teach1"]
 	check(t1["grid"].size() == 22 and String(t1["grid"][0]).length() == 63, "teach1 keeps the 63 x 22 tile grid")
+	var hall_side := CampusGeometry.to_world(t1, -20.2, 4.6)
+	var along_wall := CampusGeometry.to_world(t1, -19, 4.6)
+	var behind_wall := CampusGeometry.to_world(t1, -20.2, 3.8)
+	check(CampusGeometry.tile_los(t1, hall_side, along_wall, -1, -1, {}), "the reclaimed corridor strip has clear line of sight along the partition")
+	check(not CampusGeometry.tile_los(t1, hall_side, behind_wall, -1, -1, {}), "the 20 cm partition blocks line of sight across its face")
 	# Door 10:15 is the front door of the first classroom; stand in the corridor facing north.
 	var door := CampusGeometry.tile_center(t1, 10, 15)
 	var pose := _campus_pose(t1, door + Vector2(0, 14), -PI * 0.5)

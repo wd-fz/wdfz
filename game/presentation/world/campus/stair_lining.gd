@@ -4,13 +4,13 @@ extends RefCounted
 ## Each region owns its side of the shared threshold so previews can still be clipped there.
 
 const THRESHOLD := CampusPortals.THRESHOLD_Z
-const FRONT := -1.2
+const FRONT := CampusPortals.SHAFT_FRONT - 0.14
 const HALF_TILE := CampusGeometry.TTILE * CampusGeometry.U2M * 0.5
 const OUTER_HALF_WIDTH := HALF_TILE * 2.0
 const DOOR_HALF := CampusPortals.DOOR_HALF
 const JAMB := OUTER_HALF_WIDTH - DOOR_HALF
 const WALL_HEIGHT := 3.0
-const CAP := 0.12
+const CLEAR_HEIGHT := 2.30
 ## The plaster albedo used by the exported staircases.
 const PLASTER := preload("res://assets/campus/textures/17dd50066a40793f.png")
 
@@ -24,13 +24,28 @@ static func shaft_panels(stair: Dictionary) -> Array[AABB]:
 		panels.append(AABB(Vector3(x, 0, THRESHOLD), Vector3(JAMB, height, FRONT - THRESHOLD)))
 	for level in levels.size():
 		if levels[level] == "out": continue
-		panels.append(AABB(Vector3(-DOOR_HALF, level * rise + WALL_HEIGHT - CAP, THRESHOLD),
-			Vector3(DOOR_HALF * 2.0, CAP, FRONT - THRESHOLD)))
+		var top := WALL_HEIGHT if level == levels.size() - 1 else rise
+		panels.append(AABB(Vector3(-DOOR_HALF, level * rise + CLEAR_HEIGHT, THRESHOLD),
+			Vector3(DOOR_HALF * 2.0, top - CLEAR_HEIGHT, FRONT - THRESHOLD)))
+	return panels
+
+
+static func floor_headers(doorways: Array[Dictionary]) -> Array[AABB]:
+	var panels: Array[AABB] = []
+	for door: Dictionary in doorways:
+		var center: Vector2 = door.center
+		var normal: Vector2 = door.normal
+		var lateral: Vector2 = door.lateral
+		var a := center - normal * HALF_TILE - lateral * DOOR_HALF
+		var b := center + lateral * DOOR_HALF
+		var start := a.min(b)
+		var size := (b - a).abs()
+		panels.append(AABB(Vector3(start.x, CLEAR_HEIGHT, start.y), Vector3(size.x, WALL_HEIGHT - CLEAR_HEIGHT, size.y)))
 	return panels
 
 
 static func floor_jambs(doorways: Array[Dictionary]) -> Array[AABB]:
-	var panels: Array[AABB] = []
+	var panels := floor_headers(doorways)
 	for door: Dictionary in doorways:
 		var threshold: Vector2 = door.center
 		var normal: Vector2 = door.normal

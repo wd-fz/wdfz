@@ -1,6 +1,6 @@
 # 旧版建筑导出
 
-**玩法与建筑都不能变**：Godot 版的建筑几何、碰撞与落点全部由旧 Web 版自己的代码现场生成，这里只负责搬运与格式转换。
+以旧 Web 版的建筑和落点为基线。原生校园同时显示室内和室外，导出器在临时目录应用 `campus_geometry.patch`，将教室薄墙、教学楼外廊和天台，以及行政楼、实验楼、宿舍楼的楼梯开口做进模型。旧仓库工作树可以只读。
 
 ## 依赖
 
@@ -11,10 +11,12 @@
 
 ```bash
 python3 tools/export_scenes/export_scenes.py --old <旧仓库目录>          # 全部场景：glb + 贴图 + 布局
-python3 tools/export_scenes/export_scenes.py --old <旧仓库目录> --only teach1,out
+python3 tools/export_scenes/export_scenes.py --old <旧仓库目录> --only out,teach1,teach2,teach3,teach4,teach5 --keep-scene-art
 python3 tools/export_scenes/export_scenes.py --old <旧仓库目录> --layout-only
 python3 tools/export_scenes/gen_worlds.py                                 # 生成 WorldDefinition 并登记进 app.tscn
 ```
+
+只更新几何时，按可用模型档位分别设置 `--quality` 与对应的 `--out`。加上 `--keep-scene-art` 可复用已有中文标牌等贴图。教室隔墙深 0.20 米，门扇的开关位置与碰撞从同一套门轴尺寸导出。
 
 ## 过程
 

@@ -29,7 +29,8 @@ var _west_cleared := false
 var mirror_view: MirrorView
 var canteen_view: CanteenView
 var lighting: CampusLighting
-var _door_bodies: Dictionary = {}   # key -> CollisionShape3D
+var _door_bodies: Dictionary = {}   # key -> closed panel collider
+var _open_leaf_bodies: Dictionary = {}
 var _door_leaves: Dictionary = {}   # key -> {"closed": Node3D, "open": Node3D}
 var _preview_doors: Dictionary = {} # key -> all neighbouring views of that door
 var _preview_lifts: Array[Dictionary] = []
@@ -221,7 +222,7 @@ func seed_visual(id: String, source: Node3D) -> void:
 func release_geometry() -> CampusWorld:
 	var next := CampusWorld.new()
 	for property: String in ["scene_id", "layout", "visual_tier", "render_options", "visual_ground", "geometry_ready", "_patrol_asset",
-		"_door_bodies", "_door_leaves", "_preview_doors", "_preview_lifts", "_open_doors", "_lift_leaves", "_lift_bodies", "_lift_amount",
+		"_door_bodies", "_open_leaf_bodies", "_door_leaves", "_preview_doors", "_preview_lifts", "_open_doors", "_lift_leaves", "_lift_bodies", "_lift_amount",
 		"link_previews", "stair_previews", "door_previews", "gallery_campus", "_shaft_levels"]:
 		next.set(property, get(property))
 	var nodes: Array[Node3D] = _visual_models()
@@ -781,6 +782,8 @@ func set_door_open(key: String, open: bool) -> void:
 			(leaves["open"] as Node3D).visible = open
 	if _door_bodies.has(key):
 		(_door_bodies[key] as CollisionShape3D).set_deferred("disabled", open)
+	if _open_leaf_bodies.has(key):
+		(_open_leaf_bodies[key] as CollisionShape3D).set_deferred("disabled", not open)
 	for entry: Dictionary in _preview_doors.get(key, []):
 		if is_instance_valid(entry["node"]):
 			(entry["node"] as Node3D).visible = open == (entry["state"] == "open")
@@ -1252,6 +1255,8 @@ func _build_collision() -> void:
 		for b: Dictionary in layout["stairs"]:
 			for part: Rect2 in _cut_doorways(_rect_of(b), doorways):
 				_add_box(body, part, WALL_BOTTOM, _wall_top(), "stair")
+		for header: AABB in StairLining.floor_headers(doorways):
+			_add_box(body, Rect2(header.position.x, header.position.z, header.size.x, header.size.z), header.position.y, header.end.y, "stair")
 		_room_boundary(body, extent)
 		var doors := StaticBody3D.new()
 		doors.name = "Doors"
@@ -1259,7 +1264,17 @@ func _build_collision() -> void:
 		doors.collision_mask = 0
 		add_child(doors)
 		for d: Dictionary in layout["doors"]:
-			_door_bodies[String(d["key"])] = _add_rect(doors, d)
+			var key := String(d.key)
+			if not d.has("leaf"):
+				_door_bodies[key] = _add_rect(doors, d)
+				_door_bodies[key].disabled = _open_doors.has(key)
+				continue
+			var closed := _add_box(doors, CampusGeometry.door_leaf_rect(d, false), .01, 2.05, "door")
+			var swung := _add_box(doors, CampusGeometry.door_leaf_rect(d, true), .01, 2.05, "door")
+			closed.disabled = _open_doors.has(key)
+			swung.disabled = not closed.disabled
+			_door_bodies[key] = closed
+			_open_leaf_bodies[key] = swung
 		var lift_rects := CampusData.lift_geometry().door_rects(scene_id)
 		if resident and lift_rects.size() > 1: lift_rects.resize(1)
 		for r: Rect2 in lift_rects:
@@ -1369,10 +1384,14 @@ func _build_stairwell(body: StaticBody3D, surfaces: Array[Dictionary]) -> void:
 	if resident:
 		# The old 2D adapter inflated outer walls by a metre. That reaches into
 		# the neighbouring bridge in a shared 3D world; use the visible shell.
-		walls = [Rect2(-2.32,-1.2,.12,8.4),Rect2(2.2,-1.2,.12,8.4),
-			Rect2(-2.32,7.2,4.64,.12),Rect2(-2.32,-1.32,1.47,.12),Rect2(.85,-1.32,1.47,.12),
+		walls = [Rect2(-2.34,-1.2,.14,8.4),Rect2(2.2,-1.2,.14,8.4),
+			Rect2(-2.34,7.2,4.68,.14),Rect2(-2.34,StairLining.FRONT,1.49,.14),Rect2(.85,StairLining.FRONT,1.49,.14),
 			Rect2(-.3,.8,.6,4.8)]
 	var stair := CampusPortals.stair_config(CampusData.campus().stair_layout, scene_id)
+	for level in stair.rooms.size():
+		if stair.rooms[level] == "out": continue
+		var base: float = level * float(stair.rise)
+		_add_box(body, Rect2(-StairLining.DOOR_HALF, StairLining.FRONT, StairLining.DOOR_HALF * 2, .14), base + StairLining.CLEAR_HEIGHT, base + StairLining.WALL_HEIGHT, "stairwell")
 	for panel: AABB in StairLining.shaft_panels(stair):
 		var rect := Rect2(panel.position.x, panel.position.z, panel.size.x, panel.size.z)
 		_add_box(body, rect, panel.position.y, panel.end.y, "stairwell")

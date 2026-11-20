@@ -82,12 +82,37 @@ static func is_handover_podium(campus: Dictionary, world_id: String, tile: Array
 	return world_id == "teach1" and own.size() == 2 and tile.size() == 2 and int(own[0]) == int(tile[0]) and int(own[1]) == int(tile[1])
 
 
+## Local footprint of the actual swinging panel; both physics and interaction use it.
+static func door_leaf_rect(door: Dictionary, opened: bool) -> Rect2:
+	var corners: Array = door["leaf"]["open" if opened else "closed"]
+	var start := Vector2(corners[0], corners[1])
+	return Rect2(start, Vector2(corners[2], corners[3]) - start)
+
+
+static func _crosses(rect: Rect2, a: Vector3, b: Vector3) -> bool:
+	return AABB(Vector3(rect.position.x, -1, rect.position.y), Vector3(rect.size.x, 2, rect.size.y)).intersects_segment(a, b) != null
+
+
 ## interact.js tileLOS: walls, solid stair cells and closed doors block; the target cell does not.
 static func tile_los(room: Dictionary, a: Vector2, b: Vector2, tc: int, tr: int, open_doors: Dictionary) -> bool:
 	var d := b - a
 	var length := d.length()
 	if length < 0.001:
 		return true
+	var start := to_scene(room, a)
+	var end := to_scene(room, b)
+	var from := Vector3(start.x, 0, start.y)
+	var to := Vector3(end.x, 0, end.y)
+	var floor_number := int(room.get("floor", 0)) if room.get("floor") != null else 0
+	var thin_walls: bool = room.get("host", "") == "teach" and floor_number >= 1 and floor_number <= 5 and room.has("walls")
+	if thin_walls:
+		for wall: Dictionary in room.walls:
+			var rect := Rect2(wall.x0, wall.z0, wall.x1 - wall.x0, wall.z1 - wall.z0)
+			if _crosses(rect, from, to): return false
+	var doors: Array = room.get("doors", [])
+	for door: Dictionary in doors:
+		if not door.has("leaf") or (int(door.c) == tc and int(door.r) == tr): continue
+		if _crosses(door_leaf_rect(door, open_doors.has(door.key)), from, to): return false
 	var step := maxf(0.5, minf(float(room["tw"]), float(room["th"])) * 0.25)
 	var n := int(ceil(length / step))
 	for i in range(1, n):
@@ -99,10 +124,15 @@ static func tile_los(room: Dictionary, a: Vector2, b: Vector2, tc: int, tr: int,
 		if c == tc and r == tr:
 			continue
 		var ch := String(room["grid"][r]).substr(c, 1)
-		if SOLID_CH.contains(ch):
+		if ch == "S" or (ch == "#" and not thin_walls):
 			return false
 		if ch == "=" and not open_doors.has(door_key(room, c, r)):
-			return false
+			var authored := false
+			for door: Dictionary in doors:
+				if int(door.c) == c and int(door.r) == r:
+					authored = door.has("leaf")
+					break
+			if not authored: return false
 	return true
 
 
@@ -131,16 +161,24 @@ static func near_tile(room: Dictionary, me: Vector2, ang: float, radius: float, 
 			var ch := row.substr(c, 1)
 			if ch == "#" or ch == ".":
 				continue
-			var w := tile_center(room, c, r)
+			var targets: Array[Vector2] = [tile_center(room, c, r)]
+			if ch == "=":
+				for door: Dictionary in room.get("doors", []):
+					if int(door.c) != c or int(door.r) != r or not door.has("leaf"): continue
+					var center := door_leaf_rect(door, false).get_center()
+					targets[0] = to_world(room, center.x, center.y)
+					if open_doors.has(door.key):
+						var swung := door_leaf_rect(door, true).get_center()
+						targets.append(to_world(room, swung.x, swung.y))
+					break
 			# Classroom lecterns stand on the seam between this row and the next.
-			if ch == "T": w.y += float(room["th"]) * 0.5
-			var d := me.distance_to(w)
-			if d >= radius:
-				continue
-			var off := 0.0 if d < 4.0 else ang_diff(atan2(w.y - me.y, w.x - me.x), ang)
-			if off > 0.62 and d > 3.0:
-				continue
-			hits.append({"ch": ch, "c": c, "r": r, "w": w, "d": d, "score": off * 32.0 + d})
+			if ch == "T": targets[0].y += float(room["th"]) * 0.5
+			for w: Vector2 in targets:
+				var d := me.distance_to(w)
+				if d >= radius: continue
+				var off := 0.0 if d < 4.0 else ang_diff(atan2(w.y - me.y, w.x - me.x), ang)
+				if off > 0.62 and d > 3.0: continue
+				hits.append({"ch": ch, "c": c, "r": r, "w": w, "d": d, "score": off * 32.0 + d})
 	hits.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["score"] < b["score"])
 	for hit: Dictionary in hits:
 		if (not accepts.is_valid() or accepts.call(hit)) and tile_visible(room, me, hit, open_doors):

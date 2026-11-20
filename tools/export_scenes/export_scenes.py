@@ -1,4 +1,4 @@
-"""从旧 Web 版仓库导出建筑模型为 glb（建筑不能变：几何全部来自旧版自己的建模函数）。
+"""从旧 Web 版仓库导出建筑模型为 glb（沿用旧版建模函数并应用原生连续校园的建筑修正）。
 
 用法：
   python3 tools/export_scenes/export_scenes.py --old <wd-fz.github.io 检出目录> [--quality 2] [--only teach1,out]
@@ -8,7 +8,7 @@
 assets/campus/scenes/<场景>.glb；贴图去重后放 assets/campus/textures/，glb 以相对路径引用；
 index.json 记录名节点及其 userData。
 """
-import argparse, base64, hashlib, json, os, struct, threading
+import argparse, base64, hashlib, json, os, shutil, struct, subprocess, tempfile, threading
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -20,11 +20,47 @@ CHROME = os.environ.get('CHROMIUM_EXECUTABLE') or '/opt/pw-browsers/chromium-124
 
 
 class Quiet(SimpleHTTPRequestHandler):
+    def __init__(self, *args, overlay, **kwargs):
+        self.overlay = overlay
+        super().__init__(*args, **kwargs)
+
+    def translate_path(self, path):
+        original = Path(super().translate_path(path))
+        patched = self.overlay / original.relative_to(self.directory)
+        return str(patched if patched.is_file() else original)
+
     def log_message(self, *_):
         pass
 
 
-def externalize_images(glb, tex_dir, rel):
+def keep_scene_art(glb, previous):
+    """Keep the shipped sign artwork when only mesh geometry was regenerated."""
+    def read_doc(data):
+        length = struct.unpack_from('<I', data, 12)[0]
+        return json.loads(data[20:20 + length]), 20 + length
+
+    doc, end = read_doc(glb)
+    old, _ = read_doc(previous.read_bytes())
+    # Identical bindings and material descriptors keep each sampled texture in its slot.
+    # Geometry batching can coalesce duplicate materials in a new mesh.
+    def materials(scene):
+        return {json.dumps(m, sort_keys=True) for m in scene.get('materials', [])}
+
+    if (len(doc.get('images', [])) != len(old.get('images', []))
+            or any(doc.get(k) != old.get(k) for k in ('textures', 'samplers'))
+            or materials(doc) != materials(old)):
+        raise ValueError(f'Art bindings changed in {previous}; use a full art export')
+    for image in old.get('images', []):
+        if not (previous.parent / image['uri']).is_file():
+            raise FileNotFoundError(previous.parent / image['uri'])
+    doc['images'] = old.get('images', [])
+    js = json.dumps(doc, ensure_ascii=False, separators=(',', ':')).encode()
+    js += b' ' * (-len(js) % 4)
+    tail = glb[end:]
+    return struct.pack('<4sIII4s', b'glTF', 2, 20 + len(js) + len(tail), len(js), b'JSON') + js + tail
+
+
+def externalize_images(glb, tex_dir, rel, keep_art=False):
     """把 glb 内嵌的贴图按内容哈希写成独立 PNG（多个场景共用一份），glb 改为相对 URI 引用。"""
     jlen = struct.unpack('<I', glb[12:16])[0]
     doc = json.loads(glb[20:20 + jlen])
@@ -41,7 +77,7 @@ def externalize_images(glb, tex_dir, rel):
         ext = '.png' if img.get('mimeType') == 'image/png' else '.jpg'
         name = hashlib.sha1(data).hexdigest()[:16] + ext
         path = tex_dir / name
-        if not path.exists():
+        if not keep_art and not path.exists():
             path.write_bytes(data)
         drop.add(img.pop('bufferView'))
         img.pop('mimeType', None)
@@ -79,19 +115,33 @@ def main():
     ap.add_argument('--quality', type=int, default=2)
     ap.add_argument('--only', default='')
     ap.add_argument('--layout-only', action='store_true', help='只导出布局与碰撞 JSON')
+    ap.add_argument('--keep-scene-art', action='store_true', help='更新场景几何时复用目标 GLB 的贴图和标牌')
     ap.add_argument('--out', default=str(REPO / 'assets' / 'campus'))
     a = ap.parse_args()
+    a.old = str(Path(a.old).resolve())
+    with tempfile.TemporaryDirectory() as temp:
+        overlay = Path(temp)
+        for name in ('content/room-recipe.js', 'model/room.js', 'model/building.js'):
+            relative = Path('game3d/js') / name
+            (overlay / relative).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(Path(a.old) / relative, overlay / relative)
+        subprocess.run(['git', 'apply', str(HERE / 'campus_geometry.patch')], cwd=overlay, check=True)
+        export(a, overlay)
+
+
+def export(a, overlay):
     out = Path(a.out) / 'scenes'
     tex = Path(a.out) / 'textures'
     out.mkdir(parents=True, exist_ok=True)
     tex.mkdir(parents=True, exist_ok=True)
-    srv = ThreadingHTTPServer(('127.0.0.1', 0), partial(Quiet, directory=a.old))
+    srv = ThreadingHTTPServer(('127.0.0.1', 0), partial(Quiet, directory=a.old, overlay=overlay))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = f'http://127.0.0.1:{srv.server_port}/'
     with sync_playwright() as p:
         b = p.chromium.launch(executable_path=CHROME if Path(CHROME).exists() else None,
                               args=['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'])
         ctx = b.new_context(viewport={'width': 640, 'height': 480})
+        ctx.add_init_script(path=str(HERE / "architecture.js"))
         ctx.add_init_script("localStorage.setItem('wdfz_pro','1');localStorage.setItem('zw3d_set',JSON.stringify({q:%d,amb:0,vol:0,renderer:'webgl',rv:1}));" % a.quality)
         pg = ctx.new_page()
         errs = []
@@ -179,8 +229,9 @@ def main():
             if a.layout_only:
                 continue
             r = pg.evaluate('([k,i])=>window.__wdfzExport(k,i)', [kind, sid])
-            data = externalize_images(base64.b64decode(r['glb']), tex, '../textures/')
-            (out / f'{sid}.glb').write_bytes(data)
+            path = out / f'{sid}.glb'
+            data = externalize_images(base64.b64decode(r['glb']), tex, '../textures/', a.keep_scene_art)
+            path.write_bytes(keep_scene_art(data, path) if a.keep_scene_art else data)
             index[sid] = r['meta']
             print(f'{sid}: {len(data)/1e6:.2f} MB, named={len(r["meta"]["named"])}', flush=True)
         index_path.write_text(json.dumps(index, ensure_ascii=False, indent=1, sort_keys=True))
