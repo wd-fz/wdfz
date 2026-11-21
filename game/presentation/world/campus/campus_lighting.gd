@@ -82,12 +82,15 @@ var patrol_red := 0.0
 var blackout := false
 var overcast_target := 0.0
 var overcast := 0.0
+var resident := false
+var garage_depth := -1.0
+var shelter := -1.0
 var _lamp_pick := 0.0
 var _stair_rise := 0.0
 var _stair_levels := 0
 
 
-func setup(id: String, room_data: Variant, model: Node, stair_rise: float) -> void:
+func setup(id: String, room_data: Variant, model: Node, stair_rise: float, primary: bool = true) -> void:
 	scene_id = id
 	room = room_data
 	campus = CampusData.campus()
@@ -99,10 +102,6 @@ func setup(id: String, room_data: Variant, model: Node, stair_rise: float) -> vo
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES if OS.has_feature("android") else Environment.TONE_MAPPER_LINEAR
 	# The old sky is only a gradient backdrop (makeSky); a flat colour avoids a radiance Sky per scene.
 	env.background_mode = Environment.BG_COLOR
-	var we := WorldEnvironment.new()
-	we.name = "Environment"
-	we.environment = env
-	add_child(we)
 	sun_light = DirectionalLight3D.new()
 	sun_light.light_cull_mask = WORLD_LIGHT_MASK
 	sun_light.shadow_enabled = bool(options.get("sun_shadows",shadows_on))
@@ -136,7 +135,21 @@ func setup(id: String, room_data: Variant, model: Node, stair_rise: float) -> vo
 			lamp_pool.append(l)
 	if model != null:
 		_collect_live(model)
+	set_primary(primary)
 	apply_quality()
+
+
+func set_primary(value: bool) -> void:
+	var current := get_node_or_null("Environment")
+	if value and current == null:
+		var world_env := WorldEnvironment.new()
+		world_env.name = "Environment"
+		world_env.environment = env
+		add_child(world_env)
+	elif not value and current != null:
+		current.free()
+	sun_light.visible = value
+	cam_light.visible = value
 
 
 ## There are no per-window projectors, omni shadow maps, SSAO, bloom or volumetric
@@ -151,9 +164,9 @@ func apply_quality(camera: Camera3D = null) -> void:
 	sun_light.shadow_enabled = bool(options.get("sun_shadows", shadows_on))
 	sun_light.shadow_blur = 1.0
 	var detail := clampi(int(options.get("sun_shadow_detail", 0 if q < 3 else 1)), 0, 1)
-	var indoor := room != null and not _open_air()
-	sun_light.directional_shadow_max_distance = (22.0 if indoor else 32.0) + detail * 10.0
-	sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL if indoor else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	var local_shadows := room != null and not _open_air() and not resident
+	sun_light.directional_shadow_max_distance = (22.0 if local_shadows else 32.0) + detail * 10.0
+	sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL if local_shadows else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	if _stair_rise <= 0.0:
 		for l: OmniLight3D in room_lights:
 			l.position.y = float(l.get_meta("rest_y", l.position.y)) - (LAMP_DROP if q >= 2 else 0.0)
@@ -172,14 +185,16 @@ func apply_quality(camera: Camera3D = null) -> void:
 
 
 func _select_local_lights(camera: Camera3D) -> void:
-	var lights: Array[OmniLight3D] = room_lights + lamp_pool
 	var at := camera.global_position if camera != null else Vector3.ZERO
-	var order := lights.duplicate()
-	order.sort_custom(func(a: OmniLight3D, b: OmniLight3D) -> bool: return a.global_position.distance_squared_to(at) < b.global_position.distance_squared_to(at))
+	select_local_lights(room_lights + lamp_pool, at, LOCAL_LIGHT_LIMIT[_detail()])
+
+
+static func select_local_lights(lights: Array[OmniLight3D], at: Vector3, limit: int) -> void:
+	lights.sort_custom(func(a: OmniLight3D, b: OmniLight3D) -> bool: return a.global_position.distance_squared_to(at) < b.global_position.distance_squared_to(at))
 	var active := 0
-	for l: OmniLight3D in order:
+	for l: OmniLight3D in lights:
 		# Do not spend the budget on dark or already distance-culled lights.
-		l.visible = l.light_energy > .001 and l.global_position.distance_squared_to(at) < 18.0 * 18.0 and active < int(LOCAL_LIGHT_LIMIT[_detail()])
+		l.visible = l.light_energy > .001 and l.global_position.distance_squared_to(at) < 18.0 * 18.0 and active < limit
 		l.shadow_enabled = false
 		if l.visible: active += 1
 
@@ -258,7 +273,8 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var sun := sun_at(h)
 	night_vision_strength = 1.0 - smoothstep(0.0, 0.22, float(sun["day"])) if night_vision else 0.0
 	var indoor := room != null and not _open_air()
-	var shared_sky := campus_daylight()
+	var depth := maxf(0, garage_depth)
+	var shared_sky := campus_daylight() or garage_depth >= 0.0
 	var day := float(sun["day"])
 	day += (1.0-day)*.6*world_normal
 	day += (maxf(day,.85)-day)*fake_normal
@@ -278,6 +294,10 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 		hemi = 0.03 + 0.31 * day
 		dirv = 0.035 + 0.345 * day
 		pt_k = 0.08 + 0.56 * day if indoor else 1.0
+		amb = lerpf(amb, .025, depth)
+		hemi = lerpf(hemi, .015, depth)
+		dirv = lerpf(dirv, .015, depth)
+		pt_k = lerpf(pt_k, .8, depth)
 		amb = lerpf(amb, .38, world_normal)
 		hemi = lerpf(hemi, .28, world_normal)
 		dirv = lerpf(dirv, .32, world_normal)
@@ -322,11 +342,11 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	hemi *= cold * (1.0 - 0.4 * dusk)
 	ac = Color(ac.r * float(tint[0]), ac.g * float(tint[1]), ac.b * float(tint[2]))
 	dc = Color(dc.r * float(tint[0]), dc.g * float(tint[1]), dc.b * float(tint[2]))
-	if blackout and indoor:
-		amb *= 0.16
-		hemi *= 0.16
-		dirv *= 0.12
-		pt_k = 0.0
+	var dim := 0.0 if not blackout else (float(indoor) if shelter < 0.0 else shelter)
+	amb *= lerpf(1.0, 0.16, dim)
+	hemi *= lerpf(1.0, 0.16, dim)
+	dirv *= lerpf(1.0, 0.12, dim)
+	if blackout and indoor: pt_k = 0.0
 	amb *= 1.0 - 0.25 * overcast
 	hemi *= 1.0 - 0.30 * overcast
 	dirv *= 1.0 - 0.70 * overcast
@@ -338,15 +358,21 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	env.ambient_light_color = ambient / maxf(strength, 1e-4)
 	var qi := _detail()
 	var lamp_gain := lerpf(float(Q_LAMP_GAIN[qi]), minf(float(Q_LAMP_GAIN[qi]), NORMAL_LAMP_GAIN), maxf(world_normal, fake_normal))
-	env.ambient_light_energy = strength * ENERGY_AMBIENT * gaze_mul * (float(Q_INDOOR_AMB[qi]) if indoor and not shared_sky else float(Q_OUTDOOR_AMB[qi]))
+	var ambient_gain: float = lerpf(Q_OUTDOOR_AMB[qi], Q_INDOOR_AMB[qi], depth) if shared_sky else (Q_INDOOR_AMB[qi] if indoor else Q_OUTDOOR_AMB[qi])
+	env.ambient_light_energy = strength * ENERGY_AMBIENT * gaze_mul * ambient_gain
 	sun_light.light_color = dc
-	sun_light.light_energy = dirv * ENERGY_DIR * gaze_mul * (1.0 if indoor and not shared_sky else float(Q_SUN_GAIN[qi]))
+	var sun_gain := lerpf(Q_SUN_GAIN[qi], 1.0, depth) if shared_sky else (1.0 if indoor else float(Q_SUN_GAIN[qi]))
+	sun_light.light_energy = dirv * ENERGY_DIR * gaze_mul * sun_gain
 	var d: Vector3 = sun["dir"] if day > 0.02 and (shared_sky or not indoor) else MOON_DIR
+	d = d.slerp(MOON_DIR, depth)
 	sun_light.look_at_from_position(d * 16.0, Vector3.ZERO, Vector3.UP if absf(d.normalized().y) < 0.99 else Vector3.FORWARD)
 	var sky := sky_colors(h)
+	var fnight := 1.0 - day
+	var dark_fog := Color(0.032 - 0.02 * fnight, 0.040 - 0.024 * fnight, 0.042 - 0.024 * fnight)
+	var normal_fog := 0.0 if blackout else world_normal
+	dark_fog = dark_fog.lerp(Color(.32, .35, .36), normal_fog)
 	if shared_sky or not indoor:
-		env.background_color = sky[1].lerp(sky[2], 0.5)
-	if shared_sky or not indoor:
+		env.background_color = sky[1].lerp(sky[2], 0.5).lerp(dark_fog, depth)
 		var hz := sky[3] * 0.86
 		var dens := 0.034 + (0.019 - 0.034) * day
 		if room != null and not shared_sky:
@@ -354,15 +380,11 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 		if overcast > 0.0:
 			dens += 0.030 * overcast
 			hz = hz * (1.0 - 0.4 * overcast) + Color(0.09, 0.10, 0.12) * 0.4 * overcast
-		env.fog_light_color = Color(hz.r, hz.g, hz.b)
-		env.fog_density = dens
+		env.fog_light_color = Color(hz.r, hz.g, hz.b).lerp(dark_fog, depth)
+		env.fog_density = lerpf(dens, lerpf(.09, .024, normal_fog), depth)
 	else:
-		var fnight := 1.0 - day
-		var fc := Color(0.032 - 0.02 * fnight, 0.040 - 0.024 * fnight, 0.042 - 0.024 * fnight)
-		var normal_fog := 0.0 if blackout else world_normal
-		fc = fc.lerp(Color(.32,.35,.36),normal_fog)
-		env.fog_light_color = fc
-		env.background_color = fc
+		env.fog_light_color = dark_fog
+		env.background_color = dark_fog
 		env.fog_density = 0.09 if scene_id == "garage1" else (0.04 if scene_id == "portal_tunnel" else 0.072 + 0.03 * fnight)
 		env.fog_density = lerpf(env.fog_density,.024,normal_fog)
 	env.fog_density *= float(am.get("fog", 1.0))
@@ -374,7 +396,7 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	env.adjustment_enabled = false
 	env.adjustment_brightness = 1.0
 	# lighting.js dayExpo: outdoors the picture is pressed down to 0.6 at noon (DAY_K).
-	post_exposure = 1.0 if indoor and not shared_sky else 1.0 - .4*float(sun["day"])*(1.0-world_normal)
+	post_exposure = 1.0 if indoor and not shared_sky else 1.0 - .4*float(sun["day"])*(1.0-world_normal)*(1.0-depth)
 	env.tonemap_exposure = brightness * post_exposure if OS.has_feature("android") else 1.0
 	var sum := 0.0
 	for i in room_lights.size():
@@ -412,9 +434,9 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	var lcfg: Dictionary = campus.get("light_cfg", {})
 	if camera != null:
 		cam_light.global_position = camera.global_position
-	cam_light.light_energy = (float(lcfg.get("camI", 0.9)) + float(lcfg.get("camIk", 0.45)) * day) * ENERGY_POINT * 9.0 * (0.08 if blackout and indoor else 1.0) * gaze_mul * float(Q_CAM_GAIN[qi])
+	cam_light.light_energy = (float(lcfg.get("camI", 0.9)) + float(lcfg.get("camIk", 0.45)) * day) * ENERGY_POINT * 9.0 * lerpf(1.0, 0.08, dim) * gaze_mul * float(Q_CAM_GAIN[qi])
 	if shared_sky:
-		cam_light.light_energy *= lerpf(0.12, 1.0, day)
+		cam_light.light_energy *= lerpf(lerpf(0.12, 1.0, day), 1.0, depth)
 	_lamps(dt, 1.0 - day if not indoor else 0.0, camera, sky, day)
 	_shadow_pick -= dt
 	if _shadow_pick <= 0.0:

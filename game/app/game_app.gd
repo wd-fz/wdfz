@@ -119,6 +119,7 @@ func _ready() -> void:
 		ui.show_import_result(why))
 	ui.grade_sound.connect(func(b: String) -> void: audio.play("ui.grade." + b))
 	ui.map_requested.connect(_show_map)
+	ui.map_route_requested.connect(func(route: String) -> void: _show_map("campus", route))
 	ui.notes_focus_requested.connect(_notes_focus)
 	_apply_settings()
 	# ui.click on every button press (audio.js click), including buttons made later (choices).
@@ -788,6 +789,7 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 		_unwire(session)
 		session.stop()
 	session = candidate
+	_map_route = ""
 	_load_profile(achievements())
 	_fn_day = school().day if school() != null else 1
 	_leave_drive()
@@ -930,10 +932,7 @@ func pause_game() -> void:
 	if atmos()!=null:
 		atmos().cancel_scene()
 		_apply_atmos_events()
-		var world := _campus_world()
-		if world!=null and world.lighting!=null:
-			world.lighting.lamp_mul = atmos().lamp_mul()
-			world.lighting.update(0,school().tsec,player.camera)
+		_update_campus_lighting(_campus_world(), 0.0)
 	player.enabled = false
 	player.clear_input()
 	get_tree().paused = true
@@ -1092,7 +1091,6 @@ func _sync_world(seed_view: bool = true, senses_enabled: bool = true) -> void:
 		if is_instance_valid(router.resident): router.resident.apply_doors(doors)
 		if not world.resident: world.apply_doors(doors)
 		world.set_player_scene(player.position)
-		if world.scene_id == "out" and school() != null: world.show_west_clearance(school().seat_card.clearance > 0)
 	var lift := elevator()
 	if lift != null and is_instance_valid(router.resident):
 		router.resident.update_lifts(lift)
@@ -1103,15 +1101,18 @@ func _sync_world(seed_view: bool = true, senses_enabled: bool = true) -> void:
 		world.apply_lift_doors(lift)
 	if world != null and world.broadcast_props != null and broadcast() != null:
 		world.broadcast_props.set_fuse(bool(broadcast().b["fuse"]))
-	if world != null and world.banner != null and days() != null and school() != null:
-		var want := days().today(school().day, school().tsec) == "anniversary"
-		if want != world.banner.is_on():
-			world.banner.set_on(want)
+	var outside := world
+	if world != null and world.resident: outside = router.resident.regions.get("out") as CampusWorld
+	if outside != null and outside.scene_id == "out" and school() != null:
+		outside.show_west_clearance(school().seat_card.clearance > 0)
+		if outside.banner != null and days() != null:
+			var want := days().today(school().day, school().tsec) == "anniversary"
+			if want != outside.banner.is_on(): outside.banner.set_on(want)
 
 	if seed_view:
 		ui.show_patrol_radar()
-		_update_campus_lighting(world, 0.0, senses_enabled)
 		if is_instance_valid(router.resident) and router.resident.visible: router.prefetch(player.position)
+		_update_campus_lighting(world, 0.0, senses_enabled)
 
 
 ## Seed the incoming region before its first rendered frame, as well as on every simulation tick.
@@ -1120,20 +1121,52 @@ func _update_campus_lighting(world: CampusWorld, delta: float, senses_enabled: b
 	if world == null or world.lighting == null or school() == null:
 		ui.scene_post().parameter("night_vision", 0.0)
 		return
-	var light := world.lighting
-	light.reduce_flash = settings.get_int("reduce_flash") == 1
-	light.brightness = float(settings.get_int("bright")) / 100.0
-	light.world_normal = ui.scene_post().world_normal
-	light.fake_normal = ui.scene_post().fake_normal
-	light.gaze = ui.scene_post().gaze_level
-	light.night_vision = senses_enabled and talent() != null and talent().has("night") and not story().over()
-	light.crowd_state = lift_crowd().state if lift_crowd() != null else {}
+	var primary := world.lighting
+	var light_time := primary.time
+	var overcast := primary.overcast
+	var flash_reduced := settings.get_int("reduce_flash") == 1
+	var brightness := float(settings.get_int("bright")) / 100.0
+	var post := ui.scene_post()
+	var vision := senses_enabled and talent() != null and talent().has("night") and not story().over()
+	var crowd := lift_crowd().state if lift_crowd() != null else {}
+	var atmosphere := atmos()
+	var mods := AtmosModule.light_mods(school().day, school().tsec) if atmosphere != null else {}
+	var lamp_scene := String(atmosphere.scene_event().get("room", "")) if atmosphere != null else ""
 	var watcher := patrol()
 	var weird := anomaly()
-	world.update_lighting(delta, school().tsec, player.camera, watcher.flick if watcher != null else 0.0, watcher.red if watcher != null else 0.0,
-		weird != null and weird.blackout_now(), weird.overcast_target() if weird != null else 0.0)
-	ui.scene_post().parameter("exposure", light.post_exposure)
-	ui.scene_post().parameter("night_vision", light.night_vision_strength)
+	var flicker := watcher.flick if watcher != null else 0.0
+	var red := watcher.red if watcher != null else 0.0
+	var blackout := weird != null and weird.blackout_now()
+	var weather := weird.overcast_target() if weird != null else 0.0
+	var regions: Array[CampusWorld] = [world]
+	if world.resident: regions = router.resident.view_lighting()
+	var garage_depth := router.resident.garage_depth() if world.resident else -1.0
+	var shelter := router.resident.light_shelter() if world.resident else -1.0
+	var lamps: Array[OmniLight3D] = []
+	for region: CampusWorld in regions:
+		if region.scene_id == BroadcastProps.ROOM and region.broadcast_props != null and broadcast() != null:
+			region.broadcast_props.set_fuse(bool(broadcast().b["fuse"]))
+		var light := region.lighting
+		light.time = light_time
+		light.overcast = overcast
+		light.garage_depth = garage_depth
+		light.shelter = shelter
+		light.reduce_flash = flash_reduced
+		light.brightness = brightness
+		light.world_normal = post.world_normal
+		light.fake_normal = post.fake_normal
+		light.gaze = post.gaze_level
+		light.night_vision = vision
+		light.crowd_state = crowd
+		light.atmos_mods = mods
+		light.lamp_mul = atmosphere.lamp_mul() if lamp_scene == region.scene_id else {}
+		region.update_lighting(delta, school().tsec, player.camera, flicker, red, blackout, weather)
+		lamps.append_array(light.room_lights)
+		lamps.append_array(light.lamp_pool)
+	if world.resident and regions.size() > 1:
+		CampusLighting.select_local_lights(lamps, player.camera.global_position, CampusLighting.LOCAL_LIGHT_LIMIT[primary._detail()])
+	post.parameter("exposure", primary.post_exposure)
+	post.parameter("night_vision", primary.night_vision_strength)
 
 
 func _door_changed(key: String, open: bool) -> void:
@@ -2933,9 +2966,6 @@ func _atmos_step(delta: float) -> void:
 	var cw := _campus_world()
 	if cw == null:
 		return
-	if cw.lighting != null:
-		cw.lighting.atmos_mods = AtmosModule.light_mods(school().day, school().tsec)
-		cw.lighting.lamp_mul = a.lamp_mul()
 	if cw.duty != null:
 		cw.duty.update(DutyRoster.tier_of(school().tt), (school().day - 1) % 5)
 	var fx: AtmosFx = cw.atmos_fx
@@ -3107,15 +3137,19 @@ func _show_notes(query: String = "") -> void:
 
 func _notes_focus(route: String) -> void:
 	if is_instance_valid(lan) and lan.playing():
+		_map_route = ""
 		lan.send("notes_focus", {"route": route})
 		return
 	var inv := investigation()
 	if inv != null and inv.set_focus(route):
+		_map_route = ""
 		save_game()
 		_show_notes(ui._notes_search.text if ui._notes_search != null else "")
 
 
 # ---- the map page (game/features/campus/exploration_module.gd, game/presentation/ui/map_view.gd) ----
+
+var _map_route := ""
 
 func _explore_step(delta: float) -> void:
 	var ex := exploration()
@@ -3149,7 +3183,7 @@ func _map_label(r: Dictionary, c: int, row: int) -> String:
 	return MapView.static_mark(ch)
 
 
-func _show_map(selected: String = "") -> void:
+func _show_map(selected: String = "", route: String = "") -> void:
 	if inception_flow.here():
 		ui.show_notice("我：这里没有地图。走廊一直在变。")
 		return
@@ -3179,7 +3213,10 @@ func _show_map(selected: String = "") -> void:
 	if selected == "campus":
 		var notebook := investigation()
 		notebook.set_context(_invest_context())
-		var landmark := notebook.paper_landmark()
+		var known := notebook.routes()
+		var focus := notebook.map_focus(_map_route if route.is_empty() else route)
+		if not route.is_empty() and focus == route: _map_route = route
+		var destination := notebook.map_destination(focus)
 		var out: Dictionary = CampusData.layout("out")
 		var objects: Array = out["objects"]
 		var me := Vector2.INF
@@ -3193,17 +3230,29 @@ func _show_map(selected: String = "") -> void:
 			var w1 := CampusGeometry.to_world(null, float(p[0]), float(p[2]))
 			me = w1 / sc
 		var plan := CampusData.campus_map().duplicate()
-		if landmark == "西小门": plan["target"] = CampusGeometry.gate_center(CampusData.campus(), "w") / sc
-		elif landmark == "保安岗":
+		var landmark := ""
+		if destination == "gate_w":
+			landmark = "西小门"
+			plan["target"] = CampusGeometry.gate_center(CampusData.campus(), "w") / sc
+		elif not destination.is_empty():
 			for o: Dictionary in objects:
-				if o.get("id") == "guard": plan["target"] = Vector2(o["x"] + o["w"] / 2.0, o["y"] + o["h"] / 2.0)
+				if o["id"] != destination: continue
+				landmark = String(o["name"])
+				plan["target"] = Vector2(o["x"] + o["w"] / 2.0, o["y"] + o["h"] / 2.0)
+				break
 		var head := "你在%s　北 ↑" % (String(here_room["name"]) if here_room != null else "校园室外")
-		var note := "走过 %d 处室内" % ids.size()
+		var note := notebook.goal(focus) if not focus.is_empty() else "可跟进%s。" % "、".join(known.map(func(lead: Array) -> String: return String(lead[1])))
 		if plan.has("target"):
-			note = MapView.landmark_note(landmark, plan["target"] - me, here_room != null, school().seat_card.clearance > 0)
+			var action := ""
+			if focus == "identity":
+				action = "找柜台上的底联" if destination == "guard" else ("向校外跨过白线" if school().seat_card.clearance > 0 else "到闸机前交底联")
+			elif destination == "guard":
+				action = "查柜台上的停车记录"
+			var bearing := MapView.landmark_note(landmark, plan["target"] - me, here_room != null, action)
+			note = bearing if not action.is_empty() else bearing + "\n" + note
 		plan["me"] = me
 		plan["ang"] = yaw_ang
-		var view := ui.open_map(options, selected, head, note)
+		var view := ui.open_map(options, selected, head, note, known, focus)
 		view.show_plan(plan)
 		return
 	var r: Dictionary = campus().room(selected)

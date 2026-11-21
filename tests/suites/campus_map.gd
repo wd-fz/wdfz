@@ -1,9 +1,9 @@
 extends "res://tests/support/test_suite.gd"
 
 func test_original_draw() -> void:
-	check(MapView.landmark_note("保安岗", Vector2(0, -250), true, false).contains("北侧"), "north on the campus plan is smaller Y")
-	check(MapView.landmark_note("西小门", Vector2.ZERO, false, true).contains("就在附近。向校外跨过白线"), "at the marked exit the map names the remaining physical action")
-	check(MapView.landmark_note("保安岗", Vector2.INF, true, false) == "保安岗 · 找柜台上的底联", "an unmapped room still names the destination without inventing a bearing")
+	check(MapView.landmark_note("保安岗", Vector2(0, -250), true).contains("北侧"), "north on the campus plan is smaller Y")
+	check(MapView.landmark_note("西小门", Vector2.ZERO, false, "向校外跨过白线").contains("就在附近。向校外跨过白线"), "at the marked exit the map names the remaining physical action")
+	check(MapView.landmark_note("保安岗", Vector2.INF, true, "找柜台上的底联") == "保安岗 · 找柜台上的底联", "an unmapped room still names the destination without inventing a bearing")
 	var bytes := FileAccess.get_file_as_bytes("res://tests/fixtures/map-reference.json.gz")
 	var source: Dictionary = JSON.parse_string(bytes.decompress_dynamic(4*1024*1024,FileAccess.COMPRESSION_GZIP).get_string_from_utf8())
 	var data := CampusData.campus_map()
@@ -32,6 +32,7 @@ func test_layout() -> void:
 	var old_size := root.size
 	var old_scale := root.content_scale_size
 	var options := [["campus","校园总图"],["teach1","教学楼一层　· 你在这里"],["exp5","实验楼五层　· 你在这里"]]
+	var routes := [["identity", "离校回执"], ["car", "车辆"], ["dismissal", "放学广播"]]
 	var plan := CampusData.campus_map().duplicate()
 	plan["me"] = Vector2(510,990)
 	plan["ang"] = .6
@@ -44,11 +45,12 @@ func test_layout() -> void:
 		await _frames(3)
 		for scale: int in [85,100,150]:
 			ui.apply_text_scale(scale)
-			var view := ui.open_map(options,"campus","走过 5 处室内","")
+			var view := ui.open_map(options,"campus","你在保安岗　北 ↑","可跟进离校回执、车辆、放学广播。",routes)
 			view.show_plan(plan)
 			await _frames(8)
 			check(absf(view.get_global_rect().get_center().x-ui._map_scroll.get_global_rect().get_center().x)<8,"narrow campus canvas stays centred in its scrolling frame")
 			check(root.get_visible_rect().encloses(ui.map_panel.get_global_rect()),"campus map fits %s / %d" % [screen,scale])
+			check(ui._map_route_select.visible and ui._map_route_select.item_count == 4 and ui._map_route_select.selected == 0, "the campus plan offers all known leads without choosing an exit")
 			ui.open_map(options,"teach1","教学楼一层　北 ↑　你在这一层　已看清 100%","空白处还没看到过。桌、柜、架等字表示看到过，不代表搜过。\n梯 楼梯　电 电梯　廊 连廊　出 出口　锁 门锁着　✓ 已解决　留 有东西没拿　× 钥匙不匹配")
 			view.show_floor(room,bits,Callable(),Vector2(room["ox"]+48.8*room["tw"],room["oy"]+11.39*room["th"]),0,true)
 			await _frames(8)

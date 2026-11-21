@@ -298,6 +298,7 @@ func test_runtime() -> void:
 	var restored := app.player.capture_pose()
 	check(app.session.world_id == "out" and absf(app.player.global_position.y - .05) < .001 and absf(restored.yaw - damaged.yaw) < .001 and absf(restored.pitch - damaged.pitch) < .001, "loading a run saved under the old garage rim puts the player on the street with the same view")
 	await check_presentations(app)
+	test_portal_continuity(app)
 	app.return_to_menu()
 	await _frames(2)
 	check(not is_instance_valid(school) and app.router.coordinate_frame.transform==Transform3D.IDENTITY,"menu releases the complete school and coordinate frame")
@@ -308,6 +309,63 @@ func test_runtime() -> void:
 	check(not installed[0] and not app.starting() and not is_instance_valid(app.router.resident),"cancelled initial load cannot recreate the school or install a stale session")
 	app.queue_free()
 	await _frames(2)
+
+
+func test_portal_continuity(app: GameApp) -> void:
+	var school := app.router.resident
+	var lift := app.elevator()
+	var covered := {}
+	app.school().day = 3
+	for portal: Dictionary in CampusConnections.resident_portals(school.space):
+		var a: String = portal["a"]
+		var b: String = portal["b"]
+		covered[a] = true
+		covered[b] = true
+		if a.begins_with("lift_"):
+			lift.lifts[a.trim_prefix("lift_")]["floor"] = school.space.rooms[b]["floor"]
+			school.update_lifts(lift)
+		var at: Vector3 = portal["at"] + Vector3.UP * .05
+		var pose := {"position": [at.x, at.y, at.z], "yaw": .55, "pitch": -.15}
+		var label := a + " / " + b
+		for minutes: float in [730.0, 1100.0, 1350.0]:
+			app.school().tsec = minutes
+			app.anomaly().an["active"] = true
+			app.anomaly().an["id"] = "blackout" if minutes == 1350.0 else "rain"
+			app.dread().visits.clear() # Compare the shared view without the deliberate revisit scares.
+			check(app.travel(a, school.space.local_pose(a, pose), false).is_empty(), "can approach " + label)
+			check(school.regions[a].get_node("Model").visible and school.regions[b].get_node("Model").visible, "both models are visible at " + label)
+			var visuals := _portal_visuals(school)
+			var light := app._campus_world().lighting
+			light.time = 19.0
+			light.overcast = .6
+			app._update_campus_lighting(app._campus_world(), 0)
+			var shared := _portal_light_levels(light)
+			for destination: String in [b, a]:
+				app.dread().visits.clear()
+				check(app.travel(destination, pose, true).is_empty(), "can cross " + label + " toward " + destination)
+				check(app.player.global_position.distance_to(at) < .001 and _portal_visuals(school) == visuals, "the same position sees the same surfaces through " + label + " toward " + destination)
+				light = app._campus_world().lighting
+				check(is_equal_approx(light.time, 19.0) and is_equal_approx(light.overcast, .6), "lighting and rain keep their phase through " + label)
+				check(_portal_light_levels(light).is_equal_approx(shared), "sky, camera fill and fog stay continuous through %s at %d" % [label, minutes])
+	check(covered.size() == school.regions.size(), "every resident region has a tested crossing")
+	app.anomaly().an["active"] = false
+	for id: String in CampusSpace.SEPARATE:
+		check(app.travel(id, CampusData.rules().default_spawn(id), false).is_empty() and not school.visible, "isolated world keeps its own visuals on entry: " + id)
+		check(app.travel("teach1", CampusData.rules().start_pose(), false).is_empty() and school.visible, "returning restores the school after " + id)
+
+
+func _portal_light_levels(light: CampusLighting) -> Vector4:
+	return Vector4(light.env.ambient_light_energy, light.env.fog_density, light.cam_light.light_energy, light.post_exposure)
+
+
+func _portal_visuals(school: CampusResident) -> Array[bool]:
+	var result: Array[bool] = []
+	for world: CampusWorld in school.regions.values():
+		result.append(world.get_node("Model").is_visible_in_tree())
+		result.append(world._fixed_props != null and world._fixed_props.is_visible_in_tree())
+	for facade: Node3D in (school.regions.out as CampusWorld).shells.values():
+		result.append(facade.is_visible_in_tree())
+	return result
 
 
 func check_presentations(app: GameApp) -> void:
@@ -387,11 +445,13 @@ func test_nearby_visuals() -> void:
 	# Force a crossing that outruns prefetch: the room adapter changes immediately
 	# and the model arrives separately on the same collider and coordinate frame.
 	app.travel("stair_lab", {"position":[0.0, 9.65, -2.9], "yaw":0.0, "pitch":0.0}, false)
+	var cold_view := lab.get_node_or_null("ColdGeometry")
+	check(cold_view != null and cold_view.is_visible_in_tree(), "the cold floor is visible through the doorway before crossing")
 	var at := app.player.global_position
 	app.player.velocity = Vector3(0, 0, -1)
 	app.travel("lab4", CampusData.rules().default_spawn("lab4"), true)
 	check(app.session.world_id == "lab4" and app.player.global_position.distance_to(at) < .001 and app.player.velocity.z == -1, "a cold stair crossing keeps position and movement")
-	check(not lab.geometry_ready and lab.has_node("ColdGeometry") and lab.get_node("Collision") == body, "crossing uses the live collision without building the full room model")
+	check(not lab.geometry_ready and lab.get_node_or_null("ColdGeometry") == cold_view and lab.get_node("Collision") == body, "crossing retains the same temporary surfaces and live collision")
 	var until := Time.get_ticks_msec() + 20000
 	while not lab.geometry_ready and Time.get_ticks_msec() < until: await _frames(1)
 	check(lab.geometry_ready and not lab.has_node("ColdGeometry"), "the visual worker replaces the temporary surfaces without another crossing")

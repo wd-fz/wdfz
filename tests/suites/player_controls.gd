@@ -190,6 +190,16 @@ func test_west_gate_walk(attendance: String = "ink") -> void:
 	app.player.request_interaction()
 	await _frames(2)
 	check(app.school().seat_card.proof == attendance and app.investigation_brief().contains("西小门"), "the real guard cabinet and the pause lead open the early route")
+	if attendance == "ink":
+		app._show_map("campus")
+		check(app.ui._map_route_select.visible and app.ui._map_route_select.get_item_metadata(2) == "car" and not app.ui.map_view.plan.has("target"), "after the guard the map offers both leads without defaulting to the west gate")
+		app.ui._map_route_select.item_selected.emit(2)
+		var target: Vector2 = app.ui.map_view.plan.get("target", Vector2.INF)
+		check(target.is_finite() and target != app.routes().west_gate_center() / 2.0 and app.ui._map_note.text.contains("行政楼五楼校长室"), "selecting the vehicle lead marks the key's building and names the floor")
+		app.ui.map_panel.hide()
+		app._show_map("campus")
+		check(app.ui.map_view.plan.get("target") == target, "reopening the map remembers an explicit choice")
+		app.ui.map_panel.hide()
 	if attendance == "present":
 		var old := app.session.capture(app.player.capture_pose())
 		old["modules"]["school.day"]["data"]["seat_card"] = {"armed":"", "answered":"", "checked":false}

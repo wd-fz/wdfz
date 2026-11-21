@@ -31,13 +31,14 @@ var plan_scale := 0.4
 
 
 ## The printed plan faces north. Give the same bearing in text at phone sizes.
-static func landmark_note(landmark: String, offset: Vector2, indoors: bool, cleared: bool) -> String:
+static func landmark_note(landmark: String, offset: Vector2, indoors: bool, action: String = "") -> String:
 	const DIRECTIONS := ["东", "东南", "南", "西南", "西", "西北", "北", "东北"]
-	var action := "找柜台上的底联" if landmark == "保安岗" else ("向校外跨过白线" if cleared else "到闸机前交底联")
-	if not offset.is_finite(): return "%s · %s" % [landmark, action]
-	if offset.length() <= 22.0: return "%s就在附近。%s。" % [landmark, action]
+	if not offset.is_finite(): return landmark if action.is_empty() else "%s · %s" % [landmark, action]
+	if offset.length() <= 22.0: return "%s就在附近。" % landmark + (action + "。" if not action.is_empty() else "")
 	var bearing: String = DIRECTIONS[posmod(roundi(offset.angle() / (PI / 4.0)), DIRECTIONS.size())]
-	return "%s在%s侧。%s%s。" % [landmark, bearing, "出楼后" if indoors else "", action]
+	var direction := "%s在%s侧。" % [landmark, bearing]
+	if not action.is_empty(): direction += ("出楼后" if indoors else "") + action + "。"
+	return direction
 
 
 func _init() -> void:

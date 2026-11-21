@@ -242,8 +242,8 @@ func set_focus(id: String) -> bool:
 	return true
 
 
-func goal() -> String:
-	var f := current_focus()
+func goal(route: String = "") -> String:
+	var f := current_focus() if route.is_empty() else route
 	var cy: Dictionary = _c.get("cyber", {})
 	var po: Dictionary = _c.get("portal", {})
 	if f == "identity": return _paper_lead()
@@ -294,6 +294,36 @@ func paper_landmark() -> String:
 	var tracked := current_focus()
 	if tracked == "identity": return "保安岗" if String(_c.get("paper_goal", "")).is_empty() else "西小门"
 	if tracked == "car" and not visible("notice") and not visible("parking") and not _c.get("has_key", false): return "保安岗"
+	return ""
+
+
+func map_focus(selection: String) -> String:
+	var known := routes()
+	for id: String in [selection, pins.get(_c.get("reader", "solo"), "")]:
+		if known.any(func(r: Array) -> bool: return r[0] == id): return id
+	return current_focus() if known.size() < 2 else ""
+
+
+## A building or gate the discovered lead currently points to on the campus plan.
+func map_destination(route: String) -> String:
+	match route:
+		"identity": return "guard" if String(_c.get("paper_goal", "")).is_empty() else "gate_w"
+		"car":
+			var car: Dictionary = _c.get("car", {})
+			var has_key := bool(_c.get("has_key", false))
+			var needs_record: bool = car.get("via") == "hotwire" or (not visible("notice") and not has_key)
+			if not visible("parking") and needs_record:
+				return "guard"
+			return "garw" if has_key or car.get("ok", false) else "admin"
+		"face":
+			if _c.get("data", false): return "gate_w"
+			return "admin" if _c.get("hacked", false) else "lab"
+		"portal":
+			var portal: Dictionary = _c.get("portal", {})
+			if portal.get("open", false) or (visible("portalDiary") and not portal.get("sketch", false)): return "lab"
+		"cyber":
+			var cyber: Dictionary = _c.get("cyber", {})
+			if cyber.get("term") != "accepted" and cyber.get("download") == "complete": return "lab"
 	return ""
 
 

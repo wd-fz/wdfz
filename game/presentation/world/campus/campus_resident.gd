@@ -2,6 +2,8 @@ class_name CampusResident
 extends Node3D
 ## The World3D and collision stay live through every ordinary campus crossing.
 const INDOOR_VIEW_DISTANCE := 10.0
+const PORTAL_TRANSITION_DISTANCE := 2.0
+const PORTAL_VIEW_HEIGHT := 1.5
 const MODEL_RETRY_MS := 10000
 const EVICTION_INTERVAL_MS := 400
 const DETAIL_LIMIT := 12
@@ -12,7 +14,9 @@ var configure: Callable
 var active := ""
 var builds := 0
 var nearby_visuals := OS.get_name() == "Android"
+var _portals: Array[Dictionary] = []
 var _visible_neighbours := PackedStringArray()
+var _preview_lights: Dictionary = {}
 var _wanted := PackedStringArray()
 var _retry_after: Dictionary = {}
 var _worker: Thread
@@ -20,7 +24,14 @@ var _staging: CampusWorld
 var _staging_tier := -1
 var _lift_landing := ""
 var _view_at := Vector3.ZERO
+var _shelter := -1.0
 var _evict_at := 0
+var _light_time := 0.0
+var _overcast := 0.0
+
+
+func _ready() -> void:
+	_portals = CampusConnections.resident_portals(space)
 
 
 func _make(id: String) -> CampusWorld:
@@ -57,20 +68,34 @@ func prepare(id: String, with_model: bool = true) -> CampusWorld:
 
 
 func select(id: String, ready_only: bool = false) -> CampusWorld:
-	if id != active and regions.has(active): (regions[active] as CampusWorld).deactivate()
+	var previous := regions.get(active) as CampusWorld
+	if previous != null and id != active:
+		_light_time = previous.lighting.time
+		_overcast = previous.lighting.overcast
+		previous.deactivate(true)
+		_preview_lights[active] = previous
 	var world := prepare(id, not ready_only)
-	if id != active: _visible_neighbours = PackedStringArray([active]) if not active.is_empty() else PackedStringArray()
+	var changed := active != id
 	active = id
+	_preview_lights.erase(id)
 	if not world.geometry_ready:
-		world.show_cold_geometry()
 		_wanted = PackedStringArray([id])
 	_refresh_visibility()
 	world.activate()
+	if changed:
+		world.lighting.time = _light_time
+		world.lighting.overcast = _overcast
 	return world
 
 
 func suspend() -> void:
-	if regions.has(active): (regions[active] as CampusWorld).deactivate()
+	var previous := regions.get(active) as CampusWorld
+	if previous != null:
+		_light_time = previous.lighting.time
+		_overcast = previous.lighting.overcast
+		previous.deactivate()
+	for world: CampusWorld in _preview_lights.values(): world.clear_lighting()
+	_preview_lights.clear()
 	active = ""
 	_wanted.clear()
 	_visible_neighbours.clear()
@@ -98,14 +123,60 @@ func near_view(id: String, at: Vector3, focus: String, margin: float = 0.0) -> b
 
 func update_view(at: Vector3) -> void:
 	if active.is_empty(): return
-	var local := space.frame(active).affine_inverse() * at
-	_visible_neighbours = CampusConnections.nearby(active, local, INDOOR_VIEW_DISTANCE)
+	_view_at = at
+	var nearby_portals: Array[Dictionary] = []
+	var thresholds: Array[Dictionary] = []
+	for portal: Dictionary in _portals:
+		var offset: Vector3 = at - portal["at"]
+		if absf(offset.y) > PORTAL_VIEW_HEIGHT: continue
+		var distance := Vector2(offset.x, offset.z).length_squared()
+		if distance <= INDOOR_VIEW_DISTANCE * INDOOR_VIEW_DISTANCE: nearby_portals.append(portal)
+		if distance <= PORTAL_TRANSITION_DISTANCE * PORTAL_TRANSITION_DISTANCE: thresholds.append(portal)
+	# Treat the two labels at a threshold as one viewpoint. Farther away only
+	# show directly connected areas so rooms behind unrelated walls stay culled.
+	var sides := {active: true}
+	var size := 0
+	while sides.size() != size:
+		size = sides.size()
+		for portal: Dictionary in thresholds:
+			if not sides.has(portal["a"]) and not sides.has(portal["b"]): continue
+			sides[portal["a"]] = true
+			sides[portal["b"]] = true
+	var visible_regions := {}
+	for portal: Dictionary in nearby_portals:
+		if not sides.has(portal["a"]) and not sides.has(portal["b"]): continue
+		visible_regions[portal["a"]] = true
+		visible_regions[portal["b"]] = true
+	_visible_neighbours = PackedStringArray(visible_regions.keys())
+	_shelter = _threshold_shelter(at, thresholds, sides)
 	_refresh_visibility()
 	if not nearby_visuals: return
 	_wanted = PackedStringArray([active])
 	if not _lift_landing.is_empty(): _wanted.append(_lift_landing)
+	_wanted.append_array(_visible_neighbours)
+	var local := space.frame(active).affine_inverse() * at
 	_wanted.append_array(CampusConnections.nearby(active, local))
-	_view_at = at
+
+
+func _threshold_shelter(at: Vector3, thresholds: Array[Dictionary], sides: Dictionary) -> float:
+	var shelter := -1.0
+	var nearest := INF
+	for portal: Dictionary in thresholds:
+		if not sides.has(portal["a"]): continue
+		var a_open := _open_air(portal["a"])
+		if a_open == _open_air(portal["b"]): continue
+		var offset: Vector3 = at - portal["at"]
+		var distance := offset.length_squared()
+		if distance >= nearest: continue
+		nearest = distance
+		var toward_b: Vector3 = portal["toward_b"]
+		var inside := offset.dot(toward_b) * (1.0 if a_open else -1.0)
+		shelter = smoothstep(-PORTAL_TRANSITION_DISTANCE, PORTAL_TRANSITION_DISTANCE, inside)
+	return shelter
+
+
+func _open_air(id: String) -> bool:
+	return id in ["out", "teach6"] or bool(space.rooms.get(id, {}).get("flags", {}).get("gallery", false))
 
 
 func _release_distant_model() -> bool:
@@ -132,19 +203,60 @@ func _release_distant_model() -> bool:
 	return true
 
 
+func view_lighting() -> Array[CampusWorld]:
+	for id: String in _preview_lights.keys():
+		if _visible_neighbours.has(id): continue
+		(_preview_lights[id] as CampusWorld).clear_lighting()
+		_preview_lights.erase(id)
+	var lit: Array[CampusWorld] = []
+	for id: String in regions:
+		var world: CampusWorld = regions[id]
+		if id == active:
+			lit.append(world)
+		elif _visible_neighbours.has(id):
+			if not _preview_lights.has(id):
+				world._build_lighting(false)
+				_preview_lights[id] = world
+			lit.append(world)
+	return lit
+
+
+## Fade into the garage's dedicated palette on the way down the shaft.
+func garage_depth() -> float:
+	if active not in ["garage1", "stair_garage"] and not _visible_neighbours.has("stair_garage"): return -1.0
+	return smoothstep(0.0, -space.frame("garage1").origin.y, -_view_at.y)
+
+
+func light_shelter() -> float:
+	var depth := garage_depth()
+	return depth if depth >= 0.0 else _shelter
+
+
 func _refresh_visibility() -> void:
 	var outside := regions.get("out") as CampusWorld
 	for id: String in regions:
 		var world: CampusWorld = regions[id]
 		var model := world.get_node_or_null("Model") as Node3D
-		var detail := permanent_model(id) or id == active or _visible_neighbours.has(id)
+		var near_portal := _visible_neighbours.has(id)
+		var detail := permanent_model(id) or id == active or near_portal
 		if model != null and model.visible != detail: model.visible = detail
+		world.set_fixed_props_visible(detail)
+		if model == null and detail:
+			world.show_cold_geometry()
+		elif not detail:
+			var cold := world.get_node_or_null("ColdGeometry")
+			if cold != null: cold.free()
 		if outside == null: continue
 		var facade := outside.shells.get(id) as Node3D
-		# From the street a warm room still needs its exterior. Only the current
-		# interior takes precedence over any opaque legacy geometry on its own floor.
-		var show_facade := id.begins_with("stair_") or id != active or model == null
-		if facade != null and facade.visible != show_facade: facade.visible = show_facade
+		if facade == null or id.begins_with("stair_"): continue
+		# Street views retain the exterior. At a portal, select it using physical
+		# occupancy so both labels draw the same wall from the same position.
+		var inside := id == active
+		if near_portal:
+			var p := space.frame(id).affine_inverse() * _view_at
+			inside = p.y >= -.15 and p.y < space.floor_height(id) - .15 and space.local_bounds(id).has_point(Vector2(p.x, p.z))
+		var show_facade := not inside or model == null
+		if facade.visible != show_facade: facade.visible = show_facade
 
 
 func _process(_delta: float) -> void:

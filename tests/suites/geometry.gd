@@ -232,6 +232,7 @@ func test_resident_doorways() -> void:
 						clear = not _mesh_hit(floor_proxy, a, b) and not _mesh_hit(floor_proxy, b, a)
 					check(clear, "outdoor stair entrance open at %s / %s (x %.2f, h %.2f)" % [stair.id, levels[level], x, h])
 	campus.select(shaft.scene_id)
+	campus.update_view(shaft.to_global(Vector3(0, .05, CampusPortals.THRESHOLD_Z)))
 	check(tower.visible, "the stair exterior stays with the building when entering a shaft")
 	var door: Dictionary = hall.layout.doors[0]
 	for opened: bool in [false, true, false]:

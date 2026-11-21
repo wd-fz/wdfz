@@ -36,6 +36,7 @@ signal legacy_import_requested(text: String)
 signal grade_sound(band: String)
 signal fullscreen_requested
 signal map_requested(id: String)
+signal map_route_requested(route: String)
 signal notes_requested(query: String)
 signal notes_focus_requested(route: String)
 signal setting_changed(key: String, value: int)
@@ -1982,11 +1983,12 @@ func show_notes(data: Dictionary) -> void:
 	_note_label(String(data["goal"]), Color.WHITE)
 	if not String(data.get("landmark", "")).is_empty():
 		var locate := Button.new()
+		var route := String(data.get("focus", ""))
 		locate.text = "在校园图上找" + String(data["landmark"])
 		locate.custom_minimum_size.y = 44
 		locate.pressed.connect(func() -> void:
 			notes_panel.hide()
-			map_requested.emit("campus"))
+			map_route_requested.emit(route))
 		_notes_box.add_child(locate)
 	if not String(data.get("seat_record", "")).is_empty():
 		_note_label(String(data["seat_record"]), UISkin.WARM)
@@ -2060,6 +2062,7 @@ func _note_label(text: String, color: Color, parent: Control = null) -> void:
 var map_panel: PanelContainer
 var map_view: MapView
 var _map_select: OptionButton
+var _map_route_select: OptionButton
 var _map_head: Label
 var _map_note: Label
 var _map_scroll: ScrollContainer
@@ -2069,7 +2072,7 @@ var _map_generation := 0
 
 
 ## options: [[id, label]] ("campus" is the plan); returns the view to configure.
-func open_map(options: Array, selected: String, head: String, note: String) -> MapView:
+func open_map(options: Array, selected: String, head: String, note: String, routes: Array = [], route: String = "") -> MapView:
 	if map_panel == null:
 		map_panel = PanelContainer.new()
 		map_panel.name = "MapPanel"
@@ -2099,6 +2102,13 @@ func open_map(options: Array, selected: String, head: String, note: String) -> M
 		_map_head = Label.new()
 		_map_head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		outer.add_child(_map_head)
+		_map_route_select = OptionButton.new()
+		_map_route_select.name = "MapRoute"
+		_map_route_select.custom_minimum_size.y = 44
+		_map_route_select.fit_to_longest_item = false
+		_map_route_select.clip_text = true
+		_map_route_select.item_selected.connect(func(i: int) -> void: map_route_requested.emit(String(_map_route_select.get_item_metadata(i))))
+		outer.add_child(_map_route_select)
 		_map_scroll = ScrollContainer.new()
 		_map_scroll.follow_focus = true
 		map_view = MapView.new()
@@ -2124,6 +2134,18 @@ func open_map(options: Array, selected: String, head: String, note: String) -> M
 		_map_select.set_item_metadata(_map_select.item_count - 1, String(o[0]))
 		if o[0] == selected:
 			_map_select.select(_map_select.item_count - 1)
+	_map_route_select.clear()
+	_map_route_select.visible = selected == "campus" and routes.size() > 1
+	if _map_route_select.visible:
+		_map_route_select.add_item("选择调查方向（%d 条线索）" % routes.size())
+		var selected_route := 0
+		for lead: Array in routes:
+			_map_route_select.add_item(String(lead[1]))
+			var index := _map_route_select.item_count - 1
+			_map_route_select.set_item_metadata(index, String(lead[0]))
+			if lead[0] == route: selected_route = index
+		_map_route_select.select(selected_route)
+		_map_route_select.set_item_disabled(0, true)
 	_map_head.text = head
 	_map_note.text = note
 	map_panel.visible = true

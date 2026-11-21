@@ -24,6 +24,7 @@ var ground_items: GroundItems
 var _traces_seen := -1
 var _trace_data: Array=[]
 var broadcast_props: BroadcastProps
+var _fixed_props: Node3D
 var _west_display: Label3D
 var _west_cleared := false
 var mirror_view: MirrorView
@@ -77,15 +78,7 @@ func activate() -> void:
 	runtime_active = true
 	set_process(true)
 	_build_lighting()
-	if scene_id == "out":
-		var reader := preload("res://game/presentation/world/campus/west_gate_reader.tscn").instantiate() as Node3D
-		var centre := CampusGeometry.gate_center(CampusData.campus(), "w") + Vector2(RollcallCard.EXIT_OFFSET, -RollcallCard.EXIT_NORTH)
-		var p := CampusGeometry.to_scene(null, centre)
-		reader.position = Vector3(p.x, visual_ground.height(p.x, p.y), p.y)
-		reader.get_node("WhiteLine").scale.z = RollcallCard.EXIT_HALF_WIDTH * 2.0 * CampusGeometry.U2M
-		add_child(reader)
-		_west_display = reader.get_node("Reader/Display")
-		_west_cleared = false
+	set_fixed_props_visible(true)
 	anomaly_fx = AnomalyFx.new()
 	anomaly_fx.particle_quality=int(render_options.get("particle_detail",-1))
 	anomaly_fx.ground_height=visual_ground.height
@@ -106,12 +99,6 @@ func activate() -> void:
 	ground_items.ground_height = visual_ground.height
 	add_child(ground_items)
 	if is_room():
-		broadcast_props = BroadcastProps.new()
-		broadcast_props.name = "BroadcastProps"
-		add_child(broadcast_props)
-		broadcast_props.build(layout)
-		if scene_id == BodyModule.CLINIC["room"]:
-			_build_clinic()
 		if scene_id == CanteenView.ROOM:
 			canteen_view = CanteenView.new()
 			canteen_view.name = "CanteenView"
@@ -121,8 +108,6 @@ func activate() -> void:
 			mirror_view = MirrorView.new()
 			mirror_view.name = "MirrorView"
 			add_child(mirror_view)
-	if not is_room():
-		_ready_banner()
 	if is_room():
 		atmos_fx = AtmosFx.new()
 		atmos_fx.name = "AtmosFx"
@@ -135,6 +120,30 @@ func activate() -> void:
 			duty.setup(layout)
 
 
+func set_fixed_props_visible(value: bool) -> void:
+	if value and _fixed_props == null:
+		_fixed_props = Node3D.new()
+		_fixed_props.name = "FixedProps"
+		add_child(_fixed_props)
+		if scene_id == "out":
+			var reader := preload("res://game/presentation/world/campus/west_gate_reader.tscn").instantiate() as Node3D
+			var centre := CampusGeometry.gate_center(CampusData.campus(), "w") + Vector2(RollcallCard.EXIT_OFFSET, -RollcallCard.EXIT_NORTH)
+			var p := CampusGeometry.to_scene(null, centre)
+			reader.position = Vector3(p.x, visual_ground.height(p.x, p.y), p.y)
+			reader.get_node("WhiteLine").scale.z = RollcallCard.EXIT_HALF_WIDTH * 2.0 * CampusGeometry.U2M
+			_fixed_props.add_child(reader)
+			_west_display = reader.get_node("Reader/Display")
+			_ready_banner()
+		elif is_room():
+			if scene_id == BroadcastProps.ROOM or not BroadcastProps.tags_for(scene_id).is_empty():
+				broadcast_props = BroadcastProps.new()
+				broadcast_props.name = "BroadcastProps"
+				_fixed_props.add_child(broadcast_props)
+				broadcast_props.build(layout)
+			if scene_id == BodyModule.CLINIC["room"]: _build_clinic()
+	if _fixed_props != null: _fixed_props.visible = value
+
+
 func show_west_clearance(accepted: bool) -> void:
 	if accepted == _west_cleared or not is_instance_valid(_west_display): return
 	_west_cleared = accepted
@@ -142,16 +151,25 @@ func show_west_clearance(accepted: bool) -> void:
 	_west_display.modulate = Color("#8ef4b1") if accepted else Color("#e0d4ad")
 
 
-func deactivate() -> void:
+func deactivate(keep_lighting: bool = false) -> void:
 	if not runtime_active: return
 	runtime_active = false
 	set_process(false)
 	show_correct_car("")
 	for child: Node in get_children():
-		if child.name not in ["Model", "Collision", "Doors"]:
+		if child == _fixed_props: continue
+		if child == lighting and keep_lighting: continue
+		if child.name not in ["Model", "Collision", "Doors", "ColdGeometry"]:
 			remove_child(child)
 			child.free()
-	for key: String in ["lighting", "anomaly_fx", "chalk", "phantoms", "traces", "ground_items", "broadcast_props", "mirror_view", "canteen_view", "banner", "atmos_fx", "duty",
+	if keep_lighting:
+		lighting.set_primary(false)
+		lighting.crackle_from = null
+		lighting.crackles.clear()
+		lighting.dread_lamp = -1
+	else:
+		lighting = null
+	for key: String in ["anomaly_fx", "chalk", "phantoms", "traces", "ground_items", "mirror_view", "canteen_view", "atmos_fx", "duty",
 		"_silhouettes", "_scatter"]:
 		set(key, null)
 	_silhouette_key = ""
@@ -243,7 +261,7 @@ func release_geometry() -> CampusWorld:
 func _ready_banner() -> void:
 	banner = DayBanner.new()
 	banner.name = "DayBanner"
-	add_child(banner)
+	_fixed_props.add_child(banner)
 	banner.setup(layout)
 
 
@@ -304,7 +322,7 @@ func _build_clinic() -> void:
 	white.emission = Color("#2c2e2c")
 	RenderMaterials.set_override(cab, white)
 	cab.position = Vector3(p.x, 1.55, p.y - 0.12)
-	add_child(cab)
+	_fixed_props.add_child(cab)
 	var red := StandardMaterial3D.new()
 	red.albedo_color = Color("#c02a2a")
 	red.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -315,7 +333,7 @@ func _build_clinic() -> void:
 		bar.mesh = rb
 		RenderMaterials.set_override(bar, red)
 		bar.position = Vector3(p.x, 1.6, p.y - 0.235)
-		add_child(bar)
+		_fixed_props.add_child(bar)
 
 
 ## The corridor bridges seen from both ends (modules/campus-link/link-view.js): the neighbouring room's model placed by the rigid
@@ -1714,8 +1732,12 @@ func _edge(body: StaticBody3D, edge: String, a: Vector2, b: Vector2, gaps: Array
 
 # ---- lighting (lighting.js port in CampusLighting) ----
 
-func _build_lighting() -> void:
+func _build_lighting(primary: bool = true) -> void:
+	if lighting != null:
+		lighting.set_primary(primary)
+		return
 	lighting = CampusLighting.new()
+	lighting.resident = resident
 	lighting.options=render_options
 	lighting.name = "Lighting"
 	add_child(lighting)
@@ -1723,7 +1745,13 @@ func _build_lighting() -> void:
 	for s: Dictionary in CampusData.campus().get("stair_layout", []):
 		if s["id"] == scene_id:
 			rise = float(s["rise"])
-	lighting.setup(scene_id, layout if is_room() else null, get_node_or_null("Model"), rise)
+	lighting.setup(scene_id, layout if is_room() else null, get_node_or_null("Model"), rise, primary)
+
+
+func clear_lighting() -> void:
+	if lighting == null: return
+	lighting.free()
+	lighting = null
 
 
 func update_lighting(dt: float, tsec: float, camera: Camera3D, patrol_flick: float = 0.0, patrol_red: float = 0.0, blackout: bool = false, overcast: float = 0.0) -> void:
