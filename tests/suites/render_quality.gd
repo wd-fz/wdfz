@@ -97,24 +97,14 @@ func test_daylight_and_glow() -> void:
 
 
 func test_talent_effects() -> void:
-	# This test inspects presentation state while swapping three talents in one
-	# frame. Keep the fixture offscreen while it creates and frees the materials.
-	var container := SubViewportContainer.new()
-	container.hide()
-	root.add_child(container)
-	var fixture := SubViewport.new()
-	fixture.size = Vector2i(1280, 720)
-	fixture.own_world_3d = true
-	container.add_child(fixture)
-	fixture.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	var app := APP.instantiate() as GameApp
 	app.settings = GameSettings.new(_test_path.get_base_dir() + "/talent-effects.json")
-	fixture.add_child(app)
+	root.add_child(app)
 	app.set_process(false)
 	app.set_physics_process(false)
 	var world := CampusWorld.new()
 	world.scene_id = GarageModule.ROOM
-	fixture.add_child(world)
+	root.add_child(world)
 	app.session = SessionFactory.create()
 	app.session.start(GarageModule.ROOM)
 	app.ui.set_mode("play")
@@ -159,7 +149,8 @@ func test_talent_effects() -> void:
 	check(not world.patrol_figure_shown() and not world._patrol_sensed and not radar.visible,
 		"crossing the 3D range limit hides both the silhouette and its radar contact")
 
-	container.queue_free()
+	world.queue_free()
+	app.queue_free()
 	await _frames(2)
 
 

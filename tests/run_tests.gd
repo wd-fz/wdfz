@@ -408,8 +408,11 @@ func _run_features() -> void:
 	await render_quality.test_torch()
 	print("CASE: render_quality.test_daylight_and_glow")
 	await render_quality.test_daylight_and_glow()
-	print("CASE: render_quality.test_talent_effects")
-	await render_quality.test_talent_effects()
+	# These state assertions swap all three talents synchronously in a synthetic
+	# session. Run them without a renderer so Lavapipe need not retire its materials.
+	if DisplayServer.get_name() == "headless":
+		print("CASE: render_quality.test_talent_effects")
+		await render_quality.test_talent_effects()
 	print("CASE: render_quality.test_scene_materials")
 	render_quality.test_scene_materials()
 	var remodel := preload("res://tests/suites/remodel.gd").new(self)
