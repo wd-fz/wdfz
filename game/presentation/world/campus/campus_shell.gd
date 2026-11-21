@@ -10,7 +10,7 @@ const CROSSES_BOUNDARY := "*"
 static func partition(model: Node3D, space: CampusSpace) -> Dictionary:
 	for opening in space.garage_openings():
 		_carve_ground(model, opening)
-	for bridge: AABB in space.bridge_volumes(): carve_box(model,bridge)
+	for opening: AABB in space.bridge_volumes() + space.bridge_openings(): carve_box(model, opening)
 	var groups := {}
 	var footprints: Array[Dictionary] = []
 	var storeys := {}

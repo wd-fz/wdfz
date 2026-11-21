@@ -190,6 +190,16 @@ func test_resident_doorways() -> void:
 		var a := bridge.global_position
 		check(_mesh_hit(bridge, a - Vector3.UP * .4, a + Vector3.UP * .05), "the real bridge has a visible underside: " + link)
 		check(not _mesh_hit(outside, a + Vector3.UP * 3.4, a + Vector3.UP * 13.0), "no extra outdoor decks above the playable bridge: " + link)
+		for connection: Dictionary in CampusPortals.link_ports(campus.space.campus.campus_link, campus.space.rooms, link):
+			var portal: Dictionary = connection.self
+			var center := CampusGeometry.to_scene(bridge.layout, portal.p)
+			var outward: Vector2 = portal.n
+			var across := Vector2(-outward.y, outward.x)
+			for offset: float in [-.8, 0.0, .8]:
+				var eye := center + across * offset
+				var inside := bridge.to_global(Vector3(eye.x - outward.x, 1.58, eye.y - outward.y))
+				var beyond := bridge.to_global(Vector3(eye.x + outward.x, 1.58, eye.y + outward.y))
+				check(not _mesh_hit(outside, inside, beyond) and not _mesh_hit(outside, beyond, inside), "exterior faces leave the bridge doorway to %s clear" % connection.peer.room)
 	campus.select("teach1")
 	var frame := hall.global_transform
 	await _frames(2)

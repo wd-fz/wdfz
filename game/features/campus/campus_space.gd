@@ -215,3 +215,23 @@ func bridge_volumes() -> Array[AABB]:
 		var rect := local_bounds(id)
 		result.append(frame(id) * AABB(Vector3(rect.position.x,-.15,rect.position.y),Vector3(rect.size.x,floor_height(id)+.15,rect.size.y)))
 	return result
+
+
+## The visual windows and brickwork can sit just past the physical bridge edge.
+## Give every real doorway a narrow overlap into its adjoining building.
+func bridge_openings() -> Array[AABB]:
+	var openings: Array[AABB] = []
+	var config: Dictionary = campus.get("campus_link", {})
+	for id: String in BRIDGES:
+		for connection: Dictionary in CampusPortals.link_ports(config, rooms, id):
+			var portal: Dictionary = connection.self
+			var center := CampusGeometry.to_scene(rooms[id], portal.p)
+			var outward: Vector2 = portal.n
+			var side := Vector2(-outward.y, outward.x)
+			var half := float(portal.half) * CampusGeometry.U2M
+			var a := center - side * half - outward * .16
+			var b := center + side * half + outward * .28
+			var corner := a.min(b)
+			var size := (a - b).abs()
+			openings.append(frame(id) * AABB(Vector3(corner.x, -.02, corner.y), Vector3(size.x, 2.42, size.y)))
+	return openings

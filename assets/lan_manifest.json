@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "digest": "eb10db4bfeac3d75e6ea7687baa6e41369349cfc7a08accd0492f3696c8ed587",
+  "digest": "95d36dc9887edda3c303673fa19d6f7d12e2544faf1e4cfca40347f5f350aa38",
   "files": {
     "assets/campus/archive.json": "ee245d710d39d01b2c5d43dea49b9b02536f30a9449c8a56aa628e66643fe39a",
     "assets/campus/death_geometry.json": "5b7a718919d12b00fa380efc95ffa2ed41262d680d11714d218603053cd52326",
@@ -87,7 +87,7 @@
     "game/features/campus/campus_geometry.gd": "88d6110d0047b7748d4f3135e8c6cc9670d37599a46b4adfe98f3f6cb400ec25",
     "game/features/campus/campus_module.gd": "2eb39d772a22a23e9aeb3c2a4fd23c7ed46d163ba3268e7d11f4a399e565d318",
     "game/features/campus/campus_portals.gd": "f6e464f1a611fb85f15640877bd8bec41745ebe5d60435a4f3efd3d0ee3b6e81",
-    "game/features/campus/campus_space.gd": "e30ab05e5e8f2bd73fd80531ad9a6f9b5e8e548c6f45ea6e1bf643ca209de482",
+    "game/features/campus/campus_space.gd": "37d1d1f52a54a8c73b5db6990e6b3ad7b41024168507a05eebbacbef29551e59",
     "game/features/campus/elevator_module.gd": "572370a25cbd178b66616561ab769b963b00de4776070fab7faf6c7630a84691",
     "game/features/campus/exploration_module.gd": "fdf5d06de44bd1a82ce0f696c84a7cbae723c3bd1537147369713143c0006a70",
     "game/features/campus/facilities_module.gd": "931c233cfca10c86bb26868c1bc6227247a54f7a4428a034997fcd1ad42b2115",
@@ -179,7 +179,7 @@
     "game/presentation/world/campus/campus_mesh_cells.gd": "ea891af2f47b88ca0bee4f934c74b6e02fafb3eeace5b788657180a05da262d3",
     "game/presentation/world/campus/campus_preview.gd": "bf9106178cb930659b5473c5a9cd8c59f22486d6ebc6d430986462017d629cb1",
     "game/presentation/world/campus/campus_resident.gd": "4ed5a8f874faa45f22e67151787a3704eb8799bb65191184d117c3c88bf6a67a",
-    "game/presentation/world/campus/campus_shell.gd": "a8564ff16e5fe2c4f08757319e782f4b7492db19ca654fbf6d672ee7c373a747",
+    "game/presentation/world/campus/campus_shell.gd": "8e9b37796fe1f3af92200f22af9221d44afcfe21c5e9e4d67862165920fae98e",
     "game/presentation/world/campus/campus_stream.gd": "cf5a811b8f61af3364d91739544adcf160bae430a5b64e9e6daa04b5f44e7863",
     "game/presentation/world/campus/campus_world.gd": "d75c4967e460024f280c9e90d57fbd1550cfc3c46f692f9efb76375e7679e0c1",
     "game/presentation/world/campus/canteen_view.gd": "37739e92bc23caf9c95e7545e8efbb63a32e858c20c3265b8947cc29f18b9d84",
