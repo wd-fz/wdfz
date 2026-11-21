@@ -28,7 +28,7 @@ static func validate(data: Dictionary) -> String:
 	for id: String in actors:
 		var actor_data: Variant = actors[id]
 		var member: Variant = room["members"].get(id)
-		if not actor_data is Dictionary or not member is Dictionary or not member.get("name") is String or not member.get("connected") is bool or (member.get("talent") != "none" and not TalentModule.DEF.has(member.get("talent"))): return "合作成员资料无效。"
+		if not actor_data is Dictionary or not member is Dictionary or not member.get("name") is String or not member.get("connected") is bool or (member.get("talent") not in ["none", "watch"] and not TalentModule.DEF.has(member.get("talent"))): return "合作成员资料无效。"
 		if member.has("character"):
 			var character: Variant = member["character"]
 			if not StudentCast.valid(character) or characters.has(character): return "合作角色分配无效。"

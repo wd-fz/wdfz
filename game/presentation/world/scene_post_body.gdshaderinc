@@ -18,6 +18,7 @@ uniform float san=1.0;
 uniform float gaze=0.0;
 uniform float red=0.0;
 uniform float hurt=0.0;
+uniform float night_vision=0.0;
 uniform bool lite=false;
 
 float hash(vec2 p){p=fract(p*vec2(443.8975,397.2973));p+=dot(p,p.yx+19.19);return fract((p.x+p.y)*p.x);}
@@ -64,6 +65,11 @@ void fragment(){
 	col=max(col-.009*fx,vec3(0))*(1.0+.009*fx);
 	if(drain>.001){col=mix(col,vec3(dot(col,vec3(.2126,.7152,.0722))),.7*drain*fx);}
 	float vg=distance(uv,vec2(.5));col*=1.0-.84*smoothstep(.20,.95,vg*1.28)*fx;
+	if (night_vision > 0.0) {
+		float lightness = dot(col, vec3(.2126, .7152, .0722));
+		vec3 amplified = sqrt(max(col, vec3(0.0))) * vec3(.71, .99, .79);
+		col = mix(col, amplified, night_vision * (0.8 - 0.5 * smoothstep(.15, .65, lightness)));
+	}
 	if(tunnel>.001){float crawl=0.0;if(warp>.001){float th=atan(q.y,q.x+.000001);crawl=(.05*sin(th*3.0+t*.6)+.035*sin(th*5.0-t*.9))*warp;}
 		float rr=1.6-1.15*tunnel-.09*pulse;col*=1.0-smoothstep(rr-.12,rr+.42,e+crawl)*min(1.0,tunnel*2.2)*.96*fx;}
 	col*=mix(vec3(1),vec3(1,.32,.27),hurt*.85);

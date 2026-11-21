@@ -146,6 +146,7 @@ func deactivate() -> void:
 	if not runtime_active: return
 	runtime_active = false
 	set_process(false)
+	show_correct_car("")
 	for child: Node in get_children():
 		if child.name not in ["Model", "Collision", "Doors"]:
 			remove_child(child)
@@ -1020,17 +1021,23 @@ func _scatter_dirs_of(group: Node3D, _room: Variant) -> Array:
 ## The pose follows the visible patrol's observed heading and authoritative behaviour.
 var _patrol_figure: OtherworldFigure
 const PATROL_FIGURE := "res://assets/campus/figures/otherworld/patroller.glb"
+const PATROL_SENSE := preload("res://game/presentation/world/patrol_sense.gdshader")
+var _patrol_sense_material: ShaderMaterial
+var _patrol_sensed := false
 
 
-func show_patrol(visible_now: bool, scene_pos: Vector2, height: float, toward: Vector3, behavior: String = "patrol", dt: float = 0.0) -> void:
+func show_patrol(visible_now: bool, scene_pos: Vector2, height: float, toward: Vector3, behavior: String = "patrol", dt: float = 0.0, sensed: bool = false) -> void:
 	if not visible_now:
-		if is_instance_valid(_patrol_figure): _patrol_figure.hide()
+		if is_instance_valid(_patrol_figure):
+			_patrol_figure.hide()
+			set_patrol_sensed(false)
 		return
 	if not is_instance_valid(_patrol_figure):
 		_patrol_figure = OtherworldFigure.make("patroller", _patrol_asset)
 		_patrol_figure.name = "Patroller"
 		add_child(_patrol_figure)
 		_patrol_figure.hide()
+		_patrol_sensed = false
 	var next := Vector3(scene_pos.x, height, scene_pos.y)
 	var distance := _patrol_figure.position.distance_to(next) if _patrol_figure.visible else 0.0
 	_patrol_figure.position = next
@@ -1038,6 +1045,60 @@ func show_patrol(visible_now: bool, scene_pos: Vector2, height: float, toward: V
 	if forward.length_squared()>.00001: _patrol_figure.rotation.y = atan2(-forward.x,-forward.y)
 	_patrol_figure.show()
 	_patrol_figure.patrol_pose(dt,distance,behavior)
+	set_patrol_sensed(sensed)
+
+
+func set_patrol_sensed(value: bool) -> void:
+	if not is_instance_valid(_patrol_figure) or value == _patrol_sensed:
+		return
+	_patrol_sensed = value
+	if value and _patrol_sense_material == null:
+		_patrol_sense_material = ShaderMaterial.new()
+		_patrol_sense_material.shader = PATROL_SENSE
+	for mesh: MeshInstance3D in _patrol_figure.find_children("*", "MeshInstance3D", true, false):
+		mesh.ignore_occlusion_culling = value
+		mesh.material_overlay = _patrol_sense_material if value else null
+
+
+const CAR_OUTLINE := preload("res://game/presentation/world/car_outline.gdshader")
+var _correct_car_outline: Node3D
+var _outlined_cell := ""
+
+
+## Garage models batch car parts across multiple parking spaces. Copy just the instances at the
+## selected cell so an outline never changes the other cars or the original mesh resources.
+func show_correct_car(cell: String) -> void:
+	var model := get_node_or_null("Model") as Node3D
+	if is_instance_valid(_correct_car_outline):
+		if cell == _outlined_cell and _correct_car_outline.get_parent() == model:
+			return
+		_correct_car_outline.free()
+	_correct_car_outline = null
+	if cell.is_empty() or model == null:
+		return
+	var tile := CampusGeometry.tile_center(layout, int(cell.get_slice(":", 0)), int(cell.get_slice(":", 1)))
+	var centre := CampusGeometry.to_scene(layout, tile)
+	var outline := Node3D.new()
+	outline.name = "CorrectCarOutline"
+	var highlight := ShaderMaterial.new()
+	highlight.shader = CAR_OUTLINE
+	for batch: MultiMeshInstance3D in model.find_children("*", "MultiMeshInstance3D", true, false):
+		var batch_frame := model.global_transform.affine_inverse() * batch.global_transform
+		for i in batch.multimesh.instance_count:
+			var part_frame := batch_frame * CampusPreview.instance_transform(batch, i)
+			var at := part_frame.origin
+			# Two imported cars sit 0.4 m off their tile centres.
+			if absf(at.y) > 0.05 or Vector2(at.x, at.z).distance_squared_to(centre) > 0.45 ** 2:
+				continue
+			var part := MeshInstance3D.new()
+			part.mesh = batch.multimesh.mesh
+			part.material_override = highlight
+			part.transform = part_frame
+			part.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			outline.add_child(part)
+	model.add_child(outline)
+	_correct_car_outline = outline
+	_outlined_cell = cell
 
 
 var _garage_shadow: OtherworldFigure

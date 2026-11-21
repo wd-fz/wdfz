@@ -251,7 +251,7 @@ func _ready() -> void:
 	talent = OptionButton.new()
 	talent.custom_minimum_size.y = 48
 	talent.add_item("天赋 · 不选择")
-	for key: String in TalentModule.DEF:
+	for key: String in TalentModule.KEYS:
 		_gifts.append(key)
 		talent.add_item("天赋 · " + String(TalentModule.DEF[key]["n"]))
 	lobby.add_child(talent)

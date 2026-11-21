@@ -47,10 +47,11 @@ func _run() -> void:
 	app.ui.show_results(meta, {"silent": true, "reduce": true})
 	await shot("05-results")
 	app.ui.hide_results()
-	app.start_new_game("easy", "watch")
+	app.start_new_game("easy")
 	if app._opening_cut != null and app._opening_cut.on: app._opening_cut.end(true)
 	else: app.ui._end_opening(true)
 	app._stand_up()
+	app.items().add("watch")
 	app.patrol().pat["safety"] = 999
 	for _i in 8: await process_frame
 	app.set_physics_process(false)

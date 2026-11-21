@@ -48,7 +48,7 @@ func reset() -> void:
 	clock = 0.0
 	gaze_level = 0.0
 	sensory({},0.0,0.0)
-	for key: String in ["normal","gaze","red","hurt"]:
+	for key: String in ["normal","gaze","red","hurt","night_vision"]:
 		parameter(key,0.0)
 	parameter("exposure",1.0)
 	parameter("san",1.0)

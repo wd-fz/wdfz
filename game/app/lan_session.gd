@@ -135,6 +135,7 @@ func host(name: String, who: String, requested_port: int, resume: bool = false) 
 		room.capacity = int(prior["capacity"])
 		room.title = String(prior.get("title", room.title))
 		for id: String in room.members:
+			if room.members[id]["talent"] == "watch": room.members[id]["talent"] = "none"
 			if room.members[id]["state"] == "departed": continue
 			room.members[id].merge({"ready": id == local_id, "connected": id == local_id, "state": "lobby"}, true)
 		credentials = saved["credentials"].duplicate()

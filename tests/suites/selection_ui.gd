@@ -87,11 +87,12 @@ func test_selection() -> void:
 	panel.list_scroll.ensure_control_visible(panel.cards[-1])
 	await _frames(3)
 	await _tap(panel.cards[-1])
-	check(panel.selected == 7 and committed.is_empty(), "random is selectable at the end of the list and also waits for confirmation")
+	var random_index := TalentModule.KEYS.size()
+	check(panel.selected == random_index and committed.is_empty(), "random is selectable at the end of the list and also waits for confirmation")
 	await _tap(panel.confirm_button)
-	check(committed == [7] and not ui.choice_open(), "one explicit touch confirmation commits the selected card once")
+	check(committed == [random_index] and not ui.choice_open(), "one explicit touch confirmation commits the selected card once")
 	panel._confirm()
-	check(committed == [7], "duplicate confirmation cannot start another run")
+	check(committed == [random_index], "duplicate confirmation cannot start another run")
 	for screen: Vector2i in [Vector2i(960,540),Vector2i(844,390),Vector2i(2340,1080)]:
 		root.size = screen
 		await _frames(3)

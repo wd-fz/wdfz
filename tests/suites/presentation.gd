@@ -115,7 +115,7 @@ func _test_legacy_import() -> void:
 	why = app.import_legacy_save(JSON.stringify(save))
 	await _frames(3)
 	check(why.is_empty() and app.session != null and app.school().day == 3 and absf(app.school().tsec - 800.0) < 1.0, "an old save starts a run on its day and time")
-	check(absf(app.school().san - 61.5) < 12.0 and absf(app.school().viol - 12.0) < 12.0 and app.items().bag == ["torch", "pill"] and app.talent().id == "watch" and app.story().diff == "hard", "SAN, violation, bag, talent and difficulty come over")
+	check(absf(app.school().san - 61.5) < 12.0 and absf(app.school().viol - 12.0) < 12.0 and app.items().bag == ["torch", "pill"] and app.talent().id == "none" and app.story().diff == "hard", "an old watch run keeps its progress and drops the removed talent")
 	check(app.session.world_id == "teach1" and app.runscore().legacy == 1 and app.player.enabled and not app.player.seated, "it puts you where you stood and marks the run as from an old save")
 	app.queue_free()
 	await _frames()
@@ -128,7 +128,7 @@ func _test_legacy_save() -> void:
 	var good := {"v": 1, "clockVersion": 2, "mode": "in", "room": "teach1", "x": 500.0, "y": 300.0, "ang": 1.0, "pitch": 0.1, "tsec": 800, "day": 3, "diff": "hard", "san": 61.5, "viol": 12,
 		"stam": 40, "tt": 25, "bag": ["torch", "pill", "ghost_item"], "hot": ["torch", "pill"], "talent": "watch"}
 	var p := LegacySave.plan(good, rooms, items, keys)
-	check(String(p["error"]).is_empty() and p["world"] == "teach1" and p["day"] == 3 and p["diff"] == "hard" and p["talent"] == "watch" and is_equal_approx(float(p["san"]), 61.5), "a good old save is planned")
+	check(String(p["error"]).is_empty() and p["world"] == "teach1" and p["day"] == 3 and p["diff"] == "hard" and p["talent"] == "none" and is_equal_approx(float(p["san"]), 61.5), "a good old save is planned without its removed talent")
 	check(p["bag"] == ["torch", "pill"] and p["dropped"] == ["ghost_item"] and p["hot"] == ["torch", "pill"], "items this version does not have are dropped, the hotbar keeps what is in the bag")
 	check(not String(LegacySave.plan("nope", rooms, items, keys)["error"]).is_empty(), "something that is not an object is refused")
 	check(not String(LegacySave.plan({"x": 1, "y": 2, "tsec": 2000}, rooms, items, keys)["error"]).is_empty(), "a time out of range is refused")

@@ -229,16 +229,8 @@ func distance() -> float:
 	return Vector2(float(_c.get("x", 0.0)) - float(pat["x"]), float(_c.get("y", 0.0)) - float(pat["y"])).length() if same() else INF
 
 
-## Talent.modifier('hear.range') (the ear talent), set by the app.
-var hear_mul := 1.0
-
-
-func _hear_range() -> float:
-	return hear_mul
-
-
 func hear_distance() -> float:
-	return 200.0 * _hear_range()
+	return 200.0
 
 
 func _locker_front(scene: String, c: int, r: int) -> Vector2:
@@ -264,11 +256,11 @@ func approach() -> Dictionary:
 	var a := player_point()
 	var tr: Variant = pat["transition"]
 	var b: Dictionary = tr["to"] if tr != null else position()
-	var key := "%s:%d:%d:%d:%s:%d:%d:%d:%d:%f" % [a["scene"], roundi(float(a["x"]) / 4.0), roundi(float(a["y"]) / 4.0), roundi(float(a["fy"]) * 10.0),
-		b["scene"], roundi(float(b["x"]) / 4.0), roundi(float(b["y"]) / 4.0), roundi(float(b.get("fy", 0.0)) * 10.0), int(ceil(float(tr["remaining"]) * 2.0)) if tr != null else 0, _hear_range()]
+	var key := "%s:%d:%d:%d:%s:%d:%d:%d:%d" % [a["scene"], roundi(float(a["x"]) / 4.0), roundi(float(a["y"]) / 4.0), roundi(float(a["fy"]) * 10.0),
+		b["scene"], roundi(float(b["x"]) / 4.0), roundi(float(b["y"]) / 4.0), roundi(float(b.get("fy", 0.0)) * 10.0), int(ceil(float(tr["remaining"]) * 2.0)) if tr != null else 0]
 	if _approach_cache.get("key") == key:
 		return _approach_cache["value"]
-	var m := nav.approach(a, b, 220.0 * _hear_range())
+	var m := nav.approach(a, b, 220.0)
 	if not m.is_empty() and tr != null:
 		m["distance"] = float(m["distance"]) + float(tr["remaining"]) * nav.speed
 	_approach_cache = {"key": key, "value": m}

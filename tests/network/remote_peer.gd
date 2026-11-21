@@ -85,7 +85,7 @@ func run() -> void:
 	network.notice.connect(func(text: String) -> void: print("NOTICE: ", text))
 	network.room_changed.connect(func(_data: Dictionary) -> void:
 		if network.room.phase == "lobby" and network.room.members.has(network.local_id) and not network.room.members[network.local_id].ready:
-			network.ready(true, "watch")
+			network.ready(true, "ear")
 		if host and network.room.members.size() == players and network.room.can_start():
 			check(network.start() == "", "remote players start shared authority"))
 	network.snapshot_received.connect(func(data: Dictionary) -> void:

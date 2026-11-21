@@ -32,7 +32,6 @@ const BOARD_LINES := ["今天的值日生：你", "下一节还是这一节", "�
 const PACE := {"half": 60.0, "rest": 0.7, "quiet_after": 150.0, "quiet_boost": 1.4, "hold": 0.8, "inspect": 0.4}
 ## Corridor notice: chance per second while eligible (about once in 90 s of free time indoors).
 const NOTICE_RATE := 1.0 / 90.0
-const EAR_DREAD := 0.8   # talents.js earDread: the price of 顺风耳 is more frequent false threats
 
 var visits: Dictionary = {}     # "day:room" → visits that day (saved: revisits replay on load)
 var t := 0.0
@@ -345,7 +344,7 @@ func tick(dt: float) -> void:
 	if busy or t < float(CFG["safe_start"]):
 		return
 	_notice_step(dt)
-	next_amb -= dt * (0.75 + tension() * 0.9) * pace() / (EAR_DREAD if bool(_c.get("ear", false)) else 1.0)
+	next_amb -= dt * (0.75 + tension() * 0.9) * pace()
 	if next_amb > 0.0:
 		return
 	next_amb = _rng.randf_range(float(CFG["amb_min"]), float(CFG["amb_max"]))

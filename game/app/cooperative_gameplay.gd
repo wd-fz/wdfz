@@ -192,8 +192,6 @@ func personal(a: CooperativeActor, dt: float) -> void:
 	var game_gain := a.activities.tick(dt, float(a.school().pressure()["rest"]))
 	if game_gain > 0: a.school().change_san(game_gain)
 	drain(a, "phone")
-	a.talent().tick_watch(a.school().day, a.school().tsec, SchoolClock.rate_at(a.school().tsec))
-	for event: Dictionary in a.talent().take_events(): a.event("notice", event)
 	var day := a.feature(&"school.days") as DayModule
 	day.tick_day(a.school().day, a.school().tsec)
 	drain(a, "day")
@@ -1149,6 +1147,8 @@ func _garage_tick(dt: float) -> void:
 	var nearest := INF
 	var shadow := Vector2(float(garage.roam["x"]), float(garage.roam["y"]))
 	for other: CooperativeActor in people:
+		if other.talent().has("drive") and garage.car_right.is_empty():
+			garage.car_right_cell()
 		prepare(other)
 		var at := other.point(CampusData.rooms())
 		illuminated = illuminated or (garage.lit() and sim.patrol.main.nav.los(PatrolNav.point(GarageModule.ROOM, at.x, at.y), PatrolNav.point(GarageModule.ROOM, shadow.x, shadow.y)))

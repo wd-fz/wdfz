@@ -28,7 +28,7 @@ func _run() -> void:
 	app.ui._choice_scroll.ensure_control_visible(app.ui._choice_box.get_child(5))
 	await shot("02-talents-lower")
 	app.ui.hide_choice()
-	app.start_new_game("easy", "watch")
+	app.start_new_game("easy")
 	app.ui._end_opening(true)
 	app._stand_up()
 	app.patrol().pat["safety"] = 999

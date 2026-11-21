@@ -96,6 +96,64 @@ func test_daylight_and_glow() -> void:
 	CampusData.clear_caches()
 
 
+func test_talent_effects() -> void:
+	var app := APP.instantiate() as GameApp
+	app.settings = GameSettings.new(_test_path.get_base_dir() + "/talent-effects.json")
+	root.add_child(app)
+	app.set_process(false)
+	app.set_physics_process(false)
+	var world := CampusWorld.new()
+	world.scene_id = GarageModule.ROOM
+	root.add_child(world)
+	app.session = SessionFactory.create()
+	app.session.start(GarageModule.ROOM)
+	app.ui.set_mode("play")
+
+	app.garage().car_right = "12:4"
+	app.talent().pick("drive")
+	app._present_car_highlight(world)
+	var outline := world._correct_car_outline
+	var at := CampusGeometry.to_scene(world.layout, CampusGeometry.tile_center(world.layout, 12, 4))
+	check(is_instance_valid(outline) and outline.get_child_count() > 0 and outline.get_children().all(
+		func(part: MeshInstance3D) -> bool: return Vector2(part.position.x, part.position.z).is_equal_approx(at)),
+		"the highlight covers only the actual vehicle meshes in the correct parking space")
+	app._present_car_highlight(world, false)
+	check(not is_instance_valid(outline), "the car highlight is private to an eligible viewer")
+
+	app.talent().pick("night")
+	app.school().tsec = 700.0
+	app._update_campus_lighting(world, 0.0)
+	check(world.lighting.night_vision_strength == 0.0, "dark adaptation is inactive in daylight")
+	app.school().tsec = 1380.0
+	app._update_campus_lighting(world, 0.0, false)
+	var base_energy := world.lighting.env.ambient_light_energy
+	app._update_campus_lighting(world, 0.0)
+	check(world.lighting.env.ambient_light_energy > base_energy * 2.0
+		and app.ui.scene_post()._parameters["night_vision"] == 1.0, "night vision lights the scene and enables its filter")
+
+	app.talent().pick("ear")
+	app.player.position = Vector3.ZERO
+	app.player.rotation.y = PI / 2.0
+	var patrol_state := app.patrol().pat
+	patrol_state.merge({"state": "walk", "room": GarageModule.ROOM, "fy": 0.0, "x": world.layout.cx, "y": world.layout.cy - 135.0}, true)
+	app._present_patrol(world, {}, 0.0)
+	var radar := app.ui._patrol_radar
+	check(world.patrol_figure_shown() and world._patrol_sensed and is_instance_valid(radar)
+		and radar.visible and radar._offset.is_equal_approx(Vector3(15, 0, 0)),
+		"15 m at the camera's right appears on radar and through occlusion")
+	app._present_patrol(world, {}, 0.0, false)
+	check(not world._patrol_sensed and not radar.visible, "a spectator does not inherit a radar contact")
+	app._present_patrol(world, {}, 0.0)
+	patrol_state["fy"] = 1.0
+	app._present_patrol(world, {}, 0.0)
+	check(not world.patrol_figure_shown() and not world._patrol_sensed and not radar.visible,
+		"crossing the 3D range limit hides both the silhouette and its radar contact")
+
+	world.queue_free()
+	app.queue_free()
+	await _frames(2)
+
+
 func test_scene_materials() -> void:
 	var model := Node3D.new()
 	var mesh := MeshInstance3D.new()

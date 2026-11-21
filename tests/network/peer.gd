@@ -141,7 +141,7 @@ func run() -> void:
 					requested_character = true
 					network.select_character("xu")
 				return
-			if not network.room.members[network.local_id]["ready"]: network.ready(true, "watch")
+			if not network.room.members[network.local_id]["ready"]: network.ready(true, "ear")
 		if role == "host" and not began and network.room.members.size() == count and network.room.can_start():
 			began = true
 			check(network.start().is_empty(), "host starts ready room"))

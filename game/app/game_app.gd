@@ -487,7 +487,7 @@ func _pick_talent(difficulty: String, speed: bool = false) -> void:
 	for k: String in TalentModule.KEYS:
 		var d: Dictionary = TalentModule.DEF[k]
 		entries.append({"name":d["n"], "role":d["role"], "effect":d["does"], "limit":d["limit"], "art":UIArt.talent(k)})
-	entries.append({"name":"随机天赋", "role":"让命运替你选择。", "effect":"确认开始时，从七种天赋中随机获得一种。", "limit":"同样遵守抽中天赋的全部限制；浏览或取消不会抽取。", "art":UIArt.talent("random")})
+	entries.append({"name":"随机天赋", "role":"让命运替你选择。", "effect":"确认开始时，从可选天赋中随机获得一种。", "limit":"同样遵守抽中天赋的全部限制；浏览或取消不会抽取。", "art":UIArt.talent("random")})
 	_choice_count += 1
 	var mine := _choice_count
 	_choice_handler = func(index: int) -> void:
@@ -805,8 +805,6 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 			school().danger_mul = func(kind: String) -> float: return gift_now.danger_mul(kind) * _drain_mul()
 		if routes() != null:
 			routes().face_remedy = gift_now.face_remedy
-		if patrol() != null:
-			patrol().hear_mul = gift_now.hear_range()
 		campus().rest_out = facilities().rest_out
 	_seen_day = school().day if school() != null else 1
 	_seen_hide = false
@@ -1086,7 +1084,7 @@ func _campus_world() -> CampusWorld:
 	return router.world_instance() as CampusWorld
 
 
-func _sync_world(seed_view: bool = true) -> void:
+func _sync_world(seed_view: bool = true, senses_enabled: bool = true) -> void:
 	var world := _campus_world()
 	var rules := campus()
 	if world != null and rules != null:
@@ -1111,14 +1109,16 @@ func _sync_world(seed_view: bool = true) -> void:
 			world.banner.set_on(want)
 
 	if seed_view:
-		_update_campus_lighting(world, 0.0)
+		ui.show_patrol_radar()
+		_update_campus_lighting(world, 0.0, senses_enabled)
 		if is_instance_valid(router.resident) and router.resident.visible: router.prefetch(player.position)
 
 
 ## Seed the incoming region before its first rendered frame, as well as on every simulation tick.
 ## Otherwise a night-time crossing briefly shows the new light nodes' default daytime energy.
-func _update_campus_lighting(world: CampusWorld, delta: float) -> void:
+func _update_campus_lighting(world: CampusWorld, delta: float, senses_enabled: bool = true) -> void:
 	if world == null or world.lighting == null or school() == null:
+		ui.scene_post().parameter("night_vision", 0.0)
 		return
 	var light := world.lighting
 	light.reduce_flash = settings.get_int("reduce_flash") == 1
@@ -1126,12 +1126,14 @@ func _update_campus_lighting(world: CampusWorld, delta: float) -> void:
 	light.world_normal = ui.scene_post().world_normal
 	light.fake_normal = ui.scene_post().fake_normal
 	light.gaze = ui.scene_post().gaze_level
+	light.night_vision = senses_enabled and talent() != null and talent().has("night") and not story().over()
 	light.crowd_state = lift_crowd().state if lift_crowd() != null else {}
 	var watcher := patrol()
 	var weird := anomaly()
 	world.update_lighting(delta, school().tsec, player.camera, watcher.flick if watcher != null else 0.0, watcher.red if watcher != null else 0.0,
 		weird != null and weird.blackout_now(), weird.overcast_target() if weird != null else 0.0)
 	ui.scene_post().parameter("exposure", light.post_exposure)
+	ui.scene_post().parameter("night_vision", light.night_vision_strength)
 
 
 func _door_changed(key: String, open: bool) -> void:
@@ -1547,10 +1549,6 @@ func _school_step(delta: float, rules: CampusModule, advance_calendar: bool = tr
 		ui.show_search(bag.search_progress())
 		player.speed_multiplier = (1.5 if snack else 1.0) * (body().speed_mul() if body() != null else 1.0) * (2.6 if debug_flow.fast else 1.0)
 		player.camera.get_node("Torch").visible = bag.torch_on
-		if talent() != null:
-			talent().tick_watch(day_rules.day if day_rules != null else 1, school().tsec, SchoolClock.rate_at(school().tsec))
-			for te: Dictionary in talent().take_events():
-				ui.show_notice(String(te["text"]))
 		var hot_names := [bag.item_name(String(bag.hot[0])) if bag.hot[0] != null else "空", bag.item_name(String(bag.hot[1])) if bag.hot[1] != null else "空"]
 		ui.show_hot("1 · %s    2 · %s" % hot_names, bag.hot, hot_names)
 		_ground_step(bag)
@@ -1628,25 +1626,61 @@ func _school_step(delta: float, rules: CampusModule, advance_calendar: bool = tr
 		period = tale_now.checkup_period()
 	if watcher != null and bool(watcher.pat["permanent"]) and not frozen:
 		period += " · 持续追踪"
-	ui.show_status(day_rules.place_name(session.world_id, float(p[1])), period, day_rules.period_class(frozen), "??:??" if inception_flow.here() else ("???" if maze_flow.here() else day_rules.clock_text((bag != null and bag.has_clock()) or (talent() != null and talent().has("watch")))))
+	ui.show_status(day_rules.place_name(session.world_id, float(p[1])), period, day_rules.period_class(frozen), "??:??" if inception_flow.here() else ("???" if maze_flow.here() else day_rules.clock_text(bag != null and bag.has_clock())))
 	ui.show_sprint_available(player.can_sprint)
 	ui.show_stamina(day_rules.stam, day_rules.stamina_max(), day_rules.tired)
 	var lit := _campus_world()
+	_update_campus_lighting(lit, delta)
+	_present_patrol(lit, _patrol_view() if watcher != null and watcher.figure_visible() else {}, delta)
 	if lit != null:
 		var weird_light := anomaly()
-		_update_campus_lighting(lit, delta)
-		if watcher != null:
-			var fig_scene := Vector2.ZERO
-			var look_scene := Vector2.ZERO
-			if watcher.figure_visible():
-				fig_scene = CampusGeometry.to_scene(room, Vector2(float(watcher.pat["x"]), float(watcher.pat["y"])))
-				var look := watcher.look_point()
-				look_scene = CampusGeometry.to_scene(room, Vector2(float(look["x"]), float(look["y"])))
-			lit.show_patrol(watcher.figure_visible(), fig_scene, float(watcher.pat["fy"]), Vector3(look_scene.x, float(watcher.pat["fy"]), look_scene.y), String(watcher.pat.behavior), delta)
 		if weird_light != null and lit.anomaly_fx != null:
 			var cam_pos := player.scene_camera_transform().origin
 			var fwd := -player.scene_camera_transform().basis.z
 			lit.anomaly_fx.update(delta, weird_light.an, room, session.world_id, Vector3(cam_pos.x, float(p[1]), cam_pos.z), Vector2(fwd.x, fwd.z), cam_pos, story().diff == "hard", session.character_id)
+
+
+## Put the authoritative patrol pose in the local player's region frame, including across floors.
+func _patrol_view() -> Dictionary:
+	var watcher := patrol()
+	if watcher == null or watcher.pat["state"] != "walk" or watcher.pat["transition"] != null:
+		return {}
+	var source := String(watcher.pat["room"])
+	var viewer := session.world_id
+	var frame := Transform3D.IDENTITY
+	if source != viewer:
+		if not router.same_space(source, viewer):
+			return {}
+		var space: CampusSpace = router.resident.space
+		frame = space.frame(viewer).affine_inverse() * space.frame(source)
+	var room: Variant = campus().room(source)
+	var at := CampusGeometry.to_scene(room, Vector2(float(watcher.pat["x"]), float(watcher.pat["y"])))
+	var look := watcher.look_point()
+	var toward := CampusGeometry.to_scene(room, Vector2(float(look["x"]), float(look["y"])))
+	var height := float(watcher.pat["fy"])
+	return {"position": frame * Vector3(at.x, height, at.y), "look": frame * Vector3(toward.x, height, toward.y)}
+
+
+func _present_patrol(world: CampusWorld, normal_view: Dictionary, delta: float, senses_enabled: bool = true) -> void:
+	var view := normal_view
+	var sensed := false
+	if world != null and senses_enabled and talent() != null and talent().has("ear"):
+		var target := _patrol_view() if view.is_empty() else view
+		if not target.is_empty():
+			var offset: Vector3 = target["position"] - player.position
+			if offset.length_squared() <= TalentModule.PATROL_SENSE_METRES ** 2:
+				sensed = true
+				view = target
+				ui.show_patrol_radar(Basis(Vector3.UP, -player.rotation.y) * offset)
+	if not sensed:
+		ui.show_patrol_radar()
+	if world == null:
+		return
+	if view.is_empty():
+		world.show_patrol(false, Vector2.ZERO, 0.0, Vector3.ZERO)
+	else:
+		var at: Vector3 = view["position"]
+		world.show_patrol(true, Vector2(at.x, at.z), at.y, view["look"], String(patrol().pat["behavior"]), delta, sensed)
 
 
 ## canStand (world.js): is there room for the body (radius 3 units) at this old world point?
@@ -2049,6 +2083,7 @@ func kill(msg: String, fx: String, source: String) -> void:
 		return
 	if not result.get("dead", false):
 		return
+	_clear_talent_view()
 	archive_flow.record(source, fx)
 	if playtest.recording:
 		playtest.horror.death(source)
@@ -2645,7 +2680,6 @@ func _dread_context() -> Dictionary:
 	return {"scene": rid, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "san": day_rules.san, "viol": day_rules.viol,
 		"night": night, "day": day_rules.day, "busy": busy, "an_active": weird != null and bool(weird.an["active"]),
 		"an_next": float(weird.an["next"]) if weird != null else -1.0, "an_next0": int(weird.an["next0"]) if weird != null else 0,
-		"ear": talent() != null and talent().has("ear"),
 		"chase": watcher != null and watcher.local_chase(), "inspect": day_rules.inspection_active(),
 		"tsec": day_rules.tsec, "free": String(SchoolClock.period_at(day_rules.tsec)[3]) == "自由",
 		"door_open": func(c: int, r: int) -> bool: return campus().is_open(CampusGeometry.door_key(campus().room(rid), c, r))}
@@ -3291,7 +3325,7 @@ func _camera_context() -> Dictionary:
 	var bag := items()
 	return {"an": String(weird.an["id"]) if weird != null and bool(weird.an["active"]) else "", "gaze": gaze() != null and not gaze().current().is_empty(),
 		"crowd": lift_crowd() != null and lift_crowd().active(), "day": school().day, "tsec": school().tsec, "place": school().place_name(session.world_id, float(player.capture_pose()["position"][1])),
-		"clock": (bag != null and bag.has_clock()) or (talent() != null and talent().has("watch"))}
+		"clock": bag != null and bag.has_clock()}
 
 
 ## camera.js shoot: the lens image without the interface, the flash, the extra layer, then the album.
@@ -5063,7 +5097,28 @@ func _garage_step(delta: float, room: Variant, pose: Dictionary) -> void:
 		if shown:
 			at = CampusGeometry.to_scene(room, Vector2(float(cars.roam["x"]), float(cars.roam["y"])))
 		world.show_garage_shadow(shown, at, float(pose["position"][1]))
+		_present_car_highlight(world)
 	_apply_garage_events()
+
+
+func _present_car_highlight(world: CampusWorld, senses_enabled: bool = true) -> void:
+	if world.scene_id != GarageModule.ROOM:
+		return
+	var cars := garage()
+	var highlight := senses_enabled and cars != null and not cars.car_used and talent() != null and talent().has("drive")
+	world.show_correct_car(cars.car_right if highlight else "")
+
+
+func _clear_talent_view() -> void:
+	ui.show_patrol_radar()
+	var world := _campus_world()
+	if world != null and world.lighting != null and world.lighting.night_vision:
+		_update_campus_lighting(world, 0.0, false)
+	else:
+		ui.scene_post().parameter("night_vision", 0.0)
+	if world != null:
+		world.show_correct_car("")
+		world.set_patrol_sensed(false)
 
 
 func _apply_garage_events() -> void:
@@ -5139,6 +5194,7 @@ func _play_car_intro() -> void:
 
 
 func _enter_drive() -> void:
+	_clear_talent_view()
 	var gates: Dictionary = CampusData.campus().get("gates", {})
 	var gn: Dictionary = gates.get("n", {"x": 514, "y": 95})
 	var at := CampusGeometry.to_scene(null, Vector2(float(gn["x"]) * 2.0, (float(gn["y"]) + 40.0) * 2.0))
@@ -5273,6 +5329,7 @@ func _reach_ending(id: String) -> void:
 	var card := fate.trigger_ending(id, school().seat_card) if fate != null else {}
 	if card.is_empty():
 		return
+	_clear_talent_view()
 	var fake := bool(card.get("fake",false))
 	_clear_plane()
 	player.enabled = false
@@ -5318,7 +5375,7 @@ func _reach_ending(id: String) -> void:
 	fact({"kind": "ending", "id": id, "paper_exit": paper_exit, "fake":fake, "legit":not fake, "day": school().day, "diff": story().diff, "talent": talent().id if talent() != null else "none"})
 	_last_result = {} if fake else _score_ending(id, String(card["title"]))
 	var meta := "第 %d 天" % school().day
-	if (items() != null and items().has_clock()) or (talent() != null and talent().has("watch")):
+	if items() != null and items().has_clock():
 		meta += " · " + SchoolClock.fmt_clock(school().tsec)
 	if run_line != "":
 		meta += "\n" + run_line

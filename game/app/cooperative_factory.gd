@@ -31,5 +31,4 @@ static func actor(id: String, slot: int, difficulty: String, gift: String, seed_
 		if m.has_method("set_seed") and (key not in SHARED or slot == 0):
 			m.call("set_seed", str(seed_value) if key in [&"school.classmates", &"story.atmos"] else seed_value)
 	(a.feature(&"anomaly.world") as AnomalyModule).begin_run(difficulty)
-	a.watcher().hear_mul = a.talent().hear_range()
 	return a

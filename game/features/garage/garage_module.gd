@@ -5,7 +5,7 @@ extends FeatureModule
 ## throwCoin (the coin lure), story.js carRightCell / useCar / carDrive, investigation.js carName /
 ## inspectCar, car-chase.js (start / fail / tick) with domain/car-chase.js in CarChaseRules.
 ## Context in, events out (notice / toast / san / kill / choice / step / drive / ending); the app applies them.
-## Talents (hot-wiring without a key) are not ported: only the key starts a car.
+## The driving talent can hot-wire the correct car.
 
 const STATE_VERSION := 1
 const LIT_NEED := 1.6
@@ -307,6 +307,8 @@ func tick(dt: float) -> void:
 		roam["on"] = false
 		lure = null
 		return
+	if bool(_c.get("hotwire", false)) and car_right.is_empty():
+		car_right_cell()
 	if not bool(roam["on"]):
 		_reset_roam()
 	if lure != null:

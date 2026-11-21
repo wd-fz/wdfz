@@ -19,7 +19,7 @@ SHEETS = [
         "top", "archivekey", "broadcastkey", "broadcastfuse", "notice_fake",
         "notice1", "notice2", "notice3", "notice4",
     ]),
-    ("talents", "talents", 4, 2, ["tech", "code", "drive", "night", "watch", "immune", "ear", "random"]),
+    ("talents", "talents", 4, 2, ["tech", "code", "drive", "night", None, "immune", "ear", "random"]),
     ("phone_apps", "phone", 4, 2, ["home", "wireless", "location", "sync", "container", "camera", "plane", "battery"]),
 ]
 
@@ -37,6 +37,8 @@ def main():
         folder = ART / group
         folder.mkdir(exist_ok=True)
         for index, name in enumerate(ids):
+            if name is None:
+                continue
             x = (index % columns) * width / columns
             y = (index // columns) * height / rows
             filename = name.replace(":", "_").replace(".", "_")

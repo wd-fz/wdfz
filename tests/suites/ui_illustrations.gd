@@ -173,7 +173,7 @@ func test_expanded_interface() -> void:
 		await _frames(4)
 		check(bounds.encloses(app.ui.ending_panel.get_global_rect()) and app.ui._ending_art.texture == UIArt.memory("end:car"), "ending image stays inside the scrolling card: " + str(extent))
 		app.ui.ending_panel.hide()
-	app.start_new_game("easy", "watch")
+	app.start_new_game("easy")
 	if app._opening_cut != null and app._opening_cut.on: app._opening_cut.end(true)
 	else: app.ui._end_opening(true)
 	await _frames(5)

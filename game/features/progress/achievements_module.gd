@@ -33,7 +33,7 @@ const LIST := {
 	"n.wake": ["n", "梦里记得", "我猛地抬起头，后背全是汗。"],
 	"n.saved": ["n", "被替了一次", "刚才那一下，像是有人替我挨了。"],
 	"e.end_cyber": ["e", "《网安仙人》", "机柜一架架熄灭。天亮了。"],
-	"p.talents": ["p", "七种活法", "换了好几种活法，每一种都走出了校门。"],
+	"p.talents": ["p", "六种活法", "换了好几种活法，每一种都走出了校门。"],
 	"p.routes": ["p", "四条路", "我从这所学校出去过很多次，每一次走的路都不一样。"],
 	"p.five_routes": ["p", "五条路", "最后一次，学校以为我只是放学回家。"],
 	"e.end_international": ["e", "《外国语学生》", "队尾的人回头看了一眼。"],
@@ -153,7 +153,10 @@ func load_profile(data: Dictionary) -> void:
 	sets = {"lethal": {}, "anomalies": {}, "rest": {}, "talents": {}, "notes": {}}
 	for name: String in sets:
 		for k: String in ((data.get("sets", {}) as Dictionary).get(name, {}) as Dictionary):
+			if name == "talents" and not TalentModule.KEYS.has(k): continue
 			sets[name][k] = true
+	if sets["talents"].size() == TalentModule.KEYS.size():
+		unlocked["p.talents"] = true
 
 
 func take_events() -> Array:

@@ -533,6 +533,25 @@ func set_keys_hint(text: String) -> void:
 var _status_style: StyleBoxFlat
 var _status_card: PanelContainer
 var _hud_actions: HBoxContainer
+var _patrol_radar: PatrolRadar
+
+
+func show_patrol_radar(offset: Variant = null) -> void:
+	if offset == null:
+		if is_instance_valid(_patrol_radar): _patrol_radar.hide()
+		return
+	if not is_instance_valid(_patrol_radar):
+		_patrol_radar = PatrolRadar.new()
+		_patrol_radar.name = "PatrolRadar"
+		_patrol_radar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_patrol_radar.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+		_patrol_radar.offset_left = -122.0
+		_patrol_radar.offset_right = -20.0
+		_patrol_radar.offset_top = 78.0
+		_patrol_radar.offset_bottom = 196.0
+		hud.add_child(_patrol_radar)
+	_patrol_radar.track(offset)
+	_patrol_radar.show()
 
 
 func _style_hud() -> void:

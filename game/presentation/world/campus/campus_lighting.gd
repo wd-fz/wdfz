@@ -66,6 +66,8 @@ var brightness := 1.0              # the brightness setting (100 % = 1.0)
 var world_normal := 0.0
 var fake_normal := 0.0
 var post_exposure := 1.0
+var night_vision := false
+var night_vision_strength := 0.0
 var gaze := 0.0
 var crowd_state: Dictionary = {}
 var terms := {}  # lightState terms before physical-unit mapping and overcast
@@ -254,6 +256,7 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 			l.position.y = maxi(floor_i, 0) * _stair_rise + float(l.get_meta("base_y", l.position.y))
 	var h := fposmod(tsec, 1440.0) / 60.0
 	var sun := sun_at(h)
+	night_vision_strength = 1.0 - smoothstep(0.0, 0.22, float(sun["day"])) if night_vision else 0.0
 	var indoor := room != null and not _open_air()
 	var shared_sky := campus_daylight()
 	var day := float(sun["day"])
@@ -329,6 +332,8 @@ func update(dt: float, tsec: float, camera: Camera3D) -> void:
 	dirv *= 1.0 - 0.70 * overcast
 	# Godot has no hemisphere light: fold it into the ambient term (sky and ground average).
 	var ambient := ac * amb + (hs + hg) * 0.5 * hemi
+	# Lift the light on geometry as well as grading the image so unlit detail stays visible.
+	ambient = ambient.lerp(Color(0.22, 0.42, 0.29), night_vision_strength * 0.82)
 	var strength := maxf(ambient.r, maxf(ambient.g, ambient.b))
 	env.ambient_light_color = ambient / maxf(strength, 1e-4)
 	var qi := _detail()

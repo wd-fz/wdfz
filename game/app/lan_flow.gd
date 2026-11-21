@@ -687,7 +687,7 @@ func _place_view(member: String, scene: int, destination: String, pose: Dictiona
 	if continuous: app.player.place(pose)
 	else: app.player.restore_pose(pose)
 	app.inception_flow.changed_world()
-	app._sync_world()
+	app._sync_world(true, not _spectating)
 
 
 func _finish_preparation(epoch: String) -> void:
@@ -1018,7 +1018,7 @@ func _present(dt: float) -> void:
 	app.phone().set_context(app._phone_context())
 	app.patrol().set_context(app._patrol_context(room, pose))
 	app.anomaly().set_context(app._anomaly_context(room, pose))
-	app.ui.show_status(school.place_name(app.session.world_id, float(pose["position"][1])), app.first_lunch_lead(school, school.period_text(false)), school.period_class(false), school.clock_text(app.items().has_clock() or app.talent().has("watch")))
+	app.ui.show_status(school.place_name(app.session.world_id, float(pose["position"][1])), app.first_lunch_lead(school, school.period_text(false)), school.period_class(false), school.clock_text(app.items().has_clock()))
 	app.ui.show_stamina(school.stam, school.stamina_max(), school.tired)
 	app.ui.show_sprint_available(app.player.can_sprint)
 	app.ui.show_runtime(app.session.clock.active_seconds)
@@ -1047,19 +1047,17 @@ func _present(dt: float) -> void:
 	if app.snake_open(): app._snake_step(dt)
 	app._sensory_step(dt)
 	app._audio_step(dt, app.patrol(), school, room, pose["position"])
+	var senses_enabled := not _spectating and not app.story().over() and not bool(current.get("vehicle", false))
+	app._update_campus_lighting(world, dt, senses_enabled)
+	app._present_patrol(world, visible_patrol(), dt, senses_enabled)
 	if world != null:
 		world.set_player_scene(app.player.position)
 		app.garage().set_context(app._garage_context())
 		var shadow := app.session.world_id == GarageModule.ROOM and app.garage().roam_visible()
 		var shadow_at := CampusGeometry.to_scene(room, Vector2(float(app.garage().roam["x"]), float(app.garage().roam["y"]))) if shadow else Vector2.ZERO
 		world.show_garage_shadow(shadow, shadow_at, float(pose["position"][1]))
+		app._present_car_highlight(world, senses_enabled)
 		world.show_silhouettes(school.inspection_points(), room, float(pose["position"][1]))
-		app._update_campus_lighting(world, dt)
-		var patrol_view := visible_patrol()
-		if not patrol_view.is_empty():
-			var at: Vector3 = patrol_view["position"]
-			world.show_patrol(true, Vector2(at.x, at.z), at.y, patrol_view["look"], String(app.patrol().pat.behavior), dt)
-		else: world.show_patrol(false, Vector2.ZERO, 0, Vector3.ZERO)
 		world.show_portal(bool(app.facilities().portal["open"]), bool(app.facilities().portal["sketch"]))
 		if world.anomaly_fx != null:
 			var cam := app.player.scene_camera_transform().origin
@@ -1128,26 +1126,15 @@ func ground_target() -> int:
 
 
 func visible_patrol() -> Dictionary:
-	var watcher := app.patrol()
-	if watcher.pat["state"] != "walk" or watcher.pat["transition"] != null: return {}
-	var source := String(watcher.pat["room"])
-	var viewer := app.session.world_id
-	var frame := Transform3D.IDENTITY
-	if source != viewer:
-		if not app.router.same_space(source, viewer): return {}
-		var space: CampusSpace = app.router.resident.space
-		frame = space.frame(viewer).affine_inverse() * space.frame(source)
-	var room: Variant = CampusData.rooms().get(source)
-	var p := CampusGeometry.to_scene(room, Vector2(float(watcher.pat["x"]), float(watcher.pat["y"])))
-	var at := frame * Vector3(p.x, float(watcher.pat["fy"]), p.y)
-	var look := watcher.look_point()
-	var q := CampusGeometry.to_scene(room, Vector2(float(look["x"]), float(look["y"])))
+	var view := app._patrol_view()
+	if view.is_empty(): return {}
+	var at: Vector3 = view["position"]
 	var eye := app.player.camera.global_position
 	var world := app._campus_world()
 	if world == null or at.distance_to(app.player.position) > 70: return {}
 	var query := PhysicsRayQueryParameters3D.create(eye, world.to_global(at + Vector3.UP * 1.4), 3)
 	if not app.player.get_world_3d().direct_space_state.intersect_ray(query).is_empty(): return {}
-	return {"position": at, "look": frame * Vector3(q.x, float(watcher.pat["fy"]), q.y)}
+	return view
 
 
 func game_input(operation: String, data: Dictionary = {}) -> void:

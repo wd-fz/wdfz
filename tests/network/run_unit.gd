@@ -56,6 +56,10 @@ func run() -> void:
 	check(b.bag().has("key") and not a.bag().has("key"), "unique possession")
 	var baseline := sim.capture()
 	check(CooperativeValidation.validate(baseline).is_empty(), "complete cooperative save validates: " + CooperativeValidation.validate(baseline))
+	var old_watch := baseline.duplicate(true)
+	old_watch["room"]["members"]["a"]["talent"] = "watch"
+	old_watch["actors"]["a"]["session"]["modules"]["story.talent"]["data"] = {"id": "watch", "rules": 4, "consumed": {}, "notified": {"1:735": true}}
+	check(CooperativeValidation.validate(old_watch).is_empty(), "cooperative checkpoints with the retired talent remain readable")
 	var chunks := LanChunks.split(baseline, "test")
 	var assembler := LanChunks.new()
 	var assembled := {}

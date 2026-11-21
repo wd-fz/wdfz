@@ -15,6 +15,7 @@ uniform float focus = 0.0;
 uniform float halo = 0.0;
 uniform float pulse = 0.0;
 uniform float ghost = 0.0;
+uniform float night_vision = 0.0;
 uniform vec2 ghost_dir = vec2(1.0, 0.0);
 
 void fragment() {
@@ -30,6 +31,11 @@ void fragment() {
 	tint = mix(tint, vec3(0.30, 0.21, 0.08), clamp(gaze, 0.0, 1.0) * 0.6);
 	float alpha = edge * (strain + glare + 0.28 * gaze) * otherworld
 		+ injury * (0.12 + 0.36 * edge);
+	if (night_vision > 0.0) {
+		float vision_alpha = 0.10 * night_vision * (1.0 - clamp(alpha, 0.0, 1.0));
+		tint = (tint * alpha + vec3(0.15, 0.38, 0.19) * vision_alpha) / max(alpha + vision_alpha, 0.001);
+		alpha += vision_alpha;
+	}
 	float eyelid = clamp(blink * otherworld, 0.0, 1.0);
 	COLOR = vec4(mix(tint, vec3(0.0), eyelid), mix(clamp(alpha, 0.0, 0.78), 1.0, eyelid));
 }
