@@ -1,12 +1,13 @@
 extends "res://tests/support/test_suite.gd"
 ## Expectations recorded by running the original Web game, not by the Godot implementation.
 
+const WEB_REFERENCE := "res://tests/fixtures/web-reference.json.gz"
 var _reference: Dictionary
 
 
 func load_fixture() -> Dictionary:
 	if _reference.is_empty():
-		var bytes := FileAccess.get_file_as_bytes("res://tests/fixtures/web-reference.json.gz")
+		var bytes := FileAccess.get_file_as_bytes(WEB_REFERENCE)
 		_reference = JSON.parse_string(bytes.decompress_dynamic(8 * 1024 * 1024, FileAccess.COMPRESSION_GZIP).get_string_from_utf8())
 	return _reference
 
@@ -42,6 +43,8 @@ func test_reference_rules() -> void:
 
 func test_reference_collision() -> void:
 	var data := load_fixture()
+	var adjustments: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/campus-collision-adjustments.json"))
+	check(adjustments["reference_sha256"] == FileAccess.get_sha256(WEB_REFERENCE), "collision adjustments match the exact historical fixture order")
 	var sphere := SphereShape3D.new()
 	sphere.radius = float(data["radius"])
 	var query := PhysicsShapeQueryParameters3D.new()
@@ -49,6 +52,7 @@ func test_reference_collision() -> void:
 	query.collision_mask = 1
 	query.margin = 0.0
 	var total := 0
+	var adjusted_total := 0
 	for scene: Dictionary in data["scenes"]:
 		# Load the production collision adapter without its visual models. Attach its actual
 		# bodies to the physics world, so this tests shapes rather than another rectangle formula.
@@ -63,17 +67,27 @@ func test_reference_collision() -> void:
 		world.free()
 		await _frames(2)
 		var mismatches: Array = []
-		for sample: Array in scene["points"]:
+		var changed := {}
+		for index: float in adjustments["changed_samples"].get(scene["id"], []):
+			changed[int(index)] = true
+		for index in scene["points"].size():
+			var sample: Array = scene["points"][index]
+			var expected := bool(sample[2])
+			if changed.has(index):
+				expected = not expected
+				adjusted_total += 1
 			query.transform = Transform3D(Basis.IDENTITY, Vector3(float(sample[0]), 1.0, float(sample[1])))
 			var blocked := not root.world_3d.direct_space_state.intersect_shape(query, 1).is_empty()
-			if blocked != bool(sample[2]):
+			if blocked != expected:
 				mismatches.append(sample)
 			total += 1
-		check(mismatches.is_empty(), "%s physics agrees with %d original-game samples; mismatches %s" % [scene["id"], scene["points"].size(), str(mismatches.slice(0, 5))])
+		check(mismatches.is_empty(), "%s physics matches %d historical and %d revised collision results. Mismatches: %s" %
+			[scene["id"], scene["points"].size() - changed.size(), changed.size(), str(mismatches.slice(0, 5))])
 		for node: Node in bodies:
 			node.queue_free()
 		await _frames(2)
 	check(data["scenes"].size() == 34 and total == 55954, "collision comparison covers 34 planar scenes and 55,954 original-game samples")
+	check(adjusted_total == 712, "all 712 intentional geometry changes remain under test")
 
 
 func test_camera_lifecycle() -> void:
