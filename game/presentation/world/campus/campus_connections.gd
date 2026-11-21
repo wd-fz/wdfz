@@ -7,7 +7,7 @@ const LOOK_AHEAD := 42.0
 const NEIGHBOURS := 2
 
 
-static func nearby(id: String, position: Vector3) -> PackedStringArray:
+static func nearby(id: String, position: Vector3, distance_limit: float = LOOK_AHEAD) -> PackedStringArray:
 	var rooms := CampusData.rooms()
 	if id != "out" and not rooms.has(id):
 		return PackedStringArray()
@@ -34,7 +34,18 @@ static func nearby(id: String, position: Vector3) -> PackedStringArray:
 			if not port.is_empty():
 				var p := CampusGeometry.to_scene(rooms.get(id), port["p"])
 				_offer(distances, String(stair["id"]), position.distance_to(Vector3(p.x, 0, p.y)))
-	if id != "out":
+	if id == "out":
+		for building: Dictionary in CampusData.layout("out").objects:
+			var target: String = CampusModule.ENTRY_ROOMS.get(building.id, "")
+			if target.is_empty() or building.get("door_world") == null: continue
+			var door: Dictionary = building.door_world
+			var p := CampusGeometry.to_scene(null, Vector2(door.x, door.y))
+			_offer(distances, target, position.distance_to(Vector3(p.x, 0, p.y)))
+	else:
+		var landing := CampusData.lift_geometry().frame(id)
+		if not landing.is_empty() and not id.begins_with("lift_"):
+			var p := CampusGeometry.to_scene(rooms[id], landing.j)
+			_offer(distances, "lift_" + String(rooms[id].host), position.distance_to(Vector3(p.x, 0, p.y)))
 		for link: Dictionary in CampusPortals.link_ports(campus.get("campus_link", {}), rooms, id):
 			var p := CampusGeometry.to_scene(rooms[id], link["self"]["p"])
 			_offer(distances, String(link["peer"]["room"]), position.distance_to(Vector3(p.x, 0, p.y)))
@@ -42,7 +53,7 @@ static func nearby(id: String, position: Vector3) -> PackedStringArray:
 	order.sort_custom(func(a: String, b: String) -> bool: return float(distances[a]) < float(distances[b]))
 	var result := PackedStringArray()
 	for target: String in order:
-		if float(distances[target]) <= LOOK_AHEAD and result.size() < NEIGHBOURS:
+		if float(distances[target]) <= distance_limit and result.size() < NEIGHBOURS:
 			result.append(target)
 	return result
 

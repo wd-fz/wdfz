@@ -1499,7 +1499,7 @@ func _apply_result(result: Dictionary) -> void:
 		maze_flow.begin_entry()
 		return
 	if result.has("travel"):
-		travel(result["travel"]["world"], result["travel"]["pose"], bool(result["travel"].get("seamless", false)))
+		travel(result["travel"]["world"], result["travel"]["pose"], bool(result["travel"].get("seamless", false)), true)
 	if not text.is_empty():
 		ui.show_notice(text)
 
@@ -5572,12 +5572,12 @@ func _lift_close() -> void:
 
 
 ## Switch scene inside the running session (old doEnterRoom / doExitRoom). Seamless moves keep input.
-func travel(world_id: String, pose: Dictionary, seamless: bool) -> String:
+func travel(world_id: String, pose: Dictionary, seamless: bool, buffer_visuals: bool = false) -> String:
 	if is_instance_valid(debug_flow): debug_flow.location_changing()
 	var keep_global := seamless and router.same_space(session.world_id, world_id)
 	var global_pose := router.resident.space.global_pose(session.world_id, player.capture_pose()) if keep_global else {}
 	var velocity_before := player.velocity
-	var error := router.switch_to(world_id)
+	var error := router.switch_to(world_id, keep_global or (buffer_visuals and router.same_space(session.world_id, world_id)))
 	if not error.is_empty():
 		ui.show_notice(error)
 		return error

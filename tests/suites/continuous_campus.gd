@@ -384,13 +384,24 @@ func test_nearby_visuals() -> void:
 	check(not lab.has_node("Model") and lab._door_bodies[door].disabled, "a distant floor receives door changes without loading its meshes")
 	school.configure_graphics(app.settings.graphics(), app.player.camera)
 	check(not lab.has_node("Model"), "changing graphics leaves distant floors cold")
-	app.travel("lab4", CampusData.rules().default_spawn("lab4"), false)
-	var leaf := lab._door_leaves[door]["open"] as Node3D
-	check(lab.geometry_ready and leaf.visible and lab._door_bodies[door].disabled and lab.get_node("Collision") == body, "arriving obtains the model with the existing open door and physics")
+	# Force a crossing that outruns prefetch: the room adapter changes immediately
+	# and the model arrives separately on the same collider and coordinate frame.
+	app.travel("stair_lab", {"position":[0.0, 9.65, -2.9], "yaw":0.0, "pitch":0.0}, false)
+	var at := app.player.global_position
+	app.player.velocity = Vector3(0, 0, -1)
+	app.travel("lab4", CampusData.rules().default_spawn("lab4"), true)
+	check(app.session.world_id == "lab4" and app.player.global_position.distance_to(at) < .001 and app.player.velocity.z == -1, "a cold stair crossing keeps position and movement")
+	check(not lab.geometry_ready and lab.has_node("ColdGeometry") and lab.get_node("Collision") == body, "crossing uses the live collision without building the full room model")
+	var until := Time.get_ticks_msec() + 20000
+	while not lab.geometry_ready and Time.get_ticks_msec() < until: await _frames(1)
+	check(lab.geometry_ready and not lab.has_node("ColdGeometry"), "the visual worker replaces the temporary surfaces without another crossing")
+	if lab.geometry_ready:
+		check(lab._door_leaves[door]["open"].visible and lab._door_bodies[door].disabled and lab.get_node("Collision") == body, "adoption retains the current door pose and permanent physics")
 	app.travel("teach1", CampusData.rules().start_pose(), false)
-	check(not lab.has_node("Model") and lab.get_node("Collision") == body and lab.visual_ground._nodes.is_empty(), "leaving a distant building frees its visuals and retains its collider")
-	app.travel("lab4", CampusData.rules().default_spawn("lab4"), false)
-	check(lab.geometry_ready and lab._door_leaves[door]["open"].visible and lab.get_node("Collision") == body, "revisiting restores the correct mesh and door pose")
+	school.update_view(app.player.global_position)
+	until = Time.get_ticks_msec() + 8000
+	while lab.geometry_ready and Time.get_ticks_msec() < until: await _frames(1)
+	check(not lab.has_node("Model") and lab.get_node("Collision") == body and lab.visual_ground._nodes.is_empty(), "distant models are released in bounded steps while physics remains")
 	app.queue_free()
 	await _frames(2)
 

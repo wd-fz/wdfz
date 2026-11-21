@@ -47,6 +47,7 @@ var visual_ground:=VisualGround.new()
 ## Authority worlds use exactly the same collision geometry, without loading any meshes.
 var collision_only := false
 var resident := false
+var streamed_detail := false
 var space: CampusSpace
 var shells: Dictionary = {}
 var runtime_active := false
@@ -627,7 +628,8 @@ func discard_resident_model() -> void:
 	visual_ground.set_model(null)
 	_door_leaves.clear()
 	_lift_leaves.clear()
-	model.free()
+	remove_child(model)
+	model.queue_free()
 	visual_tier = -1
 	geometry_ready = false
 
@@ -656,7 +658,6 @@ func reload_models(player_position: Vector3) -> void:
 	if resident:
 		apply_doors(doors)
 		set_lift_doors(maxf(0.0, lift_amount))
-		if lighting != null: lighting.rebind_model(get_node_or_null("Model"))
 		return
 	if is_room():
 		_build_link_preview()
@@ -667,19 +668,21 @@ func reload_models(player_position: Vector3) -> void:
 	apply_doors(doors)
 	set_lift_doors(maxf(0.0, lift_amount))
 	set_player_scene(player_position)
-	if lighting != null:
-		lighting.rebind_model(get_node_or_null("Model"))
 	if traces!=null: traces.build(scene_id,layout if is_room() else null,_trace_data)
 
 
 func _build_model(model: Node3D = null) -> void:
-	if model == null: model = CampusData.instantiate_model(scene_id)
-	if model == null:
+	var ready := _prepare_visual(CampusData.tier, model)
+	if ready == null:
 		push_error("校园模型加载失败：%s（画质 %d）" % [scene_id, CampusData.tier])
 		return
-	visual_tier = CampusData.tier
-	model.name = "Model"
-	add_child(model)
+	_install_model(ready, CampusData.tier)
+
+
+## Processes a detached model; the background loader never touches a live World3D.
+func _prepare_visual(tier: int, model: Node3D = null) -> Node3D:
+	if model == null: model = CampusData.instantiate_model(scene_id, tier)
+	if model == null: return null
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
 			_to_multimesh(mesh)
@@ -695,6 +698,52 @@ func _build_model(model: Node3D = null) -> void:
 	StairLining.add_to_model(model, scene_id)
 	if resident and scene_id == "teach6":
 		CampusShell.carve_box(model, AABB(Vector3(-2.85,0,7.5),Vector3(1.7,4,3)))
+	if resident and scene_id in CampusSpace.BRIDGES:
+		var floor := MeshInstance3D.new()
+		var slab := BoxMesh.new()
+		var material := StandardMaterial3D.new()
+		material.albedo_color = Color("#827b75")
+		var width := space.local_bounds(scene_id).size
+		slab.size = Vector3(width.x, .15, width.y)
+		slab.material = material
+		floor.name = "BridgeDeck"
+		floor.mesh = slab
+		floor.position.y = -.075
+		model.add_child(floor)
+		var roof := floor.duplicate() as MeshInstance3D
+		roof.name = "BridgeRoof"
+		roof.position.y = StairLining.WALL_HEIGHT + .075
+		model.add_child(roof)
+	SceneMaterials.apply(model, material_quality())
+	# The open garage has almost no hidden geometry from its normal view. Profiling
+	# showed partitioning/CPU occlusion added overhead there; preserve its batches.
+	if scene_id != "garage1" and not streamed_detail:
+		CampusBatches.optimize(model)
+		if resident and scene_id == "out":
+			model.set_meta("facades", CampusShell.partition(model, space))
+			var lining := StandardMaterial3D.new()
+			lining.albedo_color = Color("667278")
+			lining.roughness = .96
+			for bounds: AABB in space.lift_walls():
+				var panel := MeshInstance3D.new()
+				var box := BoxMesh.new()
+				box.size = bounds.size
+				box.material = lining
+				panel.mesh = box
+				panel.position = bounds.get_center()
+				model.add_child(panel)
+		CampusMeshCells.apply(model, not resident)
+		if not (resident and scene_id == "out"): CampusBatches.add_occluder(model)
+	return model
+
+
+func _install_model(model: Node3D, tier: int) -> void:
+	visual_tier = tier
+	model.name = "Model"
+	var fallback := get_node_or_null("ColdGeometry")
+	if fallback != null: fallback.free()
+	add_child(model)
+	shells = model.get_meta("facades", {})
 	for holder: Node in model.get_children():
 		var extras: Variant = holder.get_meta("extras") if holder.has_meta("extras") else null
 		if extras is Dictionary and extras.get("liftLeaf", false):
@@ -711,27 +760,37 @@ func _build_model(model: Node3D = null) -> void:
 		var amount := _lift_amount
 		_lift_amount = -1
 		set_lift_doors(amount)
-	SceneMaterials.apply(model, material_quality())
-	# The open garage has almost no hidden geometry from its normal view. Profiling
-	# showed partitioning/CPU occlusion added overhead there; preserve its batches.
-	if scene_id != "garage1":
-		CampusBatches.optimize(model)
-		if resident and scene_id == "out":
-			shells = CampusShell.partition(model, space)
-			var lining := StandardMaterial3D.new()
-			lining.albedo_color = Color("667278")
-			lining.roughness = .96
-			for bounds: AABB in space.lift_walls():
-				var panel := MeshInstance3D.new()
-				var box := BoxMesh.new()
-				box.size = bounds.size
-				box.material = lining
-				panel.mesh = box
-				panel.position = bounds.get_center()
-				model.add_child(panel)
-		CampusMeshCells.apply(model, not resident)
-		if not (resident and scene_id == "out"): CampusBatches.add_occluder(model)
 	visual_ground.set_model(model)
+	if lighting != null:
+		lighting.rebind_model(model)
+
+
+## The resident collider is already live when a player reaches an unprepared room.
+## Draw its structural surfaces until the imported model can take over.
+func show_cold_geometry() -> void:
+	if geometry_ready or has_node("ColdGeometry"): return
+	var shapes: Array[CollisionShape3D] = []
+	for collider: CollisionShape3D in get_node("Collision").get_children():
+		if not collider.shape is BoxShape3D: continue
+		if collider.get_meta("kind", "") in ["floor", "wall", "stair", "stairwell", "stair_surface", "car_wall"]:
+			shapes.append(collider)
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color("#9da29f")
+	material.roughness = 1.0
+	var mesh := BoxMesh.new()
+	mesh.material = material
+	var batch := MultiMesh.new()
+	batch.transform_format = MultiMesh.TRANSFORM_3D
+	batch.mesh = mesh
+	batch.instance_count = shapes.size()
+	for i in shapes.size():
+		var collider := shapes[i]
+		var size := (collider.shape as BoxShape3D).size
+		batch.set_instance_transform(i, Transform3D(collider.basis.scaled_local(size), collider.position))
+	var fallback := MultiMeshInstance3D.new()
+	fallback.name = "ColdGeometry"
+	fallback.multimesh = batch
+	add_child(fallback)
 
 
 ## Instances were kept as one prototype + per-instance transforms/colours in glTF extras.
@@ -747,12 +806,24 @@ static func _to_multimesh(source: MeshInstance3D) -> void:
 	mm.use_colors = colors.size() >= count * 3
 	mm.mesh = source.mesh
 	mm.instance_count = count
+	var stride := 16 if mm.use_colors else 12
+	var buffer := PackedFloat32Array()
+	buffer.resize(count * stride)
 	for i in count:
-		var o := i * 12
-		var basis := Basis(Vector3(xf[o], xf[o + 1], xf[o + 2]), Vector3(xf[o + 3], xf[o + 4], xf[o + 5]), Vector3(xf[o + 6], xf[o + 7], xf[o + 8]))
-		mm.set_instance_transform(i, Transform3D(basis, Vector3(xf[o + 9], xf[o + 10], xf[o + 11])))
-		if mm.use_colors:
-			mm.set_instance_color(i, Color(colors[i * 3], colors[i * 3 + 1], colors[i * 3 + 2]))
+		var source_offset := i * 12
+		var target_offset := i * stride
+		# Godot's buffer stores each row of the basis followed by the origin component.
+		for axis in 3:
+			buffer[target_offset + axis * 4] = xf[source_offset + axis]
+			buffer[target_offset + axis * 4 + 1] = xf[source_offset + axis + 3]
+			buffer[target_offset + axis * 4 + 2] = xf[source_offset + axis + 6]
+			buffer[target_offset + axis * 4 + 3] = xf[source_offset + axis + 9]
+		if stride == 16:
+			buffer[target_offset + 12] = colors[i * 3]
+			buffer[target_offset + 13] = colors[i * 3 + 1]
+			buffer[target_offset + 14] = colors[i * 3 + 2]
+			buffer[target_offset + 15] = 1.0
+	mm.buffer = buffer
 	if mm.use_colors and source.mesh != null:
 		for s in source.mesh.get_surface_count():
 			var mat := source.mesh.surface_get_material(s) as BaseMaterial3D

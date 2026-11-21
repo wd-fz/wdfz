@@ -14,8 +14,8 @@ const MODEL_TIERS := [0, 1, 2, 3]
 static var tier := DEFAULT_TIER
 
 
-static func scene_path(id: String) -> String:
-	var selected := clampi(tier, 0, 3)
+static func scene_path(id: String, model_tier: int = -1) -> String:
+	var selected := clampi(tier if model_tier < 0 else model_tier, 0, 3)
 	if selected != DEFAULT_TIER:
 		var alt := "res://assets/campus_q%d/scenes/%s.glb" % [selected, id]
 		if ResourceLoader.exists(alt):
@@ -33,8 +33,8 @@ static func _has_mesh(scene: PackedScene) -> bool:
 	return false
 
 
-static func load_scene(id: String) -> PackedScene:
-	var path := scene_path(id)
+static func load_scene(id: String, model_tier: int = -1) -> PackedScene:
+	var path := scene_path(id, model_tier)
 	var packed := ResourceLoader.load(path, "PackedScene") as PackedScene
 	if _has_mesh(packed): return packed
 	var base := SCENE_DIR + id + ".glb"
@@ -43,8 +43,8 @@ static func load_scene(id: String) -> PackedScene:
 	return packed if _has_mesh(packed) else null
 
 
-static func instantiate_model(id: String) -> Node3D:
-	var packed := load_scene(id)
+static func instantiate_model(id: String, model_tier: int = -1) -> Node3D:
+	var packed := load_scene(id, model_tier)
 	if packed != null:
 		var root := packed.instantiate()
 		if root is Node3D:
@@ -53,11 +53,11 @@ static func instantiate_model(id: String) -> Node3D:
 			root.free()
 	var source := MOBILE_SCENE_DIR + id + ".glb.source"
 	if not FileAccess.file_exists(source):
-		CampusEntryLog.resource_issue("模型 %s · 导入模型未能实例化，备用文件不存在 · %s" % [id, scene_path(id)])
+		CampusEntryLog.resource_issue("模型 %s · 导入模型未能实例化，备用文件不存在 · %s" % [id, scene_path(id, model_tier)])
 		return null
 	var bytes := FileAccess.get_file_as_bytes(source)
 	var recovered := decode_model(bytes, source)
-	var selected := scene_path(id)
+	var selected := scene_path(id, model_tier)
 	var remap := ConfigFile.new()
 	var native := selected if remap.load(selected + ".remap") != OK else String(remap.get_value("remap", "path", selected))
 	var file := FileAccess.open(native, FileAccess.READ)

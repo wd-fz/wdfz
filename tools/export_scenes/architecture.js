@@ -3,6 +3,10 @@
 window.NativeCampus = (() => {
   const depth = 0.20;
   function partition(room, x, y) {
+    if (room.host === 'c1' || room.host === 'c2') {
+      if (x === 0) return 'bridge_w';
+      if (x === room.cols - 1) return 'bridge_e';
+    }
     if (room.host !== 'teach' || room.floor < 1 || room.floor > 5) return '';
     const layout = window.ClassroomLayout, spans = layout.spans;
     if (y === layout.rows[1] + 1 && x >= spans[0][0] && x <= spans[spans.length - 1][1]) return 'hall';
@@ -11,7 +15,8 @@ window.NativeCampus = (() => {
   }
   function bounds(kind, x0, z0, x1, z1) {
     if (kind === 'hall') z1 = z0 + depth;
-    if (kind === 'divider') x0 = x1 - depth;
+    if (kind === 'divider' || kind === 'bridge_e') x0 = x1 - depth;
+    if (kind === 'bridge_w') x1 = x0 + depth;
     return {x0, z0, x1, z1};
   }
   function frame(kit) {
@@ -86,5 +91,51 @@ window.NativeCampus = (() => {
       }
     }
   }
-  return {depth, partition, bounds, frame, leaves, spansOutside, stairOpenings, exteriorWalls};
+  function bridgeWalls(kit, halfWidth, halfLength, ceiling, wallMaterial, wallColor) {
+    const sill = .90, head = 2.40, bayWidth = 2.0;
+    for (const side of [-1, 1]) {
+      const x = side * (halfWidth - depth / 2);
+      kit.box(wallMaterial, x, sill / 2, 0, depth, sill, halfLength * 2, wallColor, .95);
+      kit.box(wallMaterial, x, (head + ceiling) / 2, 0, depth, ceiling - head, halfLength * 2, wallColor, .95);
+      for (let z = -halfLength + bayWidth / 2; z < halfLength; z += bayWidth) {
+        kit.box('glass', x, (sill + head) / 2, z, .025, head - sill, bayWidth, 0x95aeb3, 1);
+        kit.box('metal', x, (sill + head) / 2, z - bayWidth / 2 + .04, depth, head - sill, .08, 0x383f43, 1);
+        kit.box('metal', x, sill + .035, z, depth, .07, bayWidth, 0x383f43, 1);
+        kit.box('metal', x, head - .035, z, depth, .07, bayWidth, 0x383f43, 1);
+      }
+      kit.box('metal', x, (sill + head) / 2, halfLength - .04, depth, head - sill, .08, 0x383f43, 1);
+    }
+  }
+  function stairExterior(kit, stair, brick, trim) {
+    if (stair.rooms.includes('out')) return;
+    const room = window.INTERIORS[stair.rooms[0]];
+    const port = window.StairWorld.port(stair, 0), shift = window.TeachGallery.shift(room);
+    const x = (port.x + shift.x) / 9 + port.n[0] * 2.8;
+    const z = (port.y + shift.y) / 9 + port.n[1] * 2.8;
+    const frame = kit.sub(x, z, Math.atan2(port.n[0], port.n[1]), 0);
+    const front = -2.8, back = 7.38, half = 2.38;
+    const height = (stair.rooms.length - 1) * stair.rise + 3.0;
+    const length = back - front, center = (front + back) / 2;
+    // The brick skin sits just outside the native shaft's plaster and landings.
+    const masonry = kit.g('brick');
+    for (const side of [-1, 1])
+      masonry.boxFaces(side * (half - .02), height / 2, center, .04, height, length, brick, .97, side < 0 ? 'w' : 'e');
+    masonry.boxFaces(0, height / 2, back - .02, half * 2, height, .04, brick, .97, 's');
+    for (const side of [-1, 1])
+      masonry.boxFaces(side * (half + .86) / 2, height / 2, front + .02, half - .86, height, .04, brick, .97, 'n');
+    for (let level = 0; level < stair.rooms.length; level++) {
+      const lo = level * stair.rise + 2.30;
+      const hi = Math.min(height, (level + 1) * stair.rise);
+      masonry.boxFaces(0, (lo + hi) / 2, front + .02, 1.72, hi - lo, .04, brick, .97, 'n');
+    }
+    kit.box('plaster', 0, height + .10, center, half * 2 + .14, .20, length + .14, trim, 1);
+    // A narrow louvred panel marks each enclosed landing; the shaft still has its solid inner wall.
+    for (let y = 2.5; y < height - .7; y += stair.rise) {
+      kit.box('metal', 0, y, back + .03, 1.18, .58, .06, 0x494e52, 1);
+      for (let row = -1; row <= 1; row++)
+        kit.box('metal', 0, y + row * .14, back + .067, 1.05, .044, .035, 0x7f8585, 1);
+    }
+    kit.restore(frame);
+  }
+  return {depth, partition, bounds, frame, leaves, spansOutside, stairOpenings, exteriorWalls, bridgeWalls, stairExterior};
 })();

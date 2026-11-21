@@ -176,10 +176,20 @@ func test_resident_doorways() -> void:
 	root.add_child(campus)
 	var hall := campus.prepare("teach1")
 	var outside := campus.prepare("out")
+	for link: String in CampusSpace.BRIDGES: campus.prepare(link)
 	var shaft := campus.prepare("stair_teach_e")
 	var facade: Node3D = outside.shells.teach1
 	var tower: Node3D = outside.shells.stair_teach_e
-	check(not facade.visible and not tower.visible, "detail replaces both outdoor proxies before the first visibility tick")
+	campus.select("out")
+	campus.update_view(hall.global_transform * Vector3(28, 1.2, 14))
+	check(facade.visible and tower.visible, "warm indoor details keep the brick facades visible from the street")
+	check(not shaft.get_node("Model").visible, "stairs away from an entrance do not expose interior surfaces outside")
+	for link: String in CampusSpace.BRIDGES:
+		var bridge: CampusWorld = campus.regions[link]
+		check(bridge.get_node("Model").is_visible_in_tree(), "the single playable bridge is always visible: " + link)
+		var a := bridge.global_position
+		check(_mesh_hit(bridge, a - Vector3.UP * .4, a + Vector3.UP * .05), "the real bridge has a visible underside: " + link)
+		check(not _mesh_hit(outside, a + Vector3.UP * 3.4, a + Vector3.UP * 13.0), "no extra outdoor decks above the playable bridge: " + link)
 	campus.select("teach1")
 	var frame := hall.global_transform
 	await _frames(2)
@@ -212,7 +222,7 @@ func test_resident_doorways() -> void:
 						clear = not _mesh_hit(floor_proxy, a, b) and not _mesh_hit(floor_proxy, b, a)
 					check(clear, "outdoor stair entrance open at %s / %s (x %.2f, h %.2f)" % [stair.id, levels[level], x, h])
 	campus.select(shaft.scene_id)
-	check(not tower.visible, "selecting a streamed shaft replaces its facade immediately")
+	check(tower.visible, "the stair exterior stays with the building when entering a shaft")
 	var door: Dictionary = hall.layout.doors[0]
 	for opened: bool in [false, true, false]:
 		hall.set_door_open(door.key, opened)

@@ -682,7 +682,7 @@ func _place_view(member: String, scene: int, destination: String, pose: Dictiona
 		prediction.clear()
 		_input_window.clear()
 	if app.session.world_id != destination:
-		app.router.switch_to(destination)
+		app.router.switch_to(destination, app.router.same_space(app.session.world_id, destination))
 		app.session.world_id = destination
 	if continuous: app.player.place(pose)
 	else: app.player.restore_pose(pose)

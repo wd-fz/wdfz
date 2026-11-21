@@ -3,6 +3,7 @@ extends RefCounted
 ## One physical campus; region-local coordinates remain the save/rules contract.
 ## Explicit frames put all ordinary rooms in metres in the same physics world.
 
+const BRIDGES := ["link1", "link2"]
 const SEPARATE := ["dream_top", "lift_dream", "portal_tunnel"]
 var frames: Dictionary = {"out": Transform3D.IDENTITY}
 var rooms: Dictionary
@@ -210,7 +211,7 @@ func cabin_cut(id: String) -> Rect2:
 
 func bridge_volumes() -> Array[AABB]:
 	var result: Array[AABB] = []
-	for id: String in ["link1","link2"]:
+	for id: String in BRIDGES:
 		var rect := local_bounds(id)
 		result.append(frame(id) * AABB(Vector3(rect.position.x,-.15,rect.position.y),Vector3(rect.size.x,floor_height(id)+.15,rect.size.y)))
 	return result
