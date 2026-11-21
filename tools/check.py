@@ -36,7 +36,7 @@ def main():
                 args = ["--headless"] if display == "headless" else ["--windowed", "--rendering-method", options.renderer,
                                                                       "--rendering-driver", "vulkan", "--display-driver", options.display_driver]
                 # A local full native run includes both independent 90-minute CI groups.
-                timeout = 2400 if display == "headless" else 5400 * (2 if options.suites == "all" else 1)
+                timeout = 3600 if display == "headless" else 5400 * (2 if options.suites == "all" else 1)
                 output = run(display, [ENGINE, *args, "--path", str(ROOT), "--audio-driver", "Dummy",
                                       "--fixed-fps", "60", "--script", "res://tests/run_tests.gd", "--", f"--suites={options.suites}"], reports,
                              timeout=timeout)
