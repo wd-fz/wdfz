@@ -1519,13 +1519,7 @@ func _center_list() -> void:
 		ach_panel.position = (get_viewport().get_visible_rect().size-ach_panel.size)*.5
 
 
-## The prologue (prologue.js PRO_PAGES): white text on black, page by page; E / Space / a tap goes on,
-## 跳过 skips. It runs while the game is paused.
-const OPENING := ["你是这学期转来的。", "高二（二）班。第四节，语文。老师在念一篇课文，念到一半，又从头念了一遍。",
-	"前排的人回头问你借橡皮。你还没记住他的名字。\n他好像也不记得你的。", "才第三天。这栋楼你只认得三层。\n可是你数过——楼梯一共有五层半。",
-	"粉笔灰在光里飘。你开始数秒：一，二，三……数到第七秒的时候，它们停在了半空。", "眼皮很重。黑板上的字开始往下淌，淌成一行一行的竖线。",
-	"你把脸埋进胳膊里。袖子上有一股不属于你的味道。", "……", "你睁开眼。\n教室里还是坐满了人。只是没有一个人在呼吸。",
-	"窗外的颜色不见了。走廊里很安静，安静得能听见灯管里的电流。", "下课铃没有响。\n你忽然很确定：这不是你转来的那个学校。\n而它，已经知道你醒了。"]
+## The text opening runs while the game is paused. Each page can be advanced early.
 const OPENING_PAGE := 3.4
 ## Rainy campus cover art. MenuPreview can replace it with the baked campus panorama.
 func _build_menu_photo() -> void:
@@ -1540,19 +1534,18 @@ func _build_menu_photo() -> void:
 
 
 var _cut_fade: ColorRect
-var _hud_was := true
+var _cut_active := false
 var _cut_caption: Label
 
 
 ## Over the live cutscenes: a black fade (0 clear … 1 black) and a caption line at the bottom.
 ## body.cut: while a cutscene plays the HUD (status, hotbar, prompt, crosshair, captions) is hidden.
 func cut_mode(on: bool) -> void:
+	_cut_active = on
 	if on:
 		show_notice("") # Cut captions replace the last ordinary line, as os(..., OS_FORCE) did.
-		_hud_was = hud.visible
-		hud.visible = false
-	else:
-		hud.visible = _hud_was
+		clear_touch()
+	_refresh_play_controls()
 
 
 func cut_fade(v: float) -> void:
@@ -1685,11 +1678,12 @@ func cut_caption(text: String) -> void:
 
 var opening_panel: Control
 var _opening_text: Label
+var _opening_pages: PackedStringArray
 var _opening_i := -1
 var _opening_t := 0.0
 
 
-func show_opening() -> void:
+func show_opening(character: String = StudentCast.DEFAULT) -> void:
 	if opening_panel == null:
 		opening_panel = ColorRect.new()
 		opening_panel.name = "Opening"
@@ -1715,9 +1709,10 @@ func show_opening() -> void:
 			if (e is InputEventMouseButton and e.pressed) or (e is InputEventScreenTouch and e.pressed):
 				_next_opening())
 		$Root.add_child(opening_panel)
+	_opening_pages = OpeningStory.pages(character)
 	_opening_i = 0
 	_opening_t = 0.0
-	_opening_text.text = OPENING[0]
+	_opening_text.text = _opening_pages[0]
 	opening_panel.visible = true
 
 
@@ -1730,10 +1725,10 @@ func _next_opening() -> void:
 		return
 	_opening_i += 1
 	_opening_t = 0.0
-	if _opening_i >= OPENING.size():
+	if _opening_i >= _opening_pages.size():
 		_end_opening(false)
 	else:
-		_opening_text.text = OPENING[_opening_i]
+		_opening_text.text = _opening_pages[_opening_i]
 
 
 func _end_opening(skipped: bool) -> void:
@@ -1747,7 +1742,7 @@ func tick_opening(delta: float) -> void:
 	if not opening_on():
 		return
 	_opening_t += delta
-	if _opening_t >= OPENING_PAGE:
+	if _opening_t >= maxf(OPENING_PAGE, float(_opening_text.text.length()) / 6.0):
 		_next_opening()
 
 
@@ -2038,6 +2033,10 @@ func show_notes(data: Dictionary) -> void:
 		_note_label("路线进度", UISkin.ACCENT)
 		for p: Array in progress:
 			_note_label("%s %s：%s" % ["✓" if bool(p[2]) else "·", p[0], p[1]], Color(0.65, 0.9, 0.7) if bool(p[2]) else Color.WHITE)
+	var background := String(data.get("background", ""))
+	if query.is_empty() and not background.is_empty():
+		_note_label("醒来以前", UISkin.ACCENT)
+		_note_label(background, UISkin.INK)
 	notes_panel.visible = true
 	_fit_documents.call_deferred()
 
@@ -2287,6 +2286,7 @@ func terminal_open() -> bool:
 ## Ending card (story.js showEndingCard): tag, title, lines, day/time, back to the menu.
 var ending_panel: PanelContainer
 var _ending_text: Label
+var _ending_papers: EndingPapers
 var _ending_scroll: TouchScroll
 var _ending_art: TextureRect
 
@@ -2303,10 +2303,11 @@ func set_ending_wake(shown: bool) -> void:
 		_fit_ending.call_deferred()
 
 
-func show_ending(title: String, tag: String, lines: Array, meta: String, achieved: PackedStringArray = PackedStringArray(), result_note: String = "", ending_id: String = "") -> void:
+func show_ending(title: String, tag: String, lines: Array, meta: String, achieved: PackedStringArray = PackedStringArray(), result_note: String = "", ending_id: String = "", evidence: Dictionary = {}) -> void:
 	if ending_panel == null:
 		ending_panel = PanelContainer.new()
 		ending_panel.name = "EndingPanel"
+		ending_panel.hide()
 		ending_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 		ending_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		ending_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
@@ -2329,6 +2330,9 @@ func show_ending(title: String, tag: String, lines: Array, meta: String, achieve
 		_ending_text.custom_minimum_size = Vector2.ZERO
 		_ending_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(_ending_text)
+		_ending_papers = EndingPapers.new()
+		_ending_papers.name = "PhysicalPapers"
+		box.add_child(_ending_papers)
 		_ending_scroll.add_child(box)
 		_ending_note = Label.new()
 		_ending_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -2359,8 +2363,10 @@ func show_ending(title: String, tag: String, lines: Array, meta: String, achieve
 		back.pressed.connect(func() -> void: death_menu_requested.emit())
 		actions.add_child(back)
 		$Root.add_child(ending_panel)
+		ending_panel.visibility_changed.connect(_refresh_play_controls)
 	_ending_art.texture = UIArt.memory("end:" + ending_id)
 	_ending_art.visible = _ending_art.texture != null
+	_ending_papers.set_evidence(evidence)
 	var head := "%s\n%s" % [tag, title] if not tag.is_empty() else title
 	_ending_text.text = "%s\n\n%s\n\n%s" % [head, "\n".join(PackedStringArray(lines)), meta]
 	if not achieved.is_empty():
@@ -2634,8 +2640,7 @@ func set_touch_enabled(value: bool) -> void:
 	_touch_enabled = value
 	if is_instance_valid(menu_screen): menu_screen.set_touch(value)
 	%TouchToggle.set_pressed_no_signal(value)
-	touch_controls.visible = value and _mode == "play" and not _paper_flying
-	_refresh_paper_pad()
+	_refresh_play_controls()
 	clear_touch()
 	if is_inside_tree():
 		_update_orient_hint()
@@ -2662,12 +2667,15 @@ func set_paper_flight(on: bool) -> void:
 		_paper_pad.offset_right = 128
 		_paper_pad.offset_top = -82
 		_paper_pad.offset_bottom = -30
-	touch_controls.visible = _mode=="play" and _touch_enabled and not on
-	_refresh_paper_pad()
+	_refresh_play_controls()
 
 
-func _refresh_paper_pad() -> void:
-	if is_instance_valid(_paper_pad): _paper_pad.visible = _paper_flying and _mode=="play" and _touch_enabled
+func _refresh_play_controls() -> void:
+	var ending_open := is_instance_valid(ending_panel) and ending_panel.visible
+	var playing := _mode == "play" and not _cut_active and not ending_open
+	hud.visible = playing
+	touch_controls.visible = playing and _touch_enabled and not _paper_flying
+	if is_instance_valid(_paper_pad): _paper_pad.visible = playing and _touch_enabled and _paper_flying
 
 
 func paper_directions() -> Dictionary:
@@ -2732,9 +2740,7 @@ func set_mode(mode: String) -> void:
 		hide_terminal()
 	menu.visible = mode == "menu"
 	pause_panel.visible = mode == "pause"
-	hud.visible = mode == "play"
-	touch_controls.visible = mode == "play" and _touch_enabled and not _paper_flying
-	_refresh_paper_pad()
+	_refresh_play_controls()
 	clear_touch()
 	if is_instance_valid(menu_preview):
 		if mode == "menu":
@@ -2816,9 +2822,12 @@ func toast_text() -> String:
 var _prompt_art := "interact"
 
 
-func show_prompt(text: String) -> void:
+func show_prompt(text: String, reading: bool = false) -> void:
 	_prompt_art = "stand" if text.contains("站起") or text.contains("起身") else ("sit" if text.contains("坐下") or text.contains("落座") else ("hiding" if text.contains("躲") else "interact"))
 	UIArt.compact_button(%TouchInteract, UIArt.nav(_prompt_art))
+	var anchor := 0.83 if reading else 0.60
+	%Prompt.anchor_top = anchor
+	%Prompt.anchor_bottom = anchor
 	%Prompt.text = ("交互 · " if _touch_enabled else interact_key + " · ") + text if not text.is_empty() else ""
 	%Prompt.visible = not text.is_empty()
 	var cross := hud.get_node("Crosshair") as Label

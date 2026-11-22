@@ -36,6 +36,14 @@ func blocked(p: Vector2) -> bool:
 	query.transform = Transform3D(Basis(),Vector3(at.x,.9,at.y))
 	return not get_world_3d().direct_space_state.intersect_shape(query,1).is_empty()
 
+## Keep the original two lanes where they fit. At a wide obstruction both the
+## normal lane and its centre-line fallback can run through the same pillar.
+func _free_slot(centre: Vector2, side: Vector2, solid: Callable) -> Vector2:
+	for width: float in [1.0, 0.0, 2.0, -1.0, -2.0, 3.0, -3.0]:
+		var slot := centre + side * width
+		if not solid.call(slot): return slot
+	return Vector2.INF
+
 func update(crowd: Dictionary, collides: Callable = Callable()) -> void:
 	if crowd.is_empty():
 		hide()
@@ -44,11 +52,13 @@ func update(crowd: Dictionary, collides: Callable = Callable()) -> void:
 	var angle := float(crowd["angle"])
 	var direction := Vector2(cos(angle),sin(angle))
 	var origin := Vector2(crowd["x"],crowd["y"])
+	var solid := collides if collides.is_valid() else blocked
 	for i in people.size():
 		var behind := floorf(i/2.0)*5.5
 		var side := (1 if i%2 else -1)*3.1
-		var p := origin-direction*behind+Vector2(-direction.y,direction.x)*side
-		if collides.call(p) if collides.is_valid() else blocked(p): p = origin-direction*behind
+		var p := _free_slot(origin-direction*behind, Vector2(-direction.y,direction.x)*side, solid)
+		people[i].visible = p.is_finite()
+		if not p.is_finite(): continue
 		var at := CampusGeometry.to_scene(null,p)
 		var next := Vector3(at.x,.015*sin((60-float(crowd["left"]))*6+i),at.y)
 		var previous := Vector2(people[i].position.x, people[i].position.z)

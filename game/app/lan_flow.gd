@@ -352,6 +352,7 @@ func _room_addresses() -> String:
 
 func _room_changed(state: Dictionary) -> void:
 	var phase := String(state.get("phase", ""))
+	var starting := phase == "playing" and _room_phase == "loading"
 	if panel.visible or phase != _room_phase or phase != "playing": panel.show_room(state, network.local_id, _room_addresses())
 	_room_phase = phase
 	if not network.transport.serving and network.reconnect_token != "" and network.address != "":
@@ -362,9 +363,11 @@ func _room_changed(state: Dictionary) -> void:
 			_last_connection.erase("address")
 		var error := history.remember("remote" if _remote_mode else "lan", _last_connection)
 		if not error.is_empty(): app.ui.show_notice(error)
-	if state.get("phase") == "playing" and _installed and not _paused and not _lost:
+	if phase == "playing" and _installed and not _paused and not _lost:
 		panel.hide()
 		_sync_input()
+		if starting and not _spectating and app.session.world_id == "teach1" and app.session.clock.active_seconds < 2.0:
+			app.ui.show_notice(OpeningStory.handover(app.session.character_id))
 
 
 func send(action: String, fields: Dictionary = {}) -> void:
@@ -622,8 +625,8 @@ func _snapshot(data: Dictionary) -> void:
 		app.ui.hide_death()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		var gate := "paper" if data.get("qualified", {}).get("paper", false) else "electronic"
-		var card := RoutesModule.card(app.story().ended, app.school().seat_card, gate)
-		app.ui.show_ending(String(card.get("title", card.get("t", "合作通关"))), "合作通关", card.get("lines", card.get("l", [])), "本局为局域网合作，个人记录与单人分开。", PackedStringArray(), "", card.get("memory", app.story().ended))
+		var card := RoutesModule.card(app.story().ended, app.school().seat_card, gate, app.investigation().paper_sample())
+		app.ui.show_ending(String(card.get("title", card.get("t", "合作通关"))), "合作通关", card.get("lines", card.get("l", [])), "本局为局域网合作，个人记录与单人分开。", PackedStringArray(), "", card.get("memory", app.story().ended), card.get("evidence", {}))
 	for event: Dictionary in data.get("events", []):
 		if int(event["seq"]) <= _seen_event: continue
 		_seen_event = int(event["seq"])

@@ -16,6 +16,12 @@
 - 黑板、门牌、车牌等文字贴图是旧版在浏览器 Canvas 上现场绘制的，导出时由无头 Chromium 光栅化，所用字体为导出环境的系统字体（Noto CJK）。正式发行前与字体打包一起复核。
 - 导出画质：旧版第 2 档「精细」（512 贴图、标准分段）。草地是画质相关的表现层装饰，未导出。
 
+## 实景校园建筑与陈设
+
+`architecture/` 收录 Godot 版新建的教学楼拱券、两种连廊、球场、地理园和室内家具。外观取材于学校公开全景，楼栋间距、门洞和座位采用游戏自己的布局。[武汉大学附属中学 VR 实景校园](https://www.720yuntu.com/tour/7e11b56b6f8381ab)
+
+在仓库根目录运行 `python3 tools/remodel/campus_architecture.py` 可以重新生成模型、材质贴图和庭院碰撞。生成工具使用 NumPy 和 Pillow。Godot 通过 `CampusArchitecture` 把这些资源装入可玩场景及相邻场景预览。
+
 ## 坐标
 
 1 Godot 单位 = 1 米，+Y 向上，与旧版 three.js 场景坐标一致。室内场景以房间中心为原点（旧版 `worldToScene`），室外以旧版世界原点为原点；换算见 `game/features/campus/campus_geometry.gd`。

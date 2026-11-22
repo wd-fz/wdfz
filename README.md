@@ -102,4 +102,4 @@ Android 调试包在 [Actions → Android Debug](https://github.com/wd-fz/wdfz/a
 
 Godot 使用独立的 `wdfz-godot` 存档格式。专用旧档导入在独立候选会话中转换并校验玩家状态、路线、巡察、异象、检查、图纸与相册，保留原始数据；未完成迁移的模块仍见[迁移差异](docs/plan/与旧版差异与迁移.md)，不能视作所有旧档无损兼容。正式校园有首日 11:40 开局、课表、跨日压力与特殊时间窗口；框架示例房间的时钟仅供协议测试。
 
-许可证沿用仓库已有的 [GNU AGPL v3](LICENSE)。`assets/campus/` 的模型与贴图由旧版本项目自有的建模与贴图脚本生成，来源记录见[正式校园资源](assets/campus/README.md)；音频由旧版公开配方烘焙，生成入口在 `tools/audio_bake/`。
+许可证沿用仓库已有的 [GNU AGPL v3](LICENSE)。`assets/campus/` 的模型与贴图由项目自有的建模与贴图脚本生成，移植资源和实景改模的来源见[正式校园资源](assets/campus/README.md)；音频由旧版公开配方烘焙，生成入口在 `tools/audio_bake/`。

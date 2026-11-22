@@ -75,10 +75,10 @@ func reset() -> void:
 
 
 ## story.js triggerEnding: returns the ending card, or {} when already dead or over.
-func trigger_ending(id: String, paper: RollcallCard = null) -> Dictionary:
+func trigger_ending(id: String, paper: RollcallCard = null, sample: String = "") -> Dictionary:
 	if dead or ended != "":
 		return {}
-	var c := RoutesModule.card(id, paper)
+	var c := RoutesModule.card(id, paper, "", sample)
 	if c.is_empty():
 		return {}
 	ended = id

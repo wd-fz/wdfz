@@ -13,6 +13,9 @@ extends FeatureModule
 const STATE_VERSION := 1
 const KINDS := ["事实", "推测", "验证", "线索", "规则"]
 const RECENT_MAX := 8
+const PAPER_TRIAL_SOURCE := "保安岗 · 17 号工单观察联"
+const PAPER_TRIAL_NOTE := "安抄派智能，17 号工单。纸袋里装着半圆形纸屑，旁边订着值班员的手记。\n「试员在模型里给甲纸打孔。我在现实的岗亭看着玻璃盒，甲纸右边掉了一小片，乙纸四边还齐。封条是我亲手拆的。现把纸屑附上。」"
+const BROADCAST_NOTE := "行政楼二楼广播站。放学通知被撕成四页，蓝黑墨水、日期「第二天」。第二天起，第八节下课后至熄灯前播出。教导处文件柜、琴凳、保安岗登记簿、天台喇叭箱各有一页。\n「全体」底下有人划了一道线，旁边写着「暂留的也一起唤醒」。背页是一次试播的记录：「听到长铃后，试员在现实教室睁眼。他说刚才自己一直在二楼找楼梯。」"
 
 var entries: Dictionary = {}   # id → {text, kind, source, day}
 var recent: Array = []
@@ -55,6 +58,8 @@ func capture() -> Dictionary:
 func validate(data: Dictionary) -> String:
 	if not (data.get("entries", {}) is Dictionary) or not (data.get("recent", []) is Array) or not (data.get("supply", {}) is Dictionary):
 		return "调查笔记无效"
+	var notes: Dictionary = data.get("entries", {})
+	if notes.has("paper:lesson:A") and notes.has("paper:lesson:B"): return "同一根打孔杆有两次落锁记录"
 	if not data.get("pins", {}) is Dictionary: return "调查路线无效"
 	for reader: Variant in data.get("pins", {}):
 		if not reader is String or data["pins"][reader] not in ["identity", "car", "face", "portal", "cyber", "dismissal", "international"]: return "调查路线无效"
@@ -68,6 +73,11 @@ func restore(data: Dictionary) -> void:
 	reset()
 	RandomState.restore(_rng, data)
 	entries = (data.get("entries", {}) as Dictionary).duplicate(true)
+	# Preserve discovery, day and reading order for the guard and radio exhibits in older notebooks.
+	if entries.has("dutyBook1987"):
+		entries["dutyBook1987"]["text"] = PAPER_TRIAL_NOTE
+		entries["dutyBook1987"]["source"] = PAPER_TRIAL_SOURCE
+	if entries.has("broadcastBook"): entries["broadcastBook"]["text"] = BROADCAST_NOTE
 	recent = (data.get("recent", []) as Array).filter(func(id: Variant) -> bool: return id is String and entries.has(id)).slice(-RECENT_MAX)
 	focus = String(data.get("focus", ""))
 	pins = data.get("pins", {}).duplicate()
@@ -113,13 +123,40 @@ func visible(id: String) -> bool:
 	return entries.has(id)
 
 
+func paper_sample() -> String:
+	if entries.has("paper:lesson:A"): return "甲"
+	if entries.has("paper:lesson:B"): return "乙"
+	return ""
+
+
+func observe(site: Dictionary) -> void:
+	var source := String(_c.get("place", "")) + " · " + String(site.title)
+	var id := "campus:" + String(site.id)
+	if not entries.has(id):
+		record(id, site.text, "事实", source)
+		_emit("save")
+	if site.id == "stair_teach_w":
+		_pending = {"kind": "stair_voice"}
+		_emit("choice", {"text": "两道粉笔杠旁边写着「我又回二楼了」。我敲一下扶手，下面有人敲了两下。我想临时出道题，听听他会怎么答。", "labels": ["敲两下，请他少敲一下", "问他妹妹书包上挂着什么", "轻轻走开"]})
+		return
+	if site.id != "lab1":
+		_emit("say", {"text": site.text})
+		return
+	var selected := paper_sample()
+	if not selected.is_empty():
+		_emit("say", {"text": "夹里的%s纸上边缺了一小块。打孔杆锁住了。底板刻着这一组的编号「四·二」。" % selected})
+		return
+	_pending = {"kind": "paper_sample"}
+	_emit("choice", {"text": "夹里有两张完整的纸，编号「四·二」。杆子只能按一次。封套写着「配对表由北门值班员保管」。", "labels": ["在甲纸上打孔", "在乙纸上打孔", "放下打孔杆"]})
+
+
 # ---- the parking ticket, the handover note, the supply box ----
 
 ## R at the own seat in teach1: the parking ticket. False when it is not available (the lesson opens instead).
 func open_desk() -> bool:
 	if not bool(_c.get("desk_ok", false)) or visible("desk"):
 		return false
-	record("desk", "同桌塞来的停车单上签着我的名字。底联在保安岗。背面写着「讲台上有钥匙移交单」。", "事实", "自己的课桌")
+	record("desk", "同桌递给我时，停车单上联的四边都是齐的。右上角印着「17 号工单」，签名最后一笔和我写的一样。纸背写着，底联在北门旁的保安岗，讲台上还有钥匙移交单。", "事实", "自己的课桌")
 	_emit("spots", {"names": ["guard"]})
 	_emit("say", {"text": "停车单上的签名是我的。去保安岗查底联，或者先看看讲台上的钥匙移交单。", "keep": true})
 	_emit("save")
@@ -179,6 +216,21 @@ func choose(index: int) -> void:
 	var p := _pending
 	_pending = {}
 	match String(p.get("kind", "")):
+		"stair_voice":
+			if index not in [0, 1]: return
+			var reply := "扶手只响了一下。「两下少一下。一点儿也不难。你再问个难的？」下面的人说着，自己先笑了。" if index == 0 else "「一颗掉了漆的星星。她每次都要我猜朝外的是哪一面。」他停了一下，问我北门几点关。"
+			var line := reply + "「你就在上面吧？我再下一层，还是我画的那两道杠。你要是先醒，跟我妹说，我没忘。」我答应了。"
+			record("landing:knock" if index == 0 else "landing:star", line, "事实", "教学楼西梯 · 二楼扶手")
+			_emit("stair_promise")
+			_emit("say", {"text": line})
+			_emit("save")
+		"paper_sample":
+			if index not in [0, 1] or not paper_sample().is_empty(): return
+			var letter := "甲" if index == 0 else "乙"
+			var line := "打孔杆咔哒一声锁住了。四·二号的%s纸上边掉下一小片，另一张完好。我在这里看不到北门的实物。" % letter
+			record("paper:lesson:A" if index == 0 else "paper:lesson:B", line, "验证", "实验楼一楼 · 第四节纸样")
+			_emit("say", {"text": line})
+			_emit("save")
 		"notice":
 			if index == 0:
 				_emit("outing")
@@ -267,7 +319,7 @@ func goal(route: String = "") -> String:
 		return "已经有车钥匙。在背包中使用它，读清环上的牌号，再去车辆旁核对。"
 	if not visible("parking") and not visible("notice"):
 		if visible("desk"): return "去保安岗柜台核对签名。出教室前，也可以顺手看看讲台上的钥匙移交单。"
-		return "去北门旁的保安岗柜台，查那张签着我名字的停车单。起身前可以低头看看自己的名牌。"
+		return OpeningStory.FIRST_LEAD + ("起身前可以低头看名牌，决定怎么应到。" if _c.get("desk_ok", false) else "")
 	var car: Dictionary = _c.get("car", {})
 	if not bool(car.get("ok", false)):
 		if visible("parking"): return "底联拿到了。去行政楼五楼校长室取车钥匙。"

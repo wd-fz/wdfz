@@ -14,7 +14,7 @@ extends Node
 ##   cyber (《网安仙人》) — 16 s on four stages: the server room (the racks' lights go out one by one, the console
 ##   prints the shutdown log, the wall speaker breaks off), the corridor (the tube lights flicker two short one long, then
 ##   settle; the tall figure drops its shoulders and stands still), the archive (the company report against the original
-##   record, three contradictions circled, "签发节点：未知"), the campus at dawn (the camera rises, ordinary morning).
+##   record, three contradictions circled, the physical sample confirmed), the campus at dawn (the camera rises, ordinary morning).
 ##   portal (《门》) — 10 s in front of the demonstration bench's device (a simplified model of the old one): it
 ##   charges, the three rails close one by one, the door opens; the camera steps back half a pace, then pushes in
 ##   and through the ring, white at the end.
@@ -79,6 +79,10 @@ var _speakers: Array = []
 var _students: Array = []
 var _line: Array = []
 var _walkers: Array = []
+var _dis_deskmate: Node3D
+var _dis_sister: Node3D
+var _dis_desk: Node3D
+var _dis_model_props: Array[Node3D] = []
 var _windows: Array = []
 var _ledger: Label3D
 var _dis_said := {}
@@ -337,6 +341,8 @@ func _apply(kk: float) -> void:
 		norm=phase(kk,.6,.95)
 	elif kind=="cyber":
 		norm=phase(kk*16.0,11.4,13.8)
+	elif kind == "dismissal":
+		norm = 1.0 if dis_stage(kk * _dur) == 3 else 0.0
 	_ui.set_normal_world(norm)
 	if kind in ["beast","portal"] and is_instance_valid(_live_lighting):
 		_live_lighting.world_normal=norm
@@ -445,6 +451,9 @@ func _finish(skipped: bool, notify: bool) -> void:
 		audio.stop("scene")
 	if STAGED.has(kind) and is_instance_valid(_world):
 		_world.visible = _world_was_visible
+	for prop in _dis_model_props:
+		if is_instance_valid(prop): prop.show()
+	_dis_model_props.clear()
 	if is_instance_valid(_school): _school.visible = _school_was_visible
 	if is_instance_valid(_player) and is_instance_valid(_player.camera):
 		_player.camera.current = true
@@ -604,7 +613,11 @@ static func dis_caption(t: float) -> String:
 		return "几十把椅子同时往后挪。没有人说话。"
 	if s == 2:
 		return "走廊尽头的高个子没有动。人流从它身边经过。"
-	return "登记簿翻到了新的一页：放学 · 全体。" if (t - 12.0) / 6.0 < 0.6 else "你回过头。教学楼的灯，一层一层熄灭。"
+	if t < 13.2:
+		return "准予全体离校。我在课桌上睁开眼。"
+	if t < 15.6:
+		return "放学后到了北门。一个女孩喊了声「哥」。"
+	return "你回过头。现实中的教学楼一层层熄了灯。"
 
 
 func _room(g: Node3D, w: float, d: float) -> void:
@@ -702,14 +715,55 @@ func _setup_dis() -> void:
 	for i in 10:
 		_line.append(_fig(c, "person", Color("#465353"), -1.0, 1.5, 0.0))
 	_fig(c, "tall", Color("#465353"), 2.6, 3.7, 0.0)
+	_dis_desk = Node3D.new()
+	_dis_desk.name = "WakingClassroom"
+	_dis_desk.position = Vector3(130, 0, -60)
+	_root.add_child(_dis_desk)
+	_room(_dis_desk, 6, 5)
+	_box(_dis_desk, 1.26, 0.09, 0.73, Color("#b98e5f"), 0, 0.82, 0)
+	_box(_dis_desk, 0.46, 0.02, 0.31, Color("#667c8e"), 0, 0.879, 0)
+	for side: float in [-1, 1]:
+		_box(_dis_desk, 0.213, 0.014, 0.285, Color("#eee3c7"), side * 0.11, 0.896, 0)
+		for line in 5:
+			_box(_dis_desk, 0.14, 0.002, 0.004, Color("#877d6b"), side * 0.11, 0.905, -0.03 + line * 0.024)
+	var lesson := _label("语文", 0.020, Color("#443d32"))
+	lesson.outline_size = 0
+	lesson.rotation.x = -PI / 2
+	lesson.position = Vector3(-0.11, 0.909, -0.09)
+	_dis_desk.add_child(lesson)
+	var passage := _label(OpeningStory.LESSON, 0.010, Color("#443d32"))
+	passage.outline_size = 0
+	passage.rotation.x = -PI / 2
+	passage.position = Vector3(0.11, 0.909, -0.088)
+	_dis_desk.add_child(passage)
+	var pencil := Node3D.new()
+	pencil.position = Vector3(0.33, 0.883, 0.01)
+	pencil.rotation.y = -0.18
+	_dis_desk.add_child(pencil)
+	_box(pencil, 0.009, 0.009, 0.17, Color("#ae6642"), 0, 0, 0)
+	_box(pencil, 0.009, 0.009, 0.012, Color("#424442"), 0, 0, 0.089)
+	_fig(_dis_desk, "sit", Color("#617e99"), 1.2, 0.15, PI)
+	_dis_desk.hide()
 	# The last stage is the real campus: the north gate and the front of the teaching building (the world comes back for it).
 	var d: Node3D = _st[3]
 	_dis_gate = gate_scene(_campus, "n")
+	d.position = _dis_gate
+	# The shot extends past the outdoor map so the reunion still has a street under it.
+	_box(d, 64.0, 0.06, 26.0, Color("#585956"), 0.0, -0.05, -13.0)
+	_dis_deskmate = FigureModel.make("person", Color("#506782"), false, 0.95, Color.BLACK, true, false, null, true)
+	d.add_child(_dis_deskmate)
+	_dis_sister = FigureModel.make("person", Color("#b27465"), false, 0.72)
+	_dis_sister.position = Vector3(2.9, 0.0, -3.8)
+	d.add_child(_dis_sister)
+	_box(_dis_sister, 0.31, 0.39, 0.19, Color("#556e83"), 0.23, 1.01, 0.13)
+	var charm := _label("★", 0.082, Color("#d4af5e"))
+	charm.position = Vector3(0.30, 0.94, 0.239)
+	_dis_sister.add_child(charm)
 	var spot := DayBanner.spot(_world.get("layout") as Dictionary if _world != null else {})
 	_dis_teach = Vector2(spot.x, spot.z - 0.82)   # x centre of the building, z of its front line
 	for i in 16:
 		_walkers.append(_fig(_root, "person", Color("#3b4847"), _dis_gate.x + 5.35, _dis_gate.z + 3.8 - float(i) * 0.65, PI))
-	_ledger = _label("放学 · 全体\n准予离校", 0.12, Color("#e7e2ca"))
+	_ledger = _label("北门接送区\n学生请在门内等候", 0.12, Color("#e7e2ca"))
 	_ledger.position = _dis_gate + Vector3(-1.3, 1.1, 1.0)
 	_ledger.rotation.x = -0.4
 	_root.add_child(_ledger)
@@ -728,11 +782,13 @@ func _setup_dis() -> void:
 		_windows.append(w)
 	d.visible = false
 	# The camera environment of the real campus (the staged rooms sit in a flat grey one).
-	var lit: Variant = _world.get("lighting")
-	if lit is CampusLighting:
-		_campus_env = (lit as CampusLighting).env
-		# The last stage is at dusk (the old stage hour 17.4); the world's own lighting is paused with the tree.
-		(lit as CampusLighting).update(0.0, 17.4 * 60.0, cam)
+	if is_instance_valid(_live_lighting):
+		_campus_env = _live_lighting.env
+	if is_instance_valid(_school):
+		for region: CampusWorld in _school.regions.values():
+			_dis_model_props.append_array(region.hide_run_props())
+	elif _world is CampusWorld:
+		_dis_model_props = (_world as CampusWorld).hide_run_props()
 
 
 func _apply_dis(kk: float) -> void:
@@ -740,6 +796,9 @@ func _apply_dis(kk: float) -> void:
 	var s := dis_stage(t)
 	for i in _st.size():
 		(_st[i] as Node3D).visible = i == s
+	var at_gate := t >= 13.2
+	_dis_desk.visible = s == 3 and not at_gate
+	(_st[3] as Node3D).visible = at_gate
 	_ui.cut_caption(dis_caption(t))
 	if s == 0:
 		if not _dis_said.has("radio"):
@@ -782,31 +841,45 @@ func _apply_dis(kk: float) -> void:
 			else:
 				f2.position = Vector3(1.0, 4.08 - (p2 - 0.5) * 4.08, 2.5 - (p2 - 0.5) * 6.7)
 				f2.rotation.y = 0.0
+	elif not at_gate:
+		var lift := phase(t, 12.0, 13.18)
+		var desk := _dis_desk.position
+		_look(desk + Vector3(0.03, 1.01 + lift * 0.41, 0.20 + lift * 0.18), desk + Vector3(0, 0.90, -0.02))
 	else:
 		var v := (t - 12.0) / 6.0
 		var g := _dis_gate
 		for i in _walkers.size():
-			(_walkers[i] as Node3D).position = g + Vector3(5.35, 0.0, 3.8 - float(i) * 0.65 - v * 8.0)
+			var lane := float(i % 3) * 0.68
+			(_walkers[i] as Node3D).position = g + Vector3(5.4 + lane, 0.0, 3.8 - float(i) * 0.54 - v * 8.0)
+		var reunion := phase(t, 13.2, 15.1)
+		var from := _dis_deskmate.position
+		_dis_deskmate.position = Vector3(5.35, 0.0, 0.3).lerp(Vector3(3.65, 0.0, -3.65), reunion)
+		_dis_deskmate.look_at(_dis_sister.global_position)
+		_dis_sister.look_at(_dis_deskmate.global_position)
+		FigureGait.step(_dis_deskmate, from.distance_to(_dis_deskmate.position), _frame_delta)
 		_ledger.visible = true
-		if v < 0.2:
-			_look(g + Vector3(-1.3, 1.6, 2.1), g + Vector3(-1.3, 1.1, 1.0))
-		elif v < 0.6:
-			_look(g + Vector3(4.75, 1.9, -9.0 - (v - 0.2) * 10.0), g + Vector3(5.35, 1.4, 3.0))
+		if v < 0.6:
+			_look(g + Vector3(2.55, 1.7, -9.0 - (v - 0.2) * 5.0), g + Vector3(4.1, 1.35, -2.6))
 		else:
 			_look(Vector3(_dis_teach.x, 8.5, _dis_teach.y + 24.0), Vector3(_dis_teach.x, 8.0, _dis_teach.y))
 		for i in _windows.size():
 			var w := _windows[i] as MeshInstance3D
 			w.visible = v >= 0.6
 			(w.material_override as StandardMaterial3D).albedo_color = Color("#050909") if v > 0.68 + float(i) * 0.055 else Color("#aba17c")
+		if is_instance_valid(_live_lighting):
+			_live_lighting.world_normal = 1.0
+			_live_lighting.update(0.0, 17.4 * 60.0, cam)
+			_live_lighting.env.fog_density *= 0.35
+			_ui.scene_post().parameter("exposure", _live_lighting.post_exposure)
 	# Only the last stage is in the real campus.
 	if is_instance_valid(_world):
-		_set_world_visible(s == 3)
-	cam.environment = _campus_env if s == 3 else _stage_env
+		_set_world_visible(at_gate)
+	cam.environment = _campus_env if at_gate else _stage_env
 	for w2: MeshInstance3D in _windows:
 		w2.visible = w2.visible and s == 3
-	_ledger.visible = s == 3
+	_ledger.visible = at_gate
 	for f3: Node3D in _walkers:
-		f3.visible = s == 3
+		f3.visible = at_gate
 	_ui.cut_fade(clampf(dis_edge(t), 0.0, 1.0))
 
 
@@ -931,9 +1004,6 @@ func _apply_portal(kk: float) -> void:
 
 const CY_LOG := [[0.25, "$ campusctl shutdown --confirm"], [0.75, "stop attendance ............ OK"], [1.35, "stop doors ................. OK"],
 	[1.95, "broadcast: 全体同学请注——"], [2.25, "stop observation ........... OK"], [2.75, "stop control ............... OK"]]
-const CY_PAIRS := [["首次部署：2026-09-01", "部署前：无任何异常记录", "纸质档案扫描：1987 年", "走廊里出现不在值班表上的人"],
-	["巡察行为：全部由控制器产生", "断链即全部停止", "断链故障记录：控制链离线后", "仍收到回执（签发节点：——）"],
-	["退出身份：已注销", "数据已删除", "「注销」字段原始定义：", "转交上层保管"]]
 const CY_FLICKER := [0.10, 0.08, 0.10, 0.08, 0.10, 0.30, 0.55, 0.08, 0.10, 0.08, 0.10, 0.30]
 const CY_B0 := 3.2
 
@@ -1008,10 +1078,10 @@ func _cy_archive_text(t: float) -> String:
 		if t >= r:
 			marks += 1
 	for i in rows:
-		var p: Array = CY_PAIRS[i]
+		var p: Array = CutScreen.PAIRS[i]
 		out += "%s　%s　%s\n%s　　%s　　%s\n\n" % [p[0], "≠" if i < marks else "　", p[2], p[1], "　", p[3]]
 	if t >= 10.25:
-		out += "签发节点：未知" + ("" if int((t - 10.25) / 0.45) % 2 == 1 else " ▌")
+		out += CutScreen.FIELD_RESULT + ("" if int((t - 10.25) / 0.45) % 2 == 1 else " ▌")
 	return out
 
 

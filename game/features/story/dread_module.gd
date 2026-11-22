@@ -26,7 +26,7 @@ extends FeatureModule
 const STATE_VERSION := 1
 const CFG := {"strong_gap": 45.0, "strong_area": 120.0, "mild_gap": 9.0, "mild_area": 24.0, "amb_min": 24.0, "amb_max": 52.0, "safe_start": 60.0, "pre_lead": 3.2}
 const NOTES := ["你昨天也来过。", "这张纸条不是写给你的。", "第二排靠窗的位子，今天也空着。",
-	"我数过了，楼梯比早上多一级。", "有人在等你先走。", "如果你看到这张纸，就别再回来找它了。", "他走路的声音，和你一样。"]
+	"我数过了，楼梯比早上多一级。", "有人在等你先走。", "我给两只钟对过时。铃响的时候，走廊那只动了。", "我已经站住了，墙那边还在走昨天的那几步。"]
 const VISIT_KINDS := ["lamp", "note", "echo", "left", "board"]
 const BOARD_LINES := ["今天的值日生：你", "下一节还是这一节", "这里少了一张桌子", "作业：明天交昨天的", "老师马上回来"]
 const PACE := {"half": 60.0, "rest": 0.7, "quiet_after": 150.0, "quiet_boost": 1.4, "hold": 0.8, "inspect": 0.4}

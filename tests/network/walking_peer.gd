@@ -66,6 +66,8 @@ func run() -> void:
 	if not app.lan.playing() or network.room.phase!="playing":
 		check(false,"both full applications enter the campus")
 	else:
+		var notice := app.ui.get_node("%Toast") as Label
+		check(notice.text == OpeningStory.handover(app.session.character_id), "each new co-op player sees their own character and the first lead")
 		if hosting:
 			for actor: CooperativeActor in network.simulation.actors.values():
 				network.simulation.travel(actor,"out",{"position":[76.,.05,74.],"yaw":0.,"pitch":0.})

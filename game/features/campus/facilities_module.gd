@@ -9,14 +9,14 @@ extends FeatureModule
 
 const STATE_VERSION := 1
 const SAN_ACTS := {
-	"run": {"n": "沿跑道跑两圈", "san": 14.0, "min": 12.0, "cd": 90.0, "msg": "我：跑完两圈。肺很疼，脑子清楚了一点。"},
-	"shoot": {"n": "投几个球", "san": 10.0, "min": 8.0, "cd": 70.0, "msg": "我：球砸在框上，弹回来。声音很空。"},
-	"eat": {"n": "吃饭", "san": 18.0, "min": 20.0, "cd": 140.0, "msg": "我：饭是凉的。但我还是吃完了。"},
-	"sleep": {"n": "躺一会儿", "san": 26.0, "min": 45.0, "cd": 200.0, "msg": "我：我闭了一下眼睛。醒来的时候，上铺的床板往下压着一个人的形状。"},
-	"wash": {"n": "洗把脸", "san": 8.0, "min": 4.0, "cd": 50.0, "msg": "我：水很凉。镜子里那个人也洗了把脸。"},
-	"piano": {"n": "弹一会儿琴", "san": 16.0, "min": 10.0, "cd": 120.0, "msg": "我：我弹了一段。走廊里没有人过来。"},
-	"pc": {"n": "玩一会儿电脑", "san": 12.0, "min": 15.0, "cd": 100.0, "msg": "我：机房里只有我这一台亮着。屏幕右下角的时钟在走。"},
-	"view": {"n": "看看远处", "san": 6.0, "min": 6.0, "cd": 40.0, "msg": "我：从这里能看见半个校园。都在雾里。雾的边上，一直是同一栋楼。"},
+	"run": {"n": "沿跑道跑两圈", "san": 14.0, "min": 12.0, "cd": 90.0, "msg": "我：第二圈跑过终点，我才喘匀气。跑道边那段口令又从头放了一次，偏偏没跟上我的脚步。"},
+	"shoot": {"n": "投几个球", "san": 10.0, "min": 8.0, "cd": 70.0, "msg": "我：球砸在框上。我伸手接住，头顶的喇叭里又响了一下落地声。"},
+	"eat": {"n": "吃饭", "san": 18.0, "min": 20.0, "cd": 140.0, "msg": "我：饭是凉的。我吃掉碗边那一撮葱，隔壁空座的碗里，同一个地方也漂着一撮。"},
+	"sleep": {"n": "躺一会儿", "san": 26.0, "min": 45.0, "cd": 200.0, "msg": "我：我在宿舍的铃声里睁开眼，上铺的床板还是那一道凹痕。趴下以前，我那本语文书翻到哪页了？"},
+	"wash": {"n": "洗把脸", "san": 8.0, "min": 4.0, "cd": 50.0, "msg": "我：水很凉。我擦干脸，镜里那只手才从水龙头上挪开。"},
+	"piano": {"n": "弹一会儿琴", "san": 16.0, "min": 10.0, "cd": 120.0, "msg": "我：我停在最后一个音前。走廊里还是响起琴凳挪动的吱呀声，我明明坐着没动。"},
+	"pc": {"n": "玩一会儿电脑", "san": 12.0, "min": 15.0, "cd": 100.0, "msg": "我：机房里只有我这一台亮着。屏幕上的时间和上课铃对得上，桌角的旧照片里却一直是午饭前。"},
+	"view": {"n": "看看远处", "san": 6.0, "min": 6.0, "cd": 40.0, "msg": "我：从天台能看清两条连廊。我沿护栏走了几步，近处的窗子被栏杆依次遮住，围墙外那块远景却连一点角度都没换。"},
 }
 const FAC_CD := {"Z": 70.0, "C": 90.0, "N": 45.0, "Y": 200.0, "K": 0.0}
 const VEND_POOL := [["snack", 24], ["battery", 18], ["pill", 14], ["seal", 10], ["watch", 7], ["elixir", 6], ["torch", 5], [null, 16]]
@@ -417,7 +417,7 @@ func _facility(room: Dictionary, ch: String) -> void:
 		"K":
 			var floor_n := int(room.get("floor", 1))
 			if room.get("host") == "admin":
-				_say("我：办公桌上摊着一叠表格。最上面那张的名字被涂掉了。")
+				_say("我：办公桌上是往年的巡查表，几份表上同一条路线都用红笔描过。最上面那张划掉了巡查员的签名，经过哪几层的勾还留着。")
 				if not bool(flags.get("admin_desk", false)):
 					flags["admin_desk"] = true
 					_emit("clue", {"id": "office"})
@@ -520,26 +520,29 @@ func _guard() -> void:
 		_emit("clue", {"id": "keys"})
 		flags["guard_told"] = true
 	_parking_records()
-	var line := "登记簿上真是我的签名，离校那一栏却空着。"
+	var line := "底联上也是我的笔迹，离校栏还空着。"
 	if borrowed:
-		line = "我抽出底联。签名最后一笔也是歪的，跟我写的一样。同化可以自然回落了。"
+		line += " 同化恢复自然回落。"
 	elif not first:
 		line = "我核过登记簿，收好签着我名字的那联。"
-	line += " 底联右下角盖着「西小门核验」。"
+	line += " 底联可在西小门核验。"
 	if _has("key") or _c.get("hotwire", false):
-		line += " 登记写着「车库西侧，第 %d 排」。" % int(_c.get("car_row", 1))
+		line += " 车记在车库西侧第 %d 排。" % int(_c.get("car_row", 1))
 	else:
-		line += " 钥匙移交给了行政楼五楼校长室。"
+		line += " 找车的话，钥匙在行政楼五楼校长室。"
 	if not _has("torch"):
 		line += " 我拿走了抽屉里的手电。" if _add("torch") else " 手电还在抽屉里，腾出一格再来拿。"
+	if first:
+		line += " 安抄派的 17 号工单上，还钉着半圆形的纸屑。"
 	_say(line)
 	_emit("save")
 
 
-## investigation.js parking: the register and the guard's note (the same two records every time).
+## The counterfoil, the guard's warning and the old handover kept with them.
 func _parking_records() -> void:
 	_record("parking", "停车登记：可用车辆在车库靠西侧，第 %d 排。签名旁边的离校栏空着，底联盖着「西小门核验」。" % int(_c.get("car_row", 1)), "事实", "保安岗 · 停车登记")
 	_record("garageSafety", "车道上的黑影会靠近。手电持续照射能暂时逼退它；硬币可把它引开。拉车门前，先确认它离开车辆。", "事实", "保安岗 · 值班便签")
+	_record("dutyBook1987", InvestigationModule.PAPER_TRIAL_NOTE, "事实", InvestigationModule.PAPER_TRIAL_SOURCE)
 
 
 ## A notebook record (the app writes it into InvestigationModule).

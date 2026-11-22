@@ -59,6 +59,10 @@ func test_controls() -> void:
 	await _frames(3)
 	ui.set_mode("play")
 	ui.set_touch_enabled(true)
+	ui.cut_mode(true)
+	check(not ui.touch_controls.visible and not ui.hud.visible, "cinematic captions have the screen without the touch controls")
+	ui.cut_mode(false)
+	check(ui.touch_controls.visible and ui.hud.visible, "finishing a cinematic restores the play controls")
 	var signals := {"manual":0,"hot":-1,"torch":0,"interact":0,"look":Vector2.ZERO}
 	ui.manual_requested.connect(func() -> void: signals.manual += 1)
 	ui.hot_requested.connect(func(i: int) -> void: signals.hot = i)

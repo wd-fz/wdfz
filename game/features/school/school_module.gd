@@ -20,8 +20,8 @@ const TT_LINES := [
 	"我：我好像一直都在这里。在我转来之前，就在这里。",
 ]
 const TT_SEAT := {
-	3: "我：……今天几号来着？我想站起来看一眼黑板，椅子没让我起来。",
-	4: "我：腿麻了。不对——是腿不想动。椅子贴着我的背，像是不想让我起来。",
+	3: "我：我还没开口，已经听见自己的声音应了一声。我摸了摸喉咙。",
+	4: "我：我把手从桌上拿开，窗里映出的袖口还趴着。老师朝那截袖口点了点头。",
 }
 const FIELD_IDS := ["field", "court2", "track", "bad2", "bad3"]
 const START_TSEC := 700.0
@@ -742,7 +742,7 @@ func _tt_tick(dt: float, nw: String, world_id: String) -> void:
 
 func _resolve_assimilation() -> void:
 	if not _requested("assimilation"):
-		_deaths.append({"msg": "你在自己的位子上坐好了。椅子很合身，像是照着你做的。这一次，不用再起来了。", "fx": "names", "source": "assimilation"})
+		_deaths.append({"msg": "眼前只剩下教室里那把椅子。坐在上面的身影穿着我的校服，用我的声音答了到。等我自己张口，点名册已经合上了。", "fx": "names", "source": "assimilation"})
 
 
 func _requested(source: String) -> bool:

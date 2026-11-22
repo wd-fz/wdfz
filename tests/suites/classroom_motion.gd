@@ -195,7 +195,21 @@ func test_app() -> void:
 		for i in crowd.people.size():
 			var ref: Dictionary = sample["figures"][i]
 			var p := Vector3(ref["p"][0],ref["p"][1],ref["p"][2])
-			equal = equal and crowd.people[i].position.distance_to(p)<.0001 and absf(wrapf(crowd.people[i].rotation.y-float(ref["yaw"]),-PI,PI))<.0001
+			var actual := crowd.people[i].position
+			var query := PhysicsShapeQueryParameters3D.new()
+			query.shape = crowd._body
+			query.collision_mask = 1
+			query.transform.origin = Vector3(p.x, 0.9, p.z)
+			var new_pier := false
+			for hit: Dictionary in crowd.get_world_3d().direct_space_state.intersect_shape(query, 8):
+				var body: CollisionObject3D = hit.collider
+				var shape := body.shape_owner_get_owner(body.shape_find_owner(hit.shape))
+				if shape.get_meta("kind", "") == "scenery": new_pier = true
+			if new_pier:
+				equal = equal and crowd.people[i].visible and actual.distance_to(p)<1.4 and not crowd.blocked(CampusGeometry.to_world(null, actual.x, actual.z))
+			else:
+				equal = equal and crowd.people[i].visible and actual.distance_to(p)<.0001
+			equal = equal and absf(actual.y - p.y)<.0001 and absf(wrapf(crowd.people[i].rotation.y-float(ref["yaw"]),-PI,PI))<.0001
 		check(equal,"original sixteen students, spacing, collision fallback, bob and facing at "+str(sample["p"]["left"]))
 	app.queue_free()
 	await _frames(3)

@@ -8,8 +8,8 @@ const EXIT_OFFSET := 24.0 # Original campus units, east of the old boundary wall
 const EXIT_NORTH := 13.0 # The pedestrian gap north of the vehicle gate is present in all five campus meshes.
 const EXIT_HALF_WIDTH := 4.0
 const EXIT_HINT := "西小门亮了绿灯。站到白线靠校园的一侧，再朝门外跨过去。"
-const PROMISE := "同桌又在纸角挤了一行：「要是先出去了，跟我妹说一声，我没忘。她在北门等我。」"
-const INVITATION := "同桌推来一张纸条：「北门旁的保安岗有张单子，签的是你的名字。你去看，我替你答到。」低头看名牌，或起身去保安岗。"
+const PROMISE := "纸角还有一行字。「要是先出去了，跟我妹说一声，我没忘。她在北门等我。」"
+const PUNCH_EDGES := {"ink": "左边", "present": "上边", "proxy": "右边"}
 
 var armed := ""
 var answered := ""
@@ -19,6 +19,7 @@ var proof := "" # ink, present, proxy. A teammate's notebook entry cannot issue 
 var present_slot := ""
 var clearance := 0 # 1 accepted at the reader, 2 walked across the line.
 var heard_promise := false
+var stair_promise := false
 var reading_until := 0.0
 var _previous := Vector2.INF
 
@@ -26,7 +27,7 @@ var _previous := Vector2.INF
 func capture() -> Dictionary:
 	return {"armed": armed, "answered": answered, "checked": checked, "proxy_place": proxy_place,
 		"proof": proof, "present_slot": present_slot, "clearance": clearance, "heard_promise": heard_promise,
-		"reading_until": reading_until}
+		"reading_until": reading_until, "stair_promise": stair_promise}
 
 
 func restore(data: Dictionary) -> void:
@@ -38,6 +39,7 @@ func restore(data: Dictionary) -> void:
 	present_slot = data.get("present_slot", "")
 	clearance = int(data.get("clearance", 0))
 	heard_promise = data.get("heard_promise", false)
+	stair_promise = data.get("stair_promise", false)
 	reading_until = float(data.get("reading_until", 0.0))
 	_previous = Vector2.INF
 
@@ -67,6 +69,7 @@ static func valid(data: Variant) -> bool:
 	if not slot is String or (not slot.is_empty() and not valid_slot(slot)) or (basis == "present" and slot.is_empty()): return false
 	if not SaveSchema.is_integer(data.get("clearance", 0), 0, 2) or (basis == "" and data.get("clearance", 0) != 0): return false
 	if not data.get("heard_promise", false) is bool: return false
+	if not data.get("stair_promise", false) is bool: return false
 	if not SaveSchema.number_in(data.get("reading_until", 0), 0, 1e12): return false
 	if not last.is_empty() and not seen and basis != "": return false
 	if last.is_empty(): return not seen
@@ -100,7 +103,7 @@ func offer(next: Dictionary, today: int, promised: bool) -> Dictionary:
 	elif promised: why = "登记外出时我答应亲自到场。这一次得自己回来。"
 	if not why.is_empty(): return {"text": why, "labels": ["收好纸条"]}
 	return {"target": id, "leave": true,
-		"text": "同桌压低声音：「你先走，我替你答。」\n把名牌留在桌上。%s点名时你若在外，空座会应声，你可以继续行动。同化增加 18，直到去保安岗核对底联才会自然回落。" % stamp(id),
+		"text": "纸背上是同桌的字。「点到你，我替你应一声。」\n把名牌留在桌上。%s点名时你若在外，空座会应声，你可以继续行动。同化增加 18，直到去保安岗核对底联才会自然回落。" % stamp(id),
 		"labels": ["竖起名牌，让空座应到", "保持平放，自己应到"]}
 
 
@@ -159,7 +162,9 @@ func journal() -> String:
 	var trace := entry()
 	if not trace.is_empty() and (proof.is_empty() or not armed.is_empty()): lines.append(trace)
 	if not proof.is_empty(): lines.append(evidence())
+	if clearance > 0: lines.append("西小门退回的底联，%s有个半圆缺口。" % PUNCH_EDGES[proof])
 	if heard_promise: lines.append(PROMISE)
+	if stair_promise: lines.append("我在西楼梯二楼答应同桌，先醒的话，就去北门替他捎句话。")
 	return "\n".join(lines)
 
 
@@ -201,7 +206,7 @@ func answer_gate(token: String, index: int, at: Vector2) -> String:
 		return "回执被退回来，红章上写着「请核原件」。我翻开随身的底联：" + evidence()
 	clearance = 1
 	_previous = at
-	return "闸机只响了一声。「本人，到。」" + EXIT_HINT
+	return "闸机只响了一声。「本人，到。」退回的底联%s被咬掉一个半圆。" % PUNCH_EDGES[proof] + EXIT_HINT
 
 
 func crossed_line(outdoors: bool, at: Vector2, gate: Vector2) -> bool:

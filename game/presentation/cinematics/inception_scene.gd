@@ -1,7 +1,7 @@
 class_name InceptionScene
 extends Node3D
 ## The original 20-second dream-cut.js. Saved body position and view are never animated.
-const CAPTIONS := ["（风声。呼吸越来越轻。）","广播：「请各班同学，回到自己的——」","我醒了。阳光照在床头的课本上。窗外很安静，没有广播。","桌上的陀螺还在转。"]
+const CAPTIONS := ["（风声。呼吸越来越轻。）","广播：「请各班同学，回到自己的——」","我睁开眼。床沿磕坏的地方还在。阳光照着课本，窗外很安静。","桌上的陀螺还在转。"]
 var stages: Array[Node3D]=[]
 var top_b: Node3D
 var top_d: Node3D

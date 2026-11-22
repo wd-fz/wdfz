@@ -9,8 +9,13 @@ func test_seated_prompt() -> void:
 	root.add_child(app)
 	await _frames(3)
 	app.ui.set_touch_enabled(true)
-	app.start_new_game("hard")
+	app.start_new_game("hard", "none", "xu")
 	await _frames(3)
+	app._show_notes()
+	var notes: Array[Node] = app.ui._notes_box.find_children("*", "Label", true, false)
+	check(notes.any(func(label: Label) -> bool: return label.text.contains("许棠") and label.text.contains("晚饭") and label.text.contains("底联")), "the notes let the selected student reread the events before class")
+	check(app.investigation_brief().contains("保安岗柜台") and app.investigation().entries.is_empty() and app.school().seat_card.proof.is_empty(), "the background explains the first destination without silently granting evidence")
+	app.ui.notes_panel.hide()
 	var prompt := app.ui.get_node("%Prompt") as Label
 	var wrong: Array[String] = []
 	for i in 30:
@@ -190,6 +195,9 @@ func test_west_gate_walk(attendance: String = "ink") -> void:
 	app.player.request_interaction()
 	await _frames(2)
 	check(app.school().seat_card.proof == attendance and app.investigation_brief().contains("西小门"), "the real guard cabinet and the pause lead open the early route")
+	var observation := String(app.investigation().entries.get("dutyBook1987", {}).get("text", ""))
+	check(observation.contains("17 号工单") and observation.contains("在模型里给甲纸打孔"), "the guard exhibit links the ticket to the experimental action")
+	check(observation.contains("现实的岗亭") and observation.contains("乙纸四边还齐"), "the independent observer finds a physical effect only on the paired sample")
 	if attendance == "ink":
 		app._show_map("campus")
 		check(app.ui._map_route_select.visible and app.ui._map_route_select.get_item_metadata(2) == "car" and not app.ui.map_view.plan.has("target"), "after the guard the map offers both leads without defaulting to the west gate")
@@ -224,6 +232,8 @@ func test_west_gate_walk(attendance: String = "ink") -> void:
 	app.player.request_interaction()
 	app._choice_made(answer)
 	await _frames(2)
+	var punched_edge: String = {"ink":"左边", "present":"上边", "proxy":"右边"}[attendance]
+	check(app.school().seat_card.journal().contains(punched_edge + "有个半圆缺口"), "the returned counterfoil shows the notch for this run's actual evidence")
 	check(app.story().ended.is_empty() and app.school().seat_card.clearance == 1, "green light waits for the player's own steps")
 	check(app._campus_world()._west_display.text.contains("已核验"), "the physical west gate shows the personal clearance")
 	Input.action_press("move_forward")
@@ -234,6 +244,7 @@ func test_west_gate_walk(attendance: String = "ink") -> void:
 	check(app.story().ended == "face" and app.school().seat_card.clearance == 2, "ordinary walking through the actual collision map reaches the first-day exit")
 	check(app._last_result.get("routeName") == "《取回名字》" and not app.achievements().unlocked.has("e.whitelist"), "the grade reports this run's ending without awarding the electronic quiz")
 	if is_instance_valid(app._ending_cut) and app._ending_cut.on: app._ending_cut.end(true)
+	check(app.ui._ending_text.text.contains("现实的课桌上睁开眼") and app.ui._ending_text.text.contains(punched_edge + "多了个半圆缺口"), "the physical counterpart bears the same notch when the student wakes")
 	check(is_instance_valid(app.ui._ending_art) and app.ui._ending_art.texture != null and app.ui._ending_art.texture == UIArt.memory("end:facePaper"), "the finished walk displays the illustrated paper receipt on the result card")
 	var archive := ArchiveRules.new(CampusData.archive())
 	var seen: Dictionary = app._read_side("ends.json")

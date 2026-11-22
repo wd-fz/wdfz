@@ -96,6 +96,7 @@ func restore(data: Dictionary) -> void:
 	device = d
 	connection = null
 	puzzle = (data["puzzle"] as Dictionary).duplicate(true) if data.get("puzzle") is Dictionary and data["puzzle"].get("runSeed") == run_seed else CampusTerminal.fresh(run_seed, attempt_id)
+	CampusTerminal.refresh_saved_reports(puzzle)
 	termination = {"status": "idle", "requestId": null, "remaining": 0.0}
 	var t: Dictionary = data["termination"]
 	if t.get("status") == "accepted":

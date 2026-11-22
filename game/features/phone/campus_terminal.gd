@@ -8,6 +8,24 @@ const LIMIT := 8192
 const HELP := "可用命令：help、man campusctl、pwd、ls -a [路径]、cd 路径、cat 文件、grep 字串 [文件]、head/tail [-n 数量] [文件]、sort [文件]、cp 源 /work/目标、mkdir /work/目录、edit /work/文件 \"内容\"。\n引号内用 \\n 换行；管道最多四段，仅 cat/grep/head/tail/sort。"
 const MAN := "T1: campusctl select 控制器 /school/assets.tsv\nT2: campusctl trace 事务 /school/runtime.log\nT3: edit /work/shutdown \"controller=代号\\ntransaction=事务\\ntoken=回执\\nclock=active\\nstop 功能模块\\nstop 功能模块\\nstop 功能模块\"，然后 campusctl validate /work/shutdown\nT4: campusctl shutdown --confirm\n提示：campusctl hint 1 / campusctl hint 2；进度：campusctl status"
 
+const REPORTS := {
+	"/school/README": "校园维护环境（模拟 Kali Linux 容器）\n只读 /school，可写 /work。help 查看命令；man campusctl 查看提交格式。\n先用区域、批次和资产清单确认当前控制器，再关联日志中的同一事务，最后按服务依赖写出停机清单。\n校方说明和研究方案见 company.txt，玻璃盒实验的两份手记见 archive.txt。西楼梯故障和值守交接见 shift.txt。",
+	"/school/company.txt": "AnthroPrank AI（安抄派智能） · 致校方\n校园疏散模型试用。现场只采集数据。学生照常上课，校内实物保持原状。\n\n" +
+		"17 号工单 · 2026 年 8 月 28 日 · 研究组内页\n我们要验证，一件只在模型里发生过的事，能否在现实中留下物理结果。纸样已成功。下一步换成有人能在里面自由行动的环境。\n" +
+		"研究组把这个人工环境叫作「里世界」。用校园平面、课堂录音和巡查记录搭建。第四节语文接入二班选定学生的意识。多人共用同一次运行，身体留在现实教室。校方收到的是上一页。\n" +
+		"采录组用空教室和有人上课的照片对齐桌椅，给空位补上原先拍到的坐姿。试员另外接入，可以离座。巡察者循旧值班表找人，点名时按座位索引调录音。模型按自己的课表切换灯光。现实教室的老师另用手表记时。\n" +
+		"每张实物停车单上联，只和模型中本人的底联配对。签名取自当天的签到册。西小门按学生实际经历在底联打孔。现实观察员事前不得知道孔位。\n" +
+		"出口解除相应学生的连接。全体放学广播解除全班连接。停机后，须亲手复查实物。\n\n下期申请的题目：「能否先在模型里试过三种结果，再决定让哪一种留在现实？」",
+	"/school/shift.txt": "17 号工单 · 值守交接\n\n西楼梯有两份二楼平台。主图的门通一楼。补拍件少了一段下行路径，出口误接回自己的入口。试员走哪一份，由接入时的位置决定。两份平台共用一个楼梯间声道。复查时两人能隔层对话，却看不见对方。\n\n" +
+		"走廊延长的问题也复现了。两段走廊用了相同的末帧，拐进教室前，同一段会一直接在眼前。整班齐转头来自另一项试验，播放员只给全班发了一次开始信号。\n\n" +
+		"值守提醒。上课时坐回座位，系统会逐次采纳旧记录对学生下一步的预测。晚间留在宿舍也一样，人还没上床就已记作留宿。若连最后一次应答都由旧记录补齐，名单照常显示人在，学生却再也不能自己申请离开。请在现实教室另行记录谁醒了。按时出席不能代替这一栏。",
+	"/school/archive.txt": "8 月 26 日 · 纸样实验 · 两份手记在停机后拆封核对\n" +
+		"现实侧，值班员：「两张边沿完整的纸，一起封进玻璃盒。研究员只圈了甲纸的编号。封条上是我的签名。」\n" +
+		"模型内，试员：「进来以后才挑的右边。我用打孔钳咬掉半圆，把钳子搁下。」\n" +
+		"现实侧，值班员：「甲纸右边掉下一小片，乙纸还完整。封条一直朝着我。断电以后，我开盒把那片纸拼回缺口，刚好合上。」\n\n" +
+		"9 月 1 日 · 第四节 · 现实教室观察表\n接入时学生仍伏在原座。桌上各放一张签名上联，入场前四边完整。请逐人收回，画出缺口再开模型日志。\n另备「四·二」号纸样供试员自行选用。配对表课前封存于北门，模型内只记所选纸张，外侧观察结果待醒后核对。",
+}
+
 
 static func fnv(s: String) -> int:
 	var h := 2166136261
@@ -47,7 +65,6 @@ static func make(seed_value: String, attempt: int) -> Dictionary:
 	if n % 3 == 0:
 		mods.append(mods.pop_front())
 	var files := {
-		"/school/README": "校园维护环境（模拟 Kali Linux 容器）\n只读 /school，可写 /work。help 查看命令；man campusctl 查看提交格式。\n先用区域、批次和资产清单确认当前控制器，再关联日志中的同一事务，最后按服务依赖写出停机清单。",
 		"/school/site.txt": "试点区域=%s\n当前运行批次=%s\n部署日期=2026-09-01" % [zone, batch],
 		"/school/assets.tsv": "id zone batch role status\nmirror-%d %s %s mirror online\nctl-old %s B099 controller retired\n%s %s %s controller online\nctl-decoy Z00 %s controller online" % [n % 100, zone, batch, zone, controller, zone, batch, batch],
 		"/school/runtime.log": "calendar=11:40 active=100 tx=TX-noise node=mirror actor=observer event=prepare\n" +
@@ -56,15 +73,28 @@ static func make(seed_value: String, attempt: int) -> Dictionary:
 			"calendar=11:40 active=110 tx=%s node=%s actor=control event=prepare\n" % [tx, controller] +
 			"calendar=12:50 active=125 tx=TX-noise node=%s actor=observer event=commit token=invalid" % controller,
 		"/school/services.txt": "维护协议：功能服务依次解除依赖，控制层 control 保留到提交之后，由服务器最后关闭。\n依赖关系 A -> B 表示必须先停 A 才能停 B。\n%s -> %s\n%s -> %s" % [mods[0], mods[1], mods[1], mods[2]],
-		"/school/company.txt": "AnthroPrank AI（安抄派智能）\n行为一致性与秩序对齐试点。名单、门禁、巡察是我们的可操作控制系统。\n创世报告声称第一次部署之前没有异常，所有巡察均由控制器产生。",
-		"/school/archive.txt": "纸质档案扫描：1987 年，走廊里第二次出现不在值班表上的人。\n断链故障记录：控制链已离线，仍收到无法对应签发节点的回执。\n注销字段原始定义：转交上层保管；不是删除。",
 	}
+	files.merge(REPORTS)
 	return {"files": files, "answer": {"controller": controller, "tx": tx, "token": word, "order": mods, "zone": zone, "batch": batch}}
 
 
 static func fresh(seed_value: String, attempt: int = 1) -> Dictionary:
 	return {"version": 1, "runSeed": seed_value, "attemptId": attempt, "cwd": "/school", "work": {}, "dirs": ["/work"], "controllerId": null,
 		"chainId": null, "evidence": [], "validated": null, "acceptedRequestId": null, "helpRead": false, "hint": 0, "buffer": "", "history": []}
+
+
+## Old saves cache the full output of cat. Only refresh reads of the immutable story files.
+static func refresh_saved_reports(s: Dictionary) -> void:
+	if not s.get("history") is Array: return
+	var history: Array = s["history"]
+	for i in range(history.size() - 1, 0, -2):
+		if not history[i - 1] is String or not history[i] is String: continue
+		var prompt := String(history[i - 1]).split(" $ ", true, 1)
+		if prompt.size() != 2 or not prompt[0].begins_with("/"): continue
+		var args: Array = words(prompt[1]).get("words", [])
+		if args.size() != 2 or args[0] != "cat": continue
+		var file := path({"cwd": prompt[0]}, args[1])
+		if REPORTS.has(file): history[i] = REPORTS[file]
 
 
 static func path(s: Dictionary, p: String) -> String:

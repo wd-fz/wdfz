@@ -286,7 +286,7 @@ func hold(on: bool) -> bool:
 
 func book() -> void:
 	b["book"] = true
-	_emit("record", {"id": "broadcastBook", "text": "行政楼二楼广播站：放学通知被撕成四页，蓝黑墨水、日期「第二天」。第二天起，第八节下课后至熄灯前播出。教导处文件柜、琴凳、保安岗登记簿、天台喇叭箱各有一页。", "kind": "线索", "source": "播音记录本"})
+	_emit("record", {"id": "broadcastBook", "text": InvestigationModule.BROADCAST_NOTE, "kind": "线索", "source": "播音记录本"})
 	_say("播音记录本：「未播出：放学通知。第二天，第八节下课以后，熄灯以前。四页，蓝黑墨水。功放保险丝已烧，备用件和一份补给在器材室。长铃只响六十秒，提前确认北门路线，准备疾跑。」")
 	_emit("save")
 

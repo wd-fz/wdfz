@@ -19,7 +19,7 @@ const CHECKUP := {"room": "admin1", "from": 620.0, "to": 665.0, "warn": 600.0, "
 	"queue": [Vector2(1.45, 17.32), Vector2(2.22, 17.32), Vector2(3.0, 17.32), Vector2(3.78, 17.32), Vector2(4.55, 17.32)]}
 const LINES := ["十二点五十 坐回座位", "熄灯以后 别吃那碗饭", "镜子先动 就别再看", "喇叭叫你 先查记录本", "电梯的门 不等人"]
 const NOTE_SPOTS := [{"id": "admin", "room": "admin3", "c": 30, "r": 3, "where": "行政楼三楼办公室的抽屉"}, {"id": "guard", "room": "guard1", "c": 4, "r": 2, "where": "保安岗的值班台"}]
-const FORM := "体检表\n姓名：（三个认不出的字）　班级：高二（二）班\n身高：—　　体重：正常\n心率：0　　视力：5.0 / 5.0\n医生意见：合格。"
+const FORM := "体检表\n姓名：（三个认不出的字）　班级：高二（二）班\n身高：—　　体重：正常\n心率：0　　视力：5.0 / 5.0\n医生意见：合格。\n表尾的小字写着「演练用底表」。脉搏那格印着一个零，墨点和上面印好的格线连在一起。"
 
 var meal: Dictionary = {}       # {night, until, n}
 var raise := 0.0
@@ -157,7 +157,7 @@ func use_here() -> bool:
 		_say("我：窗口里的人没有回头。「明天再来。」")
 		return true
 	_pending = "meal"
-	_emit("choice", {"text": "熄了灯的食堂，只有这一个窗口亮着。打饭的人背对着我，台子上放着一碗热的。\n闻起来很香。香得不对。", "labels": ["吃一碗（游戏时间 %d 分钟）" % int(MEAL["min"]), "不吃"]})
+	_emit("choice", {"text": "熄了灯的食堂，只有这一个窗口亮着。打饭的人背对着我，台子上是一碗热的。饭香和中午一样，连有人在窗口敲两下饭盒的声音也一样。", "labels": ["吃一碗（游戏时间 %d 分钟）" % int(MEAL["min"]), "不吃"]})
 	return true
 
 
@@ -342,7 +342,7 @@ func _checkup_use() -> bool:
 	_emit("advance", {"minutes": float(CHECKUP["minutes"])})
 	(checkup["done"] as Dictionary)[_day_key()] = 1
 	_say("我：我站上去。没有人报数，尺子自己落下来，停在我头顶上方很高的地方。\n" + FORM)
-	_emit("clue", {"id": "checkupForm", "text": "体检表：身高「—」，心率「0」，医生意见「合格」。", "source": "行政楼一楼医务室"})
+	_emit("clue", {"id": "checkupForm", "text": "体检表的身高栏空着，心率栏预印了一个零。表尾写着「演练用底表」。", "source": "行政楼一楼医务室"})
 	_emit("saved")
 	return true
 
@@ -383,7 +383,7 @@ func note_text(i: int) -> String:
 	var names: PackedStringArray = []
 	for r: String in note_segment(i):
 		names.append(_room_name(r))
-	return "值班表（撕下的一页）\n" + " → ".join(names) + "\n若有事，另行处置。\n备注：高二（二）班 ×××，未离校。"
+	return "值班表（撕下的一页）\n" + " → ".join(names) + "\n若有事，另行处置。\n高二（二）班 ×××，未离校。表头「巡查员姓名」给裁掉了。"
 
 
 func _near_note(sp: Dictionary) -> bool:

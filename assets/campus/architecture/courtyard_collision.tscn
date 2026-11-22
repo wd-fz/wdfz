@@ -1,0 +1,81 @@
+[gd_scene format=3]
+
+[sub_resource type="CylinderShape3D" id="Cylinder_0"]
+radius = 0.22
+height = 3.15
+
+[sub_resource type="CylinderShape3D" id="Cylinder_1"]
+radius = 0.79
+height = 2.29
+
+[sub_resource type="BoxShape3D" id="PorticoPier"]
+size = Vector3(0.54, 1.39, 0.40)
+
+[sub_resource type="ConvexPolygonShape3D" id="PavilionSteps"]
+points = PackedVector3Array(2.28, -0.02, 0.0, 2.23619, -0.02, 0.44481, 2.10645, -0.02, 0.87252, 1.89575, -0.02, 1.2667, 1.6122, -0.02, 1.6122, 1.2667, -0.02, 1.89575, 0.87252, -0.02, 2.10645, 0.44481, -0.02, 2.23619, 0.0, -0.02, 2.28, -0.44481, -0.02, 2.23619, -0.87252, -0.02, 2.10645, -1.2667, -0.02, 1.89575, -1.6122, -0.02, 1.6122, -1.89575, -0.02, 1.2667, -2.10645, -0.02, 0.87252, -2.23619, -0.02, 0.44481, -2.28, -0.02, 0.0, -2.23619, -0.02, -0.44481, -2.10645, -0.02, -0.87252, -1.89575, -0.02, -1.2667, -1.6122, -0.02, -1.6122, -1.2667, -0.02, -1.89575, -0.87252, -0.02, -2.10645, -0.44481, -0.02, -2.23619, -0.0, -0.02, -2.28, 0.44481, -0.02, -2.23619, 0.87252, -0.02, -2.10645, 1.2667, -0.02, -1.89575, 1.6122, -0.02, -1.6122, 1.89575, -0.02, -1.2667, 2.10645, -0.02, -0.87252, 2.23619, -0.02, -0.44481, 1.88, 0.26, 0.0, 1.84388, 0.26, 0.36677, 1.73689, 0.26, 0.71944, 1.56316, 0.26, 1.04447, 1.32936, 0.26, 1.32936, 1.04447, 0.26, 1.56316, 0.71944, 0.26, 1.73689, 0.36677, 0.26, 1.84388, 0.0, 0.26, 1.88, -0.36677, 0.26, 1.84388, -0.71944, 0.26, 1.73689, -1.04447, 0.26, 1.56316, -1.32936, 0.26, 1.32936, -1.56316, 0.26, 1.04447, -1.73689, 0.26, 0.71944, -1.84388, 0.26, 0.36677, -1.88, 0.26, 0.0, -1.84388, 0.26, -0.36677, -1.73689, 0.26, -0.71944, -1.56316, 0.26, -1.04447, -1.32936, 0.26, -1.32936, -1.04447, 0.26, -1.56316, -0.71944, 0.26, -1.73689, -0.36677, 0.26, -1.84388, -0.0, 0.26, -1.88, 0.36677, 0.26, -1.84388, 0.71944, 0.26, -1.73689, 1.04447, 0.26, -1.56316, 1.32936, 0.26, -1.32936, 1.56316, 0.26, -1.04447, 1.73689, 0.26, -0.71944, 1.84388, 0.26, -0.36677)
+
+[node name="Courtyard" type="Node3D"]
+
+[node name="PavilionSteps" type="CollisionShape3D" parent="."]
+position = Vector3(101.18889, 0, 234.68222)
+shape = SubResource("PavilionSteps")
+
+[node name="GardenPost0" type="CollisionShape3D" parent="."]
+position = Vector3(102.68557, 1.57500, 235.30217)
+shape = SubResource("Cylinder_0")
+
+[node name="GardenPost1" type="CollisionShape3D" parent="."]
+position = Vector3(101.80884, 1.57500, 236.17891)
+shape = SubResource("Cylinder_0")
+
+[node name="GardenPost2" type="CollisionShape3D" parent="."]
+position = Vector3(100.56894, 1.57500, 236.17891)
+shape = SubResource("Cylinder_0")
+
+[node name="GardenPost3" type="CollisionShape3D" parent="."]
+position = Vector3(99.69220, 1.57500, 235.30217)
+shape = SubResource("Cylinder_0")
+
+[node name="GardenPost4" type="CollisionShape3D" parent="."]
+position = Vector3(99.69220, 1.57500, 234.06228)
+shape = SubResource("Cylinder_0")
+
+[node name="GardenPost5" type="CollisionShape3D" parent="."]
+position = Vector3(100.56894, 1.57500, 233.18554)
+shape = SubResource("Cylinder_0")
+
+[node name="GardenPost6" type="CollisionShape3D" parent="."]
+position = Vector3(101.80884, 1.57500, 233.18554)
+shape = SubResource("Cylinder_0")
+
+[node name="GardenPost7" type="CollisionShape3D" parent="."]
+position = Vector3(102.68557, 1.57500, 234.06228)
+shape = SubResource("Cylinder_0")
+
+[node name="GardenPost8" type="CollisionShape3D" parent="."]
+position = Vector3(94.98889, 1.14500, 234.86222)
+shape = SubResource("Cylinder_1")
+
+[node name="teachPierLeft" type="CollisionShape3D" parent="."]
+position = Vector3(116.46222, 0.695, 219.58556)
+shape = SubResource("PorticoPier")
+
+[node name="teachPierRight" type="CollisionShape3D" parent="."]
+position = Vector3(122.98222, 0.695, 219.58556)
+shape = SubResource("PorticoPier")
+
+[node name="labPierLeft" type="CollisionShape3D" parent="."]
+position = Vector3(108.96222, 0.695, 173.58556)
+shape = SubResource("PorticoPier")
+
+[node name="labPierRight" type="CollisionShape3D" parent="."]
+position = Vector3(115.48222, 0.695, 173.58556)
+shape = SubResource("PorticoPier")
+
+[node name="adminPierLeft" type="CollisionShape3D" parent="."]
+position = Vector3(110.46222, 0.695, 129.58556)
+shape = SubResource("PorticoPier")
+
+[node name="adminPierRight" type="CollisionShape3D" parent="."]
+position = Vector3(116.98222, 0.695, 129.58556)
+shape = SubResource("PorticoPier")

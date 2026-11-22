@@ -427,7 +427,8 @@ func _test_ending_cut() -> void:
 	check(EndingCut.intl_caption(0, "multilingual").begins_with("「Alle da?」") and EndingCut.intl_caption(0, "exam").begins_with("队尾的人回头") and EndingCut.intl_caption(3, "exam").contains("学校名字"), "the captions differ only in the first line by qualification")
 	check(EndingCut.face_lamp(0.1) == Color("#d23a2e") and EndingCut.face_lamp(0.2) == Color("#e8e4d2"), "the gate's lamp is red, then white")
 	check(EndingCut.face_fade(0.1) == 0.0 and EndingCut.face_fade(0.3) == 1.0 and is_equal_approx(EndingCut.face_fade(0.33), 0.5) and EndingCut.face_fade(0.6) == 0.0 and is_equal_approx(EndingCut.face_fade(0.95), 0.5), "black after the beep, clear outside, black at the end")
-	check(EndingCut.dis_stage(3.1) == 0 and EndingCut.dis_stage(7.8) == 2 and EndingCut.dis_stage(12.0) == 3 and EndingCut.dis_edge(3.2) == 1.0 and EndingCut.dis_edge(10.0) == 0.0 and EndingCut.dis_caption(14.0).begins_with("登记簿") and EndingCut.dis_caption(17.0).begins_with("你回过头"), "the four stages of the dismissal, fades and captions")
+	check(EndingCut.dis_stage(3.1) == 0 and EndingCut.dis_stage(7.8) == 2 and EndingCut.dis_stage(12.0) == 3 and EndingCut.dis_edge(3.2) == 1.0 and EndingCut.dis_edge(10.0) == 0.0 and EndingCut.dis_caption(12.5).contains("全体离校"), "the four stages of the dismissal, fades and captions")
+	check(EndingCut.dis_caption(14.0).contains("「哥」") and EndingCut.dis_caption(17.0).contains("现实中的教学楼"), "the dismissal cut marks the reunion on the real side of the gate")
 	check(EndingCut.portal_state(0.2)["charge"] < 1.0 and not EndingCut.portal_state(0.2)["open"] and EndingCut.portal_state(0.5)["open"] and EndingCut.portal_state(0.5)["enter"] == 0.0 and EndingCut.portal_state(1.0)["enter"] == 1.0, "the device charges, opens, then is entered")
 	var pc := EndingCut.portal_camera(0.55, Vector3.ZERO, 1.6)
 	var pe := EndingCut.portal_camera(1.0, Vector3.ZERO, 1.6)
@@ -443,7 +444,17 @@ func _test_ending_cut() -> void:
 func _test_opening() -> void:
 	check(OpeningCut.duration(false) == 26.0 and OpeningCut.duration(true) == 11.0 and OpeningCut.story_time(0.0, true) == OpeningCut.SHORT_FROM and OpeningCut.story_time(1.0, true) == 1.0 and OpeningCut.story_time(0.5, false) == 0.5,
 		"the opening is 26 s, the short version 11 s starting at the fourth part")
-	check(OpeningCut.line_at(0.1).begins_with("你是这学期转来的") and OpeningCut.line_at(0.22) == "" and OpeningCut.line_at(0.95).begins_with("下课铃没有响"), "the captions follow the storyboard")
+	for character: String in StudentCast.IDS:
+		var name := String(StudentCast.PEOPLE[character]["name"])
+		var full := OpeningStory.captions(character, false)
+		var brief := OpeningStory.captions(character, true)
+		check(OpeningCut.line_at(0.1, full).contains(name) and OpeningCut.line_at(0.22, full) == "" and OpeningCut.line_at(0.95, full).contains("下课铃没有响"), "the full storyboard introduces the selected student")
+		check(OpeningCut.line_at(0.65, brief).contains(name) and OpeningCut.line_at(0.98, brief).contains("保安岗"), "the abbreviated opening still gives a name and a destination")
+		var pages := OpeningStory.pages(character)
+		check(pages[2].contains("17 号工单") and pages[2].contains("签名最后一笔") and pages[3].contains("我替你应一声") and pages[4].contains("我趴到桌上") and pages[5].contains("长得像同桌"), "the deskmate leaves the marked ticket before the student wakes beside the lookalike")
+		var background := OpeningStory.background(character)
+		check(background.contains(name) and background.contains("晚饭") and background.contains("保安岗") and background.contains("签到册"), "the opening memory links the student's plans, the signature and the lead")
+		check(OpeningStory.background(character, true).contains("17 号工单"), "classmates can compare the shared number on their individual tickets in co-op")
 	check(OpeningCut.mate_pose("still", 0.0, 0.5, 0.0, 0.2) == Vector2.ZERO and OpeningCut.mate_pose("write", 0.08, 0.5, 0.0, 0.8) == Vector2.ZERO and OpeningCut.mate_pose("write", 0.08, 0.5, 0.0, 0.2).x > 0.0 and is_equal_approx(OpeningCut.mate_pose("turn", 0.08, 0.5, 1.0, 0.2).x, 0.02), "mates write, turn a page or stay, and sit up straight again after 70%")
 	check(OpeningCut.ease_k(-1.0) == 0.0 and OpeningCut.ease_k(2.0) == 1.0 and is_equal_approx(OpeningCut.ease_k(0.5), 0.5), "the easing is clamped")
 

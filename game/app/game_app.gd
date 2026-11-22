@@ -416,7 +416,7 @@ func _play_opening() -> void:
 		_show_classmates(classmates(),room,at,0)
 		_opening_cut.begin(world, room, player, ui, FileAccess.file_exists(seen), session.character_id)
 		return
-	ui.show_opening()
+	ui.show_opening(session.character_id)
 
 
 func _opening_done(_skipped: bool) -> void:
@@ -430,7 +430,7 @@ func _opening_done(_skipped: bool) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui.touch_enabled() else Input.MOUSE_MODE_CAPTURED
 	speedrun.start()
 	fact({"kind": "opening"})
-	ui.show_notice(RollcallCard.INVITATION)
+	ui.show_notice(OpeningStory.handover(session.character_id))
 
 
 ## TalentPick: the new-game talent screen (seven cards and a random pick).
@@ -948,11 +948,13 @@ func investigation_brief() -> String:
 	if inv == null: return ""
 	inv.set_context(_invest_context())
 	var paper := school().seat_card
-	var last := paper.evidence() if inv.current_focus() == "identity" else ""
+	var focus := inv.current_focus()
+	var last := paper.evidence() if focus == "identity" else ""
 	if last.is_empty() and paper.outstanding(): last = paper.entry()
 	if last.is_empty() and not inv.recent.is_empty():
 		last = String(inv.entries[inv.recent.back()]["text"])
 	if last.is_empty(): last = paper.entry()
+	if last.is_empty() and focus == "car" and inv.map_destination(focus) == "guard": last = OpeningStory.SIGNATURE
 	return inv.goal() + ("\n" + last if not last.is_empty() else "")
 
 
@@ -1101,6 +1103,8 @@ func _sync_world(seed_view: bool = true, senses_enabled: bool = true) -> void:
 		world.apply_lift_doors(lift)
 	if world != null and world.broadcast_props != null and broadcast() != null:
 		world.broadcast_props.set_fuse(bool(broadcast().b["fuse"]))
+	if world != null and world.scene_id == "lab1" and world.observation_props != null and investigation() != null:
+		world.observation_props.set_sample(investigation().paper_sample())
 	var outside := world
 	if world != null and world.resident: outside = router.resident.regions.get("out") as CampusWorld
 	if outside != null and outside.scene_id == "out" and school() != null:
@@ -1281,9 +1285,10 @@ func _refresh_interaction_prompt() -> void:
 		if radio_hint == "" and exchange() != null:
 			exchange().set_context(_exchange_context())
 			radio_hint = exchange().hint()
-		var hint := radio_hint if radio_hint != "" else rules.hint(session.world_id, player.capture_pose())
+		var prompt := {"text": radio_hint} if radio_hint != "" else rules.interaction_prompt(session.world_id, player.capture_pose())
+		var hint := String(prompt.text)
 		if hint == "西小门" and school().seat_card.clearance == 1 and not routes().data_synced: hint = ""
-		ui.show_prompt(hint)
+		ui.show_prompt(hint, prompt.get("reading", false))
 
 
 func _lift_crowd_step(delta: float) -> void:
@@ -1403,6 +1408,9 @@ func _campus_interact() -> void:
 
 func _apply_result(result: Dictionary) -> void:
 	if result.is_empty():
+		return
+	if result.has("observation"):
+		_invest_do(func(inv: InvestigationModule) -> void: inv.observe(result.observation))
 		return
 	if result.has("door"):
 		audio.play("foley.door")
@@ -3078,6 +3086,8 @@ func _apply_invest_events() -> void:
 		return
 	for e: Dictionary in inv.take_events():
 		match e["kind"]:
+			"stair_promise":
+				school().seat_card.stair_promise = true
 			"say":
 				ui.show_notice(String(e["text"]))
 			"save":
@@ -3129,9 +3139,12 @@ func _show_notes(query: String = "") -> void:
 	if not routes.any(func(r: Array) -> bool: return r[0] == focus):
 		focus = "car" if routes.any(func(r: Array) -> bool: return r[0] == "car") else ""
 	var listing := inv.list(query)
+	var background := ""
+	if campus().knows(session.world_id):
+		background = OpeningStory.background(session.character_id, is_instance_valid(lan) and lan.playing())
 	ui.show_notes({"goal": inv.goal(), "focus": focus, "routes": routes, "recent": listing["recent"], "groups": listing["groups"],
 		"progress": inv.progress(), "found": listing["found"], "query": query,
-		"landmark": inv.paper_landmark(),
+		"landmark": inv.paper_landmark(), "background": background,
 		"seat_record": school().seat_card.journal(), "duty": school().duty_summary(), "permanent": bool(patrol().pat["permanent"])})
 
 
@@ -3167,6 +3180,9 @@ func _explore_step(delta: float) -> void:
 func _map_label(r: Dictionary, c: int, row: int) -> String:
 	var key := "%s:%d:%d" % [r["id"], c, row]
 	var ch := String(r["grid"][row]).substr(c, 1)
+	if ch == "." and CampusObservations.INDOORS.has(r.id):
+		var site: Array = CampusObservations.INDOORS[r.id]
+		if c == site[0] and row == site[1] and investigation().visible("campus:" + String(r.id)): return "记"
 	var bag := items()
 	if bag != null and bag.pending_loot.has(key):
 		return "留"
@@ -3247,18 +3263,26 @@ func _show_map(selected: String = "", route: String = "") -> void:
 			if focus == "identity":
 				action = "找柜台上的底联" if destination == "guard" else ("向校外跨过白线" if school().seat_card.clearance > 0 else "到闸机前交底联")
 			elif destination == "guard":
-				action = "查柜台上的停车记录"
+				action = "到柜台核对停车单底联"
 			var bearing := MapView.landmark_note(landmark, plan["target"] - me, here_room != null, action)
 			note = bearing if not action.is_empty() else bearing + "\n" + note
 		plan["me"] = me
 		plan["ang"] = yaw_ang
+		var observations := PackedVector2Array()
+		for site: Dictionary in campus().observations("out"):
+			if notebook.visible("campus:" + String(site.id)):
+				var at: Vector2 = site.anchor
+				observations.append(CampusGeometry.to_world(null, at.x, at.y) / sc)
+		if not observations.is_empty():
+			plan["observations"] = observations
+			note += "\n空心方框是已经查过的现场。"
 		var view := ui.open_map(options, selected, head, note, known, focus)
 		view.show_plan(plan)
 		return
 	var r: Dictionary = campus().room(selected)
 	var hereb := selected == session.world_id
 	var view2 := ui.open_map(options, selected, "%s　北 ↑　%s已看清 %d%%" % [r["name"], "你在这一层　" if hereb else "", ex.percent(selected)],
-		"空白处还没看到过。桌、柜、架等字表示看到过，不代表搜过。\n梯 楼梯　电 电梯　廊 连廊　出 出口　锁 门锁着　✓ 已解决　留 有东西没拿　× 钥匙不匹配")
+		"空白处还没看到过。桌、柜、架表示看见过的家具。\n梯 楼梯　电 电梯　廊 连廊　出 出口　锁 门锁着　✓ 已解决　留 有东西没拿　× 钥匙不匹配　记 已记入笔记")
 	var me2 := Vector2.ZERO
 	if hereb:
 		var p2: Array = pose["position"]
@@ -5375,7 +5399,7 @@ func _apply_route_events(route: RoutesModule) -> void:
 ## story.js triggerEnding: the run is over; the save is cleared; the ending is recorded.
 func _reach_ending(id: String) -> void:
 	var fate := story()
-	var card := fate.trigger_ending(id, school().seat_card) if fate != null else {}
+	var card := fate.trigger_ending(id, school().seat_card, investigation().paper_sample() if investigation() != null else "") if fate != null else {}
 	if card.is_empty():
 		return
 	_clear_talent_view()
@@ -5433,7 +5457,7 @@ func _reach_ending(id: String) -> void:
 		if session != ending_session:
 			return
 		ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta, achievements().run_new_labels() if achievements() != null else PackedStringArray(),
-			"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""), memory)
+			"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""), memory, card.evidence)
 		ui.set_ending_wake(fake)
 	var world := _campus_world()
 	if (id == "dismissal" or id == "cyber") and session != null and session.world_id != "out" and DisplayServer.get_name() != "headless":

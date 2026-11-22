@@ -323,7 +323,10 @@ func controls(room_id: String, w: Vector2) -> Dictionary:
 		for f in range(1, 6):
 			labels.append("%d 层%s" % [f, "（开门）" if f == int(ride["origin"]) else ""])
 			values.append(f)
-	return {"choice": {"text": "轿厢里的按钮亮着。", "labels": labels, "values": values}}
+	var caption := "面板旁贴着教学楼的旧楼层表。常用的数字磨掉了一半，下面的按钮还能按。" if host == "teach" else "实验楼的按钮旁有一份运送仪器的旧表，逐层记过轿门净宽。"
+	if ride.get("rare", false):
+		caption = "检修表只印到五楼。金属板上原来五个按钮的位置还摸得出来，亮起来的只有 67 和 89。"
+	return {"choice": {"text": caption, "labels": labels, "values": values}}
 
 
 func press(target: Variant, room_id: String, pose: Dictionary) -> Dictionary:

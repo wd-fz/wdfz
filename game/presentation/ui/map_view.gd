@@ -51,7 +51,7 @@ static func tone(mark: String) -> String:
 		return "brass"
 	if mark == "锁" or mark == "×":
 		return "seal"
-	if mark == "✓" or mark == "开":
+	if mark in ["✓", "开", "记"]:
 		return "done"
 	if "梯电廊出".contains(mark):
 		return "route"
@@ -277,6 +277,9 @@ func _draw_plan() -> void:
 	for gate: Array in plan["gates"]:
 		var gp := Vector2((float(gate[1])-x0)*sc,(float(gate[2])-y0)*sc)
 		draw_rect(Rect2(gp-Vector2(2,2),Vector2(4,4)),Color("c8a24a"))
+	for point: Vector2 in plan.get("observations", []):
+		var dot := (point - Vector2(x0, y0)) * sc
+		draw_rect(Rect2(dot - Vector2(3, 3), Vector2(6, 6)), TONES.done, false, 1.2)
 	if plan.has("target"):
 		var pin: Vector2 = (plan["target"] - Vector2(x0, y0)) * sc
 		draw_arc(pin, 9, 0, TAU, 24, Color("#f4cd7b"), 2.5, true)

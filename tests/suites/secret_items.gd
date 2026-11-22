@@ -202,6 +202,7 @@ func test_app() -> void:
 	await _frames(2)
 	app.ui._ending_wake.pressed.emit()
 	check(app.story().ended=="" and app.school().day==3 and app.school().tsec==441 and app.session.world_id=="teach1" and app.player.seated,"wake returns to the own seat on the following morning")
+	check(app.ui.hud.visible and not app.ui.ending_panel.visible, "the false awakening restores the campus controls")
 	check(app.items().has("coin") and app.items().has("torch") and app.knife().done and not app.patrol().local_threat(),"waking retains other items and clears the capturing patrol")
 	check(app.school().pressure_clock>=app.school().game_clock() and app.saves.exists(),"wake immediately records the next-day pressure and saves")
 	app.load_game()

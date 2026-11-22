@@ -13,6 +13,7 @@ def content():
     for folder in ('game/core', 'game/features', 'game/app', 'game/infrastructure/network', 'game/presentation/world', 'game/presentation/actors'):
         files.update((ROOT / folder).rglob('*.gd'))
     files.update((ROOT / 'assets/campus').rglob('*.json'))
+    files.add(ROOT / 'assets/campus/architecture/courtyard_collision.tscn')
     entries = {p.relative_to(ROOT).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(files)}
     return {'version': 1, 'digest': hashlib.sha256(json.dumps(entries, sort_keys=True).encode()).hexdigest(), 'files': entries}
 

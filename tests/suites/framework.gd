@@ -124,6 +124,7 @@ func _test_app() -> void:
 	await _frames()
 	check(app.session != null and app.talent().id == "none" and app.session.character_id == StudentCast.DEFAULT, "one touch walks an ordinary student into the classroom")
 	check(app.ui.opening_on() and paused and not app.player.enabled, "the prologue plays first, with the game waiting")
+	check(app.ui._opening_text.text.contains("林澈") and app.ui._opening_text.text.contains("高二（二）班"), "the text opening establishes this student's name and class")
 	var t0 := app.school().tsec
 	for _i in TalentModule.KEYS.size() + 6:
 		app.ui._next_opening()
@@ -131,6 +132,7 @@ func _test_app() -> void:
 	check(not app.ui.opening_on(), "the pages run out")
 	app.ui.show_opening()
 	app.ui._end_opening(true)
+	check(app.ui.get_node("%Toast").text.contains("北门旁的保安岗") and app.ui.get_node("%Toast").text.contains("家里还等我"), "skipping still hands the player a reason and a place to investigate")
 	await _frames()
 	check(not paused and app.player.enabled and app.school().tsec == t0 and app.achievements().unlocked.has("n.opening"), "after the prologue the run begins where it stood: 第四节")
 	if app.session == null:

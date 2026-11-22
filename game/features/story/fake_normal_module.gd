@@ -13,7 +13,7 @@ const EVENTS := [
 	{"where": ["teach"], "seen": "课代表把作业收上来了，问我交没交。", "real": "他手里那摞本子最上面一本，名字是我的。"},
 	{"where": ["canteen"], "seen": "食堂阿姨多给我打了一勺菜。", "real": "勺子下面那层一直是温的。窗户外面没有人在排队。"},
 	{"where": ["out"], "seen": "保安在门口冲我点头。", "real": "他点头的幅度和昨天一模一样。我数了：三下。"},
-	{"where": ["teach"], "seen": "同桌借我的笔，说还挺好写。", "real": "我借出去的笔。我手里的笔还在。"},
+	{"where": ["teach"], "seen": "同桌借我的笔，说还挺好写。", "real": "我把笔攥在手心。他还是做完了拔笔帽、写字、还给我的三个动作。"},
 	{"where": ["teach", "lab"], "seen": "广播里念到我的名字，说我考得不错。", "real": "念名字的那个人，一个字也没有换气。"},
 	{"where": ["out"], "seen": "体育课点名，点到我的时候我答了一声。", "real": "没有人记。名单上那一行本来就是空的。"},
 	{"where": ["teach"], "seen": "走廊里有人喊我，说快点要上课了。", "real": "那个声音是从我背后贴着我耳朵发出来的。"},
@@ -108,7 +108,7 @@ func day_two() -> void:
 		fn["used"] = {}
 		fn["left"] = 4
 		fn["done"] = false
-		_emit("notice", {"text": "我：第二天。所有东西都回到了原来的位置，颜色也回来了。"})
+		_emit("notice", {"text": "我：第二天。窗帘又有了蓝色。课代表从第一排收起本子，嘴里还在念昨天收过的那一页。"})
 
 
 func active() -> bool:
@@ -139,7 +139,7 @@ func tick(dt: float, ctx: Dictionary) -> void:
 		fn["on"] = false
 		fn["done"] = true
 		_emit("fact", {"done": true, "laughs": laughs})
-		_emit("notice", {"text": "我：……天黑了。刚才那些都很正常，正常得不对。"})
+		_emit("notice", {"text": "我：刚才那些颜色一点点褪掉了。我试着回想，今天到底哪一刻听见过下课铃。"})
 		return
 	if float(fn["v"]) > 72.0 and not bool(fn["shown"]):
 		fn["shown"] = true

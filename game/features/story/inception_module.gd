@@ -161,7 +161,7 @@ static func near_exit(cell: Vector2i) -> bool:
 func exit_door(asked: bool) -> void:
 	if dream.is_empty() or dream["falling"]>0: return
 	if dream["spin"]=="":
-		if asked: _say("我：门把手转不动。……我还没确认过，这里是不是梦。")
+		if asked: _say("我：门把手卡住了。刚才躺的是宿舍的床。我得先看看陀螺在这层怎么转。")
 	elif dream["spin"]=="fall":
 		succeed("exit")
 	else:

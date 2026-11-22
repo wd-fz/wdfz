@@ -7,7 +7,7 @@ extends Node
 ##   2 something is off: the teacher beside the podium reads half a line, stops, starts again;
 ##   3 time stops: the chalk dust hangs in the air; the camera turns from the dust to "you";
 ##   4 falling: you slump onto the desk, eyes close, black;
-##   5 first person: the head comes up from the desk, a full room where nobody breathes;
+##   5 first person: the head comes up from the desk and turns toward the still deskmate;
 ##   6 handover.
 ## Old players (the opening was seen before) get only 4–6 (about 11 s). The world does not move
 ## (the app keeps the game paused), no SAN is spent, nothing appears, no saving. Click, Space, Enter or Esc skip;
@@ -25,13 +25,7 @@ const R0 := 7.0
 const MID := 11.0
 const AISLE_N := 9.5
 const AISLE_S := 12.5
-const LINES := [
-	[0.03, 0.21, "你是这学期转来的。高二（二）班，第四节，语文。"],
-	[0.24, 0.40, "老师在念一篇课文，念到一半，又从头念了一遍。"],
-	[0.42, 0.57, "粉笔灰在光里飘。你开始数秒：一，二，三……数到第七秒，它们停在了半空。"],
-	[0.59, 0.71, "眼皮很重。黑板上的字开始往下淌。你把脸埋进胳膊里。"],
-	[0.79, 0.92, "你睁开眼。教室里还是坐满了人。只是没有一个人在呼吸。"],
-	[0.93, 1.01, "下课铃没有响。它，已经知道你醒了。"]]
+const CAPTION_TIMES := [[0.03, 0.21], [0.24, 0.41], [0.42, 0.58], [0.59, 0.76], [0.78, 0.925], [0.93, 1.01]]
 
 var on := false
 var short := false
@@ -48,6 +42,7 @@ var _root: Node3D
 var _other_teacher: OtherworldFigure
 var _teacher: StudentAvatar
 var _me: StudentAvatar
+var _deskmate: OtherworldFigure
 var _dust: MultiMeshInstance3D
 var _dust_data: Array = []
 var _flow := 0.0
@@ -57,6 +52,7 @@ var _board := Vector3.ZERO
 var _dust3 := Vector3.ZERO
 var _cams: Array = []
 var _caption := ""
+var _lines: PackedStringArray
 var _classroom: ClassmatesView
 var _mates: Array = []          # {node, base_y, kind, amp, f, ph}
 
@@ -66,10 +62,10 @@ static func duration(is_short: bool) -> float:
 
 
 ## The caption line at the storyboard time K (0..1 of the full version), "" between lines.
-static func line_at(kk: float) -> String:
-	for l: Array in LINES:
-		if kk >= float(l[0]) and kk < float(l[1]):
-			return String(l[2])
+static func line_at(kk: float, lines: PackedStringArray) -> String:
+	for i in CAPTION_TIMES.size():
+		var interval: Array = CAPTION_TIMES[i]
+		if kk >= float(interval[0]) and kk < float(interval[1]): return lines[i]
 	return ""
 
 
@@ -100,6 +96,7 @@ func begin(world: Node3D, room: Dictionary, player: PlayerController, ui: GameUI
 	_lighting = world.lighting if world is CampusWorld else null
 	_normal_before = ui.scene_post().world_normal
 	short = is_short
+	_lines = OpeningStory.captions(character, is_short)
 	ui.cut_mode(true)
 	k = 0.0
 	on = true
@@ -139,6 +136,12 @@ func begin(world: Node3D, room: Dictionary, player: PlayerController, ui: GameUI
 	_me.position = _cell(C0 + 3.8, MID + 0.39, 0.0)
 	_me.rotation.y = PI / 2.0
 	_me.advance("sit", 0.0)
+	# The seat across the shared desktop is empty in the procedural classroom layout.
+	_deskmate = OtherworldFigure.make("sit")
+	_deskmate.name = "StillDeskmate"
+	_root.add_child(_deskmate)
+	_deskmate.position = _cell(C0 + 3.82, MID - 0.39, 0.0)
+	_deskmate.rotation.y = PI / 2.0
 	_build_dust()
 	# The classmates' small movements: some write (nodding forward again and again), some turn a page (a little turn), some stay.
 	_classroom = world.get_node_or_null("Classmates") as ClassmatesView
@@ -242,6 +245,7 @@ func _apply(kk: float) -> void:
 		book.seek(fmod(read_time*DUR_FULL,book.current_animation_length),true)
 	_teacher.visible = kk < .72
 	_other_teacher.visible = kk >= .72
+	_deskmate.visible = kk >= .76
 	_other_teacher.face.rotation = Vector3(-.18, .7*phase(kk,.72,.79), -.11)
 	_me.visible = kk < .735
 	if _me.animation != null and _me.animation.is_playing() and _me.animation.current_animation_length > 0:
@@ -253,7 +257,7 @@ func _apply(kk: float) -> void:
 		if is_instance_valid(m["node"]):
 			var pz := mate_pose(String(m["kind"]), float(m["amp"]), float(m["f"]), float(m["ph"]), kk)
 			(m["node"] as Node3D).rotation = Vector3(pz.x, float(m["base_y"]) + pz.y, 0.0)
-	var line := line_at(kk)
+	var line := line_at(kk, _lines)
 	if line != _caption:
 		_caption = line
 		_ui.cut_caption(line)
@@ -312,8 +316,12 @@ func _apply(kk: float) -> void:
 		var pos := _seat_eye + fwd * 0.28 * (1.0 - t5)
 		pos.y = _seat_eye.y + lerpf(-0.19, 0.0, t5)
 		var pitch := lerpf(-0.62, 0.0, t5)
+		var glance := phase(kk, 0.80, 0.85) * (1.0 - phase(kk, 0.90, 0.95))
+		var toward := _deskmate.position + Vector3.UP * 1.13 - pos
+		var yaw := lerp_angle(_seat_yaw, atan2(-toward.x, -toward.z), glance)
+		pitch = lerpf(pitch, atan2(toward.y, Vector2(toward.x, toward.z).length()), glance)
 		cam.position = pos
-		cam.rotation = Vector3(pitch, _seat_yaw, 0.0)
+		cam.rotation = Vector3(pitch, yaw, 0.0)
 		_ui.cut_fade(1.0 - (kk - 0.76) / 0.06 if kk < 0.82 else 0.0)
 
 

@@ -58,9 +58,14 @@ func _run() -> void:
 
 
 func _run_features() -> void:
+	var fieldwork := preload("res://tests/suites/campus_observations.gd").new(self)
+	print("CASE: campus_observations")
+	fieldwork.test_sites()
+	await fieldwork.test_authority()
 	var streaming := preload("res://tests/suites/campus_streaming.gd").new(self)
 	print("CASE: campus_streaming")
 	streaming.test_connections()
+	streaming.test_campus_fittings()
 	streaming.test_daylight()
 	await streaming.test_queue_and_late_seeds()
 	await streaming.test_residency()
@@ -627,6 +632,8 @@ func _run_features() -> void:
 
 
 func _run_integration() -> void:
+	print("CASE: campus_observations.test_player")
+	await preload("res://tests/suites/campus_observations.gd").new(self).test_player()
 	var integration := preload("res://tests/suites/integration.gd").new(self)
 	var presentation := preload("res://tests/suites/presentation.gd").new(self)
 	print("CASE: integration._test_campus_app")

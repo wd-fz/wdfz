@@ -459,6 +459,16 @@ func interact(a: CooperativeActor) -> void:
 
 func apply_result(a: CooperativeActor, result: Dictionary) -> void:
 	if result.is_empty(): return
+	if result.has("observation"):
+		var site: Dictionary = result.observation
+		if site.id == "lab1" and not sim.lease("investigation|lab1:paper", a.id):
+			a.event("notice", {"text": "队友正握着打孔杆。"})
+			return
+		var notebook := a.feature(&"story.investigation") as InvestigationModule
+		notebook.set_context(CooperativeContext.investigation(a))
+		notebook.observe(site)
+		drain(a, "investigation")
+		return
 	for key: String in ["notice", "toast"]:
 		if result.has(key): a.event("notice", {"text": result[key]})
 	if result.has("pose"): a.pose = result["pose"].duplicate(true)
@@ -653,6 +663,7 @@ func drain(a: CooperativeActor, source: String) -> void:
 
 func apply_event(a: CooperativeActor, source: String, e: Dictionary) -> void:
 	match String(e["kind"]):
+		"stair_promise": a.school().seat_card.stair_promise = true
 		"paper_gate": _choice(a, "paper_gate", e)
 		"gate_chime": a.event("sound", {"cue": "ui.beep"})
 		"smile", "sound": a.event(String(e["kind"]), e)

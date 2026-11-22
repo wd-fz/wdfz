@@ -6,9 +6,10 @@ extends SubViewport
 
 const LOG := [[0.25, "$ campusctl shutdown --confirm"], [0.75, "stop attendance ............ OK"], [1.35, "stop doors ................. OK"],
 	[1.95, "broadcast: 全体同学请注——"], [2.25, "stop observation ........... OK"], [2.75, "stop control ............... OK"]]
-const PAIRS := [["首次部署：2026-09-01", "部署前：无任何异常记录", "纸质档案扫描：1987 年", "走廊里出现不在值班表上的人"],
-	["巡察行为：全部由控制器产生", "断链即全部停止", "断链故障记录：控制链离线后", "仍收到回执（签发节点：——）"],
-	["退出身份：已注销", "数据已删除", "「注销」字段原始定义：", "转交上层保管"]]
+const PAIRS := [["用途仅限疏散演练", "使用校园模型", "17 号工单 · 研究组", "让模型里的动作改变实物"],
+	["现场只采集数据", "学生照常上课", "现实教室 · 第四节", "身体仍在座，意识接入模型"],
+	["校内实物保持原状", "试点结束即可撤场", "停机开盒 · 观察联", "甲纸右边缺了一块，乙纸完整"]]
+const FIELD_RESULT := "实物复核：纸屑吻合"
 const HEAD := 7.35
 const COLS := 7.6
 const ROWS := [7.9, 8.6, 9.3]
@@ -114,7 +115,10 @@ func _draw_canvas() -> void:
 	for op: Dictionary in archive_ops(size,portrait,_st,measure):
 		if op["kind"] == "text":
 			var face: Font = _mono if op["mono"] else (_bold if op["bold"] else font)
-			_text(face,op["text"],op["pos"].x,op["pos"].y,op["size"],op["color"])
+			var font_size: int = op["size"]
+			# The archive positions use an em-high line box. Centre the font's extra leading in it.
+			var top: float = op["pos"].y - (face.get_height(font_size) - font_size) * 0.5
+			_text(face,op["text"],op["pos"].x,top,font_size,op["color"])
 		else:
 			_canvas.draw_rect(op["rect"],op["color"],false,op["line"])
 
@@ -154,7 +158,8 @@ static func archive_ops(extent: Vector2i, vertical: bool, st: Dictionary, measur
 			var wb := minf(col_w,maxf(measure.call(p[2],fs),measure.call(p[3],fs)))+fs*.6
 			for spec: Array in [[a,wa],[b,wb]]:
 				ops.append({"kind":"rect","rect":Rect2(spec[0]-Vector2(fs*.3,fs*.25),Vector2(spec[1],lh*1.95)),"color":Color("#e0473b"),"line":maxf(2,fs*.12)})
-			var at := Vector2(w-pad-fs*1.2,a.y+lh*1.1) if vertical else Vector2(pad+col_w+pad*.5-fs*.45,a.y+lh*.15)
-			_add_text(ops,"≠",at,roundi(fs*1.4),"#e0473b",true)
-	if s>=9: _add_text(ops,"签发节点：未知"+("" if int(st["blink"])==1 else " ▌"),Vector2(pad,h-pad-lh*1.2),fs,"#e0473b",true)
+			var mark_size := roundi(fs*1.4)
+			var at := Vector2(w-pad-fs*1.2,a.y+lh*1.1) if vertical else Vector2(b.x-fs*.6-measure.call("≠",mark_size),a.y+lh*.15)
+			_add_text(ops,"≠",at,mark_size,"#e0473b",true)
+	if s>=9: _add_text(ops,FIELD_RESULT+("" if int(st["blink"])==1 else " ▌"),Vector2(pad,h-pad-lh*1.2),fs,"#e0473b",true)
 	return ops

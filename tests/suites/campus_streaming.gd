@@ -54,6 +54,34 @@ func test_queue_and_late_seeds() -> void:
 	stream.clear()
 
 
+## The exporter folds small furniture batches into static geometry on lower tiers.
+## Every table still needs exactly one replacement at its playable tile.
+func test_campus_fittings() -> void:
+	for tier in [0, 2, 3]:
+		var canteen := CampusArchitecture.refit(CampusData.instantiate_model("canteen1", tier), "canteen1")
+		var dining := canteen.find_child("CanteenTable", true, false) as MultiMeshInstance3D
+		check(dining != null and dining.multimesh.instance_count == 90, "all dining tables have benches at tier %d" % tier)
+		if dining != null:
+			var room := CampusData.layout("canteen1")
+			var tiles := {}
+			for i in dining.multimesh.instance_count:
+				var p := CampusPreview.instance_transform(dining, i).origin
+				tiles[CampusGeometry.to_world(room,p.x,p.z)] = true
+			for r in int(room.rows):
+				for c in int(room.cols):
+					if String(room.grid[r]).substr(c,1) == "t":
+						check(tiles.has(CampusGeometry.tile_center(room,c,r)), "dining table shares its gameplay footprint")
+		canteen.free()
+	var bridge := CampusWorld.build_visual("link2", 0)
+	var frame := bridge.find_child("Frame", true, false) as MeshInstance3D
+	check(frame != null, "the orange walkway uses the structural model in previews")
+	if frame != null:
+		var faces := frame.mesh.generate_triangle_mesh()
+		check(faces.intersect_segment(Vector3(0,1.65,-11.9),Vector3(0,1.65,11.9)).is_empty(), "the truss leaves the crossing clear")
+		check(not faces.intersect_segment(Vector3(0,4.3,4.5),Vector3(0,3.4,4.5)).is_empty(), "the pitched roof spans the deck")
+	bridge.free()
+
+
 func test_connections() -> void:
 	for door: Dictionary in CampusData.campus()["campus_doors"]["doors"]:
 		var id := String(door["room"])

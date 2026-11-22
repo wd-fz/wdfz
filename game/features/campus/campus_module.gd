@@ -32,6 +32,7 @@ var _open_doors: Dictionary = {}
 var _line := 0
 var _walk_stair_rooms := {}
 var _entry_actions := {}
+var _observations := {}
 ## Plate and tried state for the 'V' hint (the garage module).
 var car_hint: Callable
 ## Facility hints and the outdoor rest (the facilities module).
@@ -331,7 +332,27 @@ func _tile_actionable(hit: Dictionary, room: Dictionary) -> bool:
 
 
 ## Prompt shown for the current spot.
+func observations(world_id: String) -> Array:
+	if not _observations.has(world_id):
+		_observations[world_id] = CampusObservations.sites(world_id, room(world_id), _stair_layout())
+	return _observations[world_id]
+
+
+func observation_at(world_id: String, pose: Dictionary) -> Dictionary:
+	return CampusObservations.target(observations(world_id), world_id, room(world_id), pose, _open_doors)
+
+
 func hint(world_id: String, pose: Dictionary) -> String:
+	return interaction_prompt(world_id, pose).text
+
+
+func interaction_prompt(world_id: String, pose: Dictionary) -> Dictionary:
+	var site := observation_at(world_id, pose)
+	if not site.is_empty(): return {"text": "查看" + String(site.title), "reading": true}
+	return {"text": _ordinary_hint(world_id, pose)}
+
+
+func _ordinary_hint(world_id: String, pose: Dictionary) -> String:
 	var p: Array = pose["position"]
 	if world_id == "out":
 		var here_w := CampusGeometry.to_world(null, float(p[0]), float(p[2]))
@@ -397,6 +418,8 @@ func _exit_is_open(r: Dictionary, w: Vector2) -> bool:
 ## Press E without a physical interactable in front (interact.js tryInteract, ported branches).
 ## Returns {"notice": String, "travel": {"world", "pose"}?, "door": {"key", "open"}?}.
 func interact_at(world_id: String, pose: Dictionary) -> Dictionary:
+	var site := observation_at(world_id, pose)
+	if not site.is_empty(): return {"observation": site}
 	var p: Array = pose["position"]
 	var ang := CampusGeometry.ang_from_yaw(float(pose["yaw"]))
 	if world_id == "out":

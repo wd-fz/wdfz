@@ -251,6 +251,8 @@ func _process(dt: float) -> bool:
 		ending_wait += dt
 		if ending_wait >= (3.0 if role == "host" else 1.0):
 			check(network.room.ending == "face" and state.get("life", {}).get("ended") == "face", "real ENet client receives shared whitelist ending")
+			var notes: Dictionary = state.session.modules["story.investigation"].data.entries
+			check(notes.has("paper:lesson:B") and not notes.has("paper:lesson:A"), "reconnected clients receive the same performed paper experiment")
 			if role == "guest-1": check(network.local_id == saved_identity, "route survives original-member reconnect")
 			finish()
 	if _play_interval_complete():
@@ -452,12 +454,16 @@ func _ending_host() -> void:
 	var route := sim.shared[&"story.routes"] as RoutesModule
 	var guest := sim.actor(String(sim.actors.keys()[1]))
 	if stage == 0 and elapsed > 2:
+		var site: Dictionary = sim.campus().observations("lab1")[0]
+		var normal: Vector2 = site.normal
+		var at: Vector2 = site.anchor + normal
+		sim.travel(guest, "lab1", {"position": [at.x, 0.05, at.y], "yaw": CampusGeometry.yaw_from_ang((-normal).angle()), "pitch": 0.0})
 		a.bag().add("usb")
 		sim.inventory.reconcile(a)
 		sim.travel(a, "lab3", _terminal_pose("lab3"))
 		network.command("interact", {"scene": a.scene_version})
 		stage = 1
-	elif stage == 1 and route.hacked and elapsed > 4:
+	elif stage == 1 and route.hacked and elapsed > 4 and (sim.shared[&"story.investigation"] as InvestigationModule).paper_sample() == "乙":
 		check(route.hacked, "network command writes whitelist from actual terminal")
 		sim.travel(guest, "admin3", _terminal_pose("admin3"))
 		stage = 2
@@ -477,6 +483,11 @@ func _ending_member(dt: float) -> void:
 		var route: Dictionary = state["session"]["modules"]["story.routes"]["data"]
 		if not route["data"]: network.command("interact", {"scene": state["scene"]})
 	var choice: Dictionary = state.get("choice", {})
+	if role != "host" and state.session.world_id == "lab1":
+		if choice.get("source") == "investigation":
+			network.command("choice", {"scene": state.scene, "choice_id": choice.id, "index": 1})
+		elif not state.session.modules["story.investigation"].data.entries.has("paper:lesson:B"):
+			network.command("interact", {"scene": state.scene})
 	if role == "host" and not choice.is_empty() and choice.get("source") == "routes" and int(choice["id"]) != last_choice:
 		last_choice = int(choice["id"])
 		var route: Dictionary = state["session"]["modules"]["story.routes"]["data"]

@@ -116,7 +116,7 @@ func step(dt: float, ctx: Dictionary) -> void:
 	_emit("settle", {"source": "void_lost", "fx": "void", "text": "黑暗里，我已经想不起自己是从哪扇门进来的。"})
 	if not told_long and elapsed > 300.0:
 		told_long = true
-		_emit("notice", {"text": "我：在这里待得越久，越难想起外面是什么样子。得找到门。"})
+		_emit("notice", {"text": "我：白墙上连个楼层号都没有。我现在只想认出一扇能回校内的门。"})
 	sound_left -= dt
 	if sound_left <= 0.0:
 		sound_left = 24.0 + _rng.randf() * 36.0
@@ -140,7 +140,7 @@ func finish_respawn() -> Dictionary:
 	if not active or not respawning:
 		return {}
 	respawning = false
-	return {"pose":geometry.spawn(_rng), "text":"我：又回到了这里。四面还是那几堵白墙。" if falls>1 else "我：……我站在一开始的地方。身上没有伤，心跳得很快。"}
+	return {"pose":geometry.spawn(_rng), "text":"我：又是这几堵白墙。墙脚的铅笔线连歪出去的那一小截都没变。" if falls>1 else "我：……我站在一开始的地方。身上没有伤，心跳得很快。"}
 
 
 func nearby_exit(feet: Vector3, airborne: bool) -> Dictionary:

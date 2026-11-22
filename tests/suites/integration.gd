@@ -581,7 +581,6 @@ func _test_dismissal_route(app: GameApp) -> void:
 	for k: String in ["notice1", "notice2", "notice3", "notice4"]:
 		app.items().add(k)
 	var radio := app.broadcast()
-	radio.b["book"] = true
 	radio.b["fuse"] = true
 	var a2 := CampusData.layout("admin2")
 	var station := _spot("admin2", BroadcastModule.STATION) + Vector2(0, 9)
@@ -590,6 +589,11 @@ func _test_dismissal_route(app: GameApp) -> void:
 	app._campus_interact()
 	await _frames(2)
 	check(app.ui.choice_open(), "E at the station opens its menu")
+	app._choice_made(0)
+	await _frames(2)
+	var radio_book := String(app.investigation().entries.get("broadcastBook", {}).get("text", ""))
+	check(radio_book.contains("暂留") and radio_book.contains("一起唤醒") and radio_book.contains("现实教室睁眼"), "the broadcast book explains whom the wake signal reaches")
+	app._campus_interact()
 	app._choice_made(3)
 	await _frames(2)
 	check(app._mic_open and not app.ui.choice_open() and app._mic_panel.visible and not app.get_tree().paused, "the microphone panel opens without pausing the world")
@@ -618,6 +622,7 @@ func _test_dismissal_route(app: GameApp) -> void:
 			break
 	await _skip_cut(app)
 	check(won and app.story().ended == "dismissal" and app.ui.ending_panel.visible, "following the crowd out of the north gate is 《放学》")
+	check(is_instance_valid(app.ui._ending_text) and app.ui._ending_text.text.contains("现实的课桌上睁开") and app.ui._ending_text.text.contains("接过她的书包") and app.ui._ending_text.text.contains("我在楼梯间醒过来"), "the students wake in class before the real reunion at the north gate")
 	check(app.achievements().unlocked.has("e.end_dismissal"), "with its achievement")
 	app.return_to_menu()
 	DirAccess.remove_absolute(app._profile_path())
@@ -646,6 +651,14 @@ func _test_cyber_route(app: GameApp) -> void:
 	app._choice_made(2)
 	await _frames(2)
 	check(app.ui.terminal_open() and not app.player.enabled, "the terminal opens and takes the keyboard")
+	app.ui.terminal_command.emit("cat /school/archive.txt")
+	var archive := String(net.puzzle["history"].back())
+	check(archive.contains("模型内，试员") and archive.contains("进来以后才挑的右边") and archive.contains("甲纸右边掉下一小片，乙纸还完整"), "separately recorded actions and observations agree on the notch and control")
+	check(archive.contains("断电以后") and archive.contains("学生仍伏在原座") and archive.contains("入场前四边完整"), "the physical evidence survives shutdown while the observers document the real classroom")
+	app.ui.terminal_command.emit("cat /school/company.txt")
+	var work_order := String(net.puzzle["history"].back())
+	check(work_order.contains("17 号工单") and work_order.contains("模型里发生过的事") and work_order.contains("身体留在现实教室"), "the research protocol identifies the artificial environment and the bodies outside it")
+	check(work_order.contains("实物保持原状") and work_order.contains("底联配对") and work_order.contains("事前不得知道孔位"), "the internal trial protocol contradicts the explanation supplied to the school")
 	for line: String in _solve_lines(net.puzzle):
 		app.ui.terminal_command.emit(line)
 		await _frames(1)
@@ -659,6 +672,7 @@ func _test_cyber_route(app: GameApp) -> void:
 	await _frames(2)
 	await _skip_cut(app)
 	check(app.story().ended == "cyber" and app.ui.ending_panel.visible, "surviving ten minutes is 《网安仙人》")
+	check(app.ui._ending_text.text.contains("现实教室睁开眼") and app.ui._ending_text.text.contains("断开的纸毛都对得上"), "the ending card confirms that the model shuts down and the physical evidence remains")
 	check(app.achievements().unlocked.has("e.end_cyber"), "with its achievement")
 	app.return_to_menu()
 	DirAccess.remove_absolute(app._profile_path())

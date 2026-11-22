@@ -9,6 +9,7 @@ extends Node3D
 const WALL_TOP := 10.0     # the bell tower top platform is at 6.4 m
 const WALL_BOTTOM := -0.5
 const BOUNDARY := 1.0
+const GEOMETRY_NODES := [&"Model", &"Collision", &"Doors", &"ColdGeometry"]
 
 @export var scene_id := "out"
 
@@ -24,6 +25,7 @@ var ground_items: GroundItems
 var _traces_seen := -1
 var _trace_data: Array=[]
 var broadcast_props: BroadcastProps
+var observation_props: ObservationProps
 var _fixed_props: Node3D
 var _west_display: Label3D
 var _west_cleared := false
@@ -125,6 +127,12 @@ func set_fixed_props_visible(value: bool) -> void:
 		_fixed_props = Node3D.new()
 		_fixed_props.name = "FixedProps"
 		add_child(_fixed_props)
+		var sites := CampusData.rules().observations(scene_id)
+		if not sites.is_empty():
+			observation_props = ObservationProps.new()
+			observation_props.name = "Observations"
+			_fixed_props.add_child(observation_props)
+			observation_props.build(scene_id, sites, visual_ground.height)
 		if scene_id == "out":
 			var reader := preload("res://game/presentation/world/campus/west_gate_reader.tscn").instantiate() as Node3D
 			var centre := CampusGeometry.gate_center(CampusData.campus(), "w") + Vector2(RollcallCard.EXIT_OFFSET, -RollcallCard.EXIT_NORTH)
@@ -151,6 +159,17 @@ func show_west_clearance(accepted: bool) -> void:
 	_west_display.modulate = Color("#8ef4b1") if accepted else Color("#e0d4ad")
 
 
+## A cut set in the physical school keeps the architecture and lighting. Return
+## only what this call hid so skipping the cut restores the previous visibility.
+func hide_run_props() -> Array[Node3D]:
+	var hidden: Array[Node3D] = []
+	for child in get_children():
+		if child is Node3D and child.visible and child != lighting and child.name not in GEOMETRY_NODES:
+			child.hide()
+			hidden.append(child)
+	return hidden
+
+
 func deactivate(keep_lighting: bool = false) -> void:
 	if not runtime_active: return
 	runtime_active = false
@@ -159,7 +178,7 @@ func deactivate(keep_lighting: bool = false) -> void:
 	for child: Node in get_children():
 		if child == _fixed_props: continue
 		if child == lighting and keep_lighting: continue
-		if child.name not in ["Model", "Collision", "Doors", "ColdGeometry"]:
+		if child.name not in GEOMETRY_NODES:
 			remove_child(child)
 			child.free()
 	if keep_lighting:
@@ -433,6 +452,7 @@ func _load_visual(id: String) -> Node3D:
 static func build_visual(id: String, quality: int) -> Node3D:
 	var model := CampusData.instantiate_model(id)
 	if model == null: return null
+	model = CampusArchitecture.refit(model, id)
 	StairLining.add_to_model(model, id)
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
@@ -441,6 +461,7 @@ static func build_visual(id: String, quality: int) -> Node3D:
 	if id != "garage1":
 		CampusBatches.optimize(model)
 		CampusMeshCells.apply(model)
+	if id == "out": CampusArchitecture.add_courtyard(model, false)
 	return model
 
 
@@ -702,6 +723,7 @@ func _build_model(model: Node3D = null) -> void:
 func _prepare_visual(tier: int, model: Node3D = null) -> Node3D:
 	if model == null: model = CampusData.instantiate_model(scene_id, tier)
 	if model == null: return null
+	model = CampusArchitecture.refit(model, scene_id)
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
 			_to_multimesh(mesh)
@@ -717,23 +739,9 @@ func _prepare_visual(tier: int, model: Node3D = null) -> Node3D:
 	StairLining.add_to_model(model, scene_id)
 	if resident and scene_id == "teach6":
 		CampusShell.carve_box(model, AABB(Vector3(-2.85,0,7.5),Vector3(1.7,4,3)))
-	if resident and scene_id in CampusSpace.BRIDGES:
-		var floor := MeshInstance3D.new()
-		var slab := BoxMesh.new()
-		var material := StandardMaterial3D.new()
-		material.albedo_color = Color("#827b75")
-		var width := space.local_bounds(scene_id).size
-		slab.size = Vector3(width.x, .15, width.y)
-		slab.material = material
-		floor.name = "BridgeDeck"
-		floor.mesh = slab
-		floor.position.y = -.075
-		model.add_child(floor)
-		var roof := floor.duplicate() as MeshInstance3D
-		roof.name = "BridgeRoof"
-		roof.position.y = StairLining.WALL_HEIGHT + .075
-		model.add_child(roof)
 	SceneMaterials.apply(model, material_quality())
+	if streamed_detail and model.has_node("Furnishings"):
+		CampusBatches.optimize(model.get_node("Furnishings"))
 	# The open garage has almost no hidden geometry from its normal view. Profiling
 	# showed partitioning/CPU occlusion added overhead there; preserve its batches.
 	if scene_id != "garage1" and not streamed_detail:
@@ -753,6 +761,7 @@ func _prepare_visual(tier: int, model: Node3D = null) -> Node3D:
 				model.add_child(panel)
 		CampusMeshCells.apply(model, not resident)
 		if not (resident and scene_id == "out"): CampusBatches.add_occluder(model)
+	if scene_id == "out": CampusArchitecture.add_courtyard(model, resident)
 	return model
 
 
@@ -1455,6 +1464,7 @@ func _build_collision() -> void:
 					remaining.append_array(CampusSpace.subtract_rect(part,opening))
 				parts=remaining
 			for part in parts: _add_box(body,part,WALL_BOTTOM,WALL_TOP,b.k)
+		CampusArchitecture.add_courtyard_collision(body)
 		var bd: Dictionary = layout["bound"]
 		var inner := Rect2(Vector2(bd["x0"], bd["z0"]), Vector2(float(bd["x1"]) - float(bd["x0"]), float(bd["z1"]) - float(bd["z0"])))
 		_ring(body, inner, [])

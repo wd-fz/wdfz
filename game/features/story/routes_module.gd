@@ -37,15 +37,25 @@ const EXPLANATIONS := [
 ]
 ## story.js ENDINGS (public ones): title, true ending, lines.
 const ENDINGS := {
-	"inception":{"t":"《盗梦空间》","secret":true,"l":["我在一间真的房间里醒来。","阳光照在床头的课本上，窗外没有广播。","桌上的陀螺还在转。","我没有等它停下来。"]},
+	"inception":{"t":"《盗梦空间》","secret":true,"l":["我睁开眼，摸到床沿上小时候磕出的那道豁口。","阳光照在床头的课本上，窗外没有广播。","桌上的陀螺还在转。","我没有等它停下来。"]},
 	"knife":{"t":"《管制刀具》","secret":true,"fake":true,"l":["压在头顶的手停住了。","「管制刀具。」它把小刀收进一个透明袋子，递给你一张登记单。","登记单上早就填好了你的名字，后面写着：留校。","东西被收走了。你还在这里。"]},
-	"beast": {"t":"《先 辈》", "secret":true, "l":["门是被从外面撞开的。","你看清了那个背影——穿着很多年前的校服，一直在往外跑。","你跟着他跑了出去。","整座学校，第一次有了颜色。"]},
-	"dismissal": {"t": "《放学》", "true": true, "l": ["通知稿最后一句，从学校每一只喇叭里同时响起。", "长铃响着，同学们收好书包，从北门走了出去。", "登记簿翻到新的一页：放学 · 全体。", "你回头时，教学楼的灯一层一层熄了。", "明天见。"]},
-	"cyber": {"t": "《网安仙人》", "true": true, "l": ["服务器接受了最后一条指令。名单、门禁和巡察停止运行。", "AnthroPrank AI（安抄派智能）的校园试点终止了。更早的纸质档案和断链后的回执，仍没有答案。", "您未能完全理解里世界"]},
-	"car": {"t": "《闸 门》", "true": true, "l": ["你踩下油门的时候，雨刷自己动了起来。", "后视镜里，教学楼的窗户一扇一扇地暗下去，像有人在挨个关灯。", "开出校门很远，你才敢看一眼副驾。", "那里放着一张学生证。照片上的人，你终于认得了。"]},
-	"face": {"t": "《白名单》", "true": true, "l": ["闸机「嘀」地亮了一下绿光。", "你走出去，回头看了一眼——", "里面的天还是黑白的。所有窗口后面都站着一个人，在目送你。", "你的名字从那天起，一直留在白名单的最后一行。"]},
-	"international": {"t": "《外国语学生》", "true": true, "l": ["队尾的人回头看了一眼，确认你还在。", "门卫核对的是接待名单。搜查员停在门里，没有再往前走。", "门外的颜色和声音都很平常。有人把临时接待证递还给你。", "证上的学校名字，好像和你记得的不太一样。"]},
-	"portal": {"t": "《门》", "true": true, "l": ["光圈合上之前，你回头看了一眼。", "实验台、显微镜、离心机，还有教室里那一排排低着的头——都在原地，一动不动。", "你没有再回头。", "门的那一边是一个普通的下午。铃响了，有人在走廊里叫你的名字，你答应了一声。"]},
+	"beast": {"t":"《先 辈》", "secret":true, "l":["门是被从外面撞开的。","你看清了那个背影——穿着很多年前的校服，一直在往外跑。","你跟着他跑出隔间。脚下还是那一层过道，尽头的窗子亮了。","整座学校，第一次有了颜色。"]},
+	"dismissal": {"t": "《放学》", "true": true, "l": [
+		"广播念到「全体离校」。跑过北门那一刻，我在现实的课桌上睁开了眼。隔壁桌也有人直起身，脸上还印着袖口的褶子。",
+		"放学后我们跑到北门。一个小姑娘喊了一声「哥」。同桌接过她的书包，拉链上晃着一颗掉漆的星星。",
+		"他认出了那张纸条。「是我塞给你的。后来我在楼梯间醒过来，往下走了好几层，还是二楼。听见放学铃，才跟到这儿。」",
+		"我想起刚醒时坐在我身边的那个人。他连气都没喘过。",
+		"路边的车按了一声喇叭。我该回家吃晚饭了。",
+	]},
+	"cyber": {"t": "《网安仙人》", "true": true, "l": [
+		"最后一排机柜熄了。走廊、巡察者、我手下的键盘一起消失。我在现实教室睁开眼，手指正按着语文书。",
+		"后来，北门值班员给我看了 17 号工单收存的纸样。他让我把那片纸屑拼回甲纸右边的缺口。连断开的纸毛都对得上。",
+		"我问他是谁打的孔。他指了指机房。「那个人当时在模型里。我守着玻璃盒，亲眼看见这片纸掉下来。」",
+	]},
+	"car": {"t": "《闸 门》", "true": true, "l": ["我踩下油门的时候，雨刷自己动了起来。", "后视镜里的教学楼越来越小。方向盘从我手里消失，掌心碰到了现实教室的桌沿。", "放学后我独自走到北门。同桌的妹妹背着书包，还在等他。", "「我哥还在里面吗？」她问。我张了张嘴。"]},
+	"face": {"t": "《白名单》", "true": true, "l": ["闸机「嘀」地亮了一下绿光。", "你跨出门，最后看见每扇黑白的窗后都站着一个人。", "再睁眼，你趴在自己的语文书上。真实的窗户透进下午的光。", "你的名字从那天起，一直留在白名单的最后一行。"]},
+	"international": {"t": "《外国语学生》", "true": true, "l": ["队尾的人回头看了一眼，确认你还在。", "门卫核对的是接待名单。搜查员停在门里，没有再往前走。", "门外有人把临时接待证递还给你，证上印着一个陌生的校名。", "有人轻轻拍你的肩。你从现实教室的课桌上抬起头，嘴里还念着那个校名。"]},
+	"portal": {"t": "《门》", "true": true, "l": ["光圈合上之前，你回头看了一眼。", "实验台、显微镜、离心机，还有教室里那一排排低着的头——都在原地，一动不动。", "迈过光圈，有人在叫你的名字。", "你从语文书上抬起头。是同学站在现实教室门口等你。你答应了一声。"]},
 }
 
 ## Wrong quiz answers of this run: every swap replaced a question that was answered wrong.
@@ -414,25 +424,32 @@ func use_trash(scene: String, day: int) -> void:
 
 
 ## Card data for an ending (title, tag, lines).
-static func card(id: String, paper: RollcallCard = null, team_gate: String = "") -> Dictionary:
+static func card(id: String, paper: RollcallCard = null, team_gate: String = "", sample: String = "") -> Dictionary:
 	var e: Dictionary = ENDINGS.get(id, {})
 	if e.is_empty():
 		return {}
 	var title: String = e["t"]
 	var memory := id
 	var lines: Array = e["l"]
+	var evidence := {}
 	if paper != null:
 		if id == "face" and (team_gate == "paper" or (team_gate.is_empty() and paper.clearance == 2)):
 			title = "《取回名字》"
 			memory = "facePaper"
-			lines = [paper.evidence() if paper.clearance == 2 else "同学递进那张底联，等在白线对面。我追上去，和大家一起出了校门。", "白线后面只有普通的车声。我一直走，没人拦我。",
-				"身后，喇叭又念了一次我的名字。", "这次，我让它空着。"]
-		elif id == "car":
-			lines = lines.slice(0, 2)
-			lines.append("北门外，一个背书包的小姑娘追着车跑了两步。我踩下刹车。")
-			lines.append("我摇下车窗告诉她：「你哥说，他没忘。」她点了点头，往教学楼又看了一眼。" if paper.heard_promise else "「我哥还在里面吗？」她问。我看了一眼后视镜，第一次不知道该怎么回答。")
-		elif id == "dismissal":
-			lines = lines.slice(0, 3)
-			lines.append("北门外，同桌接过妹妹的书包。「我没忘。」这回，他用不着我捎话了。" if paper.heard_promise else "北门外，一个小姑娘喊了声「哥」。同桌跑过去，接过她的书包。")
-			lines.append("他们混进放学的人群，谈起晚上吃什么。")
-	return {"title": title, "tag": "假 结 局" if e.get("fake",false) else ("真 结 局" if e.get("true", false) else ""), "lines": lines, "fake": bool(e.get("fake",false)), "memory": memory}
+			lines = [paper.evidence() if paper.clearance > 0 else "同学递进那张底联，等在白线对面。我追了上去。", "跨过白线，我在现实的课桌上睁开眼。脸下还是第四节的那页语文书。"]
+			if paper.clearance > 0:
+				evidence["ticket"] = RollcallCard.PUNCH_EDGES[paper.proof]
+				lines.append("我从书底下抽出上联。%s多了个半圆缺口，正好是刚才闸机咬过底联的位置。我用指腹摸到了断开的纸毛。" % RollcallCard.PUNCH_EDGES[paper.proof])
+			lines.append("窗外有人叫我。我自己应了一声。")
+		elif id == "car" and (paper.heard_promise or paper.stair_promise):
+			lines = lines.duplicate()
+			lines[-1] = "我把话带给她：「你哥说，他没忘。」她点了点头，往教学楼又看了一眼。"
+		elif id == "dismissal" and (paper.heard_promise or paper.stair_promise):
+			lines = lines.duplicate()
+			lines.insert(2, "「我没忘。」他对妹妹说。这回用不着我捎话了。")
+	if e.get("true", false) and sample in ["甲", "乙"]:
+		evidence["sample"] = sample
+		lines = lines.duplicate()
+		var inspection := "甲纸上边少了半圆，纸屑落在盒底。乙纸还是整张。" if sample == "甲" else "甲、乙两张纸的上边都很平。实验室里，乙纸明明缺了一块。"
+		lines.append("后来我到现实的北门岗亭报了编号「四·二」。值班员拿出封好的盒子，翻开课前签过的配对表。表上只圈了甲。隔着玻璃，我看见" + inspection)
+	return {"title": title, "tag": "假 结 局" if e.get("fake",false) else ("真 结 局" if e.get("true", false) else ""), "lines": lines, "fake": bool(e.get("fake",false)), "memory": memory, "evidence": evidence}

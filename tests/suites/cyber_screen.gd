@@ -1,5 +1,24 @@
 extends "res://tests/support/test_suite.gd"
 
+# The browser fixture supplies the original positions, glyph advances and timing.
+# The campus pilot has a new transcript in the same slots.
+const REVISED_LINES := {
+	"首次部署：2026-09-01": "用途仅限疏散演练",
+	"部署前：无任何异常记录": "使用校园模型",
+	"纸质档案扫描：1987 年": "17 号工单 · 研究组",
+	"走廊里出现不在值班表上的人": "让模型里的动作改变实物",
+	"巡察行为：全部由控制器产生": "现场只采集数据",
+	"断链即全部停止": "学生照常上课",
+	"断链故障记录：控制链离线后": "现实教室 · 第四节",
+	"仍收到回执（签发节点：——）": "身体仍在座，意识接入模型",
+	"退出身份：已注销": "校内实物保持原状",
+	"数据已删除": "试点结束即可撤场",
+	"「注销」字段原始定义：": "停机开盒 · 观察联",
+	"转交上层保管": "甲纸右边缺了一块，乙纸完整",
+	"签发节点：未知": "实物复核：纸屑吻合",
+	"签发节点：未知 ▌": "实物复核：纸屑吻合 ▌",
+}
+
 func test_original_layout() -> void:
 	var bytes := FileAccess.get_file_as_bytes("res://tests/fixtures/cyber-reference.json.gz")
 	var original: Dictionary = JSON.parse_string(bytes.decompress_dynamic(8*1024*1024,FileAccess.COMPRESSION_GZIP).get_string_from_utf8())
@@ -13,7 +32,8 @@ func test_original_layout() -> void:
 		check(shot["eye"].distance_to(Vector3(v[0],v[1],v[2]))<.00001 and shot["target"].distance_to(Vector3(v[3],v[4],v[5]))<.00001,"original camera fitting at aspect %s / FOV %s / time %s" % [sample["aspect"],sample["fov"],sample["t"]])
 		var widths := {}
 		for op: Dictionary in sample["ops"]:
-			if op["kind"] == "text": widths[op["text"]] = op["width"]
+			if op["kind"] == "text":
+				widths[REVISED_LINES.get(op["text"], op["text"])] = op["width"]
 		var measure := func(text: String,_fs: int) -> float: return widths.get(text,0)
 		var ops := CutScreen.archive_ops(Vector2i(sample["size"][0],sample["size"][1]),sample["portrait"],CutScreen.arch_state(sample["t"]),measure)
 		check(ops.size()==sample["ops"].size(),"all original archive text and red boxes appear at the right time")
@@ -23,7 +43,13 @@ func test_original_layout() -> void:
 			check(actual["kind"]==expected["kind"] and actual["color"].is_equal_approx(Color(expected["color"])),"original operation order and colour")
 			if actual["kind"]!=expected["kind"]: continue
 			if actual["kind"]=="text":
-				check(actual["text"]==expected["text"] and actual["pos"].distance_to(Vector2(expected["x"],expected["y"]))<.0001 and actual["size"]==int(font_size.search(expected["font"]).get_string(1)) and actual["bold"]==String(expected["font"]).contains("bold"),"original archive typography and layout: "+String(expected["text"]))
+				var caption: String = REVISED_LINES.get(expected["text"], expected["text"])
+				var pos := Vector2(expected["x"], expected["y"])
+				if caption == "≠" and not sample["portrait"]:
+					var right_box: Rect2 = ops[i-1]["rect"]
+					var right_label: Dictionary = ops[i-3]
+					pos.x = right_box.position.x - right_label["size"] * 0.3 - expected["width"]
+				check(actual["text"]==caption and actual["pos"].distance_to(pos)<.0001 and actual["size"]==int(font_size.search(expected["font"]).get_string(1)) and actual["bold"]==String(expected["font"]).contains("bold"),"archive transcript, typography and layout: "+caption)
 			else:
 				var r: Array = expected["rect"]
 				var rect: Rect2 = actual["rect"]
