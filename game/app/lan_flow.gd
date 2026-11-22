@@ -50,6 +50,7 @@ var _remote_token := ""
 var _diagnostic_timer := 0.0
 var history := CooperativeConnectionHistory.new()
 var _room_phase := ""
+var _opening_handover := ""
 var _display_addresses := ""
 var _network_hint: Label
 var _rescan_timer := 0.0
@@ -308,6 +309,7 @@ func reconnect() -> void:
 		return
 	_epoch = ""
 	_installed = false
+	_opening_handover = ""
 	_cancel_preparation()
 	_reset_local_modals()
 	prediction.clear()
@@ -356,7 +358,6 @@ func _room_addresses() -> String:
 
 func _room_changed(state: Dictionary) -> void:
 	var phase := String(state.get("phase", ""))
-	var starting := phase == "playing" and _room_phase == "loading"
 	if panel.visible or phase != _room_phase or phase != "playing": panel.show_room(state, network.local_id, _room_addresses())
 	_room_phase = phase
 	if not network.transport.serving and network.reconnect_token != "" and network.address != "":
@@ -370,8 +371,9 @@ func _room_changed(state: Dictionary) -> void:
 	if phase == "playing" and _installed and not _paused and not _lost:
 		panel.hide()
 		_sync_input()
-		if starting and not _spectating and app.session.world_id == "teach1" and app.session.clock.active_seconds < 2.0:
-			app.ui.show_notice(OpeningStory.handover(app.session.character_id))
+		if not _opening_handover.is_empty():
+			app.ui.show_notice(_opening_handover)
+			_opening_handover = ""
 
 
 func send(action: String, fields: Dictionary = {}) -> void:
@@ -467,6 +469,7 @@ func stop() -> void:
 	_input_seq = 0
 	_remote_token = ""
 	_room_phase = ""
+	_opening_handover = ""
 	_display_addresses = ""
 	if is_instance_valid(_mic): _mic.hide()
 	if is_instance_valid(_watch): _watch.hide()
@@ -521,6 +524,10 @@ func _snapshot(data: Dictionary) -> void:
 			network._lost("房间状态无效：" + why)
 			return
 		candidate.restore(source)
+		# Prepare the handover from the installed classroom snapshot. Motion
+		# packets can advance the local view before the playing update arrives.
+		if network.room.phase == "loading" and not _spectating and candidate.world_id == "teach1" and candidate.clock.active_seconds < 2.0:
+			_opening_handover = OpeningStory.handover(candidate.character_id)
 		why = app.router.switch_to(String(source["world_id"]))
 		if why != "":
 			network._lost(why)

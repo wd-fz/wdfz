@@ -79,6 +79,8 @@ func test_app() -> void:
 	var real: Dictionary = flow.rules.state["unlocked"].duplicate(true)
 	flow.unlock_all()
 	check(same_json(real,flow.rules.state["unlocked"]) and app._read_side("ends.json") == null,"unlock-all cannot invent played deaths or completed endings")
+	check(not flow.play("end:facePaper"), "a new profile cannot unlock the retired ending")
+	app._write_side("ends.json", {"face": 1, "facePaper": 1})
 	var original_files := files(app.saves.path.get_base_dir())
 	var original_pose := app.player.capture_pose().duplicate(true)
 	var original_audio := app.audio._rng.state

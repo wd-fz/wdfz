@@ -19,8 +19,8 @@ import terracotta
 BUILD_TOOLS = "36.0.0"
 PACKAGE = "org.wdfz.godot.debug"
 RELEASE_PACKAGE = "org.wdfz.godot"
-RELEASE_VERSION = "0.6.1"
-RELEASE_VERSION_CODE = 9
+RELEASE_VERSION = "0.6.2"
+RELEASE_VERSION_CODE = 10
 
 
 def configure_streamed_assets(gradle):

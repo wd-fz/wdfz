@@ -4553,8 +4553,7 @@ func _show_visit(visit: ExchangeModule) -> void:
 				(1.03 if i==0 else .97) if i<4 else 1.0,Color("101010" if i<4 else "0a0a0a"),true,false,null,true)
 			_visit_nodes.add_child(fig)
 		# The bilingual reception sign outside the north gate of the administration building (exchange-fx.js sign()).
-		var gp: Vector2 = visit.members()[0]
-		var sp := CampusGeometry.to_scene(null, Vector2(gp.x + 30.0, gp.y + 4.0))
+		var sp := CampusGeometry.to_scene(null, visit.reception_point() + Vector2(30.0, 4.0))
 		_visit_nodes.add_child(ExchangeSign.make(sp))
 	var members := visit.member_poses()
 	var search: Array = visit.s.get("search",[])

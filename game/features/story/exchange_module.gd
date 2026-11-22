@@ -168,6 +168,10 @@ func members() -> Array:
 	return member_poses().map(func(p: Dictionary) -> Vector2: return p["p"])
 
 
+func reception_point() -> Vector2:
+	return _gather
+
+
 ## Keep the route tangent for presentation, including each follower around a corner.
 func member_poses() -> Array:
 	var out: Array = []

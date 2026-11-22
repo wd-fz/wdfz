@@ -18,8 +18,8 @@ func appearance(fig: Node3D, old: Dictionary) -> void:
 	if old["emission"]!=null:
 		check(mat.emission_enabled and mat.emission.is_equal_approx(Color(old["emission"])),"original faint emissive silhouette")
 
-func transform_matches(fig: Node3D, old: Dictionary) -> void:
-	check(fig.position.distance_to(v3(old["p"]))<.0001,"original world placement")
+func transform_matches(fig: Node3D, old: Dictionary, shift: Vector3 = Vector3.ZERO) -> void:
+	check(fig.position.distance_to(v3(old["p"]) + shift)<.0001,"original formation at the current campus location")
 	var facing := Vector3(sin(old["yaw"]),0,cos(old["yaw"]))
 	check((-fig.basis.z).normalized().distance_to(facing)<.00001,"original facing after +Z to -Z model conversion")
 
@@ -37,6 +37,12 @@ func test_app() -> void:
 	app.player.set_physics_process(false)
 	app.travel("out",_campus_pose(null,Vector2(1080,900),0),false)
 	var visit := app.exchange()
+	var layout := CampusData.layout("out")
+	var admin: Dictionary = layout["objects"].filter(func(o: Dictionary) -> bool: return o["id"] == "admin")[0]
+	var north := Vector2(admin["x"] + admin["w"] * 0.5, admin["y"] - 10.0) * float(layout["SC"]) * CampusGeometry.U2M
+	var shift := Vector3(north.x, 0.0, north.y) - v3(old["exchange"][0]["figures"][0]["p"])
+	var original_sign: Dictionary = old["sign"]
+	var panel_position := v3(original_sign["panel"]["p"]) + shift
 	for sample: Dictionary in old["exchange"]:
 		var path: Dictionary = sample["path"].duplicate(true)
 		path["pts"] = path["pts"].map(func(p: Array) -> Vector2: return Vector2(p[0],p[1]))
@@ -48,22 +54,27 @@ func test_app() -> void:
 		var sign: Node3D = app._visit_nodes.get_node("ExchangeSign")
 		var panel: MeshInstance3D = sign.get_node("Panel")
 		var post: MeshInstance3D = sign.get_node("Post")
-		var original_sign: Dictionary = old["sign"]
 		var panel_material := panel.material_override as BaseMaterial3D
 		var texture := panel_material.albedo_texture
-		check(panel.global_position.distance_to(v3(original_sign["panel"]["p"]))<.00001 and (panel.mesh as QuadMesh).size.is_equal_approx(Vector2(original_sign["panel"]["size"][0],original_sign["panel"]["size"][1])),"reception panel retains the original location and dimensions")
+		check(panel.global_position.distance_to(panel_position)<.00001 and (panel.mesh as QuadMesh).size.is_equal_approx(Vector2(original_sign["panel"]["size"][0],original_sign["panel"]["size"][1])),"reception panel keeps its dimensions and follows the administration building")
 		check(texture.resource_path=="res://assets/campus/exchange/exchange-sign.png" and texture.get_width()==original_sign["textureSize"][0] and texture.get_height()==original_sign["textureSize"][1],"original multilingual reception canvas")
 		check(panel_material.albedo_color.is_equal_approx(Color(original_sign["panel"]["color"])) and panel_material.emission.is_equal_approx(Color(original_sign["panel"]["emission"])) and (panel_material.emission_texture==texture)==original_sign["panel"]["emissionMap"] and panel_material.emission_operator==BaseMaterial3D.EMISSION_OP_MULTIPLY,"reception glow multiplies the original texture instead of adding a white wash")
-		check(panel_material.cull_mode==BaseMaterial3D.CULL_DISABLED and not panel_material.disable_fog and post.global_position.distance_to(v3(original_sign["post"]["p"])-Vector3(0,0,.06))<.00001 and (post.mesh as BoxMesh).size.is_equal_approx(v3(original_sign["post"]["size"])) and post.position.z+.03<panel.position.z,"original two-sided panel and support moved behind the printed face")
+		check(panel_material.cull_mode==BaseMaterial3D.CULL_DISABLED and not panel_material.disable_fog and post.global_position.distance_to(v3(original_sign["post"]["p"]) + shift - Vector3(0,0,.06))<.00001 and (post.mesh as BoxMesh).size.is_equal_approx(v3(original_sign["post"]["size"])) and post.position.z+.03<panel.position.z,"original two-sided panel and support behind the printed face")
 		for i in 7:
 			var fig := app._visit_nodes.get_child(i) as Node3D
 			var expected: Dictionary = sample["figures"][i]
 			appearance(fig,expected)
 			check(fig.visible==expected["visible"],"searchers are visible only during escort")
-			if fig.visible: transform_matches(fig,expected)
+			if fig.visible: transform_matches(fig, expected, shift if sample["phase"] != "escort" else Vector3.ZERO)
 	visit.s["phase"] = "over"
 	app._show_visit(visit)
 	check(app._visit_nodes==null,"group is removed when the visit is over")
+	visit.s["phase"] = "escort"
+	app._show_visit(visit)
+	var returned_panel := app._visit_nodes.get_node("ExchangeSign/Panel") as Node3D
+	check(returned_panel.global_position.distance_to(panel_position)<.00001, "entering the scene during an escort leaves the sign at reception")
+	visit.s["phase"] = "over"
+	app._show_visit(visit)
 	app.travel("admin1",CampusData.rules().default_spawn("admin1"),false)
 	for sample: Dictionary in old["gaze"]:
 		var room: Dictionary = CampusData.rules().room(sample["room"])
