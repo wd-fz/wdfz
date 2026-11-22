@@ -12,9 +12,10 @@ func test_original_bells() -> void:
 	for sample: Dictionary in data["samples"]:
 		mood.set_context({"day":sample["day"]})
 		var tune := mood.bell_tune(sample["kind"],sample["time"])
-		check(same_json(tune,sample["tune"]),"original bell tune day %d at %d: %s" % [sample["day"],sample["time"],sample["kind"]])
+		var expected: Dictionary = sample["tune"].duplicate()
+		expected.erase("caption")
+		check(same_json(tune,expected),"original bell tune day %d at %d: %s" % [sample["day"],sample["time"],sample["kind"]])
 		audio.stop_all()
-		audio.captions_live = true
 		audio.school_bell(sample["kind"],true,tune)
 		var voice := audio._pool[posmod(audio._next-1,audio._pool.size())]
 		var expected_file := ""
@@ -39,8 +40,6 @@ func test_original_bells() -> void:
 		check(audio.played.back()==sample["played"]["id"] and voice.stream.resource_path.get_file()==expected_file,"school bell uses the correct original event and final-note variant")
 		check(voice.pitch_scale==1 and voice.bus=="SfxSoft" and absf(voice.volume_db-(float(take["db"])+linear_to_db(.45)))<.001,"outdoor bell retains original gain/filter and full playback speed")
 		check(absf(voice.stream.get_length()-duration)<.02,"encoded bell length agrees with its original recipe")
-		if tune.has("caption"):
-			check(str(audio.captions.visible()).contains(tune["caption"]),"tuned bell keeps its original caption")
 		check(audio._cat_of(voice.stream)=="event","tail variants keep the original category for stop and cleanup")
 		audio.stop("event")
 		check(not voice.playing,"event cancellation stops the selected bell variant")

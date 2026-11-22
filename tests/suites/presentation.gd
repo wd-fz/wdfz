@@ -3,11 +3,11 @@ extends "res://tests/support/test_suite.gd"
 
 func _test_settings_rules() -> void:
 	var d := GameSettings.normalize({})
-	check(d["vol"] == 70 and d["captions"] == 1 and d["amb"] == 1 and d["distortion"] == 2 and d["reduce_flash"] == 0 and d["bright"] == 100 and d["mouse"] == 100,
-		"settings default to the Web version's (volume 70, captions on, ambience on, full distortion)")
+	check(d["vol"] == 70 and d["sub"] == 1 and d["amb"] == 1 and d["distortion"] == 2 and d["reduce_flash"] == 0 and d["bright"] == 100 and d["mouse"] == 100,
+		"settings default to volume 70, medium hints, ambience on and full distortion")
 	var bad := GameSettings.normalize({"vol": 250, "bright": 3, "mouse": 9999, "text": 10, "captions": 7, "quality": -1, "unknown": 5, "sub": "x"})
-	check(bad["vol"] == 100 and bad["bright"] == 50 and bad["mouse"] == 250 and bad["text"] == 85 and bad["captions"] == 1 and bad["quality"] == 2 and bad["sub"] == 1 and not bad.has("unknown"),
-		"out-of-range or invalid values are clamped or defaulted, unknown keys dropped")
+	check(bad["vol"] == 100 and bad["bright"] == 50 and bad["mouse"] == 250 and bad["text"] == 85 and bad["quality"] == 2 and bad["sub"] == 1 and not bad.has("captions") and not bad.has("unknown"),
+		"invalid values are clamped or defaulted; obsolete and unknown settings are dropped")
 	var path := _test_path.get_base_dir() + "/settings-rules.json"
 	var a := GameSettings.new(path)
 	check(not a.load_file(false) and a.get_int("quality") == 2, "no file: defaults")
@@ -15,17 +15,17 @@ func _test_settings_rules() -> void:
 	t.load_file(true)
 	check(t.get_int("quality") == 0, "a first run on a touch device starts at 流畅")
 	a.set_value("vol", 35)
-	a.set_value("captions", 2)
+	a.set_value("sub", 2)
 	a.set_value("mouse", 400)
 	check(a.save_file() and GameSettings.new(path).load_file() , "saves to its own file")
 	var b := GameSettings.new(path)
 	b.load_file()
-	check(b.get_int("vol") == 35 and b.get_int("captions") == 2 and b.get_int("mouse") == 250, "a saved setting is read back, clamped")
+	check(b.get_int("vol") == 35 and b.get_int("sub") == 2 and b.get_int("mouse") == 250, "a saved setting is read back, clamped")
 	b.set_value("text", 140)
 	b.set_value("touch_size", 120)
 	b.reset_comfort()
 	check(b.get_int("text") == 100 and b.get_int("touch_size") == 100 and b.get_int("vol") == 35, "restoring comfort defaults leaves sound and picture alone")
-	check(GameSettings.QUALITY_SCALE.size() == 5 and GameSettings.QUALITY_LABELS[4] == "极清" and GameSettings.SUB_MULT == [0.6, 1.0, 1.6], "five quality tiers, three caption sizes")
+	check(GameSettings.QUALITY_SCALE.size() == 5 and GameSettings.QUALITY_LABELS[4] == "极清" and GameSettings.SUB_MULT == [0.6, 1.0, 1.6], "five quality tiers, three hint sizes")
 	for p2: String in [path, path + ".touch"]:
 		if FileAccess.file_exists(p2):
 			DirAccess.remove_absolute(p2)

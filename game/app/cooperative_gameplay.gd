@@ -181,7 +181,7 @@ func personal(a: CooperativeActor, dt: float) -> void:
 	sim.inventory.finish_search(a)
 	for e: Dictionary in a.school().take_events():
 		if e["kind"] == "absence": sim.patrol.permanent[a.id] = String(e["id"])
-		elif e["kind"] == "rollcall_sound": a.event("sound", {"cue": e["cue"], "options": {"k": .65, "caption": e["caption"]}})
+		elif e["kind"] == "rollcall_sound": a.event("sound", {"cue": e["cue"], "options": {"k": .65}})
 		elif e["kind"] == "empty_seat_answer": _classroom_witnesses(a, e["stamp"])
 	var phone := a.feature(&"phone.network") as PhoneModule
 	phone.tick(dt, false)

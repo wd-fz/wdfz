@@ -128,6 +128,8 @@ func _test_stair_walk(app: GameApp) -> void:
 	await _test_anomaly_fx(app)
 	print("CASE: integration._test_audio")
 	await _test_audio(app)
+	print("CASE: integration._test_guidance_app")
+	await _test_guidance_app(app)
 	print("CASE: integration._test_cut_lifecycle")
 	await _test_cut_lifecycle(app)
 	print("CASE: integration._test_whitelist_route")
@@ -243,14 +245,59 @@ func _test_audio(app: GameApp) -> void:
 	check(fx.played.has("threat.smileJump"), "the smile in your face screams at the ear")
 	fx.update(0.1, base)
 	fx.play("event.bellEnd")
-	await _frames(3)
-	check(app.ui.captions_text().contains("下课铃"), "the HUD shows the caption under the status card")
+	check(fx.played.has("event.bellEnd"), "the bell still plays")
 	app.audio.muted = true
 	check(AudioServer.is_bus_mute(AudioServer.get_bus_index("Master")), "mute silences the master bus")
 	app.audio.muted = false
 	check(not AudioServer.is_bus_mute(AudioServer.get_bus_index("Master")), "unmute restores it")
 	fx.stop_all()
 	check(not fx.bed_playing("wind") and not fx.bed_playing("hum"), "stop_all stops the beds")
+
+
+func _test_guidance_app(app: GameApp) -> void:
+	app.start_new_game()
+	await _until_started(app)
+	await _frames(16)
+	var guide := app.ui._guidance
+	var status := app.ui._status_card
+	check(guide.is_visible_in_tree() and guide.text.begins_with("下一步") and guide.text.contains("保安岗"),
+		"the opening HUD names a concrete place to investigate")
+	check(guide.get_global_rect().position.y >= status.get_global_rect().end.y + 7.0 and guide.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+		"guidance stays under the status card without taking input")
+	var opening := guide.text
+	app.audio.play("event.bellEnd")
+	app.audio.play("dread.knock", {"pan": -0.8})
+	await _frames(16)
+	check(guide.text == opening, "sounds play without replacing the guidance")
+	app.ui.apply_hint_scale(1.6)
+	await _frames()
+	check(guide.get_theme_font_size("font_size") == 24 and guide.get_line_count() > 1 and guide.size.x <= 360.0,
+		"large hint text wraps inside the left HUD")
+	app.ui.show_notice("组队探索 · 先调查教学楼外的保安岗。可以打开手册查看当前线索和校园位置。")
+	await _frames()
+	var toast := app.ui.get_node("%Toast") as Label
+	check(not guide.get_global_rect().intersects(toast.get_global_rect()), "long notices leave the guidance legible at large text size")
+	app.ui.show_notice("")
+	app.ui.apply_hint_scale(1.0)
+
+	app._record({"id": "parking", "text": "停车登记", "source": "保安岗"})
+	await _frames(16)
+	check(guide.text.contains("西小门"), "reading the counterfoil advances guidance to the west gate")
+	check(app.investigation().set_focus("car"), "a discovered alternate route can be tracked")
+	await _frames(16)
+	check(guide.text.contains("校长室"), "guidance follows the tracked investigation")
+	var tracked := guide.text
+	var rules := app.school()
+	var here := CampusGeometry.to_world(CampusData.layout("teach1"), app.player.position.x, app.player.position.z)
+	rules.start_inspection({"day": rules.day, "slot": 0}, "teach1", here, func(_p: Vector2) -> bool: return false)
+	await _frames(16)
+	check(guide.text.contains("停在原地") and guide.text.contains("别盯着黑影"), "an active inspection temporarily shows its safety instructions")
+	check(app.ui._status_line.text.contains("学生会检查 · 进行中"), "the status card shows that the check has started")
+	rules.inspection["current"]["t"] = SchoolModule.INSPECT["duration"]
+	await _frames(16)
+	check(guide.text == tracked, "guidance returns to the tracked route when the inspection ends")
+	app.return_to_menu()
+	check(guide.text.is_empty(), "returning to the menu clears the last run's guidance")
 
 
 ## Original anomaly props follow the module state and vanish when it ends.
@@ -881,7 +928,7 @@ func _test_settings_app(app: GameApp) -> void:
 	check(app.ui.settings_panel != null and app.ui.settings_panel.visible, "the settings panel opens")
 	app.ui.setting_changed.emit("vol", 40)
 	app.ui.setting_changed.emit("amb", 0)
-	app.ui.setting_changed.emit("captions", 2)
+	app.ui.setting_changed.emit("sub", 2)
 	app.ui.setting_changed.emit("mouse", 200)
 	app.ui.setting_changed.emit("reduce_flash", 1)
 	app.ui.setting_changed.emit("bright", 120)
@@ -891,7 +938,8 @@ func _test_settings_app(app: GameApp) -> void:
 	app.ui.setting_changed.emit("quality", 0)
 	check(same_json(app.session.capture(app.player.capture_pose()), before_quality), "changing quality does not modify the run or player pose")
 	await _frames(3)
-	check(absf(app.audio.volume - 0.4) < 0.0001 and not app.audio.ambience and app.audio.captions.mode == 2, "volume, ambience and the caption mode take effect")
+	check(absf(app.audio.volume - 0.4) < 0.0001 and not app.audio.ambience, "volume and ambience take effect")
+	check(app.ui._guidance.get_theme_font_size("font_size") == 24, "the hint size setting reaches the guidance HUD")
 	check(absf(app.player.mouse_sensitivity - 0.005) < 0.000001, "look sensitivity follows the setting")
 	var cw := app._campus_world()
 	check(cw.visual_tier == 0 and cw.get_node("Collision").get_instance_id() == collision_before and cw.lighting.live_count() > 0, "quality replaces the current visual models and rebinds lamps without replacing physics")
@@ -907,14 +955,13 @@ func _test_settings_app(app: GameApp) -> void:
 	saved.load_file()
 	check(saved.get_int("vol") == 40 and saved.get_int("quality") == 0, "changes are saved immediately")
 	app.ui.setting_changed.emit("reset_comfort", 0)
-	check(app.settings.get_int("mouse") == 100 and app.settings.get_int("vol") == 40, "restoring comfort defaults keeps the sound")
+	check(app.settings.get_int("mouse") == 100 and app.settings.get_int("vol") == 40 and app.settings.get_int("sub") == 1, "restoring comfort defaults resets hint size and keeps the sound")
 	app.school().san = 100.0
 	app.ui.setting_changed.emit("quality", 2)
 	app.ui.setting_changed.emit("reduce_flash", 0)
 	app.ui.setting_changed.emit("distortion", 2)
 	app.ui.setting_changed.emit("vol", 70)
 	app.ui.setting_changed.emit("amb", 1)
-	app.ui.setting_changed.emit("captions", 1)
 	app.ui.setting_changed.emit("bright", 100)
 	app.ui.setting_changed.emit("shake", 1)
 	app.ui.settings_panel.visible = false

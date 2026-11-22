@@ -276,7 +276,7 @@ func _resize() -> void:
 		_fit_choice.call_deferred()
 	_refit_touch.call_deferred()
 	_fit_bag.call_deferred()
-	_fit_captions.call_deferred()
+	_fit_guidance.call_deferred()
 	_fit_toast.call_deferred()
 	_fit_ending.call_deferred()
 	_fit_settings.call_deferred()
@@ -506,21 +506,16 @@ func _build_choice() -> void:
 	hud.add_child(lift_close_button)
 
 
-var _captions: Label
+var _guidance: Label
 
 
-func show_captions(lines: PackedStringArray) -> void:
-	if _captions == null:
+func show_guidance(hint: String) -> void:
+	var text := "下一步 · " + hint if not hint.is_empty() else ""
+	if _guidance.text == text:
 		return
-	var text := "\n".join(lines)
-	if _captions.text != text:
-		_captions.text = text
-		_captions.visible = not text.is_empty()
-		_fit_captions()
-
-
-func captions_text() -> String:
-	return _captions.text if _captions != null else ""
+	_guidance.text = text
+	_guidance.visible = not text.is_empty()
+	_fit_guidance()
 
 
 ## The play HUD as quiet cards over the picture: clock and status with a coloured edge by state, the hot slots,
@@ -568,7 +563,8 @@ func _style_hud() -> void:
 	top.add_child(_status_card)
 	top.move_child(_status_card, 0)
 	_status_card.hide()
-	_status_card.resized.connect(_fit_captions)
+	_status_card.resized.connect(_fit_guidance)
+	_status_card.visibility_changed.connect(_fit_guidance)
 	var row := HBoxContainer.new()
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_status_card.add_child(row)
@@ -622,9 +618,23 @@ func add_hud_action(button: Button) -> void:
 	_hud_actions.move_child(button, 0)
 
 
-func _fit_captions() -> void:
+func _fit_guidance() -> void:
+	if %Toast.visible:
+		_fit_toast.call_deferred()
+	if _guidance.text.is_empty():
+		return
 	var top := _status_card.get_parent() as Control
-	_captions.position = top.position + Vector2(0, _status_card.size.y + 8 if _status_card.visible else 0)
+	var y := top.position.y + (_status_card.size.y + 8 if _status_card.visible else 0.0)
+	var font := _guidance.get_theme_font("font")
+	var font_size := _guidance.get_theme_font_size("font_size")
+	var margins := _guidance.get_theme_stylebox("normal").get_minimum_size().x
+	var text_width := font.get_string_size(_guidance.text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var width := minf(ceilf(text_width + margins + 2.0), minf(360.0, hud.size.x * 0.44))
+	_guidance.custom_minimum_size = Vector2(width, 0.0)
+	_guidance.offset_left = top.position.x
+	_guidance.offset_right = top.position.x + width
+	_guidance.offset_top = y
+	_guidance.offset_bottom = y
 
 
 ## Stamina only appears below full. Time and school status share one compact card.
@@ -639,18 +649,15 @@ func _build_status() -> void:
 	_status_art = UIArt.view(UIArt.nav("notes"), Vector2.ZERO)
 	_status_art.name = "StatusIllustration"
 	_status_line.add_child(_status_art)
-	# Sound captions follow the actual card height at every text size.
-	_captions = Label.new()
-	_captions.name = "SoundCaptions"
-	_captions.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	_captions.theme_type_variation = "HudPill"
-	_captions.hide()
-	_captions.add_theme_font_size_override("font_size", 14)
-	_captions.add_theme_color_override("font_color", Color(0.86, 0.88, 0.92, 0.92))
-	_captions.add_theme_constant_override("outline_size", 4)
-	_captions.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-	_captions.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hud.add_child(_captions)
+	_guidance = Label.new()
+	_guidance.name = "Guidance"
+	_guidance.theme_type_variation = "HudPill"
+	_guidance.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_guidance.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_guidance.add_theme_font_size_override("font_size", 15)
+	_guidance.add_theme_color_override("font_color", UISkin.INK)
+	_guidance.hide()
+	hud.add_child(_guidance)
 	_stamina = ProgressBar.new()
 	_stamina.name = "Stamina"
 	_stamina.show_percentage = false
@@ -681,7 +688,7 @@ func reset_status() -> void:
 	%Runtime.text = ""
 	%Runtime.visible = false
 	_status_card.hide()
-	_fit_captions()
+	show_guidance("")
 	if _status_line != null:
 		_status_line.visible = false
 		_stamina.visible = false
@@ -1539,7 +1546,7 @@ var _cut_caption: Label
 
 
 ## Over the live cutscenes: a black fade (0 clear … 1 black) and a caption line at the bottom.
-## body.cut: while a cutscene plays the HUD (status, hotbar, prompt, crosshair, captions) is hidden.
+## body.cut: while a cutscene plays the regular HUD is hidden.
 func cut_mode(on: bool) -> void:
 	_cut_active = on
 	if on:
@@ -1904,10 +1911,10 @@ func show_touch_layout_editor() -> void:
 	_layout_editor.cancelled.connect(func() -> void: _layout_editor.queue_free())
 
 
-## sub: the size of toast and caption lines (SUB_MULT 0.6 / 1.0 / 1.6 in the Web version).
-func apply_caption_scale(mult: float) -> void:
-	if _captions != null:
-		_captions.add_theme_font_size_override("font_size", roundi(15.0 * mult))
+## sub: the size of guidance and transient notices.
+func apply_hint_scale(mult: float) -> void:
+	_guidance.add_theme_font_size_override("font_size", roundi(15.0 * mult))
+	_fit_guidance()
 	%Toast.add_theme_font_size_override("font_size", roundi(18.0 * mult))
 	_fit_toast()
 
@@ -2777,8 +2784,7 @@ func show_notice(text: String) -> void:
 
 
 ## The notice line sits on a translucent pill as wide as its text (at most 62 % of the screen, below the
-## status card and clear of the captions), so it stays readable over a bright board or a busy wall
-## without hiding the scene behind a band.
+## status card). Wide notices can move to the right of the guidance card.
 func _fit_toast() -> void:
 	var toast := %Toast as Label
 	if toast.theme_type_variation != "HudPill":
@@ -2806,11 +2812,16 @@ func _fit_toast() -> void:
 	var width := 0.0
 	for line: String in toast.text.split("\n"):
 		width = maxf(width, font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
-	width = minf(ceilf(width + margins + 2.0), screen.x * 0.62)     # clear of the status card and captions on the left
+	width = minf(ceilf(width + margins + 2.0), screen.x * 0.62)
+	var center := screen.x * 0.5
+	var left := center - width * 0.5
+	if _guidance.is_visible_in_tree() and _guidance.get_rect().end.y > screen.y * toast.anchor_top:
+		left = maxf(left, _guidance.get_rect().end.x + 8.0)
+		width = minf(width, screen.x - left - 20.0)
 	# An autowrapped label has almost no minimum width of its own: pin the width, the height follows the text.
 	toast.custom_minimum_size = Vector2(width, 0.0)
-	toast.offset_left = -width * 0.5
-	toast.offset_right = width * 0.5
+	toast.offset_left = left - center
+	toast.offset_right = left + width - center
 	toast.offset_top = 0.0
 	toast.offset_bottom = 0.0
 

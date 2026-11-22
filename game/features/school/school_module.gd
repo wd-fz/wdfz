@@ -369,7 +369,7 @@ func period_text(frozen: bool) -> String:
 		return "???"
 	if inspection.get("current", {}).get("proxy", false): return "点名中 · 教室里有人替我应声"
 	if inspection_active():
-		return "学生会检查 · 坐稳自己的座位"
+		return "学生会检查 · 进行中"
 	if inspection_upcoming():
 		if not seat_card.armed.is_empty(): return "集合将至 · 桌上留着我的名牌"
 		return "集合将至 · 请坐回自己的座位"
@@ -1000,7 +1000,7 @@ func _inspection_finish(c: Dictionary, world_id: String, w: Vector2) -> void:
 	_add_violation(-INSPECT["good_violation"] if good else INSPECT["bad_violation"], false)
 	tt = clampf(tt + (INSPECT["assimilation"] if good else -INSPECT["assimilation"]), 0.0, 100.0)
 	if good and key == "1:0":
-		_events.append({"kind": "rollcall_sound", "cue": "dread.chair", "caption": "旁边的空椅子响了一下"})
+		_events.append({"kind": "rollcall_sound", "cue": "dread.chair"})
 		_say("我答了「到」。老师又念了一遍我的名字。旁边的空椅子响了一下。")
 	else:
 		_say("我：黑影散开了。我一直坐在自己的座位上。" if good else "我：黑影散开了。它们记下了那个空着的座位。")
@@ -1124,7 +1124,7 @@ func start_inspection(item: Dictionary, world_id: String, w: Vector2, can_stand:
 		var room: Variant = _room(world_id)
 		seat_card.borrowed_at(id, String(room["name"]) if room != null else ("校园室外" if world_id == "out" else ""))
 		tt = minf(100.0, tt + RollcallCard.COST)
-		_events.append({"kind": "rollcall_sound", "cue": "dread.call", "caption": "喇叭里传出一声「到」"})
+		_events.append({"kind": "rollcall_sound", "cue": "dread.call"})
 		_events.append({"kind": "empty_seat_answer", "stamp": id})
 		_say("喇叭里有人替我答了声「到」。是我自己的声音。")
 		if tt >= 100.0: _resolve_assimilation()

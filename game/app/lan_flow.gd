@@ -285,6 +285,10 @@ func playing() -> bool:
 	return _installed and network.room != null
 
 
+func spectating() -> bool:
+	return _spectating
+
+
 func open() -> void:
 	if playing(): pause()
 	if network.room != null:
@@ -730,7 +734,7 @@ func _event(e: Dictionary) -> void:
 			app._show_classmates(app.classmates(), room, CampusGeometry.to_world(room, app.player.position.x, app.player.position.z), 0)
 			if is_instance_valid(app._mates_nodes):
 				app._mates_nodes.show_seat_witness(e["seat"], e["person"], Vector2(e["x"], e["y"]), left)
-				app.audio.play("dread.call", {"k": .5, "caption": "%s的座位上传来一声「到」" % StudentCast.PEOPLE[e["person"]]["name"]})
+				app.audio.play("dread.call", {"k": .5})
 		"invert", "invert_end", "shadow_show", "shadow_hide":
 			_sync_maze_fx()
 			if is_instance_valid(_maze_fx): _maze_fx.event(e)
@@ -756,10 +760,10 @@ func _event(e: Dictionary) -> void:
 		"locker":
 			match e["beat"]:
 				"knock":
-					app.audio.play("dread.knock", {"k": 0.7, "caption": "铁皮从柜子里面被敲了两下"})
+					app.audio.play("dread.knock", {"k": 0.7})
 					app.ui.show_notice("我：……不是外面，是柜子里面。")
 				"breath":
-					app.audio.play("threat.breath", {"k": 0.7, "caption": "柜子里还有别人的呼吸"})
+					app.audio.play("threat.breath", {"k": 0.7})
 					app.ui.show_notice("我：耳朵后面有呼吸声。")
 				"push": app.ui.show_notice("我撞开柜门跌了出来——柜子里什么也没有。")
 		"phone": app._open_phone()
@@ -848,8 +852,7 @@ func _remote_step(at: Vector3, running: bool, world: String) -> void:
 	var location := CampusGeometry.to_world(CampusData.rooms().get(world), local.x, local.z)
 	var outdoor := CampusData.layout("out")
 	var surface := AudioFx.surface(world, world == "bell1" and local.y > 0.4, location, outdoor.get("objects", []), float(outdoor.get("SC", 1.0)))
-	# Player footsteps must not produce the patrol's threat captions.
-	app.audio.step_on(surface, 0.8 if running else 0.55, {"pos": at, "world_pos": true, "self_step": true})
+	app.audio.step_on(surface, 0.8 if running else 0.55, {"pos": at, "world_pos": true})
 
 
 func _process(dt: float) -> void:
@@ -1021,7 +1024,7 @@ func _present(dt: float) -> void:
 	app.phone().set_context(app._phone_context())
 	app.patrol().set_context(app._patrol_context(room, pose))
 	app.anomaly().set_context(app._anomaly_context(room, pose))
-	app.ui.show_status(school.place_name(app.session.world_id, float(pose["position"][1])), app.first_lunch_lead(school, school.period_text(false)), school.period_class(false), school.clock_text(app.items().has_clock()))
+	app.ui.show_status(school.place_name(app.session.world_id, float(pose["position"][1])), school.period_text(false), school.period_class(false), school.clock_text(app.items().has_clock()))
 	app.ui.show_stamina(school.stam, school.stamina_max(), school.tired)
 	app.ui.show_sprint_available(app.player.can_sprint)
 	app.ui.show_runtime(app.session.clock.active_seconds)

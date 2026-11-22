@@ -4,8 +4,8 @@ extends RefCounted
 ## quality.js). Presentation and comfort only: no setting changes the rules, the collision or the
 ## timetable. Saved on its own (user://settings.json), never inside a run's save.
 ##
-## vol 0–100 (default 70) · amb 1/0 ambient layers · captions 0 auto / 1 on / 2 off (default on) ·
-## sub 0/1/2 caption size · distortion 0 off / 1 reduced / 2 full · reduce_flash 1/0 · bright 50–150 ·
+## vol 0–100 (default 70) · amb 1/0 ambient layers · sub 0/1/2 hint size ·
+## distortion 0 off / 1 reduced / 2 full · reduce_flash 1/0 · bright 50–150 ·
 ## grain 1/0 · mouse, touch 25–250 look sensitivity % · text 85–150 % · touch_size 85–125 % ·
 ## quality 0–4 presets / 5 custom; GraphicsProfile expands independent parameters.
 ## fps_limit 0 unlimited / 20–360. VSync is independent. menu_orbit 1/0 selects the baked campus panorama
@@ -15,7 +15,7 @@ extends RefCounted
 ## stored separately from numeric settings and from gameplay saves.
 
 const VERSION := 4
-const DEFAULTS := {"vol": 70, "amb": 1, "captions": 1, "sub": 1, "distortion": 2, "reduce_flash": 0, "bright": 100, "grain": 1,
+const DEFAULTS := {"vol": 70, "amb": 1, "sub": 1, "distortion": 2, "reduce_flash": 0, "bright": 100, "grain": 1,
 	"mouse": 100, "touch": 100, "text": 100, "touch_size": 100, "quality": 2, "auto_land": 1, "full_screen": 0, "shake": 1,
 	"fps_limit":60, "vsync":1, "render_scale":100, "render_budget":2, "model_detail":2, "lighting_detail":2,
 	"particle_detail":2, "upscaler":1, "msaa":0, "fxaa":1, "lod_detail":1,
@@ -23,7 +23,7 @@ const DEFAULTS := {"vol": 70, "amb": 1, "captions": 1, "sub": 1, "distortion": 2
 	"torch_shadows":1, "post_detail":1, "grain_strength":100, "menu_orbit":0}
 const LIMITS := {"vol": [0,100], "bright": [50,150], "mouse": [25,250], "touch": [25,250], "text": [85,150], "touch_size": [85,125],
 	"fps_limit":[0,360], "render_scale":[50,100], "grain_strength":[0,100]}
-const CHOICES := {"amb":2, "captions":3, "sub":3, "distortion":3, "reduce_flash":2, "grain":2, "quality":6, "auto_land":2, "full_screen":2, "shake":2,
+const CHOICES := {"amb":2, "sub":3, "distortion":3, "reduce_flash":2, "grain":2, "quality":6, "auto_land":2, "full_screen":2, "shake":2,
 	"vsync":2, "render_budget":6, "model_detail":4, "lighting_detail":5, "particle_detail":5, "upscaler":2,
 	"msaa":2, "fxaa":2, "lod_detail":3, "sun_shadows":2, "sun_shadow_detail":2,
 	"shadow_resolution":3, "shadow_filter":2, "torch_shadows":2, "post_detail":2, "menu_orbit":2}
@@ -158,7 +158,7 @@ func graphics() -> Dictionary:
 
 func reset_comfort() -> void:
 	touch_layout = {}
-	for k: String in ["mouse", "touch", "text", "touch_size"]:
+	for k: String in ["mouse", "touch", "text", "touch_size", "sub"]:
 		values[k] = DEFAULTS[k]
 
 

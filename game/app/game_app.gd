@@ -790,6 +790,7 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 		session.stop()
 	session = candidate
 	_map_route = ""
+	_stream_tick = 0.0
 	_load_profile(achievements())
 	_fn_day = school().day if school() != null else 1
 	_leave_drive()
@@ -1663,7 +1664,6 @@ func _school_step(delta: float, rules: CampusModule, advance_calendar: bool = tr
 		ui.show_notice(text)
 	var frozen := not router.current.advances_calendar
 	var period := day_rules.period_text(frozen)
-	if not frozen: period = first_lunch_lead(day_rules, period)
 	var tale_now := tales()
 	if tale_now != null and not frozen and not day_rules.inspection_active() and not day_rules.inspection_upcoming() and tale_now.checkup_period() != "":
 		period = tale_now.checkup_period()
@@ -1830,15 +1830,6 @@ func _touch_hot(index: int) -> void:
 	if index in [0,1] and items().hot[index]!=null and inception_flow.use(String(items().hot[index])): return
 	if session != null and player.enabled and not story().over():
 		_apply_result(items().use_hot(index,school().tsec))
-
-
-func first_lunch_lead(rules: SchoolModule, period: String) -> String:
-	if rules.day != 1 or not rules.seated or session.world_id != "teach1" or rules.inspection.settled.get("1:0") != "present": return period
-	if not period.begins_with("午饭") and not period.begins_with("午休"): return period
-	var inv := investigation()
-	if inv != null and (inv.entries.is_empty() or (inv.entries.size() == 1 and inv.visible("desk"))):
-		return period + " · 去北门旁保安岗查签名"
-	return period
 
 
 func _read_seat_card() -> void:
@@ -2071,10 +2062,10 @@ func _locker_overstay_step(delta: float, watcher: PatrolModule, day_rules: Schoo
 	var threat: bool = bool(watcher.pat["locked"]) or watcher.local_threat() or bool(watcher.pat["near"]) or watcher.local_chase()
 	match locker_overstay.tick(delta, bool(watcher.hide["on"]), threat):
 		"knock":
-			audio.play("dread.knock", {"k": 0.7, "pan": 0.2, "caption": "铁皮从柜子里面被敲了两下"})
+			audio.play("dread.knock", {"k": 0.7, "pan": 0.2})
 			ui.show_notice("我：……铁皮在响。不是外面，是柜子里面。")
 		"breath":
-			audio.play("threat.breath", {"k": 0.7, "caption": "柜子里还有别人的呼吸"})
+			audio.play("threat.breath", {"k": 0.7})
 			ui.show_notice("我：耳朵后面有呼吸声。这个柜子里不止我一个。")
 		"push":
 			day_rules.san = maxf(day_rules.san - LockerOverstay.SAN_COST, minf(day_rules.san, 1.0))
@@ -2308,7 +2299,7 @@ func _patrol_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, 
 		elif e["kind"] == "inspection":
 			fact(e)
 		elif e["kind"] == "rollcall_sound":
-			audio.play(e["cue"], {"k": .65, "caption": e["caption"]})
+			audio.play(e["cue"], {"k": .65})
 	watcher.set_context(_patrol_context(room, pose))
 	watcher.tick(delta)
 	for e: Dictionary in watcher.take_events():
@@ -2377,7 +2368,7 @@ func _patrol_precursor_step(delta: float, watcher: PatrolModule) -> void:
 	var dir: Variant = metric.get("direction")
 	var w := Vector2(float(dir["x"]), float(dir["y"])) if dir is Dictionary else Vector2(float(d._c.get("x", 0.0)), float(d._c.get("y", 0.0)))
 	var pl := d.place(w)
-	audio.play(String(cue["id"]), {"pan": float(pl["pan"]), "k": float(cue["k"]), "lp": (0.35 if bool(pl["muffled"]) else 1.0) * (0.7 if bool(pl["behind"]) else 1.0), "place": pl})
+	audio.play(String(cue["id"]), {"pan": float(pl["pan"]), "k": float(cue["k"]), "lp": (0.35 if bool(pl["muffled"]) else 1.0) * (0.7 if bool(pl["behind"]) else 1.0)})
 
 
 ## Sound layers and cues from the current state (AudioFx never changes a rule).
@@ -2417,9 +2408,8 @@ func _audio_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, r
 		"chase": watcher != null and bool(watcher.pat["locked"]), "threat": watcher != null and watcher.local_threat(),
 		"patrol_pos": patrol_pos, "patrol_behind": behind, "big": big, "blackout": weird != null and weird.blackout_now(),
 		"moth_near": cw.anomaly_fx.moth_nearness() if cw != null and cw.anomaly_fx != null and an_id == "moth" else 0.0,
-		"busy": ui.terminal_open() or (days() != null and days().waiting != null), "echo": dread() != null and dread().echo})
+		"echo": dread() != null and dread().echo})
 	_patrol_precursor_step(delta, watcher)
-	ui.show_captions(audio.captions.lines() if audio.captions.enabled(audio.volume, audio.muted) else PackedStringArray())
 	# fx/weather.js: in the rain a bolt every 6–14 s, the screen whitens twice and the thunder comes late.
 	if an_id in ["rain", "raindots"]:
 		_bolt_next -= delta
@@ -2868,8 +2858,7 @@ func _bindings_saved(note: String) -> void:
 func _apply_settings() -> void:
 	audio.volume = float(settings.get_int("vol")) / 100.0
 	audio.ambience = settings.get_int("amb") == 1
-	audio.captions.mode = settings.get_int("captions")
-	ui.apply_caption_scale(float(GameSettings.SUB_MULT[settings.get_int("sub")]))
+	ui.apply_hint_scale(float(GameSettings.SUB_MULT[settings.get_int("sub")]))
 	ui.apply_text_scale(settings.get_int("text"))
 	ui.apply_touch_scale(settings.get_int("touch_size"), settings.touch_layout)
 	ui.set_grain(settings.get_int("grain") == 1)
@@ -3003,10 +2992,9 @@ func _apply_atmos_events() -> void:
 				audio.play("campus." + String(e["cue"]), {"pan": float(e["pan"]), "k": float(e["k"]), "lp": float(e["lp"])})
 			"duck":
 				audio.duck(float(e["sec"]))
-				audio.note_caption("world.silence")
 			"dread":
 				var pl: Dictionary = e["place"]
-				audio.play("dread." + String(e["cue"]), {"pan": float(pl["pan"]), "k": float(pl["k"]), "lp": 0.7 if bool(pl["behind"]) else 1.0, "place": pl,"owner":String(e.get("owner",""))})
+				audio.play("dread." + String(e["cue"]), {"pan": float(pl["pan"]), "k": float(pl["k"]), "lp": 0.7 if bool(pl["behind"]) else 1.0, "owner": String(e.get("owner", ""))})
 			"scene_stop":
 				audio.fade_owned("atmos.scene")
 			"say":
@@ -3016,6 +3004,28 @@ func _apply_atmos_events() -> void:
 # ---- the investigation notebook (game/features/story/investigation_module.gd) ----
 
 var _supply_after: Callable
+
+
+func _guidance_text() -> String:
+	if session == null or not session.running or _dead() or opening_busy() or driving() or lan.spectating():
+		return ""
+	if session.world_id in CampusSpace.SEPARATE or not campus().knows(session.world_id):
+		return ""
+	var rules := school()
+	if rules.inspection_active():
+		if rules.inspection["current"].get("proxy", false):
+			return "名牌正在替你答到，可以继续调查。"
+		return "停在原地，别盯着黑影，等检查结束。"
+	if rules.inspection_upcoming():
+		if not rules.seat_card.armed.is_empty():
+			return "名牌已经立好，可以留在外面继续调查。"
+		var here := CampusGeometry.to_world(campus().room(session.world_id), player.position.x, player.position.z)
+		if rules.at_my_seat(session.world_id, here):
+			return "坐稳，等学生会检查结束。"
+		return "检查开始前，回教学楼一楼坐到自己的座位。"
+	var inv := investigation()
+	inv.set_context(_invest_context())
+	return inv.goal()
 
 
 func _invest_context() -> Dictionary:
@@ -3915,9 +3925,7 @@ func _show_classmates(mates: ClassmatesModule, room: Variant, me: Vector2, dt: f
 		_mates_nodes.build(room,seats)
 		_mates_nodes.room_sound.connect(func(cue: String, point: Vector3) -> void:
 			if not opening_busy() and not _atmos_busy and audio.ambience and not story().over():
-				var sound := {"pos":world.to_global(point),"world_pos":true,"unit":2.2,"k":.34,"pitch":.86,"owner":"classroom"}
-				if cue == "foley.chalk": sound["caption"] = "粉笔擦过黑板"
-				audio.play(cue,sound))
+				audio.play(cue, {"pos": world.to_global(point), "world_pos": true, "unit": 2.2, "k": .34, "pitch": .86, "owner": "classroom"}))
 	_mates_nodes.set_normal(fake_normal()!=null and fake_normal().active())
 	if key == "teach1":
 		_mates_nodes.show_name_card(school().name_card_seat(), session.character_id, school().seat_card)
@@ -5793,6 +5801,7 @@ func _process(delta: float) -> void:
 	if session != null and not get_tree().paused and _stream_tick <= 0.0:
 		_stream_tick = 0.2
 		router.prefetch(player.position)
+		ui.show_guidance(_guidance_text())
 	_menu_frame_cap()
 	if is_instance_valid(archive_flow) and archive_flow.active(): return
 	if session != null and player != null and player.camera != null:

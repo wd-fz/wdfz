@@ -28,7 +28,7 @@
 | [同学](同学) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture/capture_classroom.gd`：开局座位看到的同学；注入违规 75 后全班转向我（占位胶囊体） |
 | [感官反馈](感官反馈) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture/capture_sensory.gd`：教学楼 1F 同一走廊在 SAN 100、35、8 时的画面（收窄、失焦、褪色、灯管灯晕；2026-11-07 换成照旧版公式的新着色器） |
 | [体检日](体检日) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture/capture_checkup.gd` 注入第三天为体检日、10:25：行政楼一楼走廊排队的人与门牌、身高尺与体重秤、视力表（占位几何） |
-| [声音字幕](声音字幕) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture/capture_captions.gd`：教学楼 1F，下课铃与左侧隔墙的敲门声的字幕 |
+| [声音字幕](声音字幕) | 历史截图。2026-11-07，教学楼 1F 的下课铃与敲门声字幕，1280×720。现版该处显示调查引导。 |
 | [氛围](氛围) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture/capture_dread.gd`：同一天第二次回到教学楼 1F 时地上的纸条（回访变化）；`tools/capture/capture_atmos.gd`（第三天傍晚）：走廊暗区与墙边拖把水桶、拖把转过来对着我、教室窗外远处的人影、楼梯口上方的应急指示牌（占位几何；同学一起转头在占位胶囊上看不出来，由规则测试覆盖） |
 | [设置](设置) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture/capture_settings.gd`：主菜单上打开的设置面板（声音、画面与舒适、操作与文字三组，滚动查看） |
 | [调查笔记](调查笔记) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture/capture_notes.gd`：读过停车单与移交单、保安岗登记之后的笔记页（当前调查、最近发现、按类型分组的记录） |
@@ -103,7 +103,7 @@
 | [同学](同学) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture/capture_classroom.gd`：开局座位看到的同学；注入违规 75 后全班转向我（占位胶囊体） |
 | [感官反馈](感官反馈) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture/capture_sensory.gd`：教学楼 1F 同一走廊在 SAN 100、35、8 时的画面（收窄、失焦、褪色、灯管灯晕；2026-11-07 换成照旧版公式的新着色器） |
 | [体检日](体检日) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture/capture_checkup.gd` 注入第三天为体检日、10:25：行政楼一楼走廊排队的人与门牌、身高尺与体重秤、视力表（占位几何） |
-| [声音字幕](声音字幕) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture/capture_captions.gd`：教学楼 1F，下课铃与左侧隔墙的敲门声的字幕 |
+| [声音字幕](声音字幕) | 历史截图。2026-11-07，教学楼 1F 的下课铃与敲门声字幕，1280×720。现版该处显示调查引导。 |
 | [氛围](氛围) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture/capture_dread.gd`：同一天第二次回到教学楼 1F 时地上的纸条（回访变化）；`tools/capture/capture_atmos.gd`（第三天傍晚）：走廊暗区与墙边拖把水桶、拖把转过来对着我、教室窗外远处的人影、楼梯口上方的应急指示牌（占位几何；同学一起转头在占位胶囊上看不出来，由规则测试覆盖） |
 | [设置](设置) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture/capture_settings.gd`：主菜单上打开的设置面板（声音、画面与舒适、操作与文字三组，滚动查看） |
 | [调查笔记](调查笔记) | 2026-11-07，Godot 4.6.3，Xvfb + Compatibility 软件渲染，1280×720，`tools/capture/capture_notes.gd`：读过停车单与移交单、保安岗登记之后的笔记页（当前调查、最近发现、按类型分组的记录） |

@@ -40,11 +40,6 @@ var muted := false:
 var ambience := true
 var enabled := true
 var played: Array[String] = []   # last plays, for tests
-var captions := SoundCaptions.new()
-## Captions are published only in play (not on the menu, dead, paused or in a cutscene).
-var captions_live := false
-## Phone, lesson or terminal open: only the most urgent captions get through.
-var captions_busy := false
 
 var _index: Dictionary = {}
 var _streams: Dictionary = {}
@@ -207,7 +202,7 @@ func stream_of(id: String) -> AudioStream:
 	return _stream("sfx/" + String((d["files"] as Array)[0]["file"]), false)
 
 
-## A separate voice and RNG keep developer audition out of world sounds and captions.
+## Audition uses its own voice and random stream.
 func audition(id: String) -> bool:
 	var d: Dictionary = _index.get("sfx",{}).get(id,{})
 	if d.is_empty() or not is_inside_tree():
@@ -252,12 +247,9 @@ func play(id: String, opts: Dictionary = {}) -> bool:
 	if d.is_empty():
 		return false
 	var at := float(opts.get("at", 0.0))
-	if captions_live and not bool(opts.get("captioned", false)):
-		captions.publish(id, _place_of(opts), captions_busy)
 	if at > 0.0:
 		var o := opts.duplicate()
 		o.erase("at")
-		o["captioned"] = true
 		_delayed.append([_t + at, id, o])
 		return true
 	var files: Array = d["files"]
@@ -361,7 +353,6 @@ func _cat_of(s: AudioStream) -> String:
 func stop_all() -> void:
 	stop()
 	stop_audition()
-	captions.reset()
 	for name: String in _beds:
 		var b: Dictionary = _beds[name]
 		(b["player"] as AudioStreamPlayer).stop()
@@ -388,35 +379,13 @@ func playing_ids() -> Array:
 	return out
 
 
-## The caption's place words from the play options (pan, behind, distance, muffled).
-func _place_of(opts: Dictionary) -> Dictionary:
-	var o := opts.duplicate()
-	var place: Dictionary = o.get("place", {})
-	if place.is_empty():
-		if absf(float(o.get("pan", 0.0))) > 0.25:
-			place["pan"] = float(o["pan"])
-		if float(o.get("lp", 1.0)) < 0.5:
-			place["muffled"] = true
-		var pos: Variant = o.get("pos")
-		var cam := get_viewport().get_camera_3d() if get_viewport() != null else null
-		if pos is Vector3 and cam != null:
-			var to: Vector3 = (pos as Vector3) - cam.global_position
-			place["m"] = to.length()
-			place["behind"] = (-cam.global_basis.z).dot(to.normalized()) < -0.2
-			var side := cam.global_basis.x.dot(to.normalized())
-			if absf(side) > 0.25:
-				place["pan"] = side
-	o["place"] = place
-	return o
-
-
 # ---- the old SFX API ----
 
 ## A step on a surface (stepSound): feet alternate in pitch and a little in pan.
 func step_on(surface: String, k: float = 1.0, opts: Dictionary = {}) -> void:
 	_foot = 1 - _foot
 	var o := {"k": k, "pitch": 0.97 if _foot == 1 else 1.0, "pan": clampf(float(opts.get("pan", 0.0)) + (0.05 if _foot == 1 else -0.05), -1.0, 1.0)}
-	for key: String in ["lp", "pos", "at", "patrol", "self_step"]:
+	for key: String in ["lp", "pos", "at"]:
 		if opts.has(key):
 			o[key] = opts[key]
 	play("step." + surface if has("step." + surface) else "step.tile", o)
@@ -433,14 +402,7 @@ func school_bell(kind: String, outdoor: bool, tune: Dictionary = {}) -> void:
 	if not tune.is_empty():
 		opts["tail"] = float(tune.get("tail",1))
 		opts["tailLength"] = float(tune.get("tailLength",1))
-		opts["caption"] = String(tune["caption"])
 	play("event.bellStart" if kind == "start" else "event.bellEnd", opts)
-
-
-## A caption for a sound that has no sample of its own (the hush).
-func note_caption(id: String, opts: Dictionary = {}) -> void:
-	if captions_live:
-		captions.publish(id, opts, captions_busy)
 
 
 func anomaly_start(id: String) -> void:
@@ -532,9 +494,6 @@ func _set_space(kind: String, wet: float) -> void:
 ## threat, patrol_pos (Vector3 or null), patrol_behind, big (a large floor), blackout, period.
 func update(delta: float, ctx: Dictionary) -> void:
 	_t += delta
-	captions.tick(delta)
-	captions_live = not bool(ctx.get("menu", false)) and not bool(ctx.get("dead", false))
-	captions_busy = bool(ctx.get("busy", false))
 	for e: Array in _delayed.duplicate():
 		if _t >= float(e[0]):
 			_delayed.erase(e)
@@ -656,10 +615,10 @@ func _steps(delta: float, ctx: Dictionary) -> void:
 			var run := bool(ctx.get("running", false))
 			_step_t = 0.33 if run else 0.52
 			var wet := bool(ctx.get("out", false)) and String(ctx.get("anomaly", "")) in ["rain", "raindots"]
-			step_on(String(ctx.get("surface", "tile")), 1.35 if run else 1.0, {"wet": wet, "self_step": true})
+			step_on(String(ctx.get("surface", "tile")), 1.35 if run else 1.0, {"wet": wet})
 			# A revisit's echo: the same step again, quiet, behind and late (dread.js DREAD.echo).
 			if bool(ctx.get("echo", false)):
-				step_on(String(ctx.get("surface", "tile")), 0.32, {"pan": 0.25, "lp": 0.55, "at": 0.19, "self_step": true})
+				step_on(String(ctx.get("surface", "tile")), 0.32, {"pan": 0.25, "lp": 0.55, "at": 0.19})
 	else:
 		_step_t = 0.0
 
@@ -672,7 +631,7 @@ func _patrol(delta: float, ctx: Dictionary) -> void:
 		if _patrol_t <= 0.0:
 			var locked := bool(ctx.get("chase", false))
 			_patrol_t = 0.4 if locked else 0.62
-			step_on(String(ctx.get("surface", "tile")), 1.5 if locked else 1.1, {"pos": pp, "patrol": true, "lp": 0.55 if bool(ctx.get("patrol_behind", false)) else 1.0})
+			step_on(String(ctx.get("surface", "tile")), 1.5 if locked else 1.1, {"pos": pp, "lp": 0.55 if bool(ctx.get("patrol_behind", false)) else 1.0})
 	else:
 		_patrol_t = 0.0
 
