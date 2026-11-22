@@ -102,6 +102,10 @@ func close() -> void:
 	_budgets.clear()
 
 
+func flush() -> void:
+	if peer != null: peer.host.flush()
+
+
 func reset_diagnostics() -> void:
 	bytes_sent = 0
 	bytes_received = 0

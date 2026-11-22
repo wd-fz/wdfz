@@ -35,6 +35,8 @@ var _command_seq := 0
 var _snapshot_seq := 0
 var _last_snapshot := -1
 var _awaiting: Dictionary = {}
+var _loaded_epoch := ""
+var _loading_peers: Dictionary = {}
 var _join_started := 0.0
 var _hello_deadline := 0.0
 var _loading_deadline := 0.0
@@ -228,6 +230,13 @@ func select_character(character: String) -> void:
 func start() -> String:
 	if not transport.serving or room == null or not room.can_start(): return "请让本局需加入的成员全部连接并准备；新局至少需要两人。"
 	if not room.begin(LanProtocol.token()): return "无法开始房间。"
+	# Send the loading phase before the authority builds the school's collision.
+	# That work can block polling longer than a lobby heartbeat allows.
+	var starting_room := room
+	_trace_event("room loading started")
+	_publish_room()
+	if room != starting_room or not transport.serving: return "房间已关闭。"
+	transport.flush()
 	simulation = CooperativeSimulation.new()
 	add_child(simulation)
 	simulation.setup(room, int(Time.get_ticks_usec() % 2147483647))
@@ -235,14 +244,21 @@ func start() -> String:
 		simulation.restore(_resume)
 		_resume.clear()
 	simulation.checkpoint_requested.connect(func() -> void: _queued_save = true)
-	_loading_deadline = _clock + 60.0
+	_loading_deadline = Time.get_ticks_msec() / 1000.0 + LOADING_HEARTBEAT_TIMEOUT
 	_publish_room()
 	_send_states(true)
 	return ""
 
 
 func loaded() -> void:
-	if room != null: _send({"kind": "loaded", "epoch": room.epoch})
+	if room == null or room.epoch.is_empty() or transport.peer == null: return
+	if _loaded_epoch != room.epoch:
+		_loaded_epoch = room.epoch
+		# The local scene and its first frame can block polling. Start the
+		# shorter in-game heartbeat interval after that work has finished.
+		if not transport.serving: _last_heard = Time.get_ticks_msec() / 1000.0
+		_trace_event("local campus ready")
+	_send({"kind": "loaded", "epoch": room.epoch})
 
 
 func command(action: String, fields: Dictionary = {}) -> void:
@@ -279,6 +295,7 @@ func remove(id: String) -> void:
 			transport.send_control(peer_id, {"kind": "reject", "text": "房主已将你移出本局。"})
 			connections.erase(peer_id)
 			_awaiting.erase(peer_id)
+			_loading_peers.erase(peer_id)
 			_welcomes.erase(peer_id)
 	_publish_room()
 
@@ -345,7 +362,8 @@ func _control(peer_id: int, data: Dictionary) -> void:
 			elif peer_id == 1: notice.emit(reason)
 			else: transport.send_control(peer_id, {"kind": "notice", "text": reason})
 		"loaded":
-			if data.get("epoch") != room.epoch: return
+			if room.epoch.is_empty() or data.get("epoch") != room.epoch: return
+			_loading_peers.erase(peer_id)
 			room.loaded(id)
 			if simulation != null and room.phase == "playing":
 				for key: String in simulation.actors:
@@ -396,10 +414,12 @@ func _accept(peer_id: int, data: Dictionary) -> void:
 		if room.members.has(id) and room.members[id]["connected"] and room.members[id]["state"] != "departed":
 			# A tunnel can disappear before ENet's disconnect packet arrives. A
 			# credential holder waits for heartbeat expiry; it cannot evict a live player.
-			var loading := room.phase == "loading"
+			var old_peer: Variant = connections.find_key(id)
+			var heartbeat_timeout := _heartbeat_timeout(int(old_peer) if old_peer != null else 0)
+			var loading := heartbeat_timeout == LOADING_HEARTBEAT_TIMEOUT
 			if _peers_waiting.has(peer_id):
 				var pending: Dictionary = _peers_waiting[peer_id]
-				var until := float(pending.start) + JOIN_TIMEOUT + _heartbeat_timeout()
+				var until := float(pending.start) + JOIN_TIMEOUT + heartbeat_timeout
 				pending.until = maxf(float(pending.until), until)
 			transport.send_control(peer_id, {"kind": "reconnect_wait", "loading": loading})
 			return
@@ -421,6 +441,7 @@ func _accept(peer_id: int, data: Dictionary) -> void:
 	_peers_waiting.erase(peer_id)
 	connections[peer_id] = id
 	_peer_heard[peer_id] = Time.get_ticks_msec() / 1000.0
+	if simulation != null: _loading_peers[peer_id] = true
 	_welcomes[peer_id] = {"kind": "welcome", "id": id, "token": token}
 	transport.send_control(peer_id, _welcomes[peer_id])
 	_trace_event("member admitted")
@@ -483,17 +504,18 @@ func _receive_room(state: Dictionary) -> void:
 
 func _send_state(peer_id: int, id: String) -> void:
 	if simulation == null: return
-	var first_sent := _clock
+	var now := Time.get_ticks_msec() / 1000.0
 	if peer_id != 1 and _awaiting.has(peer_id):
-		first_sent = float(_awaiting[peer_id]["started"])
-		if _clock - first_sent > 60.0:
+		var pending: Dictionary = _awaiting[peer_id]
+		if now - float(pending["started"]) > LOADING_HEARTBEAT_TIMEOUT:
+			_trace_event("snapshot acknowledgement timed out")
 			transport.peer.disconnect_peer(peer_id)
 			return
-		if _clock - float(_awaiting[peer_id]["at"]) >= 5.0:
+		if now - float(pending["at"]) >= 5.0:
 			# Retransmit the same transaction. Replacing its ID while a slow client
 			# builds a scene would invalidate its eventual acknowledgement forever.
-			_awaiting[peer_id]["at"] = _clock
-			for fragment: Dictionary in _awaiting[peer_id]["chunks"]: transport.send_chunk(peer_id, fragment)
+			pending["at"] = now
+			for fragment: Dictionary in pending["chunks"]: transport.send_chunk(peer_id, fragment)
 		return
 	var data := simulation.state_for(id)
 	_snapshot_seq += 1
@@ -505,7 +527,8 @@ func _send_state(peer_id: int, id: String) -> void:
 	if chunks.is_empty():
 		transport.send_control(peer_id, {"kind": "reject", "text": "合作状态超过同步限制，请恢复最近检查点。"})
 		return
-	_awaiting[peer_id] = {"at": _clock, "started": first_sent, "snapshot": _snapshot_seq, "chunks": chunks}
+	now = Time.get_ticks_msec() / 1000.0
+	_awaiting[peer_id] = {"at": now, "started": now, "snapshot": _snapshot_seq, "chunks": chunks}
 	for chunk: Dictionary in chunks: transport.send_chunk(peer_id, chunk)
 
 
@@ -518,10 +541,14 @@ func _chunk(_peer_id: int, packet: Dictionary) -> void:
 	_last_heard = Time.get_ticks_msec() / 1000.0
 	var data := _chunks.accept(packet, _last_heard)
 	if data.is_empty() or not data.get("room") is Dictionary or not data.get("session") is Dictionary: return
-	if int(data.get("snapshot", -1)) <= _last_snapshot: return
 	if room == null or data["room"].get("epoch") != room.epoch: return
-	_last_snapshot = int(data["snapshot"])
-	transport.send_control(1, {"kind": "state_ack", "snapshot": _last_snapshot})
+	var snapshot := int(data.get("snapshot", -1))
+	if snapshot < 0 or snapshot < _last_snapshot: return
+	# A repeat can be the host retrying a lost acknowledgement. Acknowledge
+	# it again without replaying the snapshot or its events.
+	transport.send_control(1, {"kind": "state_ack", "snapshot": snapshot})
+	if snapshot == _last_snapshot: return
+	_last_snapshot = snapshot
 	_receive_room(data["room"])
 	snapshot_received.emit(data)
 	# Synchronous scene installation is local work, not a silent host.
@@ -532,6 +559,7 @@ func _peer_left(peer_id: int) -> void:
 	_welcomes.erase(peer_id)
 	_peers_waiting.erase(peer_id)
 	_peer_heard.erase(peer_id)
+	_loading_peers.erase(peer_id)
 	if not transport.serving or room == null or not connections.has(peer_id): return
 	var id := String(connections[peer_id])
 	connections.erase(peer_id)
@@ -555,8 +583,12 @@ func _physics_process(dt: float) -> void:
 	if transport.serving and simulation != null: simulation.tick(dt)
 
 
-func _heartbeat_timeout() -> float:
-	return LOADING_HEARTBEAT_TIMEOUT if room != null and room.phase == "loading" else PLAYING_HEARTBEAT_TIMEOUT
+func _heartbeat_timeout(peer_id: int = 0) -> float:
+	if room != null:
+		var local_loading := not transport.serving and not room.epoch.is_empty() and _loaded_epoch != room.epoch
+		if room.phase == "loading" or local_loading or _loading_peers.has(peer_id):
+			return LOADING_HEARTBEAT_TIMEOUT
+	return PLAYING_HEARTBEAT_TIMEOUT
 
 
 func _process(dt: float) -> void:
@@ -597,7 +629,9 @@ func _process(dt: float) -> void:
 	if room == null: return
 	for peer_id: int in _peer_heard.keys():
 		if peer_id == 1: continue
-		if _clock - float(_peer_heard[peer_id]) > _heartbeat_timeout():
+		var timeout := _heartbeat_timeout(peer_id)
+		if _clock - float(_peer_heard[peer_id]) > timeout:
+			_trace_event("peer heartbeat timed out (%s)" % ("loading" if timeout == LOADING_HEARTBEAT_TIMEOUT else "playing"))
 			transport.expire_peer(peer_id)
 			_peer_left(peer_id)
 	for peer_id: int in _peers_waiting.keys():
@@ -611,7 +645,7 @@ func _process(dt: float) -> void:
 	if paused and room.paused_left == 0.0: _publish_room()
 	if room.phase == "loading" and _clock >= _loading_deadline:
 		notice.emit("有成员尚未加载完成。可移除该成员或返回大厅重新开始。")
-		_loading_deadline = _clock + 60.0
+		_loading_deadline = _clock + LOADING_HEARTBEAT_TIMEOUT
 	if simulation != null:
 		_motion_timer += dt
 		_state_timer += dt
@@ -679,6 +713,8 @@ func connection_details() -> String:
 		"UDP 累计发送 %d B / %d 包 · 接收 %d B / %d 包（含握手）" % [transport.wire_sent, transport.packets_sent, transport.wire_received, transport.packets_received],
 		"游戏数据累计发送 %d B / 接收 %d B" % [transport.bytes_sent, transport.bytes_received]]
 	lines.append(route.details if direct_lan else "远程模式：使用系统／Terracotta 网络，不绑定本地 Wi-Fi")
+	if room != null:
+		lines.append("房间状态 %s · 本地校园 %s" % [room.phase, "就绪" if not room.epoch.is_empty() and _loaded_epoch == room.epoch else "未就绪"])
 	if not transport.last_error.is_empty(): lines.append(transport.last_error)
 	lines.append_array(_trace)
 	return "\n".join(lines)
@@ -701,6 +737,8 @@ func stop() -> String:
 	connection_stage = "idle"
 	credentials.clear()
 	_awaiting.clear()
+	_loaded_epoch = ""
+	_loading_peers.clear()
 	_chunks.clear()
 	_resume.clear()
 	local_id = ""

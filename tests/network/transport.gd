@@ -4,6 +4,16 @@ var checks := 0
 var failures := 0
 
 
+class DropFirstSnapshotAck extends LanTransport:
+	var dropped := false
+
+	func send_control(id: int, data: Dictionary) -> void:
+		if data.get("kind") == "state_ack" and not dropped:
+			dropped = true
+			return
+		super.send_control(id, data)
+
+
 func _initialize() -> void:
 	call_deferred("run")
 
@@ -27,6 +37,7 @@ func run() -> void:
 	await delayed_join()
 	await delayed_join(true)
 	await reconnect_during_loading()
+	await reload_in_playing_room()
 	await input_bandwidth()
 	await failed_join_diagnostics()
 	print("LAN TRANSPORT: %d checks, %d failures" % [checks, failures])
@@ -115,6 +126,74 @@ func reconnect_during_loading() -> void:
 			check(host.connections.get(new_peer) == member and not host.connections.has(old_peer) and not host._peers_waiting.has(new_peer), "only the replacement owns the admitted member")
 	for session: LanSession in [replacement, original, host]: session.queue_free()
 	await process_frame
+
+
+func reload_in_playing_room() -> void:
+	var host := LanSession.new()
+	var original := LanSession.new()
+	var replacement := LanSession.new()
+	host.store.path = "user://lan-transport-tests/%s/room.json" % Time.get_ticks_usec()
+	var transport := DropFirstSnapshotAck.new()
+	replacement.transport.free()
+	replacement.transport = transport
+	for session: LanSession in [host, original, replacement]: root.add_child(session)
+	var received: Array[int] = []
+	replacement.snapshot_received.connect(func(data: Dictionary) -> void: received.append(int(data["snapshot"])))
+
+	var port := free_port()
+	var target := "127.0.0.1:%d" % port
+	check(host.host("test", "host", port).is_empty() and original.join(target, "guest").is_empty(), "open a room for the load-and-reconnect fixture")
+	var deadline := Time.get_ticks_msec() + 5000
+	while original.room == null and Time.get_ticks_msec() < deadline: await process_frame
+	check(original.room != null, "the guest joins before campus loading")
+	if original.room != null:
+		var member := original.local_id
+		var token := original.reconnect_token
+		var old_peer := original.transport.api.get_unique_id()
+		host.room.ready(member, true, "none")
+		host.snapshot_received.connect(func(_data: Dictionary) -> void:
+			if host.room.phase == "loading": host.loaded())
+		original.snapshot_received.connect(func(_data: Dictionary) -> void:
+			if original.room.phase == "loading": original.loaded())
+		check(host.start().is_empty(), "start the room before reconnecting")
+		deadline = Time.get_ticks_msec() + 9000
+		while host.room.phase != "playing" and Time.get_ticks_msec() < deadline: await process_frame
+		check(host.room.phase == "playing", "two initial players finish the loading barrier")
+		original.stop()
+		deadline = Time.get_ticks_msec() + 5000
+		while host.connections.has(old_peer) and Time.get_ticks_msec() < deadline: await process_frame
+		check(replacement.join(target, "guest", token).is_empty(), "original member rejoins the running room")
+		deadline = Time.get_ticks_msec() + 5000
+		while received.is_empty() and Time.get_ticks_msec() < deadline: await process_frame
+		check(not received.is_empty() and replacement.local_id == member, "reconnecting client gets its first campus snapshot")
+		if not received.is_empty():
+			var peer_id := replacement.transport.api.get_unique_id()
+			var snapshot := received[0]
+			check(transport.dropped and host._awaiting.get(peer_id, {}).get("snapshot") == snapshot, "host awaits the first snapshot confirmation")
+			var now := Time.get_ticks_msec() / 1000.0
+			var stale := now - LanSession.PLAYING_HEARTBEAT_TIMEOUT - 1.0
+			host._peer_heard[peer_id] = stale
+			replacement._last_heard = stale
+			host._process(0.0)
+			replacement._process(0.0)
+			check(host.connections.has(peer_id) and replacement.transport.peer != null, "a reconnect still loading survives a silence longer than the gameplay interval")
+			if host._awaiting.has(peer_id) and replacement.transport.peer != null:
+				replacement.loaded()
+				host._awaiting[peer_id]["at"] = now - 6.0
+				host._send_state(peer_id, member)
+				deadline = Time.get_ticks_msec() + 5000
+				while host._awaiting.get(peer_id, {}).get("snapshot") == snapshot and Time.get_ticks_msec() < deadline: await process_frame
+				check(host._awaiting.get(peer_id, {}).get("snapshot") != snapshot and received.count(snapshot) == 1, "a repeated snapshot confirms the lost acknowledgement without replaying state")
+				check(not host._loading_peers.has(peer_id) and host._heartbeat_timeout(peer_id) == LanSession.PLAYING_HEARTBEAT_TIMEOUT and replacement._heartbeat_timeout() == LanSession.PLAYING_HEARTBEAT_TIMEOUT,
+					"the ready acknowledgement restores the regular heartbeat on both sides")
+	var path := host.store.path
+	for session: LanSession in [replacement, original, host]:
+		session.stop()
+		session.queue_free()
+	await process_frame
+	for suffix: String in ["", ".bak", ".tmp"]:
+		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
+	DirAccess.remove_absolute(path.get_base_dir())
 
 
 func failed_join_diagnostics() -> void:

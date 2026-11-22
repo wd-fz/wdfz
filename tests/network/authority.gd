@@ -427,9 +427,9 @@ func transport_ordering() -> void:
 	net.room = sim.room
 	net.simulation = sim
 	net.connections = {2: "b"}
-	net._clock = 8.0
+	var now := Time.get_ticks_msec() / 1000.0
 	var fragments := LanChunks.split(sim.state_for("b"), "pending-5")
-	net._awaiting[2] = {"at": 0.0, "started": 0.0, "snapshot": 5, "chunks": fragments}
+	net._awaiting[2] = {"at": now - 8.0, "started": now - 8.0, "snapshot": 5, "chunks": fragments}
 	net._send_state(2, "b")
 	check(net._awaiting[2]["snapshot"] == 5 and net._awaiting[2]["chunks"] == fragments, "slow loading retries original baseline rather than abandoning acknowledgement ID")
 	net.transport.serving = true

@@ -133,6 +133,12 @@ func run() -> void:
 		if not reconnecting:
 			check(false, reason)
 			finish())
+	if slow_load and role == "host":
+		node_added.connect(func(node: Node) -> void:
+			if node is CooperativeSimulation and not load_stalled:
+				load_stalled = true
+				# Authority builds the school on the same thread as ENet.
+				OS.delay_msec(13500))
 	network.room_changed.connect(func(_data: Dictionary) -> void:
 		if role == "host": _observe_guest_connection()
 		if network.room.phase == "lobby" and network.room.members.has(network.local_id):
@@ -262,6 +268,7 @@ func _process(dt: float) -> bool:
 		check(snapshots > 10, "received repeated baselines")
 		check(motions > 40, "received motion over unreliable ENet")
 		check(not ending_test and network.room != null and network.room.phase == "playing", "room stays running / ending completes before timeout")
+		if slow_load: check(load_stalled, "the initial loading-stall fixture ran")
 		if role == "host" and not ending_test and not restore_test and not soak:
 			check(original_guest_reconnected, "original peer restored after transport disconnect")
 		if role == "guest-1":

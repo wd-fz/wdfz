@@ -23,7 +23,7 @@ def main():
     parser.add_argument("--walk", action="store_true", help="drive a real campus client and compare its footfalls and stopping position to the host")
     parser.add_argument("--ui", action="store_true")
     parser.add_argument("--soak", action="store_true")
-    parser.add_argument("--slow-load", action="store_true", help="block the first client scene load for 12 seconds")
+    parser.add_argument("--slow-load", action="store_true", help="stall the host and client during their first campus load")
     parser.add_argument("--restore", action="store_true", help="restart the host and recover the authoritative save over ENet")
     parser.add_argument("--ending", action="store_true", help="two-process whitelist route with controlled travel fixtures")
     parser.add_argument("--renderer", choices=("forward_plus", "mobile"))
