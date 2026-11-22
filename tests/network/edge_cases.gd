@@ -7,7 +7,7 @@ func run() -> void:
 	await games_and_dream()
 	await records_and_input()
 	await personal_name_cards()
-	await paper_exit_team()
+	await west_gate_trial()
 	sim.queue_free()
 	await process_frame
 	print("LAN EDGES: %d checks, %d failures" % [checks, failures])
@@ -177,7 +177,7 @@ func records_and_input() -> void:
 	saved("C25 death recovery from private space")
 
 
-func paper_exit_team() -> void:
+func west_gate_trial() -> void:
 	await fresh()
 	var a := sim.actor("a")
 	var b := sim.actor("b")
@@ -198,7 +198,7 @@ func paper_exit_team() -> void:
 	for j in 10: sim.gameplay.personal(a, 1.0)
 	check(tile(b, "guard1", "k"), "another student finds the counterfoil")
 	command(b, "interact")
-	check(a.school().seat_card.proof == "" and not b.school().seat_card.proof.is_empty(), "only the student at the counter receives a paper exit")
+	check(a.school().seat_card.proof == "" and not b.school().seat_card.proof.is_empty(), "only the student at the counter receives personal evidence")
 	check(tile(a, "guard1", "k"), "the owner can reread the same register")
 	command(a, "interact")
 	sim.travel(a, "out", outdoors)
@@ -216,15 +216,24 @@ func paper_exit_team() -> void:
 	a = sim.actor("a")
 	b = sim.actor("b")
 	c = sim.actor("c")
+	var teammate_pose := c.pose.duplicate(true)
 	sim.gameplay.personal(a, .05)
 	# Fixed poses bracket the line. The solo controller test walks this corridor with real input.
 	a.pose.position[0] -= 2
 	sim.gameplay.personal(a, .05)
-	check(sim.gameplay.qualified.get("paper", false) and sim.room.ending_offer.is_empty(), "a crossing qualifies the party but a student still at the guard prevents an offer")
-	sim.travel(b, "out", outdoors)
-	command(a, "ending_request")
-	check(not sim.room.ending_offer.is_empty(), "the group can propose departure after every living member arrives")
-	command(b, "ending_confirm", {"accept":true})
-	check(sim.room.ending.is_empty(), "a silent third student cannot be counted as consent")
-	command(c, "ending_confirm", {"accept":true})
-	check(sim.room.ending == "face" and sim.state_for("c").qualified.paper, "all three leave together under the original team ending protocol")
+	check(a.school().seat_card.trial_punch == "proxy" and a.point(CampusData.rooms()).x > gate.x + RollcallCard.EXIT_OFFSET, "only the crossing student returns to the inside of the gate")
+	check(not b.school().seat_card.trial_done() and not c.school().seat_card.trial_done() and c.pose == teammate_pose, "teammates retain their own position and progress")
+	check(sim.room.phase == "playing" and sim.room.ending.is_empty() and sim.room.ending_offer.is_empty() and not command(a, "ending_request").get("ok", true), "the exercise cannot open a team ending")
+	var notebook := a.feature(&"story.investigation") as InvestigationModule
+	check(notebook.entries.get("westTrial", {}).get("kind") == "验证", "the team gets a sourced investigation note from the exercise")
+	notebook.set_context(CooperativeContext.investigation(b))
+	check(notebook.current_focus() == "identity" and b.school().seat_card.gate_goal().contains("西小门"), "sharing the finding does not overwrite a teammate's own task")
+
+	var legacy := saved("completed west-gate trial")
+	legacy.actors["a"].session.modules["school.day"].data.seat_card.erase("trial_punch")
+	legacy.gameplay.extra.qualified = {"route": "face", "paper": true, "owner": "a", "world": "out", "x": gate.x, "y": gate.y}
+	sim.room.ending_offer = {"id": "legacy-paper", "route": "face", "members": ["a", "b", "c"], "confirmed": ["a"]}
+	legacy.room.offer = sim.room.ending_offer.duplicate(true)
+	check(CooperativeValidation.validate(legacy).is_empty(), "older paper-only qualifications remain readable")
+	sim.restore(legacy)
+	check(sim.actor("a").school().seat_card.trial_punch == "proxy" and sim.gameplay.qualified.is_empty() and sim.room.ending_offer.is_empty(), "checkpoints keep the evidence and discard the obsolete exit offer")

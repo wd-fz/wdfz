@@ -79,7 +79,7 @@ func visible(group: String, ends: Dictionary = {}, opening: bool = false) -> Arr
 	return catalogue[group].filter(func(e: Dictionary) -> bool: return not e.get("secret",false) or is_open(e,ends,opening))
 
 func locked(ends: Dictionary = {}, opening: bool = false) -> Array:
-	return entries.values().filter(func(e: Dictionary) -> bool: return not is_open(e,ends,opening)).map(func(e: Dictionary) -> String: return e["id"])
+	return entries.values().filter(func(e: Dictionary) -> bool: return not e.get("legacy", false) and not is_open(e,ends,opening)).map(func(e: Dictionary) -> String: return e["id"])
 
 func grant(ids: Array) -> void:
 	for id: String in ids: state["granted"][id] = 1

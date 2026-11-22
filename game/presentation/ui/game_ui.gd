@@ -1981,7 +1981,11 @@ func show_notes(data: Dictionary) -> void:
 	var query := String(data.get("query", ""))
 	if _notes_search.text != query:
 		_notes_search.text = query
-	UIArt.heading(_notes_box, "当前调查" + ("  ·  %s路线" % _route_name(data) if not String(data.get("focus", "")).is_empty() else ""), UIArt.route_hint(String(data.get("focus", ""))), UISkin.ACCENT)
+	var focus := String(data.get("focus", ""))
+	var heading := "当前调查"
+	if not focus.is_empty():
+		heading += "  ·  " + _route_name(data)
+	UIArt.heading(_notes_box, heading, UIArt.route_hint(focus), UISkin.ACCENT)
 	_note_label(String(data["goal"]), Color.WHITE)
 	if not String(data.get("landmark", "")).is_empty():
 		var locate := Button.new()

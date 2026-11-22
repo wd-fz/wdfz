@@ -160,9 +160,13 @@ func personal(a: CooperativeActor, dt: float) -> void:
 	var ctx := prepare(a)
 	if a.vehicle: return
 	var paper := a.school().seat_card
-	if paper.clearance == 1 and paper.crossed_line(a.location() == "out", ctx["w"], (sim.shared[&"story.routes"] as RoutesModule).west_gate_center()):
-		_offer_ending(a, "face")
-		if a.fate().over(): return
+	if paper.clearance == 1:
+		var route := a.feature(&"story.routes") as RoutesModule
+		var back := route.step_paper_trial(paper, a.location(), ctx["w"])
+		if not back.is_empty():
+			sim.travel(a, "out", back)
+			drain(a, "routes")
+			ctx = prepare(a)
 	var approaching := a.watcher().approach()
 	var threat := bool(a.watcher().pat["locked"]) or a.watcher().local_threat() or (not approaching.is_empty() and float(approaching["distance"]) < 220.0)
 	var locker_beat := a.locker.tick(dt, bool(a.watcher().hide["on"]), threat)
@@ -708,7 +712,7 @@ func apply_event(a: CooperativeActor, source: String, e: Dictionary) -> void:
 		"record":
 			var notebook := a.feature(&"story.investigation") as InvestigationModule
 			notebook.set_context(CooperativeContext.investigation(a))
-			notebook.record(String(e["id"]), String(e["text"]), "事实", String(e.get("source", "")))
+			notebook.record(String(e["id"]), String(e["text"]), String(e.get("record_kind", "事实")), String(e.get("source", "")))
 			if e["id"] == "parking": a.school().seat_card.check_counterfoil(a.school().active_seconds)
 		"ending": _offer_ending(a, String(e["id"]))
 		"travel":
@@ -901,7 +905,6 @@ func _offer_ending(a: CooperativeActor, route: String) -> void:
 	if qualified.get("route") != route:
 		var at := a.point(CampusData.rooms())
 		qualified = {"owner": a.id, "route": route, "world": a.location(), "x": at.x, "y": at.y}
-		if route == "face" and a.school().seat_card.clearance == 2: qualified["paper"] = true
 	if sim.room.ending_offer.get("route") == route: return
 	var participants := _ending_participants()
 	if not sim.room.offer_ending(a.id, route, participants):
@@ -1369,6 +1372,10 @@ func restore(data: Dictionary) -> void:
 		var owner := sim.lease_owner("garage")
 		if sim.is_participating(owner): garage_jobs[owner] = extra["garage_job"]
 	qualified = extra["qualified"].duplicate(true)
+	# Existing checkpoints can still contain a paper-only team qualification.
+	if qualified.get("paper", false):
+		qualified.clear()
+		if sim.room.ending_offer.get("route") == "face": sim.room.ending_offer.clear()
 	boarding = extra["boarding"].duplicate(true)
 	if not boarding.is_empty(): boarding["id"] = new_offer_id()
 	if not _time_offer.is_empty(): _time_offer["id"] = new_offer_id()

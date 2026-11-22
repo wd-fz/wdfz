@@ -28,7 +28,7 @@ var broadcast_props: BroadcastProps
 var observation_props: ObservationProps
 var _fixed_props: Node3D
 var _west_display: Label3D
-var _west_cleared := false
+var _west_trial_stage := 0
 var mirror_view: MirrorView
 var canteen_view: CanteenView
 var lighting: CampusLighting
@@ -152,11 +152,14 @@ func set_fixed_props_visible(value: bool) -> void:
 	if _fixed_props != null: _fixed_props.visible = value
 
 
-func show_west_clearance(accepted: bool) -> void:
-	if accepted == _west_cleared or not is_instance_valid(_west_display): return
-	_west_cleared = accepted
-	_west_display.text = "本人已核验\n请越线离校" if accepted else "西小门\n请递底联"
-	_west_display.modulate = Color("#8ef4b1") if accepted else Color("#e0d4ad")
+func show_west_trial(stage: int) -> void:
+	if stage == _west_trial_stage or not is_instance_valid(_west_display): return
+	_west_trial_stage = stage
+	match stage:
+		1: _west_display.text = "本人已核验\n沿白线试走"
+		2: _west_display.text = "纸面核验完成\n电子名单另行登记"
+		_: _west_display.text = "西小门\n请递底联"
+	_west_display.modulate = Color("#8ef4b1") if stage == 1 else Color("#e0d4ad")
 
 
 ## A cut set in the physical school keeps the architecture and lighting. Return

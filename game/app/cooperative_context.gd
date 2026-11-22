@@ -86,6 +86,7 @@ static func investigation(a: CooperativeActor, common: Dictionary = {}, reading:
 		"reader": a.own_seat,
 		"paper_goal": a.school().seat_card.gate_goal(),
 		"paper_debt": a.school().seat_card.outstanding(),
+		"paper_trial": a.school().seat_card.trial_done(),
 		"car": a.talent().car(a.bag().has("key")), "car_tried": g.car_tried.size(), "car_used": g.car_used, "hacked": r.hacked, "data": r.data_synced,
 		"face_done": int(r.face_quiz.get("done", -1)), "spot_comp": f.spots.has("comp"), "spot_data": f.spots.has("data"),
 		"portal": {"diary": f.portal["diary"], "sketch": f.portal["sketch"], "open": f.portal["open"], "count": f.blueprint_count(), "floors_left": left, "need": f.portal_need_text()},

@@ -7,7 +7,7 @@ const LOOK_DOWN := -0.48
 const EXIT_OFFSET := 24.0 # Original campus units, east of the old boundary wall.
 const EXIT_NORTH := 13.0 # The pedestrian gap north of the vehicle gate is present in all five campus meshes.
 const EXIT_HALF_WIDTH := 4.0
-const EXIT_HINT := "西小门亮了绿灯。站到白线靠校园的一侧，再朝门外跨过去。"
+const EXIT_HINT := "沿闸机旁的白线向外走，看看门外通往哪里。"
 const PROMISE := "纸角还有一行字。「要是先出去了，跟我妹说一声，我没忘。她在北门等我。」"
 const PUNCH_EDGES := {"ink": "左边", "present": "上边", "proxy": "右边"}
 
@@ -17,7 +17,8 @@ var checked := false
 var proxy_place := ""
 var proof := "" # ink, present, proxy. A teammate's notebook entry cannot issue a receipt.
 var present_slot := ""
-var clearance := 0 # 1 accepted at the reader, 2 walked across the line.
+var clearance := 0 # 1 accepted at the reader, 2 used for the trial.
+var trial_punch := "" # The proof used at the west gate, kept even after a later borrowed roll call.
 var heard_promise := false
 var stair_promise := false
 var reading_until := 0.0
@@ -26,7 +27,7 @@ var _previous := Vector2.INF
 
 func capture() -> Dictionary:
 	return {"armed": armed, "answered": answered, "checked": checked, "proxy_place": proxy_place,
-		"proof": proof, "present_slot": present_slot, "clearance": clearance, "heard_promise": heard_promise,
+		"proof": proof, "present_slot": present_slot, "clearance": clearance, "trial_punch": trial_punch, "heard_promise": heard_promise,
 		"reading_until": reading_until, "stair_promise": stair_promise}
 
 
@@ -38,6 +39,7 @@ func restore(data: Dictionary) -> void:
 	proof = data.get("proof", "proxy" if checked else "")
 	present_slot = data.get("present_slot", "")
 	clearance = int(data.get("clearance", 0))
+	trial_punch = data.get("trial_punch", proof if clearance == 2 else "")
 	heard_promise = data.get("heard_promise", false)
 	stair_promise = data.get("stair_promise", false)
 	reading_until = float(data.get("reading_until", 0.0))
@@ -67,7 +69,10 @@ static func valid(data: Variant) -> bool:
 	if not place is String or place.length() > 80 or (last.is_empty() and not place.is_empty()): return false
 	var slot: Variant = data.get("present_slot", "")
 	if not slot is String or (not slot.is_empty() and not valid_slot(slot)) or (basis == "present" and slot.is_empty()): return false
-	if not SaveSchema.is_integer(data.get("clearance", 0), 0, 2) or (basis == "" and data.get("clearance", 0) != 0): return false
+	var step: Variant = data.get("clearance", 0)
+	if not SaveSchema.is_integer(step, 0, 2) or (basis == "" and step != 0): return false
+	var punch: Variant = data.get("trial_punch", basis if step == 2 else "")
+	if punch not in ["", "ink", "present", "proxy"] or (step == 2 and punch != basis) or (step == 1 and punch != ""): return false
 	if not data.get("heard_promise", false) is bool: return false
 	if not data.get("stair_promise", false) is bool: return false
 	if not SaveSchema.number_in(data.get("reading_until", 0), 0, 1e12): return false
@@ -152,9 +157,17 @@ func evidence() -> String:
 
 
 func gate_goal() -> String:
-	if clearance > 0: return EXIT_HINT
-	if proof.is_empty(): return ""
-	return "带底联去校园西侧的西小门。到闸机前交回执，笔记里可以重读底联。"
+	if trial_done() or proof.is_empty(): return ""
+	if clearance == 1: return EXIT_HINT
+	return "从手册打开校园图，去西小门递交底联。核验前可以重读调查笔记。"
+
+
+func trial_done() -> bool:
+	return not trial_punch.is_empty()
+
+
+func trial_stage() -> int:
+	return 2 if trial_done() else clearance
 
 
 func journal() -> String:
@@ -162,14 +175,15 @@ func journal() -> String:
 	var trace := entry()
 	if not trace.is_empty() and (proof.is_empty() or not armed.is_empty()): lines.append(trace)
 	if not proof.is_empty(): lines.append(evidence())
-	if clearance > 0: lines.append("西小门退回的底联，%s有个半圆缺口。" % PUNCH_EDGES[proof])
+	if clearance == 1: lines.append("西小门退回的底联，%s有个半圆缺口。" % PUNCH_EDGES[proof])
+	if trial_done(): lines.append("试走时打在底联%s的半圆缺口还在。白线外又接回了校园。" % PUNCH_EDGES[trial_punch])
 	if heard_promise: lines.append(PROMISE)
 	if stair_promise: lines.append("我在西楼梯二楼答应同桌，先醒的话，就去北门替他捎句话。")
 	return "\n".join(lines)
 
 
 func gate_question(electronic: bool) -> Dictionary:
-	if proof.is_empty(): return {}
+	if proof.is_empty() or clearance != 0 or trial_done(): return {}
 	var wording := ""
 	var labels: Array = []
 	match proof:
@@ -186,9 +200,8 @@ func gate_question(electronic: bool) -> Dictionary:
 		"ink":
 			wording = "登记簿说你已经走了。你自己看过的底联上，离校栏填着什么？"
 			labels = ["已经放行", "今天的日期", "那一栏是空的"]
-	if clearance > 0: return {}
 	if electronic: labels.append("改用电子白名单")
-	return {"text": "西小门 · 离校回执\n" + wording, "labels": labels, "reference": proof_reference()}
+	return {"text": "西小门 · 底联核验\n" + wording, "labels": labels, "reference": proof_reference()}
 
 
 func proof_reference() -> String:
@@ -201,6 +214,7 @@ func proof_reference() -> String:
 ## Both callers rediscover the current gate and pass the authority's own paper.
 func answer_gate(token: String, index: int, at: Vector2) -> String:
 	if index < 0 or index >= 3: return ""
+	if trial_done(): return "纸面核验已经完成。电子名单有自己的登记手续。"
 	if proof.is_empty() or clearance != 0 or token != proof_reference(): return "这张回执和刚才不一样了。把现在的底联再递进去。"
 	if index != {"present": 0, "proxy": 1, "ink": 2}[proof]:
 		return "回执被退回来，红章上写着「请核原件」。我翻开随身的底联：" + evidence()
@@ -210,7 +224,7 @@ func answer_gate(token: String, index: int, at: Vector2) -> String:
 
 
 func crossed_line(outdoors: bool, at: Vector2, gate: Vector2) -> bool:
-	if clearance != 1: return false
+	if clearance != 1 or trial_done(): return false
 	var last := _previous
 	_previous = at if outdoors else Vector2.INF
 	if not outdoors or not last.is_finite() or last.distance_squared_to(at) > 24.0 * 24.0: return false
@@ -219,4 +233,5 @@ func crossed_line(outdoors: bool, at: Vector2, gate: Vector2) -> bool:
 	var y := lerpf(last.y, at.y, (last.x - line) / (last.x - at.x))
 	if absf(y - (gate.y - EXIT_NORTH)) > EXIT_HALF_WIDTH: return false
 	clearance = 2
+	trial_punch = proof
 	return true

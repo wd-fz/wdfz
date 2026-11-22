@@ -628,8 +628,7 @@ func _snapshot(data: Dictionary) -> void:
 		_watch.hide()
 		app.ui.hide_death()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		var gate := "paper" if data.get("qualified", {}).get("paper", false) else "electronic"
-		var card := RoutesModule.card(app.story().ended, app.school().seat_card, gate, app.investigation().paper_sample())
+		var card := RoutesModule.card(app.story().ended, app.school().seat_card, app.investigation().paper_sample())
 		app.ui.show_ending(String(card.get("title", card.get("t", "合作通关"))), "合作通关", card.get("lines", card.get("l", [])), "本局为局域网合作，个人记录与单人分开。", PackedStringArray(), "", card.get("memory", app.story().ended), card.get("evidence", {}))
 	for event: Dictionary in data.get("events", []):
 		if int(event["seq"]) <= _seen_event: continue

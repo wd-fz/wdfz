@@ -1111,7 +1111,7 @@ func _sync_world(seed_view: bool = true, senses_enabled: bool = true) -> void:
 	var outside := world
 	if world != null and world.resident: outside = router.resident.regions.get("out") as CampusWorld
 	if outside != null and outside.scene_id == "out" and school() != null:
-		outside.show_west_clearance(school().seat_card.clearance > 0)
+		outside.show_west_trial(school().seat_card.trial_stage())
 		if outside.banner != null and days() != null:
 			var want := days().today(school().day, school().tsec) == "anniversary"
 			if want != outside.banner.is_on(): outside.banner.set_on(want)
@@ -3064,6 +3064,7 @@ func _invest_context() -> Dictionary:
 		"reader": school().name_card_seat() if is_instance_valid(lan) and lan.playing() else "solo",
 		"paper_goal": school().seat_card.gate_goal(),
 		"paper_debt": school().seat_card.outstanding(),
+		"paper_trial": school().seat_card.trial_done(),
 		"radio_goal": broadcast().notebook_goal(bag.has, school().day) if broadcast() != null and bag != null else "",
 		"exchange_goal": exchange().notebook_goal() if exchange() != null else "",
 		"has_coin": bag != null and bag.has("coin"), "has_pill": bag != null and bag.has("pill"), "bag_full": bag != null and bag.bag.size() >= 8,
@@ -3079,7 +3080,7 @@ func _record(e: Dictionary) -> void:
 	if inv == null:
 		return
 	inv.set_context(_invest_context())
-	inv.record(String(e["id"]), String(e["text"]), String(e.get("kind", "事实")), String(e.get("source", "")))
+	inv.record(String(e["id"]), String(e["text"]), String(e.get("record_kind", e.get("kind", "事实"))), String(e.get("source", "")))
 	if e["id"] == "parking": school().seat_card.check_counterfoil(school().active_seconds)
 
 
@@ -3273,7 +3274,7 @@ func _show_map(selected: String = "", route: String = "") -> void:
 		if plan.has("target"):
 			var action := ""
 			if focus == "identity":
-				action = "找柜台上的底联" if destination == "guard" else ("向校外跨过白线" if school().seat_card.clearance > 0 else "到闸机前交底联")
+				action = "找柜台上的底联" if destination == "guard" else ("沿闸机旁的白线向外走" if school().seat_card.clearance == 1 else "到闸机前交底联")
 			elif destination == "guard":
 				action = "到柜台核对停车单底联"
 			var bearing := MapView.landmark_note(landmark, plan["target"] - me, here_room != null, action)
@@ -5357,10 +5358,14 @@ func _routes_step(delta: float) -> void:
 		return
 	route.tick(delta)
 	_apply_route_events(route)
-	var paper := school().seat_card
-	if paper.clearance == 1:
-		var at := CampusGeometry.to_world(null, player.position.x, player.position.z)
-		if paper.crossed_line(session.world_id == "out", at, route.west_gate_center()): _reach_ending("face")
+	if _dead() or school().seat_card.clearance != 1: return
+	var at := CampusGeometry.to_world(null, player.position.x, player.position.z)
+	var back := route.step_paper_trial(school().seat_card, session.world_id, at)
+	if not back.is_empty():
+		player.restore_pose(back)
+		_sync_world()
+		_hint_cooldown = 0.0
+		_apply_route_events(route)
 
 
 func _apply_route_events(route: RoutesModule) -> void:
@@ -5368,7 +5373,7 @@ func _apply_route_events(route: RoutesModule) -> void:
 		match e["kind"]:
 			"gate_chime":
 				var world := _campus_world()
-				if world != null: world.show_west_clearance(true)
+				if world != null: world.show_west_trial(school().seat_card.trial_stage())
 				audio.play("ui.beep")
 			"save":
 				save_game(true)
@@ -5420,8 +5425,7 @@ func _reach_ending(id: String) -> void:
 	player.clear_input()
 	audio.stop_all()
 	var memory: String = card["memory"]
-	var paper_exit := memory == "facePaper"
-	if not paper_exit: audio.play("ui.achieve.epic")
+	audio.play("ui.achieve.epic")
 	ui.hide_choice()
 	ui.hide_bag()
 	if items() != null:
@@ -5443,10 +5447,7 @@ func _reach_ending(id: String) -> void:
 		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
 		if parsed is Dictionary:
 			seen_ends = parsed
-	if id == "face":
-		if not paper_exit or (seen_ends.has("face") and not seen_ends.has("facePaper")):
-			seen_ends["faceElectronic"] = 1
-		if paper_exit: seen_ends["facePaper"] = 1
+	if id == "face": seen_ends["faceElectronic"] = 1
 	seen_ends[id] = 1
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
@@ -5456,7 +5457,7 @@ func _reach_ending(id: String) -> void:
 	if achievements() != null and routes() != null:
 		achievements().face_wrong = maxi(0, routes().wrong_answers())
 	if not fake: _write_side("last_life.json", null)
-	fact({"kind": "ending", "id": id, "paper_exit": paper_exit, "fake":fake, "legit":not fake, "day": school().day, "diff": story().diff, "talent": talent().id if talent() != null else "none"})
+	fact({"kind": "ending", "id": id, "fake":fake, "legit":not fake, "day": school().day, "diff": story().diff, "talent": talent().id if talent() != null else "none"})
 	_last_result = {} if fake else _score_ending(id, String(card["title"]))
 	var meta := "第 %d 天" % school().day
 	if items() != null and items().has_clock():
@@ -5494,7 +5495,7 @@ func _reach_ending(id: String) -> void:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 			show_card.call())
 		_ending_cut.audio = audio
-		_ending_cut.begin(id, world, CampusData.campus(), player, ui, func() -> void: audio.play("ui.click"), {"how": String(exchange().s.get("how", "exam")) if exchange() != null else "exam","tsec":school().tsec, "paper_exit":paper_exit})
+		_ending_cut.begin(id, world, CampusData.campus(), player, ui, func() -> void: audio.play("ui.click"), {"how": String(exchange().s.get("how", "exam")) if exchange() != null else "exam","tsec":school().tsec})
 		return
 	show_card.call()
 

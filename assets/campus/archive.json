@@ -350,10 +350,11 @@
       "id": "end:facePaper",
       "cut": "face",
       "end": "facePaper",
-      "n": "《取回名字》",
+      "n": "《取回名字》（旧版片段）",
       "d": "西小门咬过一张底联。醒来后，现实中的上联也在同一处缺了个半圆。",
       "stage": "out",
       "secret": 1,
+      "legacy": 1,
       "no": 13
     }
   ],

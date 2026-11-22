@@ -11,6 +11,7 @@ const STATE_VERSION := 1
 const FACE_WRONG_SAN := 4.0
 const GATE_REACH := 70.0
 const SC := 2.0
+const WEST_TRIAL_NOTE := "跨过白线，闸机又出现在我面前。身份核验完成，离校栏仍是空的。读卡器的电子名单指向实验楼三楼网络中心和行政楼三楼门禁机。保安岗的停车登记也记着一辆能开的车。"
 const QUESTIONS := [
 	{"text": "方程 x² − 5x + 6 = 0 的较大根是多少？", "choices": ["2", "3", "6"], "answer": 1},
 	{"text": "同时掷两枚均匀六面骰，点数之和不小于 10 的概率是多少？", "choices": ["1/12", "1/6", "1/4"], "answer": 1},
@@ -267,14 +268,19 @@ func use_gate(key: String, day: int, paper: RollcallCard = null) -> void:
 		"s":
 			_say("我：南门锁着，锁上全是锈。门缝外面——是另一个南门。")
 		"w":
-			if paper != null and not paper.proof.is_empty():
-				if paper.clearance == 0:
-					_emit("paper_gate", paper.gate_question(hacked and data_synced))
+			var electronic := hacked and data_synced
+			if paper != null:
+				var question := paper.gate_question(electronic)
+				if not question.is_empty():
+					_emit("paper_gate", question)
 					return
-				if not (hacked and data_synced):
-					_say(RollcallCard.EXIT_HINT if paper.clearance == 1 else "回执已经交好，可以和队友在这里集合离校。")
+				if not electronic and paper.clearance == 1:
+					_say(RollcallCard.EXIT_HINT)
 					return
-			if not hacked or not data_synced:
+				if not electronic and paper.trial_done():
+					_say("屏幕上留着两行字。「纸面核验完毕」「电子名单未登记」。去实验楼三楼可以查电子名单。")
+					return
+			if not electronic:
 				_say("我：小门上挂着锁，旁边那台闸机的屏幕亮着：「未登记」。")
 				_clue("gatew", day)
 				return
@@ -295,6 +301,19 @@ func return_paper(paper: RollcallCard, choice: Dictionary, index: int, world_id:
 	if before == 0 and paper.clearance == 1:
 		_emit("gate_chime")
 		_emit("save")
+
+
+## The caller places the student back on the campus side before committing the checkpoint.
+func step_paper_trial(paper: RollcallCard, world_id: String, at: Vector2) -> Dictionary:
+	if paper.clearance != 1: return {}
+	var gate := west_gate_center()
+	if not paper.crossed_line(world_id == "out", at, gate): return {}
+	_emit("gate_chime")
+	_emit("record", {"id": "westTrial", "text": WEST_TRIAL_NOTE, "record_kind": "验证", "source": "西小门 · 打孔回执"})
+	_say("我跨过白线，闸机又响了一声。我还在校园。回执核过了，手册里记下了两条可以继续查的线索。")
+	_emit("save")
+	var inside := CampusGeometry.to_scene(null, gate + Vector2(RollcallCard.EXIT_OFFSET + 20.0, -RollcallCard.EXIT_NORTH))
+	return {"position": [inside.x, 0.05, inside.y], "yaw": CampusGeometry.yaw_from_ang(0.0), "pitch": 0.0}
 
 
 # ---- the whitelist quiz (story.js FaceChallenge) ----
@@ -377,7 +396,7 @@ func choose(index: int, diff: String) -> void:
 			var loss := 0.0 if face_remedy.is_valid() and bool(face_remedy.call()) else FACE_WRONG_SAN * (1.15 if diff == "hard" else 0.82)
 			_emit("san", {"amount": -loss, "min": 0.0})
 			var feedback: String = EXPLANATIONS[qid]
-			_emit("record", {"id": "face:" + str(qid), "text": feedback, "kind": "验证", "source": "西小门 · 验证反馈"})
+			_emit("record", {"id": "face:" + str(qid), "text": feedback, "record_kind": "验证", "source": "西小门 · 验证反馈"})
 			_swap(q)
 			_pending = {"handler": "face_retry"}
 			_emit("choice", {"text": "验证未通过。耳边猛地响了一下。" + feedback + " 已通过的题目仍然保留。", "labels": ["继续验证", "先离开"]})
@@ -424,32 +443,27 @@ func use_trash(scene: String, day: int) -> void:
 
 
 ## Card data for an ending (title, tag, lines).
-static func card(id: String, paper: RollcallCard = null, team_gate: String = "", sample: String = "") -> Dictionary:
+static func card(id: String, paper: RollcallCard = null, sample: String = "") -> Dictionary:
 	var e: Dictionary = ENDINGS.get(id, {})
 	if e.is_empty():
 		return {}
-	var title: String = e["t"]
-	var memory := id
 	var lines: Array = e["l"]
 	var evidence := {}
 	if paper != null:
-		if id == "face" and (team_gate == "paper" or (team_gate.is_empty() and paper.clearance == 2)):
-			title = "《取回名字》"
-			memory = "facePaper"
-			lines = [paper.evidence() if paper.clearance > 0 else "同学递进那张底联，等在白线对面。我追了上去。", "跨过白线，我在现实的课桌上睁开眼。脸下还是第四节的那页语文书。"]
-			if paper.clearance > 0:
-				evidence["ticket"] = RollcallCard.PUNCH_EDGES[paper.proof]
-				lines.append("我从书底下抽出上联。%s多了个半圆缺口，正好是刚才闸机咬过底联的位置。我用指腹摸到了断开的纸毛。" % RollcallCard.PUNCH_EDGES[paper.proof])
-			lines.append("窗外有人叫我。我自己应了一声。")
-		elif id == "car" and (paper.heard_promise or paper.stair_promise):
+		if id == "car" and (paper.heard_promise or paper.stair_promise):
 			lines = lines.duplicate()
 			lines[-1] = "我把话带给她：「你哥说，他没忘。」她点了点头，往教学楼又看了一眼。"
 		elif id == "dismissal" and (paper.heard_promise or paper.stair_promise):
 			lines = lines.duplicate()
 			lines.insert(2, "「我没忘。」他对妹妹说。这回用不着我捎话了。")
+		if e.get("true", false) and paper.trial_done():
+			var edge: String = RollcallCard.PUNCH_EDGES[paper.trial_punch]
+			evidence["ticket"] = edge
+			lines = lines.duplicate()
+			lines.append("我回教室翻出停车单的上联。%s多了个半圆缺口，和西小门那次试走留下的位置一样。" % edge)
 	if e.get("true", false) and sample in ["甲", "乙"]:
 		evidence["sample"] = sample
 		lines = lines.duplicate()
 		var inspection := "甲纸上边少了半圆，纸屑落在盒底。乙纸还是整张。" if sample == "甲" else "甲、乙两张纸的上边都很平。实验室里，乙纸明明缺了一块。"
 		lines.append("后来我到现实的北门岗亭报了编号「四·二」。值班员拿出封好的盒子，翻开课前签过的配对表。表上只圈了甲。隔着玻璃，我看见" + inspection)
-	return {"title": title, "tag": "假 结 局" if e.get("fake",false) else ("真 结 局" if e.get("true", false) else ""), "lines": lines, "fake": bool(e.get("fake",false)), "memory": memory, "evidence": evidence}
+	return {"title": e["t"], "tag": "假 结 局" if e.get("fake",false) else ("真 结 局" if e.get("true", false) else ""), "lines": lines, "fake": bool(e.get("fake",false)), "memory": id, "evidence": evidence}

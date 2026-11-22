@@ -261,10 +261,10 @@ func _radio_lead() -> String:
 
 func routes() -> Array:
 	var out: Array = []
-	if not _paper_lead().is_empty(): out.append(["identity", "离校回执"])
+	if not _paper_lead().is_empty(): out.append(["identity", "底联核验"])
 	if visible("parking") or visible("notice") or bool(_c.get("has_key", false)) or int(_c.get("car_tried", 0)) > 0:
 		out.append(["car", "车辆"])
-	if bool(_c.get("spot_comp", false)) or bool(_c.get("spot_data", false)) or bool(_c.get("hacked", false)):
+	if _face_discovered():
 		out.append(["face", "白名单"])
 	var po: Dictionary = _c.get("portal", {})
 	if bool(po.get("diary", false)) or bool(po.get("sketch", false)) or bool(po.get("open", false)):
@@ -311,7 +311,7 @@ func goal(route: String = "") -> String:
 		if bool(po.get("sketch", false)):
 			return "对照图纸准备材料。" + String(po.get("need", ""))
 		return "对照日记，调查实验楼二、四、五楼教师台；已得到 %d/3 张图纸。" % int(po.get("count", 0)) if visible("portalDiary") else "造门调查还没结束；日记的文字记不清了，可以回隧道重读。"
-	if f == "face" and (bool(_c.get("spot_comp", false)) or bool(_c.get("spot_data", false)) or bool(_c.get("hacked", false))):
+	if f == "face" and _face_discovered():
 		if bool(_c.get("data", false)):
 			return "数据已同步，前往西小门完成闸机验证。"
 		return "网络中心已写入，前往行政楼三楼同步数据。" if bool(_c.get("hacked", false)) else "调查实验楼三楼的网络中心；留意门锁和终端旁的说明。"
@@ -335,10 +335,15 @@ func goal(route: String = "") -> String:
 
 func _paper_lead() -> String:
 	if _c.get("paper_debt", false): return "空座替我答过到。我得亲自去北门旁的保安岗柜台，核对那张签着我名字的底联。"
+	if _c.get("paper_trial", false): return ""
 	var lead: String = _c.get("paper_goal", "")
 	if lead.is_empty() and _c.get("reader", "solo") != "solo" and visible("parking"):
 		return "队友翻过了登记簿。去北门旁的保安岗柜台，我自己的底联还在那里。"
 	return lead
+
+
+func _face_discovered() -> bool:
+	return visible("westTrial") or bool(_c.get("paper_trial", false)) or bool(_c.get("spot_comp", false)) or bool(_c.get("spot_data", false)) or bool(_c.get("hacked", false))
 
 
 ## A known destination, shown only when its lead is the reader's current investigation.
@@ -353,7 +358,8 @@ func map_focus(selection: String) -> String:
 	var known := routes()
 	for id: String in [selection, pins.get(_c.get("reader", "solo"), "")]:
 		if known.any(func(r: Array) -> bool: return r[0] == id): return id
-	return current_focus() if known.size() < 2 else ""
+	var tracked := current_focus()
+	return tracked if tracked == "identity" or known.size() < 2 else ""
 
 
 ## A building or gate the discovered lead currently points to on the campus plan.
@@ -382,12 +388,14 @@ func map_destination(route: String) -> String:
 ## [[route, text, done]]
 func progress() -> Array:
 	var out: Array = []
+	if _c.get("paper_trial", false):
+		out.append(["底联核验", "已试走西小门，白线外又接回校园。", true])
 	var car: Dictionary = _c.get("car", {})
 	var tried := int(_c.get("car_tried", 0))
 	if visible("parking") or visible("notice") or bool(_c.get("has_key", false)) or tried > 0:
 		var state := "已驶离车库" if bool(_c.get("car_used", false)) else ("有钥匙，能够试车门" if car.get("via") == "key" else ("会搭线，能够试车" if bool(car.get("ok", false)) else "尚无开车办法"))
 		out.append(["车辆", "%s；已试 %d 辆。" % [state, tried], bool(_c.get("car_used", false))])
-	if bool(_c.get("spot_comp", false)) or bool(_c.get("spot_data", false)) or bool(_c.get("hacked", false)):
+	if _face_discovered():
 		var done := int(_c.get("face_done", -1))
 		out.append(["白名单", "%s；%s%s。" % ["网络中心已写入" if bool(_c.get("hacked", false)) else "网络中心尚未写入", "行政楼数据已同步" if bool(_c.get("data", false)) else "行政楼尚未同步", "；闸机验证 %d/3" % done if done >= 0 else ""],
 			bool(_c.get("data", false)) and done >= 3])

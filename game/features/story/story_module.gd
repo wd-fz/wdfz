@@ -78,7 +78,7 @@ func reset() -> void:
 func trigger_ending(id: String, paper: RollcallCard = null, sample: String = "") -> Dictionary:
 	if dead or ended != "":
 		return {}
-	var c := RoutesModule.card(id, paper, "", sample)
+	var c := RoutesModule.card(id, paper, sample)
 	if c.is_empty():
 		return {}
 	ended = id

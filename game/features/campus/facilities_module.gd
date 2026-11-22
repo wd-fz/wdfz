@@ -525,13 +525,13 @@ func _guard() -> void:
 		line += " 同化恢复自然回落。"
 	elif not first:
 		line = "我核过登记簿，收好签着我名字的那联。"
-	line += " 底联可在西小门核验。"
+	line += " 从手册打开校园图，去西小门核验底联。"
 	if _has("key") or _c.get("hotwire", false):
 		line += " 车记在车库西侧第 %d 排。" % int(_c.get("car_row", 1))
 	else:
 		line += " 找车的话，钥匙在行政楼五楼校长室。"
 	if not _has("torch"):
-		line += " 我拿走了抽屉里的手电。" if _add("torch") else " 手电还在抽屉里，腾出一格再来拿。"
+		line += " 抽屉里的手电带上了，用手电键开关。" if _add("torch") else " 手电还在抽屉里，腾出一格再来拿。"
 	if first:
 		line += " 安抄派的 17 号工单上，还钉着半圆形的纸屑。"
 	_say(line)

@@ -200,7 +200,7 @@ func test_west_gate_walk(attendance: String = "ink") -> void:
 	check(observation.contains("现实的岗亭") and observation.contains("乙纸四边还齐"), "the independent observer finds a physical effect only on the paired sample")
 	if attendance == "ink":
 		app._show_map("campus")
-		check(app.ui._map_route_select.visible and app.ui._map_route_select.get_item_metadata(2) == "car" and not app.ui.map_view.plan.has("target"), "after the guard the map offers both leads without defaulting to the west gate")
+		check(app.ui._map_route_select.visible and app.ui._map_route_select.get_item_metadata(2) == "car" and app.ui.map_view.plan.get("target") == app.routes().west_gate_center() / 2.0, "the beginner task has a map marker and the vehicle remains selectable")
 		app.ui._map_route_select.item_selected.emit(2)
 		var target: Vector2 = app.ui.map_view.plan.get("target", Vector2.INF)
 		check(target.is_finite() and target != app.routes().west_gate_center() / 2.0 and app.ui._map_note.text.contains("行政楼五楼校长室"), "selecting the vehicle lead marks the key's building and names the floor")
@@ -236,19 +236,33 @@ func test_west_gate_walk(attendance: String = "ink") -> void:
 	check(app.school().seat_card.journal().contains(punched_edge + "有个半圆缺口"), "the returned counterfoil shows the notch for this run's actual evidence")
 	check(app.story().ended.is_empty() and app.school().seat_card.clearance == 1, "green light waits for the player's own steps")
 	check(app._campus_world()._west_display.text.contains("已核验"), "the physical west gate shows the personal clearance")
+	var run := app.session
+	var day := app.school().day
 	Input.action_press("move_forward")
 	for frame in 150:
 		await _frames(1)
-		if app.story().ended != "": break
+		if app.school().seat_card.trial_done(): break
 	Input.action_release("move_forward")
-	check(app.story().ended == "face" and app.school().seat_card.clearance == 2, "ordinary walking through the actual collision map reaches the first-day exit")
-	check(app._last_result.get("routeName") == "《取回名字》" and not app.achievements().unlocked.has("e.whitelist"), "the grade reports this run's ending without awarding the electronic quiz")
-	if is_instance_valid(app._ending_cut) and app._ending_cut.on: app._ending_cut.end(true)
-	check(app.ui._ending_text.text.contains("现实的课桌上睁开眼") and app.ui._ending_text.text.contains(punched_edge + "多了个半圆缺口"), "the physical counterpart bears the same notch when the student wakes")
-	check(is_instance_valid(app.ui._ending_art) and app.ui._ending_art.texture != null and app.ui._ending_art.texture == UIArt.memory("end:facePaper"), "the finished walk displays the illustrated paper receipt on the result card")
+	check(app.school().seat_card.trial_done() and app.session == run and app.school().day == day and not app.story().over(), "ordinary walking through the real gate completes the trial and continues the same day")
+	var line := app.routes().west_gate_center().x + RollcallCard.EXIT_OFFSET
+	check(app.session.world_id == "out" and app.player.position.x > line * CampusGeometry.U2M and app.player.enabled, "the student is back on the campus side with control")
+	check(app._campus_world()._west_display.text.contains("纸面核验完成"), "the gate display recognizes the completed exercise")
+	check(app._last_result.is_empty() and not app.achievements().unlocked.has("e.end_face") and not app.achievements().unlocked.has("e.whitelist"), "no score or ending achievement is written")
+	var snapshot: Dictionary = app.saves.read().get("data", {})
+	check(snapshot.get("modules", {}).get("school.day", {}).get("data", {}).get("seat_card", {}).get("trial_punch") == attendance, "the save preserves personal proof and the original run")
+	check(app.investigation().visible("westTrial") and app.investigation().entries["westTrial"].kind == "验证", "the completed trial records the gate observation")
+	check(app.investigation_brief().contains("校长室") and app.investigation().routes().any(func(r: Array) -> bool: return r[0] == "face"), "the journal hands off to the vehicle and electronic whitelist leads")
 	var archive := ArchiveRules.new(CampusData.archive())
-	var seen: Dictionary = app._read_side("ends.json")
-	check(archive.real(archive.entries["end:facePaper"], seen, false) and not archive.real(archive.entries["end:face"], seen, false), "the archive remembers the walk separately from the quiz")
+	check(app._read_side("ends.json") == null and not archive.locked().has("end:facePaper"), "this exercise does not unlock a new ending replay")
+	if attendance == "ink":
+		app.load_game()
+		await _frames(3)
+		check(app.school().seat_card.trial_done() and not app.story().over() and app.investigation().visible("westTrial"), "continuing preserves the trial without replaying it")
+		app.routes().hacked = true
+		app.routes().data_synced = true
+		app.player.request_interaction()
+		await _frames(1)
+		check(app.ui.choice_open() and app.ui._choice_text.text.contains("白名单验证 1/3"), "after separate synchronization the same gate still starts the real whitelist quiz")
 	app.return_to_menu()
 	app.queue_free()
 	await _frames(3)

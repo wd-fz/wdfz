@@ -67,7 +67,7 @@ func test_sites() -> void:
 		trial.choose(1 - choice)
 		check(trial.paper_sample() == selected, "saving and rereading cannot punch a second sheet")
 		for id: String in RoutesModule.ENDINGS:
-			var card := RoutesModule.card(id, null, "", selected)
+			var card := RoutesModule.card(id, null, selected)
 			var confirmed: bool = RoutesModule.ENDINGS[id].get("true", false)
 			check(card.evidence.has("sample") == confirmed, id + " only a witnessed waking can show the real box")
 			if confirmed:
