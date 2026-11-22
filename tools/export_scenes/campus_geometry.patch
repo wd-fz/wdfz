@@ -1,5 +1,81 @@
+diff --git a/game3d/js/content/outdoor-recipe.js b/game3d/js/content/outdoor-recipe.js
+index ef637d7..d552a9a 100644
+--- a/game3d/js/content/outdoor-recipe.js
++++ b/game3d/js/content/outdoor-recipe.js
+@@ -9,21 +9,7 @@
+    坐标都是"地图单位"（M() 换成米）。 */
+ var OUTX={treeN:0,keep:[]};
+        /* 室外的实心物：{x0,y0,x1,y1}，地图单位 */
+-var ROADS=[
+-  [470,97,548,207],    /* 北门广场 */
+-  [395,188,720,207],   /* 北侧东西向 */
+-  [690,188,718,1386],  /* 东干道（连续校园 A3：跟着南墙往南接长） */
+-  [398,207,422,466],   /* 操场东侧（连续校园 A2：到行政楼北面为止） */
+-  [350,450,422,466],   /* 行政楼北面，接西侧路 */
+-  [350,466,391,999],   /* 西侧（连续校园 A2：往西让 3 个单位，贴着行政楼、实验楼西墙） */
+-  [204,612,352,636],   /* 西小门 */
+-  [352,1021,718,1033], /* 教学楼前（连续校园 A1：让出楼前的楼梯塔，往南挪） */
+-  [375,999,398,1396],  /* 宿舍西侧，通南门 */
+-  [398,1290,718,1312], /* 食堂南门前（约 5 米宽），西接宿舍西侧路、东接东干道（连续校园 A3） */
+-  [651,1109,690,1127], /* 北宿舍东门 → 东干道 */
+-  [651,1335,690,1353], /* 南宿舍东门 → 东干道 */
+-  [718,1124,792,1142]  /* 到垃圾房 */
+-];
++var ROADS=window.NATIVE_CAMPUS_LAYOUT.roads.concat([window.NativeCampus.plazaRoad()]);
+ function M(v){ return v*$imports.SC*$imports.U2M; }
+ function inRect(mx,my,r,pad){ pad=pad||0; return mx>r[0]-pad&&mx<r[2]+pad&&my>r[1]-pad&&my<r[3]+pad; }
+ function onRoad(mx,my,pad){ for(var i=0;i<ROADS.length;i++) if(inRect(mx,my,ROADS[i],pad)) return true; return false; }
+@@ -229,34 +215,14 @@ function addOutdoorProps(K, x0, y0, x1, y1){
+     CURB_V.forEach(function(q){ if(q.b-q.a>0.1) K.bevel('concrete',q.c,0.07,(q.a+q.b)/2,0.16,0.14,q.b-q.a,0xb4b0a6,1.0,0.02); });
+   })();
+
+-  /* ---- 花园：一座不锈钢雕塑（几根斜杆托着一个环）+ 校训牌 ---- */
+-  (function(){
+-    var gx=M(535), gz=M(1057.1);
+-    K.bevel('stone',gx,0.30,gz,24.0,0.60,3.0,0xb8b2a8,1.0,0.06);
+-    K.solidM(gx,gz,12.0,1.5,$imports.SC*$imports.U2M);
+-    var sx3=gx-12.0;
+-    if(!K.asset('sculpture_ring',sx3,0.09,gz,0)){                                           /* 坐在长石台上 */
+-    K.bevel('stone',sx3,0.30,gz,2.8,0.42,2.8,0xa8a298,1.0,0.05);
+-    K.rod('metal',sx3,0.5,gz,sx3+0.4,3.4,gz+0.2,0.12,0.06,8,0x9aa0a4,1.1);
+-    K.rod('metal',sx3,0.5,gz,sx3-0.6,2.6,gz-0.3,0.10,0.05,8,0x9aa0a4,1.05);
+-    var k; for(k=0;k<16;k++){ var a=k/16*6.283, b=(k+1)/16*6.283;
+-      K.rod('metal',sx3+0.4+Math.cos(a)*0.9,3.4+Math.sin(a)*0.9,gz+0.2,sx3+0.4+Math.cos(b)*0.9,3.4+Math.sin(b)*0.9,gz+0.2,0.07,0.07,6,0xb8c0c4,1.15); }
+-    }
+-    K.solidM(sx3,gz,1.4,1.4,$imports.SC*$imports.U2M);
+-    K.bevel('stone',gx,1.35,gz+1.6,11.0,1.9,0.34,0xcfc9be,1.0,0.04);                 /* 校训牌的底板 */
+-    K.bevel('stone',gx,0.17,gz+1.6,11.6,0.34,0.9,0xa8a298,1.0,0.04);
+-    K.box('metal',gx,0.42,gz+1.6,11.4,0.10,0.16,0x9aa0a4,1.0);
+-    K.solidM(gx,gz+1.6,5.8,0.5,$imports.SC*$imports.U2M);
+-    K.g('fpave').quad(M(400),M(1054.8), M(670),M(1054.8), M(670),M(1051.5), M(400),M(1051.5), 0.014, 0x9a948a);
+-    K.g('fpave').quad(M(532),M(1078), M(538),M(1078), M(538),M(1035), M(532),M(1035), 0.014, 0x9a948a);
+-  })();
+-
+-  /* ---- 花坛：砖砌一圈，土，一丛丛花 ---- */
+-  var beds=[[440,1043.8],[630,1043.8],[440,1069.2],[630,1069.2],[470,1039.4],[600,1039.4],[740,560],[740,760],[330,560],[660,140],[440,145]];
++  /* The geography garden has its own pavilion and globe in the native model. */
++  var garden=$imports.OBJ.find(function(o){return o.id==='garden';});
++  var gardenRect=[garden.x,garden.y,garden.x+garden.w,garden.y+garden.h];
++  var beds=[[740,560],[740,760],[660,140],[440,145]];
+   var flowerCols=[0xb24a4a,0xc8a24a,0xa85a8a,0xd8d4e8,0xc86a3a];
+   for(i=0;i<beds.length;i++){
+     var fmx=beds[i][0], fmy=beds[i][1];
+-    var inGarden=inRect(fmx,fmy,[400,1035,670,1078],0);
++    var inGarden=inRect(fmx,fmy,gardenRect,0);
+     if(!inGarden&&(inObj(fmx,fmy,8,true)||!outFreeInLayout(fmx,fmy,4,3,K.solids))) continue;   /* 以前这里条件写反了：落在楼、车库坡道上的也照建 */
+     if(onRoad(fmx,fmy,3)) continue;
+     var fx0=M(fmx), fz0=M(fmy);
+@@ -351,7 +317,7 @@ function addOutdoorProps(K, x0, y0, x1, y1){
+   var benchSpots=[[418,1046.0],[652,1046.0],[418,1073.6],[652,1073.6],[730,300],[730,640],[730,960],[380,700],[340,250],[740,1220]];
+   for(i=0;i<benchSpots.length;i++){
+     var bmx=benchSpots[i][0], bmy=benchSpots[i][1];
+-    var inGarden=inRect(bmx,bmy,[400,1035,670,1078],0);
++    var inGarden=inRect(bmx,bmy,gardenRect,0);
+     if(!inGarden&&!outFreeInLayout(bmx,bmy,3,1,K.solids)) continue;
+     var px2=M(bmx), pz2=M(bmy), sl;
+     if(!K.asset('bench_park',px2,0,pz2,0)){
 diff --git a/game3d/js/content/room-recipe.js b/game3d/js/content/room-recipe.js
-index ee812ac..b4cc646 100644
+index ee812ac..a727c29 100644
 --- a/game3d/js/content/room-recipe.js
 +++ b/game3d/js/content/room-recipe.js
 @@ -50,7 +50,7 @@ function buildRoomRecipe(R,K,view){
@@ -128,8 +204,37 @@ index ee812ac..b4cc646 100644
    /* 前墙（西）：黑板居中（字由表现层贴）、广播喇叭、两个插座；西南角（前门边）饮水机 */
    K.asset('blackboard',xw,1.70,zb,Math.PI/2);                                                     /* 铝框、板面、粉笔槽、粉笔、板擦 */
    if(c.view.board){ var b=c.view.board(xw+0.082,1.70,zb,4.8,0.98,seed); b.rotation.y=Math.PI/2; c.meshes.push(b); }
+diff --git a/game3d/js/map.js b/game3d/js/map.js
+index 950f52c..1615263 100644
+--- a/game3d/js/map.js
++++ b/game3d/js/map.js
+@@ -272,15 +272,7 @@ function buildInteriorData(){
+   mkFloor('trash1','垃圾房','trash',-1,trashFloor());
+   mkFloor('link1','连廊①','c1',2,linkFloor());
+   mkFloor('link2','连廊②','c2',2,linkFloor());
+-  var gA2=INTERIORS['admin2'].grid, gL2=INTERIORS['lab2'].grid, gT2=INTERIORS['teach2'].grid;
+-  /* 连廊入口（吊牌和门垫）：连续校园 A2 起连廊从楼的南／北墙接进来（门洞由 campus-link 模块开，端口表 CAMPUS_LINK） */
+-  if(gA2&&gA2[20]) gA2[20][47]='L';                         /* 行政楼二楼南墙东头 → 连廊① 北 */
+-  if(gL2&&gL2[1]) gL2[1][47]='L';                           /* 实验楼二楼北墙东头（东头那间实验室）→ 连廊① 南 */
+-  if(gL2&&gL2[18]) gL2[18][7]='L';                          /* 实验楼二楼南墙西头 → 连廊② 北 */
+-  if(gT2){                                                   /* 教学楼二楼北墙西头 → 连廊② 南：西头那块实心打通一条 3 格宽的过道到走廊 */
+-    for(var tr=1;tr<=15;tr++) for(var tc=5;tc<=7;tc++) gT2[tr][tc]='.';
+-    gT2[1][6]='L';
+-  }
++  window.NativeCampus.bridgeApproaches(INTERIORS);
+   mkFloor('bell1','钟楼','bell',1,bellFloor()).spiral=true;
+   mkFloor('guard1','保安岗','guard',1,guardFloor());
+   mkFloor('gear1','体育器材室','gear',1,gearFloor());
+@@ -315,6 +307,7 @@ var OBJ=[
+   {id:'dormS',  n:'南宿舍',         x:453,y:1312,w:198,h:72,k:'roof', door:'e', ic:[552,1205]},
+   {id:'trash',  n:'垃圾房',         x:741,y:1059.5,w:54, h:63, k:'roof'}   /* 连续校园 A3：12×14 格，中心不变 */
+ ];
++window.NativeCampus.placeBuildings(OBJ);
+ /* 三个校门都落在围墙线上（以前离墙 5–10 米，门是"浮"在校园里的，墙上也没有口子） */
+ var GATE_N={x:514,y:95}, GATE_W={x:200,y:624}, GATE_S={x:386,y:1396};   /* 连续校园 A3：南墙从 1290 推到 1396 */
+ var BOUND={x0:200,y0:95,x1:830,y1:1396};
 diff --git a/game3d/js/model/building.js b/game3d/js/model/building.js
-index 4c0a376..403dd87 100644
+index 4c0a376..10dddd9 100644
 --- a/game3d/js/model/building.js
 +++ b/game3d/js/model/building.js
 @@ -55,6 +55,7 @@ function objHeightM(b){
@@ -381,29 +486,38 @@ index 4c0a376..403dd87 100644
 -      K.box('glass',px+sw/2-0.06,ly+1.95,pz,0.02,1.4,sd*0.98,0x9fb0ba,1.1);
 -    }
 +  /* 两座连廊都只有二楼通路。室内导出的连廊在 Godot 中常驻，替换这份外观。 */
-+  var lift=3.2, spanX=px+(o.id==='c2'?1:0);
++  var lift=3.2;
 +  var start=pz-sd/2+.04, end=pz+sd/2-.04;
 +  var length=end-start, width=sw-.08;
-+  K.box('concrete',spanX,lift-.062,pz,width,.12,length,$imports.BRICK,1);
-+  K.box('plaster',spanX,lift+2.94,pz,width,.12,length,$imports.WHITEBAND,1);
++  K.box('concrete',px,lift-.062,pz,width,.12,length,$imports.BRICK,1);
++  K.box('plaster',px,lift+2.94,pz,width,.12,length,$imports.WHITEBAND,1);
 +  for(var side=-1;side<=1;side+=2){
-+    var x=spanX+side*(width/2-.05);
++    var x=px+side*(width/2-.05);
 +    K.box('brick',x,lift+.43,pz,.08,.86,length,$imports.BRICK,1);
 +    K.box('glass',x,lift+1.70,pz,.035,1.68,length,0x9fb0ba,1);
    }
 -  /* 落地柱：位置来自 content/structure-recipe.js，碰撞用同一份 */
 -  (0,$imports.linkPillars)(px,pz,sw,sd).forEach(function(c){ K.bevel('brick',c.x,8.0,c.z,0.42,16.0,0.42,$imports.BRICK,0.94,0.03); });
 -  K.bevel('concrete',px,16.20,pz,sw*1.02,0.30,sd*1.02,0x8b3a2e,1.0,0.04);
-+  /* 下部支撑使用旧柱的占地。横梁承接向东平移了一米的实验楼连廊。 */
++  /* Deck and supports share their centreline with both doorway thresholds. */
 +  var piers=(0,$imports.linkPillars)(px,pz,sw,sd), rows=[];
 +  piers.forEach(function(p){
 +    K.bevel('brick',p.x,1.45,p.z,.42,2.90,.42,$imports.BRICK,.94,.03);
 +    if(rows.indexOf(p.z)<0) rows.push(p.z);
 +  });
-+  rows.forEach(function(z){K.box('concrete',(px+spanX)/2,2.94,z,sw+Math.abs(spanX-px)+.42,.22,.50,$imports.WHITEBAND,1);});
++  rows.forEach(function(z){K.box('concrete',px,2.94,z,sw+.42,.22,.50,$imports.WHITEBAND,1);});
  }
  /* ---- 地下车库车道：两侧矮墙 + 一段往下斜的坡 + 门头 ---- */
  function garageRamp(K,px,pz,sw,sd){
+@@ -982,7 +1015,7 @@ var BLD_BY_KIND={
+   court: function(K,grp,o,px,pz,sw,sd){ (0,$imports.courtModel)(K,o,px,pz,sw,sd); },
+   link:  function(K,grp,o,px,pz,sw,sd){ bldLink(K,o,px,pz,sw,sd); }
+ };
+-BLD_BY_KIND.track=BLD_BY_KIND.court; BLD_BY_KIND.garden=BLD_BY_KIND.court; BLD_BY_ID.dormS=BLD_BY_ID.dormN;
++BLD_BY_KIND.plaza=function(){}; BLD_BY_KIND.track=BLD_BY_KIND.court; BLD_BY_KIND.garden=BLD_BY_KIND.court; BLD_BY_ID.dormS=BLD_BY_ID.dormN;
+ function bldBuilderOf(o){
+   return BLD_BY_ID[o.id]||BLD_BY_KIND[o.k]||(o.open1f?function(K,grp,o2,px,pz,sw,sd){ bldClassroom(K,grp,o2,px,pz,sw,sd); }
+                                                     :function(K,grp,o2,px,pz,sw,sd){ bldSmall(K,grp,o2,px,pz,sw,sd); });
 @@ -1000,11 +1033,13 @@ function buildOutdoorGeometry(){
      var o=$imports.OBJ[i], ow=(0,$imports.objWorld)(o);
      var px=(ow.x+ow.w/2)*$imports.U2M, pz=(ow.y+ow.h/2)*$imports.U2M;
@@ -442,3 +556,65 @@ index 1ed641e..03695e8 100644
      });
    }
    /* 自己的课桌：右前角立着一张对折的名牌（写着名字，看不清）。桌子的局部坐标里人在 +z，转 90° 以后局部 (x, z) 落到场景的 (z, −x) */
+diff --git a/game3d/js/modules/campus-link/doors.js b/game3d/js/modules/campus-link/doors.js
+index 03f071d..0e4f5a5 100644
+--- a/game3d/js/modules/campus-link/doors.js
++++ b/game3d/js/modules/campus-link/doors.js
+@@ -41,7 +41,7 @@ var CampusDoor=(function(){
+   }
+   function shift(d){ return $imports.TeachGallery.shift($imports.INTERIORS[d.room]); }
+   function local(P,x,y){ var dx=x-P.x, dy=y-P.y; return {along:dx*P.n[0]+dy*P.n[1], lat:-dx*P.n[1]+dy*P.n[0]}; }
+-  function outPort(d){ var P=port(d), s=shift(d); return P&&{x:P.x+s.x,y:P.y+s.y,n:P.n}; }
++  function outPort(d){ var P=port(d); return P&&window.NativeCampus.outsidePort($imports.INTERIORS[d.room],P,shift(d)); }
+   function doorsOf(room){ return CAMPUS_DOOR.doors.filter(function(d){ return d.room===room; }); }
+   function byHost(host){ return CAMPUS_DOOR.doors.filter(function(d){ return d.host===host; })[0]||null; }
+   /* 室内这一侧：门洞里、门槛线外 1.5 格以内，侧向留出身体半径 */
+diff --git a/game3d/js/modules/campus-link/link.js b/game3d/js/modules/campus-link/link.js
+index e1f71f9..e290f41 100644
+--- a/game3d/js/modules/campus-link/link.js
++++ b/game3d/js/modules/campus-link/link.js
+@@ -9,13 +9,7 @@
+    · 连廊入口的吊牌和门垫（'L' 格）保留当指示，不再能按 E「走连廊」。拿掉本模块就回到原来按 E 换场景。 */
+ 'use strict';
+
+-/* 版本 2（连续校园 A2）：连廊是楼端头的南北向直桥，从楼的南／北墙接进来（以前在东／西端墙上、要转 90°）；四对都只差一个平移 */
+-var CAMPUS_LINK={version:2,width:3,annex:1.5,pairs:[
+-  [{room:'admin2',edge:'s',at:47},{room:'link1',edge:'n',at:2}],
+-  [{room:'lab2',edge:'n',at:47},{room:'link1',edge:'s',at:2}],
+-  [{room:'lab2',edge:'s',at:7},{room:'link2',edge:'n',at:2}],
+-  [{room:'teach2',edge:'n',at:6},{room:'link2',edge:'s',at:2}]
+-]};
++var CAMPUS_LINK={version:2,width:3,annex:1.5,pairs:window.NativeCampus.bridgePairs()};
+ var CampusLink=(function(){
+   var own={owner:'campus-link'}, NORMAL={n:[0,-1],s:[0,1],w:[-1,0],e:[1,0]};
+   /* 端口：门槛线中点（房间网格的外沿）、朝外的法线、门洞占的格子 */
+diff --git a/game3d/js/modules/patrol-world/navigation.js b/game3d/js/modules/patrol-world/navigation.js
+index 51b08cc..4efe5b3 100644
+--- a/game3d/js/modules/patrol-world/navigation.js
++++ b/game3d/js/modules/patrol-world/navigation.js
+@@ -180,7 +180,8 @@ var PatrolNav=(function(){
+       if(host==='garw'){var shaft=$imports.StairWorld.config('stair_garage');node('garage1:ped-stairs',$imports.StairWorld.insidePort(shaft,0,0));connectStairs('garage1:ped-stairs','out:'+host,false);edge('garage1:ped-stairs',id+':entry','walk',false);}
+       else edge('out:'+host,id+':entry','entrance',false);
+     });
+-    [['garden',534,992],['southgate',386,1276],['eastroad',704,750],['northgate',514,112],['playground',410,380],['westgate',220,624]].forEach(function(v){node('out:'+v[0],snap('out',point('out',v[1]*$imports.SC,v[2]*$imports.SC)));});
++    var garden=(0,$imports.objById)('garden');
++    [['garden',garden.x-9,garden.y+garden.h/2],['southgate',window.GATE_S.x,window.GATE_S.y-13],['eastroad',704,750],['northgate',514,112],['playground',410,380],['westgate',220,624]].forEach(function(v){node('out:'+v[0],snap('out',point('out',v[1]*$imports.SC,v[2]*$imports.SC)));});
+     var tour=['admin','garw','westgate','teach','bell','garden','dormN','canteen','dormS','southgate','trash','eastroad','northgate','guard','garage','playground','gear','lab','admin'];
+     for(var i=1;i<tour.length;i++)edge('out:'+tour[i-1],'out:'+tour[i],'walk',true);
+     /* 主路线进出行政与教学楼；其他入口为追逐适配。 */
+diff --git a/game3d/js/content/sports-recipe.js b/game3d/js/content/sports-recipe.js
+index f36a7b1..70942a5 100644
+--- a/game3d/js/content/sports-recipe.js
++++ b/game3d/js/content/sports-recipe.js
+@@ -71,7 +71,10 @@ function courtModel(K,o,px,pz,sw,sd){
+   K.box('court',px-sw/2+0.12,0.092,pz,0.08,0.004,sd-0.2,0xd8d8d0,1);
+   K.box('court',px+sw/2-0.12,0.092,pz,0.08,0.004,sd-0.2,0xd8d8d0,1);
+   if(o.k==='track'){
+-    var ln; for(ln=1;ln<4;ln++) K.box('court',px,0.092,pz-sd/2+sd*ln/4,sw-0.3,0.004,0.06,0xd8d8d0,1);
++    for(var ln=1;ln<4;ln++){
++      if(sw>=sd) K.box('court',px,0.092,pz-sd/2+sd*ln/4,sw-0.3,0.004,0.06,0xd8d8d0,1);
++      else K.box('court',px-sw/2+sw*ln/4,0.092,pz,0.06,0.004,sd-0.3,0xd8d8d0,1);
++    }
+     return;
+   }
+   var along=(sw>sd);

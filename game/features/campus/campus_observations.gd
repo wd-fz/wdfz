@@ -40,11 +40,12 @@ const OUTSIDE := {
 	"field": [289, 283, "w", "ruler", "跑道丈量桩", "体育老师把起跑线挪过半个鞋印。桩上钉着旧测绘照，照片里那条白线还是歪的。"],
 	"courts": [568, 380, "s", "paper", "球场借用夹", "篮球社和羽毛球队在同一张照片上圈了各自的场地。体育委员在照片背面抱怨，晒得睁不开眼的那天下午，全校都在拍照。"],
 	"shed": [569, 259, "w", "ruler", "车棚编号尺", "车棚横梁上留着一个废车位的编号。旁边的采集底片里，那辆早就被推走的自行车还锁在架上。"],
-	"track": [449, 783, "n", "tape", "接力练习带", "田径队留的起跑口令，枪响前总有人小声问「哪一棒」。录音听得见那句话，名单上却没记说话的人。"],
-	"garden": [404, 1030, "n", "height", "花圃水位尺", "园丁在尺上写了去年积水的位置。旁边贴着取景当天的便条，「下雨另拍，晴天这张已经齐了」。"],
+	# Offsets from the relocated plots keep these markers by their paths.
+	"track": [8, -5, "n", "tape", "接力练习带", "田径队留的起跑口令，枪响前总有人小声问「哪一棒」。录音听得见那句话，名单上却没记说话的人。"],
+	"garden": [-5, 32, "e", "height", "花圃水位尺", "园丁在尺上写了去年积水的位置。旁边贴着取景当天的便条，「下雨另拍，晴天这张已经齐了」。"],
 	"north": [527, 116, "s", "drawing", "北门接人牌", "有人在接人牌上画了个扎辫子的小姑娘。下面是学生的字，「等家里人来就站在门里，别跑到车道上」。"],
 	"west": [224, 640, "e", "paper", "闸机维修联", "旧工单留着钳口的三个试咬印。维修员把毛边朝向一一描了下来，背面写着「验完还要看上联」。"],
-	"south": [406, 1376, "n", "paper", "南门集合册", "撤离名单封面印着南门。翻到内页，早、晚两次演练用了不同的带队签名，最后一栏都留给清点队尾的人。"],
+	"south": [376, 1376, "n", "paper", "南门集合册", "撤离名单封面印着南门。翻到内页，早、晚两次演练用了不同的带队签名，最后一栏都留给清点队尾的人。"],
 }
 ## The index names a physical landing, starting at the lowest door in this shaft.
 const LANDINGS := {
@@ -62,12 +63,18 @@ static func _site(id: String, data: Array, anchor: Vector2, base: float) -> Dict
 	return {"id": id, "form": data[3], "title": data[4], "text": data[5], "anchor": anchor, "normal": normal, "base": base}
 
 
-static func sites(world: String, room: Variant, stairs: Array) -> Array[Dictionary]:
+static func sites(world: String, room: Variant, stairs: Array, outside: Dictionary) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	if world == "out":
 		for id: String in OUTSIDE:
 			var d: Array = OUTSIDE[id]
-			result.append(_site("out." + id, d, CampusGeometry.to_scene(null, Vector2(d[0], d[1]) * 2.0), 0.0))
+			var at := Vector2(d[0], d[1])
+			if id in ["track", "garden"]:
+				for plot: Dictionary in outside["objects"]:
+					if plot.id == id:
+						at += Vector2(plot.x, plot.y)
+						break
+			result.append(_site("out." + id, d, CampusGeometry.to_scene(null, at * float(outside["SC"])), 0.0))
 	elif room != null and INDOORS.has(world):
 		var d: Array = INDOORS[world]
 		var face: Vector2 = CampusGeometry.NORMALS[d[2]]

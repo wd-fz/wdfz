@@ -56,8 +56,18 @@ func test_collision() -> void:
 		for link: Dictionary in CampusPortals.link_ports(space.campus.get("campus_link",{}),space.rooms,id):
 			var port: Dictionary=link.self
 			var p:=CampusGeometry.to_scene(space.rooms[id],port.p)
+			var peer: String = link.peer.room
+			var entrance := CampusGeometry.to_scene(space.rooms[peer], link.peer.p)
+			check((space.frame(id) * Vector3(p.x, 0, p.y)).is_equal_approx(space.frame(peer) * Vector3(entrance.x, 0, entrance.y)),
+				"the bridge and its room share the same physical threshold: " + id)
 			for d: float in [-.8,0,.8]:
 				free_at(space.frame(id)*Vector3(p.x+port.n.x*d,.92,p.y+port.n.y*d),"bridge "+id+" "+str(d))
+	for host: String in ["gear1", "admin1", "lab1", "dorm1", "dorm4", "canteen1"]:
+		var center := space.frame(host).origin
+		var previous := {"position":[center.x, .05, center.z], "yaw":.4, "pitch":.1}
+		var safe := space.outdoor_resume_pose(previous)
+		check(safe.position != previous.position and safe.yaw == previous.yaw, "an old outdoor save inside " + host + " moves to its entrance")
+		free_at(Vector3(safe.position[0], .92, safe.position[2]), "old outdoor save outside " + host)
 	var lift:=ElevatorModule.new(space.rooms)
 	lift.reset()
 	lift.lifts.teach.door=1.0
@@ -246,6 +256,20 @@ func test_runtime() -> void:
 	app.travel("out", _pose(), true)
 	check(app.player.global_position.distance_to(position)<.0001 and (-app.player.camera.global_basis.z).distance_to(forward)<.0001,"ordinary crossing preserves actual position and gaze")
 	check(app.player.velocity==Vector3(.5,0,2) and app.player._touch_move==Vector2(0,-1) and app.player._touch_sprint,"ordinary crossing preserves momentum and held touch controls")
+	var dining := CampusData.layout("canteen1")
+	var dining_door: Dictionary = CampusData.campus().campus_doors.doors.back()
+	var dining_port := CampusGeometry.door_port(dining, dining_door)
+	var local := _campus_pose(dining, (dining_port.p as Vector2) + Vector2(0, .5), PI * .5)
+	var exit := rules.crossing("canteen1", local)
+	check(exit.get("world") == "out" and absf(float(exit.pose.yaw) - PI * .5) < .001, "walking out of the dining hall faces west into the courtyard")
+	var inward := _campus_pose(dining, (dining_port.p as Vector2) - Vector2(0, .5), -PI * .5)
+	var street := school.space.global_pose("canteen1", inward)
+	var entry := rules.crossing("out", street)
+	var returned: Array = entry.get("pose", {}).get("position", [INF, INF, INF])
+	var expected: Array = inward.position
+	check(entry.get("world") == "canteen1" and Vector3(returned[0], returned[1], returned[2]).distance_to(
+		Vector3(expected[0], expected[1], expected[2])) < .0001 and absf(float(entry.pose.yaw) - float(inward.yaw)) < .0001,
+		"the west courtyard door restores the dining hall's local position and facing")
 	for id: String in ["teach2","stair_teach_w","garage1","lift_teach","teach1"]:
 		app.travel(id,CampusData.rules().default_spawn(id),false)
 		check(school.builds==40,"visiting "+id+" creates no geometry")
@@ -518,6 +542,12 @@ func test_cooperation() -> void:
 	sim.restore(checkpoint)
 	var reported: Array = sim.actor("a").pose.position
 	check(absf(first.global_position.y - .05) < .001 and first.position.is_equal_approx(Vector3(reported[0], reported[1], reported[2])), "cooperative restore moves the authority and replicated pose back onto the garage pavement")
+	var old_position := sim.physics.space.frame("canteen1").origin
+	checkpoint.actors.a.session.player.position = [old_position.x, .05, old_position.z]
+	sim.restore(checkpoint)
+	var relocated: Array = sim.actor("a").pose.position
+	check(Vector3(relocated[0], relocated[1], relocated[2]).is_equal_approx(first.global_position)
+		and first.global_position.x < 135.0, "cooperative restore places an old outdoor pose on the courtyard side of the dining hall")
 	avatars.queue_free()
 	sim.queue_free()
 	await _frames(2)

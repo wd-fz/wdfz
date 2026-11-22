@@ -225,3 +225,10 @@ static func door_half(d: Dictionary, default_width: float) -> float:
 static func shift_of(room: Dictionary) -> Vector2:
 	var s: Dictionary = room["shift"]
 	return Vector2(s["x"], s["y"])
+
+
+## Local scene metres to the room's ground-level position and orientation on campus.
+static func campus_frame(room: Dictionary) -> Transform3D:
+	var center := (Vector2(float(room["cx"]), float(room["cy"])) + shift_of(room)) * U2M
+	var basis := Basis(Vector3.UP, int(room.get("campus_turn", 0)) * PI * 0.5)
+	return Transform3D(basis, Vector3(center.x, 0.0, center.y))

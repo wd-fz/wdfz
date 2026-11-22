@@ -202,6 +202,8 @@ func _run_features() -> void:
 	var campus_map := preload("res://tests/suites/campus_map.gd").new(self)
 	print("CASE: campus_map.test_original_draw")
 	campus_map.test_original_draw()
+	print("CASE: campus_map.test_campus_placement")
+	campus_map.test_campus_placement()
 	print("CASE: campus_map.test_layout")
 	await campus_map.test_layout()
 	var documents := preload("res://tests/suites/documents.gd").new(self)

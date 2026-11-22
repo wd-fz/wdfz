@@ -540,13 +540,16 @@ func _build_door_preview() -> void:
 			var model := _door_visual(rid)
 			if model == null:
 				continue
-			var c := Vector2(float(r["cx"]), float(r["cy"])) + CampusGeometry.shift_of(r)
 			model.name = "DoorPreview_" + rid
-			model.position = Vector3(c.x * CampusGeometry.U2M, 0.0, c.y * CampusGeometry.U2M)
+			model.transform = CampusGeometry.campus_frame(r)
 			add_child(model)
 			var port := CampusGeometry.door_port(r, d)
-			var threshold := ((port["p"] as Vector2) + CampusGeometry.shift_of(r)) * CampusGeometry.U2M
-			var plane := _preview_plane(threshold, -(port["n"] as Vector2))
+			var local := CampusGeometry.to_scene(r, port["p"])
+			var point := model.transform * Vector3(local.x, 0, local.y)
+			var threshold := Vector2(point.x, point.z)
+			var n: Vector2 = port["n"]
+			var outward := model.basis * Vector3(n.x, 0, n.y)
+			var plane := _preview_plane(threshold, -Vector2(outward.x, outward.z))
 			model.set_meta("preview_plane",plane)
 			CampusPreview.clip(model,plane)
 			model.set_meta("door_threshold", threshold)
@@ -559,9 +562,8 @@ func _build_door_preview() -> void:
 		var model := _door_visual("out")
 		if model == null:
 			return
-		var c := Vector2(float(layout["cx"]), float(layout["cy"])) + CampusGeometry.shift_of(layout)
 		model.name = "DoorPreview_out"
-		model.position = Vector3(-c.x * CampusGeometry.U2M, 0.0, -c.y * CampusGeometry.U2M)
+		model.transform = CampusGeometry.campus_frame(layout).affine_inverse()
 		add_child(model)
 		var port := CampusGeometry.door_port(layout, d)
 		var threshold := CampusGeometry.to_scene(layout, port["p"])

@@ -40,16 +40,28 @@ func _differences(props: FallingProps, state: Dictionary) -> Array:
 func test_reference() -> void:
 	var fixture:=_fixture()
 	var rules:=CampusData.make_anomaly()
+	var map_bytes := FileAccess.get_file_as_bytes("res://tests/fixtures/map-reference.json.gz")
+	var historical: Dictionary = JSON.parse_string(map_bytes.decompress_dynamic(4*1024*1024, FileAccess.COMPRESSION_GZIP).get_string_from_utf8())
+	var offsets := {}
+	for previous: Dictionary in historical.content.objects:
+		for plot: Dictionary in CampusData.layout("out").objects:
+			if plot.id == previous.id:
+				offsets[plot.id] = Vector2(plot.x - previous.x, plot.y - previous.y)
+				break
 	for wall: Dictionary in fixture["walls"]:
-		rules.set_context({"scene":"out","x":wall["x"],"y":wall["y"]})
-		check(same_json(rules._cup_wall(),wall["result"]),"cup window source retains the original outward normal and nearest wall")
-		var saved: Dictionary=wall["result"].duplicate(true)
+		var expected: Dictionary = wall["result"].duplicate(true)
+		var shift: Vector2 = offsets[expected.id]
+		var actor := Vector2(wall.x, wall.y) + shift * AnomalyModule.SC
+		expected.x += shift.x
+		expected.y += shift.y
+		rules.set_context({"scene":"out","x":actor.x,"y":actor.y})
+		check(same_json(rules._cup_wall(), expected), "the cup keeps the original outward normal at the relocated window")
+		var saved: Dictionary=expected.duplicate(true)
 		saved.erase("nx")
 		saved.erase("ny")
 		var props:=FallingProps.new()
-		var p:=CampusGeometry.to_scene(null,Vector2(wall["x"],wall["y"]))
+		var p:=CampusGeometry.to_scene(null, actor)
 		props.build("cup",{"wall":saved,"phase":0},null,Vector3(p.x,0,p.y),0,2)
-		var expected: Dictionary=wall["result"]
 		var sill:=CampusGeometry.to_scene(null,Vector2(expected["x"],expected["y"])*AnomalyModule.SC)+Vector2(expected["nx"],expected["ny"])*.2
 		check(Vector2(props.body.position.x,props.body.position.z).distance_to(sill)<.0001 and not saved.has("nx"),"early native saves regain a visible window offset without changing their saved data")
 		props.free()

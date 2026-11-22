@@ -330,11 +330,25 @@ def main():
         inlay.floor(xx-.07,front,xx+.07,back,.042,'b47e6a')
     for zz in (front+.55,back-.55):
         inlay.floor(left,zz-.065,right,zz+.065,.042,'b47e6a')
-    parts.update(Courtyard=plaza, TerracottaInsets=inlay)
+    parts.update(TeachingForecourt=plaza, TerracottaInsets=inlay)
+    x,z,w,d = footprint(objects['plaza'])
+    center_z = z + d/2
+    square, tile_lines = Part(tiled=True), Part()
+    square.floor(x,z,x+w,z+d,.028,'e6e8df')
+    for xx in np.arange(x+4,x+w-1,5):
+        tile_lines.floor(xx-.06,z,xx+.06,z+d,.032,'8b6758')
+    for zz in (z+.62,center_z,z+d-.62):
+        tile_lines.floor(x,zz-.055,x+w,zz+.055,.033,'8b6758')
+    parts.update(GreenPlaza=square, PlazaInsets=tile_lines)
     x,z,w,d = footprint(objects['garden'])
+    paths = Part(tiled=True)
+    paths.floor(x-1,z+d*.5-1.15,x+w-.5,z+d*.5+1.15,.023,'c9c7a4')
+    paths.floor(x-1,z-.5,x+1.2,z+d+.5,.023,'c9c7a4')
+    parts['GardenPath'] = paths
     parts['GardenTrunks'],parts['GardenLeaves'] = garden_beds(x,z,w,d)
-    parts['GeographyGarden'],parts['Globe'],solids=geography(x+w*.205,z+d*.49)
-    collision_scene(solids, x+w*.205, z+d*.49, objects)
+    pavilion = (x+w*.62, z+d*.5)
+    parts['GeographyGarden'],parts['Globe'],solids = geography(*pavilion)
+    collision_scene(solids, *pavilion, objects)
     save(DEST/'courtyard.glb',parts)
     save(DEST/'gallery.glb',bridge(False))
     save(DEST/'orange_walk.glb',bridge(True))

@@ -150,7 +150,14 @@ static func campus() -> Dictionary:
 
 static func campus_map() -> Dictionary:
 	if not _cache.has("campus_map"):
-		_cache["campus_map"] = JSON.parse_string(FileAccess.get_file_as_string("res://assets/campus/map.json"))
+		var outside := layout("out")
+		var gates: Array = []
+		var names := {"n": "北门", "w": "西小门", "s": "南门"}
+		for key: String in names:
+			var gate: Dictionary = campus()["gates"][key]
+			gates.append([names[key], gate.x, gate.y])
+		_cache["campus_map"] = {"objects": outside.objects, "roads": outside.roads,
+			"bound": campus()["bound_map"], "gates": gates}
 	return _cache["campus_map"]
 
 

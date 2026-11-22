@@ -18,10 +18,10 @@ func _init(room_data: Dictionary = {}, out_data: Dictionary = {}, campus_data: D
 	for id: String in rooms:
 		var r: Dictionary = rooms[id]
 		if id in SEPARATE or r.get("host", "") == "lift" or r.get("flags", {}).get("stairwell", false): continue
-		var shift := CampusGeometry.shift_of(r)
 		var rise := 3.0 if r["host"] in ["dormN", "dormS"] else 3.2
-		frames[id] = Transform3D(Basis.IDENTITY, Vector3((float(r["cx"]) + shift.x) / 9.0,
-			maxi(0, int(r.get("floor", 1)) - 1) * rise, (float(r["cy"]) + shift.y) / 9.0))
+		var footprint := CampusGeometry.campus_frame(r)
+		footprint.origin.y = maxi(0, int(r.get("floor", 1)) - 1) * rise
+		frames[id] = footprint
 	for stair: Dictionary in campus.get("stair_layout", []):
 		var levels: Array = stair["rooms"]
 		var level := levels.find("out") if levels.has("out") else 0
@@ -42,9 +42,6 @@ func _init(room_data: Dictionary = {}, out_data: Dictionary = {}, campus_data: D
 			var local := CampusGeometry.to_scene(rooms[id], door["p"])
 			var target: Vector3 = frames[stair["id"]] * Vector3(0, i * float(stair["rise"]), CampusPortals.THRESHOLD_Z)
 			frames[id] = Transform3D(Basis.IDENTITY, target - Vector3(local.x, 0, local.y))
-	# The old bridge annex overlaps the laboratory stair shaft by one metre.
-	# Move the physical bridge within the existing 3 m doorway overlap.
-	if frames.has("link2"): frames["link2"].origin.x += 1.0
 	var lifts := ElevatorModule.new(rooms)
 	lifts.reset()
 	update_lifts(lifts)
@@ -154,6 +151,27 @@ func garage_resume_pose(id: String, pose: Dictionary) -> Dictionary:
 	var restored := pose.duplicate()
 	restored["position"] = [safe.x, safe.y, safe.z]
 	return restored
+
+
+func resume_pose(id: String, pose: Dictionary) -> Dictionary:
+	var restored := garage_resume_pose(id, pose)
+	return outdoor_resume_pose(restored) if id == "out" else restored
+
+
+## Old outdoor coordinates may now lie inside a relocated ground-floor room.
+func outdoor_resume_pose(pose: Dictionary) -> Dictionary:
+	var p: Array = pose["position"]
+	var at := Vector2(p[0], p[2])
+	var scale_m := float(outside["SC"]) * CampusGeometry.U2M
+	for building: Dictionary in outside["objects"]:
+		if not building.id in ["gear", "admin", "lab", "dormN", "dormS", "canteen"]: continue
+		var plot := Rect2(building.x * scale_m, building.y * scale_m, building.w * scale_m, building.h * scale_m)
+		if not plot.grow(-.05).has_point(at): continue
+		var entrance: Dictionary = building.door_world
+		var safe := pose.duplicate(true)
+		safe["position"] = [entrance.x * CampusGeometry.U2M, .05, entrance.y * CampusGeometry.U2M]
+		return safe
+	return pose
 
 
 static func subtract_rect(rect: Rect2, hole: Rect2) -> Array[Rect2]:

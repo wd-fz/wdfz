@@ -200,6 +200,13 @@ func test_resident_doorways() -> void:
 				var inside := bridge.to_global(Vector3(eye.x - outward.x, 1.58, eye.y - outward.y))
 				var beyond := bridge.to_global(Vector3(eye.x + outward.x, 1.58, eye.y + outward.y))
 				check(not _mesh_hit(outside, inside, beyond) and not _mesh_hit(outside, beyond, inside), "exterior faces leave the bridge doorway to %s clear" % connection.peer.room)
+	var dining := campus.prepare("canteen1", false)
+	var dining_door: Dictionary = campus.space.campus.campus_doors.doors.back()
+	var threshold := CampusGeometry.to_scene(dining.layout, CampusGeometry.door_port(dining.layout, dining_door).p)
+	for across: float in [-.55, 0.0, .55]:
+		var inside := dining.to_global(Vector3(threshold.x + across, 1.58, threshold.y - 1))
+		var street := dining.to_global(Vector3(threshold.x + across, 1.58, threshold.y + 1))
+		check(not _mesh_hit(outside, street, inside) and not _mesh_hit(outside, inside, street), "the west dining hall entrance is visually open on both sides")
 	campus.select("teach1")
 	var frame := hall.global_transform
 	await _frames(2)

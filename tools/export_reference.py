@@ -92,8 +92,6 @@ def main():
                     texture_dir.mkdir(parents=True,exist_ok=True)
                     for name,data in result.pop("textures").items():
                         (texture_dir / (name+".png")).write_bytes(base64.b64decode(data.split(",",1)[1]))
-                if args.map_only:
-                    (ROOT / "assets/campus/map.json").write_text(json.dumps(result.pop("content"),ensure_ascii=False,indent=2)+"\n")
                 if args.archive_only:
                     (ROOT / "assets/campus/archive.json").write_text(json.dumps(result.pop("content"),ensure_ascii=False,indent=2)+"\n")
                 if args.rules_dlc_only:

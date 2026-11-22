@@ -11,6 +11,7 @@ const FLOOR_A := Color("#272119")
 const FLOOR_B := Color("#2a241c")
 const TONES := {"route": Color("#e6dcc4"), "seal": Color("#e0675c"), "brass": Color("#e2bd6a"), "done": Color("#8fa28a"), "prop": Color("#9c9384")}
 const MARKS := {"S": "梯", "J": "电", "L": "廊", "O": "出", "H": "藏", "T": "台", "K": "台", "D": "机", "Q": "服", "u": "书", "j": "门", "M": "售", "d": "桌", "f": "柜", "R": "架", "q": "柜", "k": "台", "N": "镜", "C": "仪", "Y": "球", "Z": "摆"}
+const PLAN_LABELS := ["roof", "plaza", "garden", "link"]
 
 var room: Dictionary = {}
 var seen: PackedByteArray
@@ -200,7 +201,7 @@ static func plan_labels(data: Dictionary, sc: float, extent: Vector2, measure: C
 	for object: Dictionary in data["objects"]:
 		if object["k"] == "roof": boxes.append(Rect2(at.call(object["x"],object["y"]),Vector2(object["w"],object["h"])*sc))
 	for object: Dictionary in data["objects"]:
-		if object["k"] != "roof" or float(object["w"])*sc<=34: continue
+		if not object["k"] in PLAN_LABELS or float(object["w"])*sc<=34: continue
 		var pos: Vector2 = at.call(object["x"],object["y"])+Vector2(3,12)
 		var text := String(object["name"])
 		var width: float = measure.call(text,10)
@@ -214,7 +215,7 @@ static func plan_labels(data: Dictionary, sc: float, extent: Vector2, measure: C
 		used.append(Rect2(pos-Vector2(0,11),Vector2(width,11)))
 		gates.append({"text":gate[0],"pos":pos,"size":11,"gate":true})
 	for object: Dictionary in data["objects"]:
-		if object["k"] != "roof" or float(object["w"])*sc>34: continue
+		if not object["k"] in PLAN_LABELS or float(object["w"])*sc>34: continue
 		var text := String(object.get("short",object["name"]))
 		var width: float = measure.call(text,10)
 		var own: Vector2 = at.call(object["x"],object["y"])
@@ -260,6 +261,10 @@ func _draw_plan() -> void:
 				col = Color("#1a2427")
 			"garden":
 				col = Color("#17251e")
+			"plaza":
+				col = Color("#263632")
+			"link":
+				col = Color("#693d2b") if o["id"] == "c2" else Color("#394745")
 		var rect := Rect2((float(o["x"]) - x0) * sc, (float(o["y"]) - y0) * sc, float(o["w"]) * sc, float(o["h"]) * sc)
 		draw_rect(rect, col)
 		draw_rect(rect, Color(0.47, 0.71, 0.59, 0.3), false, 1.0)

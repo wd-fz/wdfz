@@ -377,7 +377,7 @@ func restore(data: Dictionary) -> void:
 	for id: String in actors:
 		var member := actor(id)
 		member.restore(data["actors"][id])
-		member.pose = physics.space.garage_resume_pose(member.location(), member.pose)
+		member.pose = physics.space.resume_pose(member.location(), member.pose)
 		member.session.character_id = room.members[id]["character"]
 		room.members[id]["seat"] = member.own_seat
 		if is_participating(id): physics.place(member)

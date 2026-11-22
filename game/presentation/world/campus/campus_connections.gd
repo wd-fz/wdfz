@@ -15,7 +15,8 @@ static func resident_portals(space: CampusSpace) -> Array[Dictionary]:
 		var room: Dictionary = space.rooms[id]
 		var port := CampusGeometry.door_port(room, door)
 		var normal: Vector2 = port["n"]
-		portals.append({"a": "out", "b": id, "at": _school_point(space, id, port["p"]), "toward_b": Vector3(-normal.x, 0, -normal.y)})
+		var inward := space.frame(id).basis * Vector3(-normal.x, 0, -normal.y)
+		portals.append({"a": "out", "b": id, "at": _school_point(space, id, port["p"]), "toward_b": inward})
 	for stair: Dictionary in space.campus.get("stair_layout", []):
 		var id := String(stair["id"])
 		var levels: Array = stair["rooms"]
@@ -54,9 +55,10 @@ static func nearby(id: String, position: Vector3, distance_limit: float = LOOK_A
 			continue
 		var room: Dictionary = rooms[target]
 		var port := CampusGeometry.door_port(room, door)
-		var p: Vector2 = port["p"]
-		p = (p + CampusGeometry.shift_of(room)) * CampusGeometry.U2M if id == "out" else CampusGeometry.to_scene(room, p)
-		_offer(distances, target if id == "out" else "out", position.distance_to(Vector3(p.x, 0, p.y)))
+		var p := CampusGeometry.to_scene(room, port["p"])
+		var threshold := Vector3(p.x, 0, p.y)
+		if id == "out": threshold = CampusGeometry.campus_frame(room) * threshold
+		_offer(distances, target if id == "out" else "out", position.distance_to(threshold))
 	for stair: Dictionary in campus.get("stair_layout", []):
 		var levels: Array = stair["rooms"]
 		if id == String(stair["id"]):

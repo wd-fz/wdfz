@@ -89,7 +89,7 @@ func test_window() -> void:
 	camera.free()
 
 func test_app() -> void:
-	var data := original_data()
+	var reference := original_data()
 	var app: GameApp = APP.instantiate()
 	app.saves = SaveStore.new(_test_path.get_base_dir()+"/atmos-props/slot.json")
 	app.settings = GameSettings.new(app.saves.side_path("settings.json"))
@@ -102,7 +102,10 @@ func test_app() -> void:
 	app.player.set_physics_process(false)
 	app._stand_up()
 	var mood := app.atmos()
-	check(same_json(mood._window_anchor,data["anchor"]),"formal session injects the original laboratory world anchor")
+	var lab := CampusData.layout("lab1")
+	var lab_shift := CampusGeometry.shift_of(lab)
+	var anchor := {"x": float(lab.cx) + lab_shift.x, "y": float(lab.cy) + lab_shift.y, "height": reference.anchor.height}
+	check(same_json(mood._window_anchor, anchor), "the formal session anchors the window figure to the relocated laboratory")
 	var room := CampusData.layout("teach1")
 	var position := CampusGeometry.tile_center(room,12,13)
 	for day in range(1,60):
@@ -110,7 +113,7 @@ func test_app() -> void:
 		mood.set_context({"scene":"teach1","x":position.x,"y":position.y,"day":day,"tsec":620,"age":100,"dread":DreadModule.new(CampusData.rooms())})
 		mood._window_tick()
 		if not mood.window.is_empty(): break
-	check(not mood.window.is_empty() and same_json(mood.window.get("anchor",{}),data["anchor"]),"a naturally eligible window record carries its anchor")
+	check(not mood.window.is_empty() and same_json(mood.window.get("anchor", {}), anchor), "a naturally eligible window record carries its new anchor")
 	var fx := app._campus_world().atmos_fx
 	var sign := fx.signs[0]
 	app.kill("atmosphere boundary test","vignette","vignette")

@@ -277,20 +277,21 @@ func crossing(world_id: String, pose: Dictionary) -> Dictionary:
 		return {}
 	var inside := world_id != "out"
 	var list := _campus_doors(world_id) if inside else _campus_doors("")
+	var point := Vector3(p[0], p[1], p[2])
 	for d: Dictionary in list:
 		var r: Dictionary = _rooms[d["room"]]
-		var s := CampusGeometry.shift_of(r)
+		var frame := CampusGeometry.campus_frame(r)
+		var inverse := frame.affine_inverse()
 		var port := CampusGeometry.door_port(r, d)
-		var me := CampusGeometry.to_world(r if inside else null, float(p[0]), float(p[2]))
-		if not inside:
-			port["p"] = (port["p"] as Vector2) + s
+		var local := point if inside else inverse * point
+		var me := CampusGeometry.to_world(r, local.x, local.z)
 		var q := CampusGeometry.door_local(port, me)
 		if absf(q.y) >= CampusGeometry.door_half(d, _door_width()):
 			continue
 		if inside and q.x > 0.0:
-			return {"world": "out", "pose": _pose(CampusGeometry.to_scene(null, me + s), ang, float(pose["pitch"])), "seamless": true}
+			return {"world": "out", "pose": CampusSpace.transform_pose(frame, pose), "seamless": true}
 		if not inside and q.x < 0.0 and q.x > -_annex() * CampusGeometry.TTILE:
-			return {"world": d["room"], "pose": _pose(CampusGeometry.to_scene(r, me - s), ang, float(pose["pitch"])), "seamless": true}
+			return {"world": d["room"], "pose": CampusSpace.transform_pose(inverse, pose), "seamless": true}
 	return {}
 
 
@@ -334,7 +335,7 @@ func _tile_actionable(hit: Dictionary, room: Dictionary) -> bool:
 ## Prompt shown for the current spot.
 func observations(world_id: String) -> Array:
 	if not _observations.has(world_id):
-		_observations[world_id] = CampusObservations.sites(world_id, room(world_id), _stair_layout())
+		_observations[world_id] = CampusObservations.sites(world_id, room(world_id), _stair_layout(), _outside)
 	return _observations[world_id]
 
 

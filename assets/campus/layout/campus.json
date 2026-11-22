@@ -1028,8 +1028,8 @@
    [
     {
      "room": "admin2",
-     "edge": "s",
-     "at": 47
+     "at": 38,
+     "edge": "s"
     },
     {
      "room": "link1",
@@ -1040,8 +1040,8 @@
    [
     {
      "room": "lab2",
-     "edge": "n",
-     "at": 47
+     "at": 16,
+     "edge": "n"
     },
     {
      "room": "link1",
@@ -1052,8 +1052,8 @@
    [
     {
      "room": "lab2",
-     "edge": "s",
-     "at": 7
+     "at": 44,
+     "edge": "s"
     },
     {
      "room": "link2",
@@ -1064,8 +1064,8 @@
    [
     {
      "room": "teach2",
-     "edge": "n",
-     "at": 6
+     "at": 57,
+     "edge": "n"
     },
     {
      "room": "link2",

@@ -180,6 +180,45 @@
   }
   /* 巡察世界的数据：栅格位图、导航图（边不带折线）、路线、区域与速度常数——全部取旧版运行时的值 */
   function patrolData(){
+    // Rebuild the grids that the new outdoor footprints and bridge openings changed.
+    function bake(id, boxes, origin) {
+      var grid = window.PATROL_GEOMETRY[id], bytes = new Uint8Array(Math.ceil(grid.W * grid.H / 8));
+      var radius = .30 / window.U2M;
+      var rects = boxes.map(b => [(b.x0 / window.U2M) + origin.x, (b.z0 / window.U2M) + origin.y,
+                                (b.x1 / window.U2M) + origin.x, (b.z1 / window.U2M) + origin.y]);
+      for (const rect of rects) {
+        var [x0, y0, x1, y1] = rect;
+        var left = Math.max(0, Math.floor((x0 - radius - grid.ox) / grid.step));
+        var right = Math.min(grid.W, Math.ceil((x1 + radius - grid.ox) / grid.step));
+        var top = Math.max(0, Math.floor((y0 - radius - grid.oy) / grid.step));
+        var bottom = Math.min(grid.H, Math.ceil((y1 + radius - grid.oy) / grid.step));
+        for (let row = top; row < bottom; row++) {
+          for (let col = left; col < right; col++) {
+            var x = grid.ox + (col + .5) * grid.step, y = grid.oy + (row + .5) * grid.step;
+            if (window.Collision.rectDepth(x, y, radius, ...rect) <= 0) continue;
+            var index = col + row * grid.W;
+            bytes[index >> 3] |= 1 << (index & 7);
+          }
+        }
+      }
+      grid.bits = btoa(String.fromCharCode(...bytes));
+      if (id === 'out') grid.occluders = rects;
+    }
+    var outside = window.__wdfzLayout('out');
+    var shafts = window.STAIR_LAYOUT.filter(s => !s.rooms.includes('out')).map(s => {
+      var room = window.INTERIORS[s.rooms[0]];
+      var port = window.NativeCampus.outsidePort(room, window.StairWorld.port(s, 0), window.TeachGallery.shift(room));
+      var x = port.x * window.U2M, z = port.y * window.U2M;
+      var [nx, nz] = port.n;
+      var a = [x + nx * .5 + nz * 2.4, z + nz * .5 - nx * 2.4];
+      var b = [x + nx * 10.1 - nz * 2.4, z + nz * 10.1 + nx * 2.4];
+      return {x0:Math.min(a[0], b[0]), x1:Math.max(a[0], b[0]), z0:Math.min(a[1], b[1]), z1:Math.max(a[1], b[1])};
+    });
+    bake('out', outside.boxes.concat(shafts), {x:0, y:0});
+    for (const id of ['admin2','lab2','teach2']) {
+      var room = window.__wdfzLayout('room', id);
+      bake(id, room.walls.concat(room.boxes), {x:room.cx, y:room.cy});
+    }
     var graph = window.PatrolNav.graph(), edges = graph.edges.map(function(e){ return {a:e.a, b:e.b, kind:e.kind, weight:e.weight}; });
     var nodes = {}; Object.keys(graph.nodes).forEach(function(k){ var n = graph.nodes[k]; nodes[k] = {scene:n.scene, x:Math.round(n.x * 10000) / 10000, y:Math.round(n.y * 10000) / 10000, fy:Math.round((n.fy || 0) * 10000) / 10000}; });
     return {geometry:window.PATROL_GEOMETRY, route:window.PATROL_ROUTE, zones:window.PATROL_ZONES,
@@ -338,7 +377,7 @@
     return {
       id:id, name:R.name, host:R.host || null, floor:R.floor === undefined ? null : R.floor,
       cols:R.cols, rows:R.rows, tw:R.tw, th:R.th, ox:R.ox, oy:R.oy, cx:R.cx, cy:R.cy,
-      shift:shift, exit_world:exit, grid:grid, spawn:spawn, start:start, seats:seatList(R),
+      shift:shift, ...(host && host.turn ? {campus_turn:host.turn} : {}), exit_world:exit, grid:grid, spawn:spawn, start:start, seats:seatList(R),
       flags:{principal:!!R.principal, stairwell:!!R.stairwell, spiral:!!R.spiral, custom:!!R.build, collide:!!R.collide, noClock:!!R.noClock, gallery:!!R.gallery, noMap:!!R.noMap,noAnomaly:!!R.noAnomaly},
       walls:wallRects(walls, R, toM), boxes:boxes, doors:doors, stairs:stairs
     };
@@ -352,10 +391,10 @@
       if(o.k === 'roof' && !o.open) window.roofSolids(o).forEach(function(q){ boxes.push(toM(q.x0, q.y0, q.x1, q.y1, 'building', {id:o.id})); });
     });
     window.OUT_SOLID.forEach(function(q){ boxes.push(toM(q.x0 * SC, q.y0 * SC, q.x1 * SC, q.y1 * SC, 'solid')); });
-    var objs = window.OBJ.map(function(o){ return {id:o.id, k:o.k, x:o.x, y:o.y, w:o.w, h:o.h, door:o.door || null, name:o.n || null, open:!!o.open, open1f:!!o.open1f, door_world:o.k === 'roof' ? window.doorWorld(o) : null}; });
+    var objs = window.OBJ.map(function(o){ return {id:o.id, k:o.k, x:o.x, y:o.y, w:o.w, h:o.h, door:o.door || null, name:o.n || null, ...(o.s ? {short:o.s} : {}), open:!!o.open, open1f:!!o.open1f, door_world:o.k === 'roof' ? window.doorWorld(o) : null}; });
     return {id:'out', SC:SC, U2M:U, TTILE:window.TTILE,
       bound:{x0:(B.x0 + 4) * SC * U, z0:(B.y0 + 4) * SC * U, x1:(B.x1 - 4) * SC * U, z1:(B.y1 - 4) * SC * U},
-      boxes:boxes, objects:objs,
+      boxes:boxes, objects:objs, roads:window.ROADS,
       lamps:(window.OUT_LAMPS || []).map(function(l){ return {x:round(l.x), y:round(l.y), z:round(l.z)}; })};
   }
   function campusDoors(){

@@ -17,43 +17,43 @@ points = PackedVector3Array(2.28, -0.02, 0.0, 2.23619, -0.02, 0.44481, 2.10645, 
 [node name="Courtyard" type="Node3D"]
 
 [node name="PavilionSteps" type="CollisionShape3D" parent="."]
-position = Vector3(101.18889, 0, 234.68222)
+position = Vector3(91.29778, 0, 140.44444)
 shape = SubResource("PavilionSteps")
 
 [node name="GardenPost0" type="CollisionShape3D" parent="."]
-position = Vector3(102.68557, 1.57500, 235.30217)
+position = Vector3(92.79446, 1.57500, 141.06439)
 shape = SubResource("Cylinder_0")
 
 [node name="GardenPost1" type="CollisionShape3D" parent="."]
-position = Vector3(101.80884, 1.57500, 236.17891)
+position = Vector3(91.91772, 1.57500, 141.94113)
 shape = SubResource("Cylinder_0")
 
 [node name="GardenPost2" type="CollisionShape3D" parent="."]
-position = Vector3(100.56894, 1.57500, 236.17891)
+position = Vector3(90.67783, 1.57500, 141.94113)
 shape = SubResource("Cylinder_0")
 
 [node name="GardenPost3" type="CollisionShape3D" parent="."]
-position = Vector3(99.69220, 1.57500, 235.30217)
+position = Vector3(89.80109, 1.57500, 141.06439)
 shape = SubResource("Cylinder_0")
 
 [node name="GardenPost4" type="CollisionShape3D" parent="."]
-position = Vector3(99.69220, 1.57500, 234.06228)
+position = Vector3(89.80109, 1.57500, 139.82450)
 shape = SubResource("Cylinder_0")
 
 [node name="GardenPost5" type="CollisionShape3D" parent="."]
-position = Vector3(100.56894, 1.57500, 233.18554)
+position = Vector3(90.67783, 1.57500, 138.94776)
 shape = SubResource("Cylinder_0")
 
 [node name="GardenPost6" type="CollisionShape3D" parent="."]
-position = Vector3(101.80884, 1.57500, 233.18554)
+position = Vector3(91.91772, 1.57500, 138.94776)
 shape = SubResource("Cylinder_0")
 
 [node name="GardenPost7" type="CollisionShape3D" parent="."]
-position = Vector3(102.68557, 1.57500, 234.06228)
+position = Vector3(92.79446, 1.57500, 139.82450)
 shape = SubResource("Cylinder_0")
 
 [node name="GardenPost8" type="CollisionShape3D" parent="."]
-position = Vector3(94.98889, 1.14500, 234.86222)
+position = Vector3(85.09778, 1.14500, 140.62444)
 shape = SubResource("Cylinder_1")
 
 [node name="teachPierLeft" type="CollisionShape3D" parent="."]
@@ -65,17 +65,17 @@ position = Vector3(122.98222, 0.695, 219.58556)
 shape = SubResource("PorticoPier")
 
 [node name="labPierLeft" type="CollisionShape3D" parent="."]
-position = Vector3(108.96222, 0.695, 173.58556)
+position = Vector3(122.96222, 0.695, 173.58556)
 shape = SubResource("PorticoPier")
 
 [node name="labPierRight" type="CollisionShape3D" parent="."]
-position = Vector3(115.48222, 0.695, 173.58556)
+position = Vector3(129.48222, 0.695, 173.58556)
 shape = SubResource("PorticoPier")
 
 [node name="adminPierLeft" type="CollisionShape3D" parent="."]
-position = Vector3(110.46222, 0.695, 129.58556)
+position = Vector3(102.46222, 0.695, 129.58556)
 shape = SubResource("PorticoPier")
 
 [node name="adminPierRight" type="CollisionShape3D" parent="."]
-position = Vector3(116.98222, 0.695, 129.58556)
+position = Vector3(108.98222, 0.695, 129.58556)
 shape = SubResource("PorticoPier")

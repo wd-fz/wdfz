@@ -544,7 +544,7 @@ func import_legacy_save(text: String) -> String:
 	speedrun.disarm()
 	ui.speedrun_text = ""
 	candidate.restore(snapshot)
-	_install_session(candidate, snapshot["player"])
+	_install_session(candidate, _resume_pose(candidate.world_id, snapshot["player"]))
 	_restore_loaded_world()
 	var note := "已恢复旧版进度：路线、背包、时钟、巡察和异象状态已接续。"
 	if not (p["dropped"] as Array).is_empty():
@@ -892,15 +892,17 @@ func load_game() -> void:
 		ui.show_notice(error)
 		return
 	candidate.restore(data)
-	var pose: Dictionary = data["player"]
-	if is_instance_valid(router.resident):
-		pose = router.resident.space.garage_resume_pose(candidate.world_id, pose)
-	_install_session(candidate, pose)
+	_install_session(candidate, _resume_pose(candidate.world_id, data["player"]))
 	var old_paper: Dictionary = data["modules"].get("school.day", {}).get("data", {}).get("seat_card", {})
 	if not old_paper.has("proof") and school() != null and investigation() != null and investigation().visible("parking"):
 		school().seat_card.recall_counterfoil()
 	_restore_loaded_world()
 	ui.show_notice("已恢复进度；读档不会再次触发交互奖励。")
+
+
+func _resume_pose(world_id: String, pose: Dictionary) -> Dictionary:
+	if not is_instance_valid(router.resident): return pose
+	return router.resident.space.resume_pose(world_id, pose)
 
 
 func _restore_loaded_world() -> void:
@@ -3267,7 +3269,7 @@ func _show_map(selected: String = "", route: String = "") -> void:
 			var bearing := MapView.landmark_note(landmark, plan["target"] - me, here_room != null, action)
 			note = bearing if not action.is_empty() else bearing + "\n" + note
 		plan["me"] = me
-		plan["ang"] = yaw_ang
+		plan["ang"] = yaw_ang if here_room == null else yaw_ang - int(here_room.get("campus_turn", 0)) * PI * 0.5
 		var observations := PackedVector2Array()
 		for site: Dictionary in campus().observations("out"):
 			if notebook.visible("campus:" + String(site.id)):
@@ -3281,7 +3283,8 @@ func _show_map(selected: String = "", route: String = "") -> void:
 		return
 	var r: Dictionary = campus().room(selected)
 	var hereb := selected == session.world_id
-	var view2 := ui.open_map(options, selected, "%s　北 ↑　%s已看清 %d%%" % [r["name"], "你在这一层　" if hereb else "", ex.percent(selected)],
+	var north: String = ["↑", "→", "↓", "←"][posmod(int(r.get("campus_turn", 0)), 4)]
+	var view2 := ui.open_map(options, selected, "%s　北 %s　%s已看清 %d%%" % [r["name"], north, "你在这一层　" if hereb else "", ex.percent(selected)],
 		"空白处还没看到过。桌、柜、架表示看见过的家具。\n梯 楼梯　电 电梯　廊 连廊　出 出口　锁 门锁着　✓ 已解决　留 有东西没拿　× 钥匙不匹配　记 已记入笔记")
 	var me2 := Vector2.ZERO
 	if hereb:

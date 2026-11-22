@@ -121,7 +121,9 @@ def main():
     a.old = str(Path(a.old).resolve())
     with tempfile.TemporaryDirectory() as temp:
         overlay = Path(temp)
-        for name in ('content/room-recipe.js', 'model/room.js', 'model/building.js'):
+        for name in ('content/room-recipe.js', 'content/outdoor-recipe.js', 'content/sports-recipe.js', 'map.js',
+                     'model/room.js', 'model/building.js', 'modules/campus-link/doors.js',
+                     'modules/campus-link/link.js', 'modules/patrol-world/navigation.js'):
             relative = Path('game3d/js') / name
             (overlay / relative).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(Path(a.old) / relative, overlay / relative)
@@ -141,7 +143,8 @@ def export(a, overlay):
         b = p.chromium.launch(executable_path=CHROME if Path(CHROME).exists() else None,
                               args=['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'])
         ctx = b.new_context(viewport={'width': 640, 'height': 480})
-        ctx.add_init_script(path=str(HERE / "architecture.js"))
+        placement = (HERE / 'campus_placement.json').read_text()
+        ctx.add_init_script(f'window.NATIVE_CAMPUS_LAYOUT = {placement};\n' + (HERE / 'architecture.js').read_text())
         ctx.add_init_script("localStorage.setItem('wdfz_pro','1');localStorage.setItem('zw3d_set',JSON.stringify({q:%d,amb:0,vol:0,renderer:'webgl',rv:1}));" % a.quality)
         pg = ctx.new_page()
         errs = []
@@ -163,9 +166,10 @@ def export(a, overlay):
         if not a.only or 'patrol' in a.only.split(','):
             data = pg.evaluate('window.__wdfzPatrolData()')
             (patrol_dir / 'patrol_data.json').write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')))
-            fig = pg.evaluate("window.__wdfzExport('patrol', 'patrol_figure')")
-            (patrol_dir / 'patrol_figure.glb').write_bytes(externalize_images(base64.b64decode(fig['glb']), tex, '../textures/'))
-            print(f"patrol: data {(patrol_dir / 'patrol_data.json').stat().st_size/1e3:.0f} kB, figure {(patrol_dir / 'patrol_figure.glb').stat().st_size/1e3:.0f} kB", flush=True)
+            if not a.layout_only:
+                fig = pg.evaluate("window.__wdfzExport('patrol', 'patrol_figure')")
+                (patrol_dir / 'patrol_figure.glb').write_bytes(externalize_images(base64.b64decode(fig['glb']), tex, '../textures/'))
+            print(f"patrol: data {(patrol_dir / 'patrol_data.json').stat().st_size/1e3:.0f} kB", flush=True)
             if a.only == 'patrol':
                 todo = []
         if not a.only or 'figures' in a.only.split(','):
@@ -214,7 +218,7 @@ def export(a, overlay):
         index = json.loads(index_path.read_text()) if index_path.exists() else {}
         layout_dir = Path(a.out) / 'layout'
         layout_dir.mkdir(parents=True, exist_ok=True)
-        if not a.only:
+        if not a.only or 'campus' in a.only.split(','):
             common = pg.evaluate("window.__wdfzLayout('campus')")
             (layout_dir / 'campus.json').write_text(json.dumps(common, ensure_ascii=False, indent=1))
         if not a.only or 'lift_dream' in todo:
