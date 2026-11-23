@@ -149,12 +149,23 @@ func _test_mirror_view() -> void:
 	check(is_equal_approx(MirrorView.lateral(Vector2(10, 20), Vector2(0, 0), Vector2(-1, 0)), -20.0 * CampusGeometry.U2M) or is_equal_approx(MirrorView.lateral(Vector2(10, 20), Vector2(0, 0), Vector2(-1, 0)), 20.0 * CampusGeometry.U2M), "the sideways offset is measured along the mirror")
 	var buf: Array = [[0.0, 0.1, 1.0], [0.4, 0.2, 1.0], [0.8, 0.3, 1.0], [1.2, 0.4, 1.0]]
 	check(MirrorView.lagged(buf, 1.2, 0.5)[1] == 0.2 and MirrorView.lagged(buf, 1.2, 0.0)[1] == 0.4 and MirrorView.lagged(buf, 0.1, 0.5)[1] == 0.1, "a beat behind replays the position from half a second ago")
+	var rooms := CampusData.rooms()
+	var spots := TalesModule.new(rooms).mirrors("teach1")
+	check(not spots.is_empty(), "a teaching building basin has a mirror")
+	if spots.is_empty(): return
 	var mv := MirrorView.new()
 	root.add_child(mv)
-	mv.build(CampusData.rooms()["teach1"], [{"w": Vector2(1392.0, 1917.5), "n": Vector2(-1, 0)}])
+	var spot: Dictionary = spots[0]
+	var room: Dictionary = rooms["teach1"]
+	mv.build(room, [spot])
 	check(mv.count() == 1, "a mirror hangs over the basin")
-	mv.update(0.1, Vector2(1380, 1917.5), 0.0, 10.0, 1.0, true)
-	check(((mv._mirrors[0]["arm"]) as Node3D).visible, "at the lowest tier with the raise on, the arm shows")
+	if mv.count() == 1:
+		var centre := CampusGeometry.to_scene(room, spot["glass"])
+		var mount := mv._mirrors[0]["g"] as Node3D
+		check(mount.position.is_equal_approx(Vector3(centre.x, TalesModule.MIRROR["height"], centre.y)), "rendered glass shares the mirror gaze plane")
+		var normal: Vector2 = spot["n"]
+		mv.update(0.1, (spot["glass"] as Vector2) + normal * 14.0, (-normal).angle(), 10.0, 1.0, true)
+		check((mv._mirrors[0]["arm"] as Node3D).visible, "at the lowest tier with the raise on, the arm shows")
 	mv.queue_free()
 
 

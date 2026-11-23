@@ -26,5 +26,6 @@
   }
   PresentationRandom.seed(42);SKIP.tex={};
   return {reference:'wd-fz/wd-fz.github.io@0bf508a47eac154c2a7047cdb45d314f61c48fdc',scenarios,
+    stare_wall_grid:INTERIORS.teach1.grid.map(row=>Array.from(row).join('')),
     textures:{'eye-red':gazeEyeTex('red').image.toDataURL(),'eye-gold':gazeEyeTex('gold').image.toDataURL(),'rain-words':handTex('明天的天气：阴').image.toDataURL()}};
 }

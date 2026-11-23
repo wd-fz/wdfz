@@ -109,10 +109,15 @@ func _school_anomaly(props: AnomalyProps, spec: Dictionary, data: Dictionary, ro
 
 
 func test_reference() -> void:
-	var scenarios: Array=_reference()["scenarios"]
+	var reference := _reference()
+	var scenarios: Array=reference["scenarios"]
 	check(scenarios.size()==21,"reference covers 17 original effects and all five gaze qualities")
 	for spec: Dictionary in scenarios:
 		var room: Variant=null if spec["scene"]=="out" else CampusData.layout(spec["scene"])
+		if spec["kind"]=="stare":
+			# Wall positions determine the random sequence for the eyes. Use the grid recorded with these frames.
+			room = room.duplicate()
+			room["grid"] = reference["stare_wall_grid"]
 		var world: Dictionary=spec["me"]
 		var p:=CampusGeometry.to_scene(room,Vector2(world["x"],world["y"]))
 		var data: Dictionary=spec["data"].duplicate(true)
@@ -222,6 +227,13 @@ func test_adapter() -> void:
 	fx.update(.5,an,room,"teach1",feet,Vector2.RIGHT)
 	var eyes: AnomalyProps=fx._extra["original"]
 	check(eyes.items.size()==[18,32,32,48,58][CampusData.tier],"gaze uses the original quality-dependent eye count")
+	var wall_eyes := [14,24,24,36,44][CampusData.tier] as int
+	var wall_faces := true
+	for pupil: MeshInstance3D in eyes.items.slice(0, wall_eyes):
+		var at_wall := CampusGeometry.to_world(room, pupil.position.x, pupil.position.z)
+		wall_faces = wall_faces and CampusGeometry.tile_at(room, at_wall) != "#" and [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN].any(
+			func(direction: Vector2) -> bool: return CampusGeometry.tile_at(room, at_wall + direction * 2.0) == "#")
+	check(wall_faces, "the wall-mounted eyes follow the current campus wall faces")
 	var eye: MeshInstance3D=eyes.items[0]
 	check(eye.material_override.no_depth_test and eye.material_override.disable_fog and eye.material_override.billboard_mode==BaseMaterial3D.BILLBOARD_ENABLED,"the original eyes face the camera and remain visible through walls")
 	var untouched:=an.duplicate(true)
