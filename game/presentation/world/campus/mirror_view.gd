@@ -61,10 +61,9 @@ func build(room: Dictionary, spots: Array) -> void:
 		return
 	for sp: Dictionary in spots:
 		var n: Vector2 = sp["n"]
-		var pos: Vector2 = (sp["w"] as Vector2) - n * 0.47 * float(room["tw"])
-		var s := CampusGeometry.to_scene(room, pos)
+		var s := CampusGeometry.to_scene(room, sp["glass"])
 		var g := Node3D.new()
-		g.position = Vector3(s.x, 1.5, s.y)
+		g.position = Vector3(s.x, TalesModule.MIRROR["height"], s.y)
 		g.rotation.y = atan2(n.x, n.y)
 		var frame := MeshInstance3D.new()
 		var fm := BoxMesh.new()
@@ -75,7 +74,7 @@ func build(room: Dictionary, spots: Array) -> void:
 		g.add_child(frame)
 		var glass := MeshInstance3D.new()
 		var qm := QuadMesh.new()
-		qm.size = Vector2(0.62, 0.82)
+		qm.size = Vector2(TalesModule.MIRROR["glass_width"], TalesModule.MIRROR["glass_height"])
 		glass.mesh = qm
 		RenderMaterials.set_override(glass, _mat(Color("#8d999b"), Color("#1b2224")))
 		g.add_child(glass)

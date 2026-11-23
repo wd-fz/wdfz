@@ -8,7 +8,10 @@ extends FeatureModule
 ## The driving talent can hot-wire the correct car.
 
 const STATE_VERSION := 1
-const LIT_NEED := 1.6
+const LIT_NEED := 0.2
+const TORCH_RANGE := 198.0
+const TORCH_ANGLE := 26.0 * PI / 180.0
+const SHELTER_CLEARANCE := 120.0
 const REACH := 26.0
 const GUARD_CAR := 200.0
 const KEY_SEC := 1.6
@@ -60,7 +63,7 @@ func set_seed(value: int) -> void:
 
 func _fresh_roam() -> Dictionary:
 	return {"on": false, "x": 0.0, "y": 0.0, "cd": 0.0, "seen": false, "litAcc": 0.0, "stage": "approach", "waitT": 0.0,
-		"lureTold": false, "toldSpot": false, "goneTold": false, "backTold": false}
+		"lureTold": false, "toldSpot": false, "goneTold": false}
 
 
 func capture() -> Dictionary:
@@ -80,6 +83,8 @@ func validate(data: Dictionary) -> String:
 	if ch != null:
 		if not (ch is Dictionary) or not SaveSchema.number_in(ch.get("distance"), 0, CarChaseRules.DISTANCE + 50.0) or not SaveSchema.is_integer(ch.get("hp"), 0, 3):
 			return "驾驶状态无效"
+		if not SaveSchema.number_in(ch.get("lateralSpeed", 0.0), -5.0, 5.0) or not ch.get("scraping", false) is bool:
+			return "转向状态无效"
 	return ""
 
 
@@ -282,14 +287,33 @@ func _reset_roam() -> void:
 	roam["on"] = true
 
 
+func _observers() -> Array:
+	return _c.get("observers", [_c])
+
+
+func _in_beam(at: Vector2, observer: Dictionary) -> bool:
+	if not bool(observer.get("torch", false)): return false
+	var eye := Vector2(float(observer["x"]), float(observer["y"]))
+	var d := at - eye
+	if d.length_squared() > TORCH_RANGE * TORCH_RANGE: return false
+	if d.length_squared() > 1.0:
+		var yaw := float(observer["ang"])
+		var pitch := float(observer.get("pitch", 0.0))
+		var forward := Vector3(cos(yaw) * cos(pitch), sin(pitch), sin(yaw) * cos(pitch))
+		var eye_y := float(observer.get("eye_y", 1.65))
+		var head := Vector3(d.x, (2.18 - eye_y) / CampusGeometry.U2M, d.y)
+		var torso := Vector3(d.x, (1.35 - eye_y) / CampusGeometry.U2M, d.y)
+		if maxf(forward.dot(head.normalized()), forward.dot(torso.normalized())) < cos(TORCH_ANGLE): return false
+	var samples := int(ceil(d.length() / 3.0))
+	for i in range(1, samples):
+		if CampusGeometry.tile_at(_room, eye.lerp(at, float(i) / samples)) == "#": return false
+	return true
+
+
 func lit() -> bool:
-	if _c.has("coop_lit"): return bool(_c["coop_lit"])
-	if not bool(_c.get("torch", false)):
-		return false
-	var d := Vector2(float(roam["x"]), float(roam["y"])) - _here()
-	if d.length_squared() > 260.0 * 260.0:
-		return false
-	return CampusGeometry.ang_diff(atan2(d.y, d.x), float(_c.get("ang", 0.0))) < PI / 3.0
+	if not roam_visible(): return false
+	var at := Vector2(float(roam["x"]), float(roam["y"]))
+	return _observers().any(func(observer: Dictionary) -> bool: return _in_beam(at, observer))
 
 
 ## Is the thing standing somewhere it can be seen (for the presentation).
@@ -316,33 +340,24 @@ func tick(dt: float) -> void:
 		if float(lure["t"]) <= 0.0:
 			lure = null
 	var is_lit := lit()
-	roam["litAcc"] = float(roam["litAcc"]) + dt if is_lit else maxf(0.0, float(roam["litAcc"]) - dt * 0.35)
-	if float(roam["litAcc"]) >= LIT_NEED:
-		_emit("fact", {"what": "torch"})
-		roam["litAcc"] = 0.0
-		roam["stage"] = "wait"
-		roam["waitT"] = _rnd(4.5, 8.0)
-		roam["x"] = -1e6
-		roam["y"] = -1e6
-		if not bool(roam["goneTold"]):
-			roam["goneTold"] = true
-			_say("我：光扫过去，它就没了。")
-		return
 	if roam["stage"] == "wait":
-		if is_lit:
-			roam["waitT"] = 0.0
 		roam["waitT"] = float(roam["waitT"]) - dt
-		if float(roam["waitT"]) <= 0.0:
-			_reappear()
+		if float(roam["waitT"]) <= 0.0 and not _retreat(): roam["waitT"] = 1.0
+		return
+	roam["litAcc"] = float(roam["litAcc"]) + dt if is_lit else 0.0
+	if float(roam["litAcc"]) >= LIT_NEED:
+		roam["litAcc"] = 0.0
+		if _retreat():
+			_emit("fact", {"what": "torch"})
+			if not bool(roam["goneTold"]):
+				roam["goneTold"] = true
+				_say("我：手电碰到那张脸。下一眼，它站在另一条车道。")
 		return
 	roam["cd"] = float(roam["cd"]) - dt
 	var me := _here()
 	var pos := Vector2(float(roam["x"]), float(roam["y"]))
-	if is_lit:
-		roam["cd"] = maxf(float(roam["cd"]), 0.55)
-		var away := (pos - me).normalized() if pos != me else Vector2.RIGHT
-		_move(away.x * 13.0 * dt, away.y * 13.0 * dt)
-	elif float(roam["cd"]) <= 0.0:
+	if not is_lit and float(roam["cd"]) <= 0.0:
+		roam["stage"] = "approach"
 		var near := me.distance_to(pos) < 220.0
 		roam["cd"] = _rnd(0.55, 0.95) if bool(_c.get("run", false)) or near else _rnd(0.9, 1.5)
 		var target := Vector2(float(lure["x"]), float(lure["y"])) if lure != null else me
@@ -367,40 +382,32 @@ func tick(dt: float) -> void:
 		_emit("kill", {"msg": "你在黑暗里撞上了它。它很高，很冷，一直站在车道中间，等你自己走过去。", "fx": "grip", "source": "garage"})
 
 
-func _reappear() -> void:
-	var me := _here()
-	var ox := float(_room["ox"])
-	var oy := float(_room["oy"])
-	var w := float(_room["cols"]) * float(_room["tw"])
-	var h := float(_room["rows"]) * float(_room["th"])
-	var found := false
-	var b := Vector2.ZERO
-	for _t in 12:
-		var a := _rnd(0.0, TAU)
-		var far := _rnd(300.0, 460.0)
-		b = Vector2(clampf(me.x + cos(a) * far, ox + 24.0, ox + w - 24.0), clampf(me.y + sin(a) * far, oy + 24.0, oy + h - 24.0))
-		if b.distance_squared_to(me) > 250.0 * 250.0 and not _blocked(b):
-			found = true
-			break
-	if not found:
-		var best := -1.0
-		for row in range(1, int(_room["rows"]) - 1):
-			for col in range(1, int(_room["cols"]) - 1):
-				var p := Vector2(ox + (col + 0.5) * float(_room["tw"]), oy + (row + 0.5) * float(_room["th"]))
-				var d := p.distance_squared_to(me)
-				if d > best and not _blocked(p):
-					best = d
-					b = p
-					found = true
-	if not found:
-		roam["waitT"] = 1.0
-		return
-	roam["x"] = b.x
-	roam["y"] = b.y
-	roam["stage"] = "approach"
-	if not bool(roam["backTold"]):
-		roam["backTold"] = true
-		_say("我：……后面又有脚步声了。")
+func _retreat() -> bool:
+	var observers := _observers()
+	var from := Vector2(float(roam["x"]), float(roam["y"]))
+	var landing := Vector2.INF
+	var best := SHELTER_CLEARANCE * SHELTER_CLEARANCE
+	var grid: Array = _room["grid"]
+	for row in range(2, int(_room["rows"]) - 2):
+		for col in range(2, int(_room["cols"]) - 2):
+			if String(grid[row]).substr(col, 1) != ".": continue
+			var point := CampusGeometry.tile_center(_room, col, row)
+			if point.distance_squared_to(from) < 90.0 * 90.0: continue
+			var clearance := INF
+			for observer: Dictionary in observers:
+				var person := Vector2(float(observer["x"]), float(observer["y"]))
+				clearance = minf(clearance, point.distance_squared_to(person))
+			if clearance <= best or _blocked(point): continue
+			if observers.any(func(observer: Dictionary) -> bool: return _in_beam(point, observer)): continue
+			best = clearance
+			landing = point
+	if not landing.is_finite(): return false
+	roam["x"] = landing.x
+	roam["y"] = landing.y
+	roam["stage"] = "shelter"
+	roam["cd"] = _rnd(2.4, 3.6)
+	_emit("step", {"x": landing.x, "y": landing.y})
+	return true
 
 
 ## story.js elixir / survival: the thing steps back after a rescue.
@@ -461,6 +468,8 @@ func chase_step(dt: float, input: Dictionary) -> void:
 	for e: Dictionary in result["events"]:
 		if e["type"] == "hit":
 			_emit("toast", {"text": "撞上路障"})
+		elif e["type"] == "scrape":
+			_emit("toast", {"text": "车身擦上护栏"})
 		elif e["type"] == "fork":
 			_emit("save")
 	if result.has("failure"):

@@ -207,6 +207,22 @@ func test_resident_doorways() -> void:
 		var inside := dining.to_global(Vector3(threshold.x + across, 1.58, threshold.y - 1))
 		var street := dining.to_global(Vector3(threshold.x + across, 1.58, threshold.y + 1))
 		check(not _mesh_hit(outside, street, inside) and not _mesh_hit(outside, inside, street), "the west dining hall entrance is visually open on both sides")
+	for spec: Dictionary in campus.space.campus.campus_doors.doors:
+		var floor_data: Dictionary = campus.space.rooms[spec["room"]]
+		if not floor_data.has("retired_door"): continue
+		var floor_world := campus.prepare(spec["room"], false)
+		for config: Dictionary in [spec, floor_data["retired_door"]]:
+			var portal := CampusGeometry.door_port(floor_data, config)
+			var center := CampusGeometry.to_scene(floor_data, portal["p"])
+			var normal: Vector2 = portal["n"]
+			var change := normal * 1.25
+			var from := floor_world.to_global(Vector3(center.x - change.x, 1.58, center.y - change.y))
+			var to := floor_world.to_global(Vector3(center.x + change.x, 1.58, center.y + change.y))
+			await _frames(2)
+			var solid := not floor_world.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(from, to, 1)).is_empty()
+			var facade_hit := _mesh_hit(outside, from, to) or _mesh_hit(outside, to, from)
+			var sealed: bool = config == floor_data["retired_door"]
+			check(solid == sealed and facade_hit == sealed, "scene %s edge %s agrees across facade and collision" % [spec["room"], config["edge"]])
 	campus.select("teach1")
 	var frame := hall.global_transform
 	await _frames(2)

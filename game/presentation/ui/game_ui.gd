@@ -1093,6 +1093,8 @@ func _show_bag_detail() -> void:
 	var desc := Label.new()
 	desc.name = "BagDetailText"
 	desc.text = String(entry["text"])
+	if bool(entry.get("bound", false)):
+		desc.text += "\n科技党随身物品 · 永久占用一格背包"
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	# A known wrap width from the first layout pass: an autowrapped label at width 0 asks for one line per glyph.
 	desc.custom_minimum_size.x = 260
@@ -1106,6 +1108,7 @@ func _show_bag_detail() -> void:
 	buttons.add_theme_constant_override("h_separation", 8)
 	buttons.add_theme_constant_override("v_separation", 8)
 	for spec: Array in [["使用", -1, "interact"], ["快捷栏 1", 0, ""], ["快捷栏 2", 1, ""], ["丢弃", -2, "close"]]:
+		if spec[1] == -2 and bool(entry.get("bound", false)): continue
 		var b := Button.new()
 		b.text = spec[0]
 		b.custom_minimum_size = Vector2(84, 44)

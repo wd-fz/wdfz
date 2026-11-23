@@ -391,6 +391,7 @@ func restore(data: Dictionary) -> void:
 		if is_participating(id): physics.place(member)
 		else: physics.remove_actor(id)
 	inventory.restore(data["items"])
+	for a: CooperativeActor in actors.values(): inventory.restore_phone(a)
 	patrol.restore(data["patrol"])
 	patrol.synchronize(actors)
 	leases = data["leases"].duplicate()

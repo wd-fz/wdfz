@@ -8,6 +8,7 @@ static func create() -> GameSession:
 	var campus := CampusData.campus()
 	var outdoor := CampusData.layout("out")
 	var nav := CampusData.patrol_nav()
+	var talents := TalentModule.new()
 	var names := {}
 	for id: String in AnomalyModule.DEFS:
 		names[id] = String(AnomalyModule.DEFS[id].get("cn", id))
@@ -18,7 +19,7 @@ static func create() -> GameSession:
 		LiftCrowdModule.new(),
 		MazeModule.new(CampusData.maze_geometry(), CampusData.maze_data()),
 		SchoolModule.new(rooms, outdoor, campus),
-		InventoryModule.new(rooms, campus),
+		InventoryModule.new(rooms, campus, talents),
 		StoryModule.new(),
 		KnifeModule.new(),
 		WudaKidModule.new(),
@@ -32,7 +33,7 @@ static func create() -> GameSession:
 		FacilitiesModule.new(rooms, outdoor, campus),
 		BroadcastModule.new(rooms, nav),
 		PhoneModule.new(),
-		TalentModule.new(),
+		talents,
 		FakeNormalModule.new(),
 		BodyModule.new(rooms),
 		ExchangeModule.new(nav, outdoor, campus),

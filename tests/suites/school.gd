@@ -437,14 +437,27 @@ func _test_tales_rules() -> void:
 	var n: Vector2 = mirror["n"]
 	var stand: Vector2 = mirror["w"] + n * 12.0
 	var look := atan2(-n.y, -n.x)
-	m.set_context({"scene": "teach1", "x": stand.x, "y": stand.y, "ang": look, "san": 50.0})
-	for _i in 60:
-		m.tick(0.1)
-	check(m.raise == 0.0 and m.take_events().is_empty(), "with SAN 50 the reflection only lags")
+	var gaze := {"scene": "teach1", "x": stand.x, "y": stand.y, "ang": look, "san": 100.0}
+	m.set_context(gaze)
+	m.tick(.5)
+	m.tick(.5)
+	var loss := m.take_events()
+	check(m.raise == 0.0 and loss.size() == 2 and loss.all(func(e: Dictionary) -> bool: return e["kind"] == "san" and is_equal_approx(e["amount"], -1.4)), "a full-SAN player loses SAN throughout a one-second gaze")
+	m.set_context(gaze.merged({"pitch": .7}, true))
+	m.tick(.5)
+	check(m.take_events().is_empty(), "looking above the glass does not drain SAN")
+	m.set_context(gaze.merged({"line_clear": func(_a: Vector2, _b: Vector2) -> bool: return false}, true))
+	m.tick(.5)
+	check(m.take_events().is_empty(), "a wall between the player and glass prevents SAN loss")
 	m.set_context({"scene": "teach1", "x": stand.x, "y": stand.y, "ang": look, "san": 10.0})
 	for _i in 20:
 		m.tick(0.1)
-	check(m.raise > 0.9 and m.take_events().is_empty(), "below 20 it raises a hand first")
+	check(m.raise > 0.9 and m.take_events().all(func(e: Dictionary) -> bool: return e["kind"] == "san"), "below 20 it raises a hand before the lethal stare")
+	var restored := TalesModule.new(rooms)
+	var state := m.capture()
+	check(restored.validate(state).is_empty(), "ongoing mirror effects can be saved")
+	restored.restore(state)
+	check(restored.raise == m.raise and restored.stare == m.stare, "reloading the mirror resumes its gesture and stare timer")
 	for _i in 32:
 		m.tick(0.1)
 	check(m.take_events().any(func(e: Dictionary) -> bool: return e["kind"] == "kill" and e["source"] == "mirror"), "staring 3 s more is the mirror death")

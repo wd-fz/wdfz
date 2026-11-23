@@ -8,7 +8,7 @@ extends RefCounted
 ## personal best per rules version · difficulty · route, in a side file next to the save. Speedruns
 ## do not write the normal save slot. Hidden routes appear in the table only after a record exists.
 
-const RULES := 6
+const RULES := 7
 const ROUTES := {"dismissal": "《放学》", "international": "《外国语学生》", "cyber": "《网安仙人》", "car": "《闸门》", "face": "《白名单》", "portal": "《门》", "beast":"《先辈》"}
 const DIFF_NAME := {"easy": "预知梦", "hard": "梦魇"}
 

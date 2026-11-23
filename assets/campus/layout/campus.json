@@ -6,20 +6,20 @@
    {
     "room": "teach1",
     "host": "teach",
-    "edge": "s",
-    "at": 31
+    "edge": "n",
+    "at": 57
    },
    {
     "room": "admin1",
     "host": "admin",
-    "edge": "s",
-    "at": 26
+    "edge": "n",
+    "at": 9
    },
    {
     "room": "lab1",
     "host": "lab",
-    "edge": "s",
-    "at": 25
+    "edge": "w",
+    "at": 17
    },
    {
     "room": "guard1",
@@ -50,15 +50,15 @@
    {
     "room": "dorm1",
     "host": "dormN",
-    "edge": "e",
-    "at": 7.5,
+    "edge": "w",
+    "at": 12.5,
     "width": 2
    },
    {
     "room": "dorm4",
     "host": "dormS",
-    "edge": "e",
-    "at": 7.5,
+    "edge": "w",
+    "at": 2.5,
     "width": 2
    },
    {

@@ -5,7 +5,7 @@ Visual reference: 武汉大学附属中学VR实景校园, https://www.720yuntu.c
 Run python3 tools/remodel/campus_architecture.py from any directory (numpy, Pillow).
 """
 import json
-from math import cos, pi, sin, tau
+from math import atan2, cos, pi, sin, tau
 from pathlib import Path
 
 import numpy as np
@@ -39,6 +39,14 @@ def pavers():
 def footprint(obj):
     scale = 2/9
     return tuple(obj[k]*scale for k in ('x', 'y', 'w', 'h'))
+
+
+def entrance_frame(obj):
+    nx, nz = {'n': (0, -1), 's': (0, 1), 'w': (-1, 0), 'e': (1, 0)}[obj['door'] or 's']
+    hint = obj['door_world']
+    origin = np.array(((hint['x']-26*nx)/9, 0, (hint['y']-26*nz)/9))
+    axes = np.array(((nz, 0, -nx), (0, 1, 0), (nx, 0, nz)))
+    return origin, axes
 
 
 def arch(part, x, z, radii, spring, thickness, depth, tint, stones=25):
@@ -83,43 +91,35 @@ def facade(name, obj, link_gaps):
     for xx in (x-.1,x+w+.1):
         p.block((xx,crown,z+d/2),(.30,.19,d+.48),CREAM)
     if name in ('teach','lab','admin'):
-        # Paired pilasters frame the existing front entry, away from its clear span.
-        spring = 1.32
-        face = front+PORTICO_PROJECTION
+        # The entry trim is built in its doorway frame so it follows the mesh and collision port.
+        origin, axes = entrance_frame(obj)
+        first = len(p.vertices)
+        spring = 1.12 if name == 'teach' else 1.32
+        face = PORTICO_PROJECTION
         for side in (-1,1):
-            xx = cx+side*PORTICO_PIER_X
+            xx = side*PORTICO_PIER_X
             p.block((xx,spring/2,face-.12),(.42,spring,.30),CREAM)
             p.block((xx,.22,face-.10),(.54,.44,.38),LIMESTONE)
             p.block((xx,spring-.02,face-.10),(.56,.13,.41),CREAM)
-            p.block((xx,3.20,(front+face)/2),(.27,.20,face-front),LIMESTONE)
+            p.block((xx,2.98 if name=='teach' else 3.20,face/2),(.27,.20,face),LIMESTONE)
             for offset in (4.18, 4.46):
-                p.block((cx+side*offset,1.44,front+.03),(.16,2.88,.22),PEACH)
-        # An open window bay rises over the entrance. Shadowed reveals and the
-        # cream centre mullion give the front a vertical rhythm among the galleries.
+                p.block((side*offset,1.44,.03),(.16,2.88,.22),PEACH)
+        # The teaching entrance sits below the bridge. Leave the upper threshold clear.
+        lift = -0.67 if name == 'teach' else 0.0
+        arch(p,0,face,(3.06,2.22+lift),spring,.40,.36,[CREAM,'ecdbc3','f3e4ce'])
+        arch(p,0,face+.04,(2.98,2.14+lift),spring,.09,.24,[LIMESTONE])
+        arch(p,0,face+.02,(3.46,2.62+lift),spring,.09,.32,[LIMESTONE])
+        p.block((0,spring+2.49+lift,face+.025),(.32,.39,.39),CREAM)
+        p.vertices[first:] = [origin+v@axes for v in p.vertices[first:]]
+        p.normals[first:] = [v@axes for v in p.normals[first:]]
+        # Keep the gallery posts beside the south wall and clear of level-two links.
         projection = front+1.53
-        for level in range(1,floors):
-            base = level*rise
-            for side in (-1,1):
-                p.block((cx+side*2.64,base+rise/2,projection-.20),(1.23,rise,.42),PEACH)
-                p.block((cx+side*1.98,base+rise/2,projection-.095),(.14,rise,.29),CREAM)
-            p.block((cx,base+.44,projection-.17),(5.52,.88,.35),PEACH)
-            p.block((cx,base+.93,projection-.10),(4.20,.12,.49),CREAM)
-            p.block((cx,base+rise-.15,projection-.19),(5.53,.30,.36),PEACH)
-            p.block((cx,base+rise-.35,projection-.13),(4.15,.11,.32),CREAM)
-            for mx in (-.65,.65):
-                p.block((cx+mx,base+1.90,projection-.30),(.045,1.85,.063),'76817e')
-        p.block((cx,floors*rise+.12,projection-.23),(7.05,.35,.60),CREAM)
-        # Posts on the upper gallery edge leave the existing level-two links clear.
         for k in range(1,round(w/4.2)):
             xx = x+k*w/round(w/4.2)
-            if abs(xx-cx)<3.8 or any(lo-.5 < xx < hi+.5 for lo,hi in link_gaps): continue
+            if any(lo-.5 < xx < hi+.5 for lo,hi in link_gaps): continue
             p.block((xx,(rise+rise*floors)/2,projection-.15),(.31,rise*(floors-1),.32),PEACH)
             for level in range(2,floors+1):
                 p.block((xx,rise*level-.25,projection-.15),(.42,.18,.41),CREAM)
-        arch(p,cx,face,(3.06,2.22),spring,.40,.36,[CREAM,'ecdbc3','f3e4ce'])
-        arch(p,cx,face+.04,(2.98,2.14),spring,.09,.24,[LIMESTONE])
-        arch(p,cx,face+.02,(3.46,2.62),spring,.09,.32,[LIMESTONE])
-        p.block((cx,spring+2.49,face+.025),(.32,.39,.39),CREAM)
     return p
 
 
@@ -306,11 +306,12 @@ def collision_scene(solids, x, z, objects):
                  f'position = Vector3({x:.5f}, {h/2:.5f}, {z:.5f})',
                  f'shape = SubResource("Cylinder_{cylinders.index((r,h))}")', '']
     for host in ('teach','lab','admin'):
-        x,z,w,d = footprint(objects[host])
+        origin, axes = entrance_frame(objects[host])
         for side in (-1,1):
-            xx, zz = x+w/2+side*PORTICO_PIER_X, z+d+PORTICO_PROJECTION-.10
+            xx, _, zz = origin + np.array((side*PORTICO_PIER_X, 0, PORTICO_PROJECTION-.10))@axes
             data += [f'[node name="{host}Pier{"Left" if side<0 else "Right"}" type="CollisionShape3D" parent="."]',
                      f'position = Vector3({xx:.5f}, 0.695, {zz:.5f})',
+                     f'rotation = Vector3(0, {atan2(axes[2,0], axes[2,2]):.8f}, 0)',
                      'shape = SubResource("PorticoPier")', '']
     (DEST/'courtyard_collision.tscn').write_text('\n'.join(data))
 
@@ -322,11 +323,11 @@ def main():
     link_gaps = [(x,x+w) for x,_,w,_ in (footprint(objects[k]) for k in ('c1','c2'))]
     parts = {host+'Trim':facade(host,objects[host],link_gaps) for host in ('teach','lab','admin','dormN','dormS','canteen')}
     parts.update({key:courts(objects[key]) for key in ('courtA','courtB','court2')})
-    x,z,w,d = footprint(objects['teach'])
+    x, _, z = entrance_frame(objects['teach'])[0]
     plaza, inlay = Part(tiled=True), Part()
-    left,right,front,back=x+1.3,x+w-1.3,z+d+1.0,z+d+10.5
+    left,right,front,back=x-6.4,x+6.4,z-9.3,z-.15
     plaza.floor(left,front,right,back,.034,'f8f8ef')
-    for xx in np.arange((left+right)/2-24,(left+right)/2+24.1,6):
+    for xx in np.arange(left+2,right-1.8,4):
         inlay.floor(xx-.07,front,xx+.07,back,.042,'b47e6a')
     for zz in (front+.55,back-.55):
         inlay.floor(left,zz-.065,right,zz+.065,.042,'b47e6a')

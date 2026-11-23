@@ -85,10 +85,9 @@ func release(id: String) -> void:
 
 func drop(a: CooperativeActor, item: String, site: Dictionary = {}) -> bool:
 	reconcile(a)
-	if not a.bag().has(item) or ground.size() >= InventoryModule.GROUND_MAX: return false
+	if ground.size() >= InventoryModule.GROUND_MAX or not a.bag().remove(item): return false
 	var p: Array = site.get("pose", a.pose)["position"]
 	ground.append({"uid": owners[a.id][item], "id": item, "world": site.get("world", a.location()), "x": float(p[0]), "y": float(p[1]), "z": float(p[2])})
-	a.bag().remove(item)
 	if item == "medkit": (a.feature(&"body.injury") as BodyModule).treat = null
 	if item == "phone": _sync_phone(a, "")
 	owners[a.id].erase(item)
@@ -114,6 +113,7 @@ func recover(a: CooperativeActor) -> void:
 	reconcile(a)
 	var site := _recovery_site(a)
 	for item: String in a.bag().bag.duplicate():
+		if a.bag().is_bound(item): continue
 		if drop(a, item, site): continue
 		var p: Array = site.get("pose", a.pose)["position"]
 		stash.append({"uid": owners[a.id][item], "id": item, "world": site.get("world", a.location()), "x": p[0], "y": p[1], "z": p[2]})
@@ -144,7 +144,7 @@ func _recovery_site(a: CooperativeActor) -> Dictionary:
 func transfer(a: CooperativeActor, b: CooperativeActor, item: String, reachable: Callable = Callable()) -> bool:
 	reconcile(a)
 	reconcile(b)
-	if a.id == b.id or a.fate().over() or b.fate().over() or not a.bag().has(item) or b.bag().has(item): return false
+	if a.id == b.id or a.fate().over() or b.fate().over() or a.bag().is_bound(item) or not a.bag().has(item) or b.bag().has(item): return false
 	var p: Array = a.pose["position"]
 	var q: Array = b.pose["position"]
 	var near: bool = reachable.call(a, b) if reachable.is_valid() else a.location() == b.location() and Vector3(p[0], p[1], p[2]).distance_to(Vector3(q[0], q[1], q[2])) <= 2.0
@@ -158,6 +158,20 @@ func transfer(a: CooperativeActor, b: CooperativeActor, item: String, reachable:
 	a.bag().remove(item)
 	revision += 1
 	return true
+
+
+func restore_phone(a: CooperativeActor) -> void:
+	var displaced := a.bag().restore_bound_phone()
+	if displaced.is_empty(): return
+	var own: Dictionary = owners[a.id]
+	var world := "teach1" if a.location() in [MazeModule.ROOM, InceptionModule.ROOM] else a.location()
+	var campus := a.feature(&"campus.world") as CampusModule
+	var at: Array = a.pose["position"] if world == a.location() else campus.default_spawn(world)["position"]
+	var entry := {"uid": own[displaced], "id": displaced, "world": world, "x": at[0], "y": at[1], "z": at[2]}
+	if ground.size() < InventoryModule.GROUND_MAX: ground.append(entry)
+	else: stash.append(entry)
+	own.erase(displaced)
+	revision += 1
 
 
 func capture() -> Dictionary:

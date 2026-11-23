@@ -166,6 +166,18 @@ func extensions() -> void:
 	var invalid := data.duplicate(true)
 	invalid["items"]["phones"][uid]["battery"] = -1
 	check(not CooperativeValidation.validate(invalid).is_empty(), "C08 corrupted phone cache rejected")
+	a.talent().pick("tech")
+	sim.room.members[a.id]["talent"] = "tech"
+	check(not command(a, "give", {"item": "phone", "to": "b"}).get("ok", false) and not command(a, "drop", {"item": "phone"}).get("ok", false), "a tech player's phone cannot be handed over or dropped by an authoritative command")
+	sim.inventory.recover(a)
+	check(a.phone_uid == uid and a.bag().has("phone") and not sim.inventory.ground.any(func(item: Dictionary) -> bool: return item["uid"] == uid), "death recovery never exposes the bound phone as team loot")
+	data = saved("tech phone")
+	data["actors"][a.id]["session"]["modules"]["items.bag"]["data"]["bag"].erase("phone")
+	data["actors"][a.id]["phone_uid"] = ""
+	data["items"]["owners"][a.id].erase("phone")
+	check(CooperativeValidation.validate(data).is_empty(), "a checkpoint predating binding may have dropped the tech phone")
+	sim.restore(data)
+	check(a.bag().has("phone") and a.bag().is_bound("phone") and a.phone_uid != "", "restoration creates an owned phone slot for a missing bound phone")
 	await fresh()
 	a = sim.actor("a")
 	b = sim.actor("b")

@@ -155,7 +155,24 @@ func garage_resume_pose(id: String, pose: Dictionary) -> Dictionary:
 
 func resume_pose(id: String, pose: Dictionary) -> Dictionary:
 	var restored := garage_resume_pose(id, pose)
-	return outdoor_resume_pose(restored) if id == "out" else restored
+	if id == "out": return outdoor_resume_pose(restored)
+	var room: Dictionary = rooms.get(id, {})
+	var retired: Dictionary = room.get("retired_door", {})
+	if retired.is_empty(): return restored
+	var port := CampusPortals.link_port(rooms, retired, float(retired["width"]))
+	var q: Array = restored["position"]
+	var here := CampusGeometry.to_world(room, float(q[0]), float(q[2]))
+	var normal: Vector2 = port["n"]
+	var offset: Vector2 = here - port["p"]
+	var depth := offset.dot(normal)
+	if depth < -12.0 or depth > 15.0 or absf(offset.dot(normal.orthogonal())) > float(retired["width"]) * 4.5 + CampusGeometry.PRAD:
+		return restored
+	# A save made inside the former threshold now sits in masonry. Move it
+	# onto the same corridor a step away from the sealed entrance.
+	var at := CampusGeometry.to_scene(room, (port["p"] as Vector2) - normal * 15.0)
+	var safe := restored.duplicate(true)
+	safe["position"] = [at.x, 0.05, at.y]
+	return safe
 
 
 ## Old outdoor coordinates may now lie inside a relocated ground-floor room.
@@ -164,7 +181,7 @@ func outdoor_resume_pose(pose: Dictionary) -> Dictionary:
 	var at := Vector2(p[0], p[2])
 	var scale_m := float(outside["SC"]) * CampusGeometry.U2M
 	for building: Dictionary in outside["objects"]:
-		if not building.id in ["gear", "admin", "lab", "dormN", "dormS", "canteen"]: continue
+		if not building.id in ["gear", "admin", "lab", "teach", "dormN", "dormS", "canteen"]: continue
 		var plot := Rect2(building.x * scale_m, building.y * scale_m, building.w * scale_m, building.h * scale_m)
 		if not plot.grow(-.05).has_point(at): continue
 		var entrance: Dictionary = building.door_world

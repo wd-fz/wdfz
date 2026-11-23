@@ -146,24 +146,24 @@ func _test_garage_rules() -> void:
 	check(Vector2(float(cars.roam["x"]), float(cars.roam["y"])).distance_to(east) < start.distance_to(east), "in the dark it comes closer")
 	var e := cars.take_events()
 	check(e.any(func(x: Dictionary) -> bool: return x["kind"] == "step"), "its steps are heard")
-	# The torch held on it for 1.6 s sends it away.
+	# A direct beam moves it to another unlit aisle immediately.
 	cars.roam["x"] = east.x - 120.0
 	cars.roam["y"] = east.y
 	cars.roam["stage"] = "approach"
+	var before_light := Vector2(cars.roam["x"], cars.roam["y"])
+	cars.set_context(_gctx(east.x, east.y, {"torch": true, "ang": PI, "pitch": 1.0}))
+	check(not cars.lit(), "a beam aimed above the shadow leaves it alone")
 	cars.set_context(_gctx(east.x, east.y, {"torch": true, "ang": PI}))
-	for _i in 17:
-		cars.tick(0.1)
+	cars.tick(GarageModule.LIT_NEED + .01)
 	e = cars.take_events()
-	check(cars.roam["stage"] == "wait" and not cars.roam_visible() and e.any(func(x: Dictionary) -> bool: return x["kind"] == "fact" and x["what"] == "torch"), "the torch held on it makes it vanish")
-	check(_notices(e).has("我：光扫过去，它就没了。"), "and says so once")
-	cars.roam["waitT"] = 0.05
-	cars.set_context(_gctx(east.x, east.y))
-	cars.tick(0.1)
-	check(cars.roam["stage"] == "approach" and Vector2(float(cars.roam["x"]), float(cars.roam["y"])).distance_to(east) > 250.0, "it comes back far away")
+	var sheltered := Vector2(cars.roam["x"], cars.roam["y"])
+	check(cars.roam["stage"] == "shelter" and cars.roam_visible() and not cars.lit() and e.any(func(x: Dictionary) -> bool: return x["kind"] == "fact" and x["what"] == "torch"), "the torch relocates the visible shadow to a point out of its beam")
+	check(sheltered.distance_to(east) >= GarageModule.SHELTER_CLEARANCE and sheltered.distance_to(before_light) > 9.0 and CampusGeometry.tile_at(g, sheltered) == ".", "the teleport stays on a different empty garage tile away from the player")
 	# Touching it in the dark kills.
 	cars.roam["x"] = east.x - 10.0
 	cars.roam["y"] = east.y
 	cars.roam["litAcc"] = 0.0
+	cars.set_context(_gctx(east.x, east.y))
 	cars.take_events()
 	cars.tick(0.05)
 	e = cars.take_events()
@@ -257,6 +257,17 @@ func _test_garage_rules() -> void:
 	d["nextObstacle"] = 6
 	d["nextFork"] = 2
 	check(CarChaseRules.step(d, {"throttle": true}, 0.2).get("won", false), "past 320 m with both forks right is out")
+	d = CarChaseRules.new_state()
+	d["speed"] = CarChaseRules.MAX_SPEED
+	CarChaseRules.step(d, {"throttle": true, "steering": 1.0}, .1)
+	var turned := float(d["x"])
+	CarChaseRules.step(d, {"throttle": true}, .1)
+	check(turned > 0 and turned < .2 and float(d["x"]) > turned, "high-speed steering responds gradually and carries lateral momentum after release")
+	d["x"] = CarChaseRules.EDGE - .01
+	r = CarChaseRules.step(d, {"throttle": true, "steering": 1.0}, .12)
+	check(d["hp"] == 2 and r["events"].any(func(hit: Dictionary) -> bool: return hit["type"] == "scrape"), "overshooting and scraping the railing costs car health")
+	CarChaseRules.step(d, {"throttle": true, "steering": 1.0}, .12)
+	check(d["hp"] == 2, "continuous railing contact charges only one hit")
 
 
 func _test_anomaly_rules() -> void:

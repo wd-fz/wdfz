@@ -591,6 +591,7 @@ func _open_cast() -> void:
 
 
 func inventory(entries: Array) -> void:
+	entries = entries.filter(func(entry: Dictionary) -> bool: return not bool(entry.get("bound", false)))
 	var wanted := JSON.stringify(entries.map(func(e: Dictionary) -> Array: return [e["id"], e.get("name", e["id"])]))
 	if wanted == String(transfer.get_meta("items", "")): return
 	var selected: Variant = transfer.get_item_metadata(transfer.selected) if transfer.selected >= 0 else null

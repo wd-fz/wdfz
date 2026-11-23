@@ -13,7 +13,7 @@ extends FeatureModule
 
 const STATE_VERSION := 1
 const MEAL := {"san": 40.0, "tt": 25.0, "tt_cap": 95.0, "min": 10.0, "room": "canteen1"}
-const MIRROR := {"near": 2.6, "face": 0.6, "stare_die": 3.0}
+const MIRROR := {"near": 2.6, "glass_width": 0.62, "glass_height": 0.82, "height": 1.5, "drain": 2.8, "stare_die": 3.0}
 const CHECKUP := {"room": "admin1", "from": 620.0, "to": 665.0, "warn": 600.0, "violation": 10.0, "san": 8.0, "minutes": 5.0,
 	"ruler": Vector2(1.0, 15.45), "scale": Vector2(2.7, 15.45), "chart": Vector2(9.0, 15.45),
 	"queue": [Vector2(1.45, 17.32), Vector2(2.22, 17.32), Vector2(3.0, 17.32), Vector2(3.78, 17.32), Vector2(4.55, 17.32)]}
@@ -59,13 +59,15 @@ func reset() -> void:
 
 
 func capture() -> Dictionary:
-	return {"meal": meal.duplicate(), "checkup": checkup.duplicate(true), "notes": notes.duplicate()}
+	return {"meal": meal.duplicate(), "checkup": checkup.duplicate(true), "notes": notes.duplicate(), "raise": raise, "stare": stare}
 
 
 func validate(data: Dictionary) -> String:
 	for key: String in ["meal", "checkup", "notes"]:
 		if not (data.get(key, {}) is Dictionary):
 			return "校园怪谈状态无效"
+	if not SaveSchema.number_in(data.get("raise", 0.0), 0, 1) or not SaveSchema.number_in(data.get("stare", 0.0), 0, MIRROR["stare_die"]):
+		return "镜子状态无效"
 	return ""
 
 
@@ -76,6 +78,8 @@ func restore(data: Dictionary) -> void:
 	for key: String in ["done", "missed", "warned"]:
 		checkup[key] = (c.get(key, {}) as Dictionary).duplicate() if c.get(key, {}) is Dictionary else {}
 	notes = (data.get("notes", {}) as Dictionary).duplicate()
+	raise = float(data.get("raise", 0.0))
+	stare = float(data.get("stare", 0.0))
 
 
 ## ctx: scene, x, y, ang, tsec, clock (game minutes), san, tt, dead, day, special (today's special
@@ -200,7 +204,9 @@ func mirrors(scene: String) -> Array:
 					continue
 				for d: Vector2i in [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]:
 					if String(grid[row + d.y]).substr(col + d.x, 1) == "#":
-						out.append({"w": Vector2(float(r["ox"]) + (col + 0.5) * float(r["tw"]), float(r["oy"]) + (row + 0.5) * float(r["th"])), "n": Vector2(-d.x, -d.y)})
+						var sink := CampusGeometry.tile_center(r, col, row)
+						var depth := float(r["tw"] if d.x != 0 else r["th"])
+						out.append({"w": sink, "n": -Vector2(d), "glass": sink + Vector2(d) * (0.47 * depth)})
 						break
 	_spots[scene] = out
 	return out
@@ -210,21 +216,9 @@ func tick(dt: float) -> void:
 	if not (dt > 0.0) or bool(_c.get("dead", false)):
 		return
 	_checkup_tick()
-	var best: Dictionary = {}
-	var bd := INF
-	for m: Dictionary in mirrors(String(_c.get("scene", ""))):
-		var d := _me().distance_to(m["w"]) * CampusGeometry.U2M
-		if d < bd:
-			bd = d
-			best = m
-	if best.is_empty() or bd > float(MIRROR["near"]) * 1.6:
-		stare = 0.0
-		raise = maxf(0.0, raise - dt * 2.0)
-		return
-	var ang := float(_c.get("ang", 0.0))
-	var n: Vector2 = best["n"]
-	var facing := -(cos(ang) * n.x + sin(ang) * n.y)
-	var see := bd < float(MIRROR["near"]) and facing > float(MIRROR["face"])
+	var see := bool(_c.get("can_look", true)) and mirrors(String(_c.get("scene", ""))).any(_looks_at_mirror)
+	if see:
+		_emit("san", {"amount": -float(MIRROR["drain"]) * dt, "min": 0.0})
 	var t := tier_of(float(_c.get("san", 100.0)))
 	raise = minf(1.0, raise + dt * 0.9) if t >= 3 and see else maxf(0.0, raise - dt * 2.0)
 	if t >= 3 and raise >= 0.95 and see:
@@ -234,6 +228,25 @@ func tick(dt: float) -> void:
 			_emit("kill", {"msg": "镜子里那个，先动的手。", "fx": "mirror", "source": "mirror"})
 	else:
 		stare = 0.0
+
+
+func _looks_at_mirror(m: Dictionary) -> bool:
+	var me := _me()
+	var glass: Vector2 = m["glass"]
+	var normal: Vector2 = m["n"]
+	var forward := Vector2.from_angle(float(_c.get("ang", 0.0)))
+	var facing := -forward.dot(normal)
+	var depth := (me - glass).dot(normal)
+	if depth <= 0.0 or facing <= 0.01: return false
+	var distance := depth / facing
+	if distance * CampusGeometry.U2M > float(MIRROR["near"]): return false
+	var ray := me + forward * distance
+	var across := (ray - glass).dot(normal.orthogonal()) * CampusGeometry.U2M
+	if absf(across) > float(MIRROR["glass_width"]) * 0.5: return false
+	var height := float(_c.get("eye_y", 1.65)) + tan(float(_c.get("pitch", 0.0))) * distance * CampusGeometry.U2M
+	if absf(height - float(MIRROR["height"])) > float(MIRROR["glass_height"]) * 0.5: return false
+	var clear: Callable = _c.get("line_clear", Callable())
+	return not clear.is_valid() or bool(clear.call(me, ray))
 
 
 # ---- the checkup day ----

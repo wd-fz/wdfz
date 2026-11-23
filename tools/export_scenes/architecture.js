@@ -3,12 +3,14 @@
 window.NativeCampus = (() => {
   const depth = 0.20;
   const layout = window.NATIVE_CAMPUS_LAYOUT;
+  const retiredDoors = {};
   function placeBuildings(objects) {
     const byId = Object.fromEntries(objects.map(o => [o.id, o]));
     for (const [id, placement] of Object.entries(layout.buildings)) {
       if (!byId[id]) throw new Error('Unknown campus building: ' + id);
       Object.assign(byId[id], placement);
     }
+    for (const {host, edge} of Object.values(layout.entrances)) byId[host].door = edge;
     for (const {id, name, north, south} of layout.bridges) {
       const bridge = byId[id];
       const a = byId[north.room.slice(0, -1)], b = byId[south.room.slice(0, -1)];
@@ -19,6 +21,32 @@ window.NativeCampus = (() => {
       Object.assign(bridge, {n: name, x: portX(a, north) - bridge.w / 2, y: a.y + a.h});
     }
     objects.push({...layout.plaza});
+  }
+  function entryApproaches(rooms) {
+    for (const [id, entrance] of Object.entries(layout.entrances)) {
+      const grid = rooms[id].grid;
+      for (const row of grid) for (let i = 0; i < row.length; i++) {
+        if (row[i] === 'O') row[i] = '#';
+      }
+      for (const [left, top, right, bottom] of entrance.clear)
+        for (let row = top; row <= bottom; row++)
+          for (let col = left; col <= right; col++) grid[row][col] = '.';
+    }
+  }
+  function entryDoors(doors) {
+    return doors.map(door => {
+      const entry = layout.entrances[door.room];
+      if (!entry) return door;
+      retiredDoors[door.room] = {...door, width: door.width || 3};
+      return {...door, edge: entry.edge, at: entry.at};
+    });
+  }
+  function doorPoint(object) {
+    const doors = window.CampusDoor;
+    const entry = doors?.CFG.doors.find(d => d.host === object.id && layout.entrances[d.room]);
+    const port = entry && doors.outPort(entry);
+    if (!Number.isFinite(port?.x) || !Number.isFinite(port?.y)) return null;
+    return {x: port.x + port.n[0] * 26, y: port.y + port.n[1] * 26};
   }
   function bridgePairs() {
     return layout.bridges.flatMap(({id, north, south}) => {
@@ -117,19 +145,38 @@ window.NativeCampus = (() => {
       return {face, lo: along - .86, hi: along + .86, rise: stair.rise, levels: stair.rooms.length};
     });
   }
+  function bridgeOpenings(host) {
+    return layout.bridges.flatMap(({north, south}) => [
+      {...north, face: 's'}, {...south, face: 'n'},
+    ]).filter(port => port.room.slice(0, -1) === host).map(port => {
+      const building = window.objById(host);
+      const centre = (building.x + (port.at + .5) * 4.5) * window.SC * window.U2M;
+      return {face: port.face, lo: centre - 1.52, hi: centre + 1.52, base: 3.2, rise: 0, levels: 1};
+    });
+  }
+  function entryOpening(o, px, pz) {
+    const seam = o.seamDoor;
+    if (!seam) return [];
+    const face = o.door || 's';
+    const centre = (face === 'n' || face === 's' ? px : pz) + (seam.dx || 0);
+    const half = seam.width / 2 + .02;
+    return [{face, lo: centre - half, hi: centre + half, rise: 0, levels: 1, clear: 2.32}];
+  }
 
   // Build the outside face around every authored portal. No inner face or solid
   // block can plug the hallway when a far facade and its neighbouring shaft coexist.
-  function exteriorWalls(kit, px, pz, width, depth, height, color, openings) {
-    for (const face of ['n', 's', 'e', 'w']) {
+  function exteriorWalls(kit, px, pz, width, depth, height, color, openings, faces = ['n', 's', 'e', 'w']) {
+    for (const face of faces) {
       const alongX = face === 'n' || face === 's';
       const center = alongX ? px : pz, length = alongX ? width : depth;
       const plane = alongX ? pz + (face === 's' ? 1 : -1) * (depth / 2 - .03)
                            : px + (face === 'e' ? 1 : -1) * (width / 2 - .03);
       const cuts = [];
       for (const op of openings.filter(h => h.face === face)) {
-        for (let i = 0; i < op.levels; i++)
-          cuts.push({lo: op.lo, hi: op.hi, bottom: i * op.rise, top: i * op.rise + (op.clear || 2.30)});
+        for (let i = 0; i < op.levels; i++) {
+          const bottom = (op.base || 0) + i * op.rise;
+          cuts.push({lo: op.lo, hi: op.hi, bottom, top: bottom + (op.clear || 2.30)});
+        }
       }
       const levels = [...new Set([0, height, ...cuts.flatMap(c => [c.bottom, c.top]).filter(y => y > 0 && y < height)])].sort((a,b) => a-b);
       for (let i = 1; i < levels.length; i++) {
@@ -189,6 +236,7 @@ window.NativeCampus = (() => {
     }
     kit.restore(frame);
   }
-  return {depth, partition, bounds, frame, leaves, spansOutside, stairOpenings, exteriorWalls, bridgeWalls, stairExterior,
-    placeBuildings, bridgePairs, bridgeApproaches, outsidePort, plazaRoad};
+  return {depth, partition, bounds, frame, leaves, spansOutside, stairOpenings, bridgeOpenings, entryOpening,
+    exteriorWalls, bridgeWalls, stairExterior, placeBuildings, entryApproaches, entryDoors, doorPoint, retiredDoors,
+    bridgePairs, bridgeApproaches, outsidePort, plazaRoad};
 })();

@@ -87,8 +87,11 @@ func garage_and_lockers() -> void:
 	a.enter_cool = 0
 	b.enter_cool = 0
 	g.roam.merge({"on": true, "stage": "approach", "cd": 10.0, "x": shadow.x, "y": shadow.y, "litAcc": 0.0}, true)
-	sim.gameplay._garage_tick(.25)
-	check(not a.fate().dead and not b.fate().dead and is_equal_approx(float(g.roam["litAcc"]), .25), "C14 one ally light protects both, monster clock advances once")
+	sim.gameplay._garage_tick(.10)
+	check(not a.fate().dead and not b.fate().dead and is_equal_approx(float(g.roam["litAcc"]), .10), "C14 one ally light protects both, monster clock advances once")
+	sim.gameplay._garage_tick(.11)
+	var landing := Vector2(g.roam["x"], g.roam["y"])
+	check(g.roam_visible() and g.roam["stage"] == "shelter" and landing.distance_to(at) >= GarageModule.SHELTER_CLEARANCE and not g.lit(), "C14 the shared shadow jumps to another aisle outside the beam")
 	check(sim.actor("c").school().san == 100, "C14 remote teammate receives no garage pressure")
 	a.bag().add("elixir")
 	sim.gameplay.kill(a, "garage contact", "grip", "garage")
@@ -107,6 +110,15 @@ func garage_and_lockers() -> void:
 	var before := a.locker.t
 	sim.gameplay.personal(a, .1)
 	check(a.locker.t == before, "C20 an actual chase pauses the locker threat")
+	var tale := a.feature(&"campus.tales") as TalesModule
+	var mirror: Dictionary = tale.mirrors("teach1")[0]
+	var normal: Vector2 = mirror["n"]
+	point(a, "teach1", (mirror["glass"] as Vector2) + normal * 14.0)
+	a.pose["yaw"] = CampusGeometry.yaw_from_ang((-normal).angle())
+	a.school().san = 100.0
+	sim.gameplay.prepare(a)
+	sim.gameplay.stories.tick(a, 1.0)
+	check(is_equal_approx(a.school().san, 97.2) and sim.actor("b").school().san == 100.0, "the host drains only the player who is looking into the mirror")
 
 func games_and_dream() -> void:
 	await fresh()

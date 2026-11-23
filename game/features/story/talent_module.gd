@@ -5,9 +5,9 @@ extends FeatureModule
 ## "may I / how / by how much" through this module; the app passes the answers in their contexts.
 
 const STATE_VERSION := 1
-const RULES := 5
+const RULES := 6
 const DEF := {
-	"tech": {"n": "科技党", "role": "随身带着一部旧手机。", "does": "开局拥有满电手机。", "limit": "所有手机耗电永久翻倍；接入网络与服务器谜题仍需完成。"},
+	"tech": {"n": "科技党", "role": "随身带着一部旧手机。", "does": "开局拥有满电手机。", "limit": "手机永久占一格背包，无法丢弃或交付。所有手机耗电翻倍，联网和服务器谜题仍需完成。"},
 	"code": {"n": "编程社", "role": "在电脑社团泡过三年。", "does": "不带 U 盘也能直接操作网络中心的门禁终端。西小门第一次答错时会对照后台核一遍，那一次不会受惊（仍然换题）。",
 		"limit": "不开机房的门锁，仍须通过实体终端或联网手机完成数据同步；闸机三道题还是要自己答对。"},
 	"drive": {"n": "车感好", "role": "家里人教过开车，也偷偷学过搭线。", "does": "在车库高亮标出正确的车。没有钥匙时可以搭线启动（4.8 秒）。有钥匙时优先用钥匙（1.6 秒）。",

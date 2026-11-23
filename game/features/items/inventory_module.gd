@@ -24,6 +24,7 @@ const EMPTY_LINES := ["我：空的。只有一层灰。", "我：空的。抽�
 
 var _rooms: Dictionary = {}
 var _campus: Dictionary = {}
+var _talents: TalentModule
 var bag: Array = []
 var hot: Array = [null, null]
 var torch_on := false
@@ -41,9 +42,10 @@ var _rng := RandomNumberGenerator.new()
 var _notices: PackedStringArray = []
 
 
-func _init(rooms: Dictionary = {}, campus: Dictionary = {}) -> void:
+func _init(rooms: Dictionary = {}, campus: Dictionary = {}, talents: TalentModule = null) -> void:
 	_rooms = rooms
 	_campus = campus
+	_talents = talents
 
 
 func module_id() -> StringName:
@@ -166,6 +168,22 @@ func has(id: String) -> bool:
 	return bag.has(id)
 
 
+func is_bound(id: String) -> bool:
+	return id == "phone" and _talents != null and _talents.has("tech")
+
+
+## An older save could fill the slot after dropping its phone. The caller
+## places the displaced item in the world using the restored player position.
+func restore_bound_phone() -> String:
+	if not is_bound("phone") or has("phone"): return ""
+	var displaced := ""
+	if bag.size() >= capacity():
+		displaced = String(bag.back())
+		remove(displaced)
+	bag.append("phone")
+	return displaced
+
+
 ## InventoryRules.add + items.js inventoryAdd messages.
 func add(id: String) -> bool:
 	if id.is_empty() or not _items().has(id) or has(id):
@@ -180,7 +198,7 @@ func add(id: String) -> bool:
 
 func remove(id: String) -> bool:
 	var i := bag.find(id)
-	if i < 0:
+	if i < 0 or is_bound(id):
 		return false
 	bag.remove_at(i)
 	for k in 2:

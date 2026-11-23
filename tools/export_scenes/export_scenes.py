@@ -121,7 +121,7 @@ def main():
     a.old = str(Path(a.old).resolve())
     with tempfile.TemporaryDirectory() as temp:
         overlay = Path(temp)
-        for name in ('content/room-recipe.js', 'content/outdoor-recipe.js', 'content/sports-recipe.js', 'map.js',
+        for name in ('content/room-recipe.js', 'content/outdoor-recipe.js', 'content/sports-recipe.js', 'map.js', 'world.js',
                      'model/room.js', 'model/building.js', 'modules/campus-link/doors.js',
                      'modules/campus-link/link.js', 'modules/patrol-world/navigation.js'):
             relative = Path('game3d/js') / name

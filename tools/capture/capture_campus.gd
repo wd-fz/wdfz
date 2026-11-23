@@ -9,8 +9,8 @@ const OUT := "res://build/previews/campus"
 const SHOTS := [
 	["01-教学楼1F-开局起身位置.png", "teach1", "start", 0, 0, 0.0],
 	["02-教学楼1F-走廊西望.png", "teach1", 1330, 1910, PI, -0.03],
-	["03-教学楼1F-南门门槛看出去.png", "teach1", 1122, 1925, PI * 0.5, -0.02],
-	["04-室外-教学楼正门.png", "out", 1077.5, 2060, -PI * 0.5, 0.12],
+	["03-教学楼1F-北门门槛看出去.png", "teach1", "teach_door", 0, 0, -0.02],
+	["04-室外-教学楼北门.png", "out", "teach_door", 0, 0, 0.12],
 	["05-室外-行政楼与实验楼.png", "out", 1023, 1300, -PI * 0.5, 0.1],
 	["06-行政楼1F.png", "admin1", "spawn", 0, 0, -0.05],
 	["07-食堂.png", "canteen1", "spawn", 0, 0, -0.05],
@@ -48,6 +48,16 @@ func _capture() -> void:
 			pose = rules.start_pose()
 		elif shot[2] is String and shot[2] == "xyz":
 			pose = {"position": [float(shot[3]), 0.05, float(shot[4])], "yaw": PI, "pitch": 0.0}
+		elif shot[2] == "teach_door":
+			var room := CampusData.layout("teach1")
+			var door := CampusGeometry.door_port(room, CampusData.campus()["campus_doors"]["doors"][0])
+			var normal: Vector2 = door["n"]
+			var p := CampusGeometry.to_scene(room, (door["p"] as Vector2) - normal * 12.0)
+			var heading := normal.angle()
+			if world == "out":
+				p = CampusGeometry.to_scene(null, (door["p"] as Vector2) + CampusGeometry.shift_of(room) + normal * 90.0)
+				heading = (-normal).angle()
+			pose = {"position": [p.x, .05, p.y], "yaw": CampusGeometry.yaw_from_ang(heading), "pitch": 0.0}
 		elif shot[2] is String:
 			pose = rules.default_spawn(world)
 		else:

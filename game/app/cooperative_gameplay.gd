@@ -330,8 +330,10 @@ func command(a: CooperativeActor, data: Dictionary) -> Dictionary:
 		"item":
 			if not stories.item(a, String(data.get("item", "")), String(data.get("source", "bag"))): apply_result(a, a.bag().use(String(data.get("item", "")), a.school().tsec))
 		"drop":
+			var item := String(data.get("item", ""))
+			if a.bag().is_bound(item): return {"ok": false, "error": "科技党的随身手机无法丢弃。"}
 			if CooperativePhysics.private_world(a.location()): return {"ok": false, "error": "先回到校园，再放下物品。"}
-			if not sim.inventory.drop(a, String(data.get("item", ""))): return {"ok": false, "error": "物品无法丢弃，地面空间可能已满。"}
+			if not sim.inventory.drop(a, item): return {"ok": false, "error": "物品无法丢弃，地面空间可能已满。"}
 			if (a.feature(&"story.routes") as RoutesModule).offer_item(CampusData.rooms().get(a.location()), a.point(CampusData.rooms()), a.school().tsec, a.school().day):
 				sim.inventory.ground.pop_back() # The offering is consumed, not left as recoverable loot.
 				a.hidden_history["beast"] = true
@@ -344,6 +346,7 @@ func command(a: CooperativeActor, data: Dictionary) -> Dictionary:
 			if other == null or other.id not in sim.room.alive_ids() or not sim.room.members[other.id]["connected"]: return {"ok": false, "error": "这位队友暂时无法接收物品。"}
 			if not sim.physics.can_exchange(a, other): return {"ok": false, "error": "请走到队友身边（2 米内），并打开中间的门。"}
 			var item := String(data.get("item", ""))
+			if a.bag().is_bound(item): return {"ok": false, "error": "科技党的随身手机无法交给队友。"}
 			if not sim.inventory.transfer(a, other, item, sim.physics.can_exchange): return {"ok": false, "error": "交付失败：请确认物品仍在背包，对方有空位且没有同类物品。"}
 			a.event("notice", {"text": "已将「%s」交给 %s。" % [a.bag().item_name(item), sim.room.members[other.id]["name"]]})
 			other.event("notice", {"text": "%s 交给你「%s」。" % [sim.room.members[a.id]["name"], other.bag().item_name(item)]})
@@ -1157,27 +1160,30 @@ func _garage_tick(dt: float) -> void:
 		garage.job = null
 		drain(worker, "garage")
 	var people: Array = sim.active_actors().filter(func(p: CooperativeActor) -> bool: return p.location() == GarageModule.ROOM and not p.fate().over())
-	var illuminated := false
+	var observers: Array = []
 	var nearest := INF
 	var shadow := Vector2(float(garage.roam["x"]), float(garage.roam["y"]))
 	for other: CooperativeActor in people:
 		if other.talent().has("drive") and garage.car_right.is_empty():
 			garage.car_right_cell()
-		prepare(other)
 		var at := other.point(CampusData.rooms())
-		illuminated = illuminated or (garage.lit() and sim.patrol.main.nav.los(PatrolNav.point(GarageModule.ROOM, at.x, at.y), PatrolNav.point(GarageModule.ROOM, shadow.x, shadow.y)))
-		if at.distance_to(shadow) < nearest:
-			nearest = at.distance_to(shadow)
+		observers.append({"x": at.x, "y": at.y, "ang": CampusGeometry.ang_from_yaw(float(other.pose["yaw"])),
+			"pitch": other.pose["pitch"], "eye_y": float(other.pose["position"][1]) + 1.65, "torch": other.bag().torch_on})
+		var distance := at.distance_squared_to(shadow)
+		if distance < nearest:
+			nearest = distance
 			a = other
-	prepare(a)
-	garage._c["coop_lit"] = illuminated
-	garage._c["coop_pressure"] = true
+	var context := prepare(a).duplicate()
+	context["observers"] = observers
+	context["coop_pressure"] = true
+	garage.set_context(context)
 	garage.tick(dt) # One monster clock, independent of the number of observers.
 	drain(a, "garage")
+	if not garage.roam_visible(): return
+	var illuminated := garage.lit()
 	shadow = Vector2(float(garage.roam["x"]), float(garage.roam["y"]))
 	for other: CooperativeActor in people:
 		var distance := other.point(CampusData.rooms()).distance_to(shadow)
-		if not garage.roam_visible(): continue
 		if distance < 150.0: other.school().change_san(-1.1 * dt * float(CooperativeContext.base(other)["drain_mul"]), 0.0)
 		if distance < GarageModule.REACH and not illuminated and float(garage.roam["litAcc"]) < GarageModule.LIT_NEED * 0.5 and other.enter_cool <= 0:
 			kill(other, "你在黑暗里撞上了车道里的黑影。", "grip", "garage")

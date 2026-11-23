@@ -927,6 +927,15 @@ func _resume_pose(world_id: String, pose: Dictionary) -> Dictionary:
 
 
 func _restore_loaded_world() -> void:
+	var bag := items()
+	if bag != null and bag.is_bound("phone") and not bag.has("phone"):
+		var found := bag.ground.find_custom(func(entry: Dictionary) -> bool: return entry["id"] == "phone")
+		if found >= 0: bag.ground.remove_at(found)
+		var displaced := bag.restore_bound_phone()
+		if not displaced.is_empty():
+			var world := session.world_id if _ground_allowed() else initial_world
+			var at: Array = (player.capture_pose() if world == session.world_id else campus().default_spawn(world))["position"]
+			bag.place_on_ground(displaced, world, Vector3(at[0], at[1], at[2]))
 	if atmos() != null and phone() != null:
 		atmos().set_seed(phone().run_seed)
 	if runscore() != null:
@@ -1822,7 +1831,7 @@ func _bag_entries() -> Array:
 	var out: Array = []
 	for id: String in bag.bag:
 		out.append({"id": id, "name": bag.item_name(id) + (" · 撑开着" if id == "brolly" and bag.brolly_up else "") + (" · 开着" if id == "torch" and bag.torch_on else ""),
-			"short": bag.item_name(id), "text": bag.item_text(id), "hot": bag.hot.find(id)})
+			"short": bag.item_name(id), "text": bag.item_text(id), "hot": bag.hot.find(id), "bound": bag.is_bound(id)})
 	return out
 
 
@@ -1952,7 +1961,12 @@ func _drop_item(id: String) -> void:
 		lan.send("drop", {"item": id})
 		return
 	var bag := items()
-	if bag == null or _dead() or not bag.drop(id):
+	if bag == null or _dead():
+		return
+	if bag.is_bound(id):
+		ui.show_notice("这部手机是科技党的随身物品，始终占用一格背包。")
+		return
+	if not bag.drop(id):
 		return
 	if id in ["coil", "lens", "vial"] and facilities() != null:
 		facilities().flags[id] = false     # the unique portal materials can be taken again where they were found
@@ -4425,6 +4439,8 @@ func _tales_context() -> Dictionary:
 	var p: Array = pose["position"]
 	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
 	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "tsec": school().tsec,
+		"pitch": pose["pitch"], "eye_y": player.scene_camera_transform().origin.y, "line_clear": _line_clear.bind(room),
+		"can_look": player.enabled and not phone_open() and not ui.choice_open(),
 		"clock": school().game_clock(), "san": school().san, "tt": school().tt, "dead": story().dead, "day": school().day,
 		"special": days().today(school().day, school().tsec) if days() != null else "none", "on_leave": school().on_leave(),
 		"seed": phone().run_seed if phone() != null else ""}
@@ -5240,7 +5256,8 @@ func _garage_context() -> Dictionary:
 	var w := CampusGeometry.to_world(room, float(p[0]), float(p[2]))
 	var weird := anomaly()
 	var bag := items()
-	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])), "run": player.sprinting,
+	return {"scene": session.world_id, "x": w.x, "y": w.y, "ang": CampusGeometry.ang_from_yaw(float(pose["yaw"])),
+		"pitch": pose["pitch"], "eye_y": player.scene_camera_transform().origin.y, "run": player.sprinting,
 		"torch": bag != null and bag.torch_on, "has_key": bag != null and bag.has("key"), "hotwire": talent() != null and talent().has("drive"), "dead": story().dead, "enter_cool": _enter_cool,
 		"busy": (weird != null and weird.is_active()) or (school() != null and school().inspection_pending()),
 		"can_stand": _can_stand.bind(room, float(p[1])), "drain_mul": _drain_mul()}

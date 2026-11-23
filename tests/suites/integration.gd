@@ -57,19 +57,20 @@ func _test_campus_app() -> void:
 	Input.action_release("move_forward")
 	var through: Array = app.player.capture_pose()["position"]
 	check(through[2] < door_edge - 1.0, "open door lets the body into the classroom")
-	# Walk out of the seamless south door and back in.
+	# Walk out through the plaza entrance and back in.
 	var spec: Dictionary = CampusData.campus()["campus_doors"]["doors"][0]
 	var port := CampusGeometry.door_port(t1, spec)
-	app.player.restore_pose(_campus_pose(t1, port["p"] - Vector2(0, 6), PI * 0.5))
+	var outward: Vector2 = port["n"]
+	app.player.restore_pose(_campus_pose(t1, port["p"] - outward * 6, outward.angle()))
 	await _frames()
 	Input.action_press("move_forward")
 	await _frames(60)
 	Input.action_release("move_forward")
 	await _frames(3)
 	await _until_world(app, "out")
-	check(app.router.current.world_id == &"out" and app.session.world_id == "out", "walking through the south door switches to the campus")
+	check(app.router.current.world_id == &"out" and app.session.world_id == "out", "walking through the north door switches to the plaza")
 	check(app.router.world_instance() is CampusWorld, "campus outside scene built")
-	app.player.place(_campus_pose(null, port["p"] + CampusGeometry.shift_of(t1) + Vector2(0, 8), -PI * 0.5))
+	app.player.place(_campus_pose(null, port["p"] + CampusGeometry.shift_of(t1) + outward * 8, (-outward).angle()))
 	await _frames()
 	Input.action_press("move_forward")
 	await _frames(60)
@@ -525,6 +526,12 @@ func _test_car_route(app: GameApp) -> void:
 	app.travel("garage1", _campus_pose(g, stand, -PI * 0.5), false)
 	app.patrol().pat["safety"] = 999.0
 	await _frames(3)
+	var shadow := app._campus_world()._garage_shadow
+	var grin := shadow.find_child("LuminousGrin", true, false) as Node3D if shadow != null else null
+	var meshes := grin.find_children("*", "MeshInstance3D", true, false) if grin != null else []
+	var face := meshes[0] as MeshInstance3D if not meshes.is_empty() else null
+	check(face != null and face.material_override is ShaderMaterial and face.material_override.shader == CampusWorld.GARAGE_GRIN_SHADER,
+		"the garage shadow uses the original smiling face with an emissive material")
 	cars.roam["stage"] = "wait"
 	cars.roam["waitT"] = 999.0
 	cars.roam["x"] = -1e6

@@ -1133,6 +1133,7 @@ func show_correct_car(cell: String) -> void:
 	_outlined_cell = cell
 
 
+const GARAGE_GRIN_SHADER := preload("res://game/presentation/world/campus/garage_grin.gdshader")
 var _garage_shadow: OtherworldFigure
 
 
@@ -1143,6 +1144,20 @@ func show_garage_shadow(visible_now: bool, scene_pos: Vector2, height: float) ->
 	if not is_instance_valid(_garage_shadow):
 		_garage_shadow = OtherworldFigure.make("roam")
 		_garage_shadow.name = "GarageShadow"
+		var smile := load("res://assets/campus/fx/smile.glb") as PackedScene
+		if smile != null:
+			var grin := smile.instantiate() as Node3D
+			grin.name = "LuminousGrin"
+			grin.scale = Vector3(.28, .205, .64)
+			grin.rotation.y = PI
+			grin.position = Vector3(0, -1.72 * grin.scale.y, -.034)
+			var glow := ShaderMaterial.new()
+			glow.shader = GARAGE_GRIN_SHADER
+			for mesh: MeshInstance3D in grin.find_children("*", "MeshInstance3D", true, false):
+				RenderMaterials.set_override(mesh, glow)
+				mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			_garage_shadow.face.mesh = null
+			_garage_shadow.face.add_child(grin)
 		add_child(_garage_shadow)
 	_garage_shadow.position = Vector3(scene_pos.x,height,scene_pos.y)
 	_garage_shadow.rotation.y = atan2(scene_pos.x-_player_scene.x,scene_pos.y-_player_scene.z)

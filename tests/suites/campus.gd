@@ -30,26 +30,35 @@ func _test_campus_rules() -> void:
 	var l3: Dictionary = rooms["lab3"]
 	var locked := campus.interact_at("lab3", _campus_pose(l3, CampusGeometry.tile_center(l3, 41, 15) + Vector2(0, 14), -PI * 0.5))
 	check(String(locked.get("toast", "")).contains("机房钥匙") and not campus.is_open("lab3:41:15"), "locked door keeps the Web lock and key name")
-	# Seamless teach1 south door (campus-link: column 31, 3 cells wide).
+	# The plaza entrance and retired south doorway share the same resident floor.
 	var cfg: Dictionary = CampusData.campus()["campus_doors"]
 	var spec: Dictionary = cfg["doors"][0]
 	var port := CampusGeometry.door_port(t1, spec)
-	var inside := campus.crossing("teach1", _campus_pose(t1, port["p"] - Vector2(0, 2), PI * 0.5))
+	var outward: Vector2 = port["n"]
+	check(outward == Vector2.UP and not String(t1["grid"][-1]).contains("O"), "teaching entry faces the plaza and the south wall is sealed")
+	var inside := campus.crossing("teach1", _campus_pose(t1, port["p"] - outward * 2, outward.angle()))
 	check(inside.is_empty(), "no switch before the threshold line")
-	var out := campus.crossing("teach1", _campus_pose(t1, port["p"] + Vector2(0, 0.5), PI * 0.5))
+	var out := campus.crossing("teach1", _campus_pose(t1, port["p"] + outward * .5, outward.angle()))
 	check(out.get("world") == "out", "crossing the threshold leaves to the campus")
 	var back := campus.crossing("out", out["pose"])
 	check(back.is_empty(), "standing outside the gap does not bounce back")
 	var shift := CampusGeometry.shift_of(t1)
-	var entering := campus.crossing("out", _campus_pose(null, port["p"] + shift - Vector2(0, 1), -PI * 0.5))
+	var entering := campus.crossing("out", _campus_pose(null, port["p"] + shift - outward, (-outward).angle()))
 	check(entering.get("world") == "teach1", "walking into the doorway enters teach1")
 	var p_in: Array = entering["pose"]["position"]
-	var expect := CampusGeometry.to_scene(t1, port["p"] - Vector2(0, 1))
+	var expect := CampusGeometry.to_scene(t1, port["p"] - outward)
 	check(absf(p_in[0] - expect.x) < 0.001 and absf(p_in[2] - expect.y) < 0.001, "threshold keeps position through the room/campus translation")
 	var garage := campus.interact_at("out", _campus_pose(null, Vector2(956, 326), PI * 0.5))
 	check(garage.get("travel", {}).get("world") == "garage1", "E at the garage entrance enters garage1")
-	var at_teach := campus.interact_at("out", _campus_pose(null, Vector2(1077.5, 1975), -PI * 0.5))
+	var entrance: Dictionary = t1["exit_world"]
+	var at_teach := campus.interact_at("out", _campus_pose(null, Vector2(entrance.x, entrance.y), (-outward).angle()))
 	check(at_teach == {"notice": ""}, "the seamless teaching entrance needs no button action")
+	var retired := CampusGeometry.door_port(t1, t1["retired_door"])
+	var space := CampusSpace.new(rooms, CampusData.layout("out"), CampusData.campus())
+	var saved_in_wall := _campus_pose(t1, retired.p - (retired.n as Vector2) * 3.0, 0.2)
+	var repaired := space.resume_pose("teach1", saved_in_wall)
+	var repaired_at := CampusGeometry.to_world(t1, repaired.position[0], repaired.position[2])
+	check(CampusGeometry.tile_at(t1, repaired_at) == "." and repaired.yaw == saved_in_wall.yaw, "a save at the retired south door is restored inside the same corridor")
 	var exit_room: Dictionary = rooms["trash1"]
 	check(exit_room["exit_world"] != null, "rooms know where their host door is outside")
 	# Stairwell threshold (stairwell.js): teach1 west stair cell (6..7, 21) opens to stair_teach_w.
@@ -341,6 +350,14 @@ func _test_exploration_rules() -> void:
 
 
 func _test_drop_rules() -> void:
+	var tech := TalentModule.new()
+	tech.pick("tech")
+	var bound := InventoryModule.new(CampusData.rooms(), CampusData.campus(), tech)
+	bound.reset()
+	for id: String in ["torch", "coin", "pill", "card", "notebook", "hw", "key", "usb"]:
+		bound.add(id)
+	check(bound.restore_bound_phone() == "usb" and bound.bag.size() == bound.capacity(), "an older full bag restores the permanent phone in a real inventory slot")
+	check(bound.is_bound("phone") and not bound.drop("phone") and not bound.remove("phone") and bound.has("phone"), "the tech phone cannot be removed by dropping or directly consuming it")
 	var bag := InventoryModule.new(CampusData.rooms(), CampusData.campus())
 	bag.reset()
 	bag.add("coin")

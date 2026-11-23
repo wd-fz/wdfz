@@ -19,7 +19,8 @@ func prepare(a: CooperativeActor, ctx: Dictionary) -> void:
 	var rules := a.feature(&"dlc.campus_rules") as RulesDlcModule
 	var c := ctx.duplicate()
 	c.merge({"now": a.session.clock.active_seconds, "eye": 1.65, "time": a.school().tsec, "need": SchoolClock.need_where(a.school().tsec), "playing": not a.fate().over(), "choice": not a.choice.is_empty(), "trusted": not sim.room.debug_run, "now_ms": int(sim.calendar.seconds * 1000), "tt": a.school().tt, "special": (a.feature(&"school.days") as DayModule).today(a.school().day, a.school().tsec), "on_leave": a.school().on_leave(), "seed": (a.feature(&"phone.network") as PhoneModule).run_seed,
-		"steer": a.input.get("steer", {"l": 0, "r": 0, "u": 0, "d": 0})}, true)
+		"steer": a.input.get("steer", {"l": 0, "r": 0, "u": 0, "d": 0}), "eye_y": float(ctx["height"]) + 1.65,
+		"can_look": a.choice.is_empty() and not a.terminal and not a.input.get("phone", false)}, true)
 	rules.set_context(c)
 	(a.feature(&"campus.tales") as TalesModule).set_context(c)
 	paper.text_override = rules.paper_text
