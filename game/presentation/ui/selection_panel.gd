@@ -16,6 +16,7 @@ var back_button: Button
 var cast_button: Button
 var cast_picker: StudentPicker
 var character_id := StudentCast.DEFAULT
+var character_confirmed := false
 var shell: PanelContainer
 var _entries: Array = []
 var _title: Label
@@ -150,7 +151,9 @@ func _ready() -> void:
 	add_child(cast_picker)
 	cast_picker.picked.connect(func(id: String) -> void:
 		character_id = id
-		cast_button.text = "角色 · " + String(StudentCast.PEOPLE[id]["name"]))
+		character_confirmed = true
+		cast_button.text = "角色 · " + String(StudentCast.PEOPLE[id]["name"])
+		_update_confirm())
 	_summary = _label("", UISkin.MUTED)
 	_summary.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -173,7 +176,8 @@ func open(title: String, mode: String, entries: Array) -> void:
 	_return_focus = weakref(get_viewport().gui_get_focus_owner())
 	cast_picker.close()
 	character_id = StudentCast.DEFAULT
-	cast_button.text = "角色 · " + String(StudentCast.PEOPLE[character_id]["name"])
+	character_confirmed = false
+	cast_button.text = "选择角色"
 	_entries = entries.duplicate(true)
 	selected = -1
 	_preview = -1
@@ -206,7 +210,7 @@ func open(title: String, mode: String, entries: Array) -> void:
 		_list.add_child(card)
 		cards.append(card)
 	_summary.text = ""
-	confirm_button.disabled = true
+	_update_confirm()
 	_name.text = "选择天赋以查看详情"
 	_role.text = ""
 	_art.texture = UIArt.surface("locked")
@@ -228,7 +232,12 @@ func select(index: int) -> void:
 		cards[i].set_pressed_no_signal(i == index)
 	_present(index, true)
 	_summary.text = "已选  %s" % _entries[index]["name"]
-	confirm_button.disabled = false
+	_update_confirm()
+
+
+func _update_confirm() -> void:
+	confirm_button.disabled = selected < 0 or _submitted
+	confirm_button.text = "确认并开始" if character_confirmed else "下一步 · 选择角色"
 
 
 func _preview_card(index: int) -> void:
@@ -260,8 +269,11 @@ func set_reduce_motion(value: bool) -> void:
 
 func _confirm() -> void:
 	if _submitted or selected < 0: return
+	if not character_confirmed:
+		cast_picker.open(character_id)
+		return
 	_submitted = true
-	confirm_button.disabled = true
+	_update_confirm()
 	confirmed.emit(selected)
 
 

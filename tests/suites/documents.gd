@@ -2,7 +2,7 @@ extends "res://tests/support/test_suite.gd"
 
 func notes() -> Dictionary:
 	var rows := []
-	for i in 32: rows.append({"kind":"事实","text":"楼梯口的灯闪了两次。我记下了这一层的声音和门牌，准备回去核对通知稿与图纸。","day":i/8+1,"source":"教学楼与实验楼"})
+	for i in 32: rows.append({"kind":"事实","text":"楼梯口的灯闪了两次。我记下了这一层的声音和门牌，准备回去核对通知稿与图纸。","day":i/8+1,"source":"教学楼与实验楼","id":str(i)})
 	return {"goal":"寻找离开学校的方法，核对每一页记录与刚才看见的东西。","focus":"car","routes":[["car","车辆"],["face","白名单"],["portal","造门"],["cyber","网安仙人"],["dismissal","放学"],["international","国际部"]],"recent":rows.slice(0,3),"groups":{"事实":rows},"progress":[["造门","还没有找到门框图纸与电源模块，需要返回实验楼继续调查。",false]],"found":32,"query":""}
 
 func type_text(text: String) -> void:
@@ -47,10 +47,12 @@ func test_layout_and_input() -> void:
 			ui.apply_text_scale(scale)
 			var bounds := root.get_visible_rect()
 			ui.show_notes(notes())
-			await _frames(8)
+			await _frames(6)
+			await _tap(ui.notes_panel._tabs["clues"])
+			await _frames(4)
 			var close: Button = ui.notes_panel.find_child("NotesClose",true,false)
 			check(bounds.encloses(ui.notes_panel.get_global_rect()) and bounds.encloses(close.get_global_rect()),"notes and sticky close fit %s / %d" % [screen,scale])
-			check(ui._notes_box.size.x<=ui._notes_scroll.size.x and ui._notes_scroll.get_v_scroll_bar().visible,"long records and route filters wrap inside a scrollable body")
+			check(ui.notes_panel.entries.size.x<=ui.notes_panel._body.size.x and ui.notes_panel._body.get_v_scroll_bar().visible,"long records and route filters wrap inside a scrollable body")
 			await _tap(close)
 			check(not ui.notes_panel.visible,"notes close accepts screen touch")
 			ui.show_import()
@@ -161,8 +163,9 @@ func test_outing_notes() -> void:
 	app.player.set_physics_process(false)
 	var day := app.school()
 	var text := func() -> String:
+		app.ui.notes_panel.set_page("rules")
 		var parts := PackedStringArray()
-		for child in app.ui._notes_box.get_children():
+		for child in app.ui.notes_panel.entries.get_children():
 			if child is Label: parts.append(child.text)
 		return "\n".join(parts)
 	app._show_notes()
@@ -172,7 +175,7 @@ func test_outing_notes() -> void:
 	check(day.grant_outing(true),"real outing registration creates the pending attendance duty")
 	var before := day.capture().duplicate(true)
 	app._show_notes("没有匹配的记录")
-	check(text.call().contains("仍须到教室参加：第 2 天 12:50。许可到期不免除责任；系统取消的检查会顺延。"),"original outing summary remains visible during note search")
+	check(text.call().contains("仍须到教室参加：第 2 天 12:50。许可到期不免除责任；系统取消的检查会顺延。"),"the rules page retains the outing summary independently of a clue search")
 	check(same_json(before,day.capture()),"reading the card cannot renew a permit or change a duty")
 	day._duty_cancel({"day":2,"slot":0})
 	app._show_notes()

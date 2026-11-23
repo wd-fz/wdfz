@@ -61,11 +61,17 @@ func run() -> void:
 	var reason := network.host("walking","host",port) if hosting else network.join("127.0.0.1:%d" % port,"guest-1")
 	check(reason.is_empty(),"real ENet connection starts")
 	var deadline := Time.get_ticks_msec()+120000
-	while Time.get_ticks_msec()<deadline and (not app.lan.playing() or network.room.phase!="playing"): await process_frame
+	var checked_barrier := false
+	while Time.get_ticks_msec()<deadline and (not app.lan.playing() or network.room.phase!="playing"):
+		if not checked_barrier and network.room != null and network.room.phase == "loading":
+			checked_barrier = true
+			check(app.ui.loading() and not app.player.enabled, "the full application keeps a loading cover and no control during the shared barrier")
+		await process_frame
 	print("PLAY: ", "host" if hosting else "guest", " ", Time.get_ticks_msec())
 	if not app.lan.playing() or network.room.phase!="playing":
 		check(false,"both full applications enter the campus")
 	else:
+		check(checked_barrier and network.is_ready() and not app.ui.loading(), "the group enters only after local readiness and the room's playing phase")
 		var notice := app.ui.get_node("%Toast") as Label
 		check(notice.text == OpeningStory.handover(app.session.character_id), "each new co-op player sees their own character and the first lead")
 		if hosting:

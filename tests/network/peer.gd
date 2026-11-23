@@ -224,10 +224,10 @@ func _process(dt: float) -> bool:
 		disconnected_at = startup
 		reconnecting = true
 		if ui_mode:
-			app.lan.manual()
-			check(app.ui.choice_open(), "cooperation manual is open before link failure")
+			app._open_manual()
+			check(app.ui.notes_open(), "cooperation handbook is open before link failure")
 			network._lost("测试连接中断")
-			check(not app.ui.choice_open() and not app.lan._manual and not app.player.enabled, "connection failure closes stale menus and clears local control")
+			check(not app.ui.notes_open() and not app.player.enabled, "connection failure closes stale documents and clears local control")
 			check(app.lan.panel.visible and app.lan.panel._retry.visible, "connection failure exposes original-character retry without returning to main menu")
 		else: network.stop()
 		return false

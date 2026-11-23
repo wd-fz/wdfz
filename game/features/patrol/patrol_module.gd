@@ -16,13 +16,17 @@ const TRAVEL_CD := 8.0
 const TRAVEL_MIN := 240.0
 const TRAVEL_MAX := 480.0
 const TRAVEL_CLEAR := 260.0
-const SEE := 135.0
-## Thresholds 25 / 50 / 75. Time multipliers shorten acquisition by at most 25%.
+const CHASE_MIN := 58.0
+const SPRINT_HEARING := 216.0
+const MUFFLED_HEARING := 108.0
+const SAN_SECTOR := 180.0
+const SAN_REPORT_INTERVAL := 12.0
+## Distances are in campus units (9 units/metre). Thresholds remain 25 / 50 / 75.
 const ALERT := [
-	{"see": 135.0, "lock_time": 1.0, "speed": 1.0, "search": 3.0},
-	{"see": 153.0, "lock_time": 0.9, "speed": 1.03, "search": 6.0},
-	{"see": 171.0, "lock_time": 0.8, "speed": 1.05, "search": 10.0},
-	{"see": 189.0, "lock_time": 0.75, "speed": 1.08, "search": 15.0},
+	{"see": 288.0, "lock": 252.0, "lock_time": 1.0, "speed": 1.0, "search": 3.0},
+	{"see": 315.0, "lock": 279.0, "lock_time": 0.9, "speed": 1.03, "search": 6.0},
+	{"see": 342.0, "lock": 306.0, "lock_time": 0.8, "speed": 1.05, "search": 10.0},
+	{"see": 378.0, "lock": 342.0, "lock_time": 0.75, "speed": 1.08, "search": 15.0},
 ]
 const CATCH := 19.0
 const LIFT_RUSH_MIN := 2.2
@@ -49,6 +53,9 @@ var _c: Dictionary = {}
 var _frame_path: Dictionary = {}
 var _approach_cache: Dictionary = {}
 var _halt := false
+var _next_heard_sample := -INF
+var _last_san_scene := ""
+var _next_san_report := -INF
 
 
 func _init(navigation: PatrolNav = null, rooms: Dictionary = {}, data: Dictionary = {}) -> void:
@@ -72,7 +79,7 @@ static func fresh_pat() -> Dictionary:
 	return {"version": 1, "state": "walk", "room": "admin1", "x": 0.0, "y": 0.0, "fy": 0.0, "behavior": "patrol",
 		"permanent": false, "routeVersion": ROUTE_VERSION, "routeIndex": 1, "rejoin": false, "cycle": 0, "lockerMemory": {},
 		"memoryVisit": null, "transition": null, "lock": 0.0, "locked": false, "cited": false, "lost": 0.0, "lastSeen": null,
-		"search": 0.0, "searchPlan": {}, "heading": [0.0, 0.0], "queue": [], "investigation": null, "wirelessSignal": null, "regionSeq": 0, "lastRegion": null,
+		"search": 0.0, "searchPlan": {}, "heading": [0.0, 0.0], "queue": [], "investigation": null, "wirelessSignal": null, "sense": null, "regionSeq": 0, "lastRegion": null,
 		"respawn": 0.0, "safety": 3.6, "warning": 0.0, "near": false, "blinkCD": TRAVEL_CD, "afterBlink": 0.22, "step": 0.0,
 		"stuck": 0, "diagnostic": null, "mazeGateway":null,"doorRush": null, "absence": ""}
 
@@ -86,6 +93,9 @@ func reset() -> void:
 	_frame_path = {}
 	_approach_cache = {}
 	_halt = false
+	_next_heard_sample = -INF
+	_last_san_scene = ""
+	_next_san_report = -INF
 	_c = {}
 	if nav != null and nav.nodes.has("admin1:stairs"):
 		_put(nav.nodes["admin1:stairs"])
@@ -119,6 +129,8 @@ func validate(data: Dictionary) -> String:
 		return "巡察搜查记录无效"
 	if p.get("lastSeen") != null and not PatrolSearch.valid_point(p["lastSeen"]):
 		return "巡察目击位置无效"
+	if p.get("sense") != null and (not valid_sense(p["sense"]) or not _navigable(p["sense"]["point"]["scene"])):
+		return "巡察感知记录无效"
 	for point: Dictionary in p.get("searchPlan", {}).get("points", []):
 		if not _navigable(point["scene"]):
 			return "巡察搜查场景无效"
@@ -179,8 +191,12 @@ func sight_range() -> float:
 	return float(ALERT[alert_level()]["see"])
 
 
+func lock_range() -> float:
+	return float(ALERT[alert_level()]["lock"])
+
+
 func chase_speed() -> float:
-	return nav.chase * float(ALERT[alert_level()]["speed"])
+	return maxf(nav.chase, CHASE_MIN) * float(ALERT[alert_level()]["speed"])
 
 
 func take_events() -> Array:
@@ -313,6 +329,63 @@ func sees() -> bool:
 	return not camouflaged() and pat["state"] == "walk" and same() and not bool(hide["on"]) and distance() <= sight_range() and nav.los(position(), player_point())
 
 
+static func valid_sense(report: Variant) -> bool:
+	if not report is Dictionary or not report.get("kind") in ["sprint", "san"]: return false
+	return PatrolSearch.valid_point(report.get("point")) and SaveSchema.number_in(report.get("remaining"), 0.0, 70.0)
+
+
+func sprint_report() -> Dictionary:
+	if not bool(_c.get("running", false)) or camouflaged() or bool(hide["on"]) or pat["state"] != "walk" \
+			or pat["transition"] != null or bool(_c.get("car_chase", false)):
+		return {}
+	if bool(_c.get("night", false)) and _player_scene() != "out": return {}
+	if same() and distance() > SPRINT_HEARING: return {}
+	var now := float(_c.get("active_seconds", 0.0))
+	if now < _next_heard_sample: return {}
+	_next_heard_sample = now + 0.55
+	var feet := player_point()
+	var from := position()
+	if not (same() and nav.los(from, feet)):
+		var around := nav.approach(from, feet, MUFFLED_HEARING)
+		if around.is_empty() or float(around["distance"]) > MUFFLED_HEARING: return {}
+	return {"kind": "sprint", "point": feet, "remaining": 12.0}
+
+
+## A SAN report identifies the affected floor or outdoor sector. The direction
+## of travel, exact position and current hiding spot are never included.
+func sanity_report(scene: String, feet: Vector2, now: float) -> Dictionary:
+	if scene == _last_san_scene and now < _next_san_report: return {}
+	var point: Dictionary
+	if scene == "out":
+		var centre := feet.snappedf(SAN_SECTOR)
+		point = nav.snap(scene, PatrolNav.point(scene, centre.x, centre.y))
+	else:
+		var room: Dictionary = _rooms.get(scene, {})
+		if room.is_empty() or scene in CampusSpace.SEPARATE or not _navigable(scene):
+			return {}
+		var landing := String(scene) + ":stairs"
+		if nav.nodes.has(landing):
+			point = nav.nodes[landing].duplicate()
+		else:
+			var x := float(room["ox"]) + float(room["cols"]) * float(room["tw"]) * 0.5
+			var y := float(room["oy"]) + float(room["rows"]) * float(room["th"]) * 0.5
+			point = nav.snap(scene, PatrolNav.point(scene, x, y))
+	if point.is_empty(): return {}
+	_last_san_scene = scene
+	_next_san_report = now + SAN_REPORT_INTERVAL
+	return {"kind": "san", "point": point, "remaining": 70.0}
+
+
+func use_sense(report: Dictionary) -> void:
+	if report.is_empty(): return
+	var current: Variant = pat["sense"]
+	if current != null:
+		if current["kind"] == "sprint" and report["kind"] == "san": return
+		if current["kind"] == report["kind"] and current["point"] == report["point"]: return
+	pat["sense"] = report
+	_frame_path = {}
+
+
 func local_quiet() -> bool:
 	var calm_here: bool = float(_c.get("calm", 0.0)) > 0.0 and String(_c.get("calm_room", "")) == pat["room"]
 	var checking_here: bool = String(_c.get("inspection_room", "")) == pat["room"]
@@ -391,6 +464,7 @@ func rescued() -> void:
 	hide["seen"] = false
 	pat["permanent"] = false
 	pat["wirelessSignal"] = null
+	pat["sense"] = null
 	_clear_chase()
 	pat["rejoin"] = true
 	pat["safety"] = 3.6
@@ -497,7 +571,7 @@ func _remember(point: Dictionary) -> void:
 	var previous: Variant = pat["lastSeen"]
 	if previous != null and previous["scene"] == point["scene"]:
 		var move := Vector2(float(point["x"]) - float(previous["x"]), float(point["y"]) - float(previous["y"]))
-		if move.length() > 0.001 and move.length() < SEE:
+		if move.length() > 0.001 and move.length() < sight_range():
 			move = move.normalized()
 			pat["heading"] = [move.x, move.y]
 	else:
@@ -623,6 +697,10 @@ func _target() -> Dictionary:
 			return p
 		var snapped := nav.snap(String(p["scene"]), p)
 		return snapped if not snapped.is_empty() else p
+	var sensed: Variant = pat["sense"]
+	if sensed != null and (not bool(_c.get("night", false)) or sensed["point"]["scene"] == "out"):
+		pat["behavior"] = "investigate"
+		return sensed["point"]
 	if pat["investigation"] == null and not (pat["queue"] as Array).is_empty():
 		var first: Dictionary = pat["queue"].pop_front()
 		first["remaining"] = 6.0
@@ -948,6 +1026,12 @@ func _step(dt: float) -> void:
 			_enqueue(String(new_region))
 	pat["safety"] = maxf(0.0, float(pat["safety"]) - dt)
 	pat["afterBlink"] = maxf(0.0, float(pat["afterBlink"]) - dt)
+	if pat["sense"] != null:
+		pat["sense"]["remaining"] = float(pat["sense"]["remaining"]) - dt
+		if float(pat["sense"]["remaining"]) <= 0.0:
+			pat["sense"] = null
+			pat["rejoin"] = true
+			_frame_path = {}
 	if pat["state"] == "idle":
 		pat["respawn"] = maxf(0.0, float(pat["respawn"]) - dt)
 		if float(pat["respawn"]) <= 1e-7:
@@ -1004,11 +1088,13 @@ func _step(dt: float) -> void:
 	if hostile and (visible or known_cabinet):
 		_remember(cabinet if known_cabinet else player_point())
 		pat["lost"] = 0.0
-		if float(pat["warning"]) <= 0.0:
+		if float(pat["warning"]) <= 0.0 and (known_cabinet or d <= lock_range()):
 			pat["lock"] = minf(1.0, float(pat["lock"]) + dt * (2.2 if d < 60.0 else 1.1) / float(ALERT[alert_level()]["lock_time"]))
 			if not pat["locked"] and float(pat["lock"]) >= 1.0:
 				if not _try_lock():
 					return
+		elif not pat["locked"]:
+			pat["lock"] = maxf(0.0, float(pat["lock"]) - dt)
 	elif pat["locked"]:
 		pat["lost"] = float(pat["lost"]) + dt
 		if float(pat["lost"]) > 2.5:
@@ -1039,6 +1125,8 @@ func _step(dt: float) -> void:
 				pat["wirelessSignal"] = null
 				pat["rejoin"] = true
 				_frame_path = {}
+		elif pat["sense"] != null and goal == pat["sense"]["point"]:
+			pat["sense"]["remaining"] = minf(float(pat["sense"]["remaining"]), 3.0)
 		elif pat["investigation"] != null:
 			pat["investigation"]["remaining"] = float(pat["investigation"]["remaining"]) - dt
 		elif pat["memoryVisit"] != null:

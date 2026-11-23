@@ -4,7 +4,6 @@ extends CanvasLayer
 const BASE_THEME: Theme = preload("res://content/ui/theme.tres")
 
 signal new_requested
-signal custom_game_requested
 signal new_hard_requested
 signal death_menu_requested
 signal load_requested
@@ -37,8 +36,10 @@ signal grade_sound(band: String)
 signal fullscreen_requested
 signal map_requested(id: String)
 signal map_route_requested(route: String)
+signal documents_closed
 signal notes_requested(query: String)
 signal notes_focus_requested(route: String)
+signal handbook_action_requested(action: String)
 signal setting_changed(key: String, value: int)
 signal touch_layout_changed(layout: Dictionary)
 signal binding_changed(action: String, slot: int, key: int)
@@ -110,11 +111,6 @@ func _ready() -> void:
 	hard.custom_minimum_size = Vector2(0, 48)
 	hard.pressed.connect(func() -> void: new_hard_requested.emit())
 	%NewGame.add_sibling(hard)
-	var custom := Button.new()
-	custom.name = "CustomGame"
-	custom.text = "自选角色与天赋"
-	custom.pressed.connect(func() -> void: custom_game_requested.emit())
-	%NewGame.add_sibling(custom)
 	var ach := Button.new()
 	ach.name = "Achievements"
 	ach.text = "成就"
@@ -204,7 +200,7 @@ func _ready() -> void:
 		anchor.add_sibling(dlc)
 	var notes_btn := Button.new()
 	notes_btn.name = "NotesPause"
-	notes_btn.text = "笔记"
+	notes_btn.text = "手册"
 	notes_btn.custom_minimum_size = Vector2(0, 48)
 	notes_btn.pressed.connect(func() -> void: notes_requested.emit(""))
 	%Save.add_sibling(notes_btn)
@@ -530,6 +526,7 @@ var _status_style: StyleBoxFlat
 var _status_card: PanelContainer
 var _hud_actions: HBoxContainer
 var _patrol_radar: PatrolRadar
+var minimap: CampusMinimap
 
 
 func show_patrol_radar(offset: Variant = null) -> void:
@@ -590,6 +587,14 @@ func _style_hud() -> void:
 	_hud_actions.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top.add_child(_hud_actions)
 	%PauseButton.reparent(_hud_actions, false)
+	minimap = CampusMinimap.new()
+	hud.add_child(minimap)
+	minimap.pressed.connect(func() -> void: map_requested.emit(""))
+	_guidance.resized.connect(_fit_minimap)
+	_guidance.visibility_changed.connect(_fit_minimap)
+	_status_card.resized.connect(_fit_minimap)
+	get_viewport().size_changed.connect(_fit_minimap)
+	_fit_minimap()
 	var prompt := %Prompt as Label
 	prompt.theme_type_variation = "HudPill"
 	prompt.autowrap_mode = TextServer.AUTOWRAP_OFF
@@ -616,6 +621,18 @@ func _style_hud() -> void:
 func add_hud_action(button: Button) -> void:
 	_hud_actions.add_child(button)
 	_hud_actions.move_child(button, 0)
+
+
+func _fit_minimap() -> void:
+	if not is_instance_valid(minimap): return
+	var screen := get_viewport().get_visible_rect().size
+	var width := clampf(screen.x * .135, 90.0, 154.0)
+	var top := _status_card.get_parent() as Control
+	var bottom := top.get_rect().end.y
+	if _guidance.is_visible_in_tree(): bottom = maxf(bottom, _guidance.get_rect().end.y)
+	var y := bottom + 8.0
+	minimap.position = Vector2(top.position.x, y)
+	minimap.size = Vector2(width, minf(width * .79, maxf(60.0, screen.y * .56 - y)))
 
 
 func _fit_guidance() -> void:
@@ -1925,146 +1942,23 @@ func set_grain(on: bool) -> void:
 	set_process(true)
 
 
-# ---- the notes page (investigation.js render): the case card, recent finds, the records, route progress ----
-
-var notes_panel: PanelContainer
-var _notes_box: VBoxContainer
-var _notes_search: LineEdit
-var _notes_scroll: TouchScroll
-const NOTE_COLORS := {"事实": Color(0.78, 0.86, 0.95), "推测": Color(0.95, 0.85, 0.6), "验证": Color(0.65, 0.9, 0.7), "线索": Color(0.88, 0.75, 0.95), "规则": Color(0.87, 0.81, 0.66)}
-const NOTE_ART := {"事实": "fact", "推测": "guess", "验证": "verify", "线索": "clue", "规则": "rules"}
+var notes_panel: HandbookPanel
 
 
-## data: {goal, focus, routes [[id, name]], recent [rows], groups {kind: rows}, progress [[name, text, done]], found, query}
 func show_notes(data: Dictionary) -> void:
-	if notes_panel == null:
-		notes_panel = PanelContainer.new()
-		notes_panel.name = "NotesPanel"
-		notes_panel.minimum_size_changed.connect(func() -> void: _fit_documents.call_deferred())
-		notes_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-		notes_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-		notes_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-		var back := UISkin.panel(14)
-		notes_panel.add_theme_stylebox_override("panel", back)
-		var outer := VBoxContainer.new()
-		outer.add_theme_constant_override("separation", 8)
-		var head := Label.new()
-		head.text = "手册 · 笔记"
-		outer.add_child(head)
-		_notes_search = LineEdit.new()
-		_notes_search.name = "NotesSearch"
-		_notes_search.custom_minimum_size.y = 44
-		_notes_search.placeholder_text = "搜索记录（事实、地点）"
-		_notes_search.text_changed.connect(func(t: String) -> void: notes_requested.emit(t))
-		outer.add_child(_notes_search)
-		_notes_scroll = TouchScroll.new()
-		_notes_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-		_notes_scroll.follow_focus = true
-		_notes_box = VBoxContainer.new()
-		_notes_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		_notes_box.add_theme_constant_override("separation", 6)
-		_notes_scroll.add_child(_notes_box)
-		outer.add_child(_notes_scroll)
-		var close := Button.new()
-		close.name = "NotesClose"
-		close.text = "关闭"
-		close.custom_minimum_size.y = 44
-		close.pressed.connect(func() -> void: notes_panel.visible = false)
-		outer.add_child(close)
-		notes_panel.add_child(outer)
-		UIArt.decorate(notes_panel)
+	if not is_instance_valid(notes_panel):
+		notes_panel = HandbookPanel.new()
+		notes_panel.query_changed.connect(notes_requested.emit)
+		notes_panel.focus_requested.connect(notes_focus_requested.emit)
+		notes_panel.locate_requested.connect(map_route_requested.emit)
+		notes_panel.action_requested.connect(handbook_action_requested.emit)
+		notes_panel.dismissed.connect(documents_closed.emit)
 		$Root.add_child(notes_panel)
-	_notes_scroll.stop_motion()
-	for child in _notes_box.get_children():
-		_notes_box.remove_child(child)
-		child.queue_free()
-	var query := String(data.get("query", ""))
-	if _notes_search.text != query:
-		_notes_search.text = query
-	var focus := String(data.get("focus", ""))
-	var heading := "当前调查"
-	if not focus.is_empty():
-		heading += "  ·  " + _route_name(data)
-	UIArt.heading(_notes_box, heading, UIArt.route_hint(focus), UISkin.ACCENT)
-	_note_label(String(data["goal"]), Color.WHITE)
-	if not String(data.get("landmark", "")).is_empty():
-		var locate := Button.new()
-		var route := String(data.get("focus", ""))
-		locate.text = "在校园图上找" + String(data["landmark"])
-		locate.custom_minimum_size.y = 44
-		locate.pressed.connect(func() -> void:
-			notes_panel.hide()
-			map_route_requested.emit(route))
-		_notes_box.add_child(locate)
-	if not String(data.get("seat_record", "")).is_empty():
-		_note_label(String(data["seat_record"]), UISkin.WARM)
-	var routes: Array = data["routes"]
-	if routes.size() > 1:
-		var row := HFlowContainer.new()
-		var tag := Label.new()
-		tag.text = "关注"
-		row.add_child(tag)
-		for r: Array in routes:
-			var b := Button.new()
-			b.name = "Focus_" + String(r[0])
-			UIArt.button(b, UIArt.route_hint(String(r[0])))
-			b.text = String(r[1])
-			b.custom_minimum_size.y = 44
-			b.toggle_mode = true
-			b.button_pressed = r[0] == data.get("focus", "")
-			b.pressed.connect(func() -> void: notes_focus_requested.emit(String(r[0])))
-			row.add_child(b)
-		_notes_box.add_child(row)
-	var duty := String(data.get("duty",""))
-	if not duty.is_empty() or bool(data.get("permanent",false)):
-		_note_label("外出记录",Color(1,.9,.55))
-		if bool(data.get("permanent",false)):
-			_note_label("登记后缺席：持续追踪仍生效。假条、重新登记和符纸不能解除。",Color(1,.7,.65))
-		if not duty.is_empty():
-			_note_label("仍须到教室参加："+duty+"。许可到期不免除责任；系统取消的检查会顺延。",Color.WHITE)
-	if not query.is_empty():
-		if int(data["found"]) == 0: _notes_box.add_child(UIArt.view(UIArt.surface("search_none"), Vector2(0, 108)))
-		_note_label(("找到 %d 条" % int(data["found"])) if int(data["found"]) > 0 else "没有找到仍能回忆的对应记录。", Color(1, 1, 1, 0.7))
-	var recent: Array = data["recent"]
-	if not recent.is_empty():
-		_note_label("最近发现", UISkin.ACCENT)
-		for e: Dictionary in recent:
-			_note_label("[%s] %s" % [e["kind"], e["text"]], NOTE_COLORS[e["kind"]])
-	for kind: String in InvestigationModule.KINDS:
-		var rows: Array = (data["groups"] as Dictionary).get(kind, [])
-		if rows.is_empty():
-			continue
-		UIArt.heading(_notes_box, "%s  %d" % [kind, rows.size()], UIArt.surface(String(NOTE_ART[kind])), NOTE_COLORS[kind])
-		for e: Dictionary in rows:
-			var entry := UISkin.card(_notes_box)
-			_note_label("第 %d 天 · %s" % [int(e.get("day", 1)), e["source"]], UISkin.MUTED,entry)
-			_note_label(String(e["text"]), UISkin.INK,entry)
-	var progress: Array = data["progress"]
-	if not progress.is_empty():
-		_note_label("路线进度", UISkin.ACCENT)
-		for p: Array in progress:
-			_note_label("%s %s：%s" % ["✓" if bool(p[2]) else "·", p[0], p[1]], Color(0.65, 0.9, 0.7) if bool(p[2]) else Color.WHITE)
-	var background := String(data.get("background", ""))
-	if query.is_empty() and not background.is_empty():
-		_note_label("醒来以前", UISkin.ACCENT)
-		_note_label(background, UISkin.INK)
-	notes_panel.visible = true
-	_fit_documents.call_deferred()
+	notes_panel.open(data)
 
 
-func _route_name(data: Dictionary) -> String:
-	for r: Array in data["routes"]:
-		if r[0] == data["focus"]:
-			return String(r[1])
-	return {"car": "车辆", "face": "白名单", "portal": "造门", "cyber": "网安仙人"}.get(String(data["focus"]), "")
-
-
-func _note_label(text: String, color: Color, parent: Control = null) -> void:
-	var l := Label.new()
-	l.text = text
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.add_theme_color_override("font_color",color)
-	(parent if parent != null else _notes_box).add_child(l)
+func notes_open() -> bool:
+	return is_instance_valid(notes_panel) and notes_panel.visible
 
 
 # ---- the map page: the campus plan or the sketch of a walked floor ----
@@ -2075,10 +1969,15 @@ var _map_select: OptionButton
 var _map_route_select: OptionButton
 var _map_head: Label
 var _map_note: Label
-var _map_scroll: ScrollContainer
+var _map_scroll: TouchScroll
+var _map_layout: BoxContainer
+var _map_sidebar: VBoxContainer
+var _map_legend: TouchScroll
+var _map_header: HBoxContainer
 var _map_close_button: Button
 var _map_center_pending := false
 var _map_generation := 0
+var _map_zoom := 1.0
 
 
 ## options: [[id, label]] ("campus" is the plan); returns the view to configure.
@@ -2094,11 +1993,12 @@ func open_map(options: Array, selected: String, head: String, note: String, rout
 		map_panel.add_theme_stylebox_override("panel", back)
 		var outer := VBoxContainer.new()
 		outer.add_theme_constant_override("separation", 6)
-		var top := HBoxContainer.new()
-		var lab := Label.new()
-		lab.text = "地图"
-		lab.theme_type_variation = "HeadingLabel"
-		top.add_child(lab)
+		_map_header = HBoxContainer.new()
+		_map_header.add_theme_constant_override("separation", 10)
+		var title := Label.new()
+		title.text = "地图"
+		title.theme_type_variation = "HeadingLabel"
+		_map_header.add_child(title)
 		_map_select = OptionButton.new()
 		_map_select.name = "MapSelect"
 		_map_select.custom_minimum_size.y = 44
@@ -2107,36 +2007,62 @@ func open_map(options: Array, selected: String, head: String, note: String, rout
 		_map_select.clip_text = true
 		_map_select.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_map_select.item_selected.connect(func(i: int) -> void: map_requested.emit(String(_map_select.get_item_metadata(i))))
-		top.add_child(_map_select)
-		outer.add_child(top)
+		_map_header.add_child(_map_select)
+		_map_close_button = Button.new()
+		_map_close_button.text = "关闭"
+		_map_close_button.theme_type_variation = "QuietButton"
+		_map_close_button.custom_minimum_size = Vector2(60, 44)
+		_map_close_button.pressed.connect(_close_map)
+		_map_header.add_child(_map_close_button)
+		outer.add_child(_map_header)
+		_map_layout = BoxContainer.new()
+		_map_layout.add_theme_constant_override("separation", 14)
+		outer.add_child(_map_layout)
+		_map_scroll = TouchScroll.new()
+		_map_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		map_view = MapView.new()
+		map_view.name = "MapView"
+		map_view.scroll_min_width = 0
+		_map_scroll.add_child(map_view)
+		_map_layout.add_child(_map_scroll)
+		_map_sidebar = VBoxContainer.new()
+		_map_sidebar.add_theme_constant_override("separation", 8)
+		_map_layout.add_child(_map_sidebar)
 		_map_head = Label.new()
 		_map_head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		outer.add_child(_map_head)
+		_map_head.add_theme_color_override("font_color", UISkin.ACCENT)
+		_map_sidebar.add_child(_map_head)
 		_map_route_select = OptionButton.new()
 		_map_route_select.name = "MapRoute"
 		_map_route_select.custom_minimum_size.y = 44
 		_map_route_select.fit_to_longest_item = false
 		_map_route_select.clip_text = true
 		_map_route_select.item_selected.connect(func(i: int) -> void: map_route_requested.emit(String(_map_route_select.get_item_metadata(i))))
-		outer.add_child(_map_route_select)
-		_map_scroll = ScrollContainer.new()
-		_map_scroll.follow_focus = true
-		map_view = MapView.new()
-		map_view.name = "MapView"
-		map_view.scroll_min_width = 0
-		_map_scroll.add_child(map_view)
-		outer.add_child(_map_scroll)
+		_map_sidebar.add_child(_map_route_select)
+		_map_legend = TouchScroll.new()
+		_map_legend.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		_map_legend.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		_map_sidebar.add_child(_map_legend)
 		_map_note = Label.new()
 		_map_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_map_note.modulate = Color(1, 1, 1, 0.88)
-		outer.add_child(_map_note)
-		_map_close_button = Button.new()
-		_map_close_button.text = "关闭"
-		_map_close_button.pressed.connect(func() -> void: map_panel.visible = false)
-		outer.add_child(_map_close_button)
+		_map_note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_map_legend.add_child(_map_note)
+		var tools := HBoxContainer.new()
+		for spec: Array in [["−", "缩小", -1.0], ["+", "放大", 1.0], ["定位", "回到当前位置", 0.0]]:
+			var button := Button.new()
+			button.text = spec[0]
+			button.tooltip_text = spec[1]
+			button.accessibility_name = spec[1]
+			button.custom_minimum_size = Vector2(44, 44)
+			button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			button.pressed.connect(_zoom_map.bind(float(spec[2])))
+			tools.add_child(button)
+		_map_sidebar.add_child(tools)
 		map_panel.add_child(outer)
 		UIArt.decorate(map_panel)
 		$Root.add_child(map_panel)
+	if not map_panel.visible: _map_zoom = 1.0
 	_map_select.clear()
 	for o: Array in options:
 		_map_select.add_icon_item(UIArt.landmark(String(o[0])), String(o[1]))
@@ -2157,8 +2083,9 @@ func open_map(options: Array, selected: String, head: String, note: String, rout
 		_map_route_select.select(selected_route)
 		_map_route_select.set_item_disabled(0, true)
 	_map_head.text = head
-	_map_note.text = note
+	_map_note.text = note + ("\n\n浅绿色箭头是你，金色圆标是调查地点。" if selected == "campus" else "")
 	map_panel.visible = true
+	map_panel.move_to_front()
 	_map_generation += 1
 	_map_center_pending = true
 	_map_scroll.scroll_vertical = 0
@@ -2170,19 +2097,29 @@ func open_map(options: Array, selected: String, head: String, note: String, rout
 func _fit_map() -> void:
 	if not is_instance_valid(map_panel) or not map_panel.visible: return
 	var screen := get_viewport().get_visible_rect().size
-	var width := minf(720,screen.x-24)
+	var width := minf(660.0, screen.x - 24.0)
+	var style := map_panel.get_theme_stylebox("panel")
+	var inner_width := width - style.get_minimum_size().x
+	var wide := inner_width >= 500.0
+	var side_width := clampf(inner_width * .36, 164.0, 220.0) if wide else inner_width
+	var picture_width := inner_width - side_width - 14.0 if wide else inner_width
+	var header_height := _map_header.get_combined_minimum_size().y + 6.0
+	var body_height := minf(540.0, screen.y - style.get_minimum_size().y - header_height - 24.0)
+	_map_layout.vertical = not wide
+	_map_sidebar.custom_minimum_size.x = side_width if wide else 0.0
+	_map_head.size.x = side_width
+	_map_note.size.x = side_width - 8.0
+	_map_legend.custom_minimum_size.y = 40.0 if wide else 58.0
+	if not wide:
+		body_height -= 14.0 + _map_sidebar.get_combined_minimum_size().y
 	map_panel.custom_minimum_size.x = width
-	_map_head.size.x = width-24
-	_map_note.size.x = width-24
-	var fixed := 24.0
-	for child in _map_head.get_parent().get_children():
-		if child is Control and child != _map_scroll and child.visible:
-			fixed += child.get_combined_minimum_size().y+6
-	map_view.scroll_max_height = maxf(60,minf(500,screen.y-fixed-24))
+	var height := maxf(60.0, body_height)
+	map_view.scroll_max_height = height
 	if not map_view.plan.is_empty():
-		map_view.show_plan(map_view.plan,Vector2(width-52,map_view.scroll_max_height-14))
+		map_view.show_plan(map_view.plan, Vector2(picture_width - 14.0, height - 10.0), _map_zoom)
 	elif not map_view.room.is_empty():
-		map_view.show_floor(map_view.room,map_view.seen,map_view.label_of,map_view.me,map_view.ang,map_view.here,width-52)
+		map_view.show_floor(map_view.room, map_view.seen, map_view.label_of, map_view.me, map_view.ang, map_view.here, picture_width - 14.0, _map_zoom)
+	_map_scroll.custom_minimum_size = Vector2(0.0, height)
 	map_panel.reset_size()
 	map_panel.position = (screen-map_panel.size)*.5
 	if _map_center_pending:
@@ -2194,9 +2131,23 @@ func _center_map_player(generation: int) -> void:
 	# Scroll ranges settle after the container has wrapped the header and legend.
 	await get_tree().process_frame
 	await get_tree().process_frame
-	if generation != _map_generation or not is_instance_valid(map_view) or not map_panel.visible or map_view.room.is_empty() or not map_view.here: return
-	var px := (map_view.me.x-float(map_view.room["ox"]))/float(map_view.room["tw"])*map_view.cell
-	_map_scroll.scroll_horizontal = maxi(0,roundi(px-_map_scroll.size.x*.5))
+	if generation != _map_generation or not is_instance_valid(map_view) or not map_panel.visible: return
+	var pixel := map_view.player_pixel()
+	if not pixel.is_finite(): return
+	_map_scroll.scroll_horizontal = maxi(0, roundi(pixel.x - _map_scroll.size.x * .5))
+	_map_scroll.scroll_vertical = maxi(0, roundi(pixel.y - _map_scroll.size.y * .5))
+
+
+func _zoom_map(direction: float) -> void:
+	_map_zoom = clampf(_map_zoom * pow(1.55, direction), 1.0, 4.0)
+	_map_center_pending = true
+	_fit_map()
+
+
+func _close_map() -> void:
+	if not is_instance_valid(map_panel) or not map_panel.visible: return
+	map_panel.hide()
+	documents_closed.emit()
 
 
 func sensory_on() -> bool:
@@ -2283,7 +2234,6 @@ func hide_terminal() -> void:
 
 
 func _fit_documents() -> void:
-	PanelLayout.fit(notes_panel,_notes_scroll,620,380)
 	PanelLayout.fit(_import_panel,_import_scroll,620,380)
 	PanelLayout.fit(terminal_panel,_term_out,720,320)
 	if is_instance_valid(_death_text):
@@ -2509,6 +2459,8 @@ var _choice_cancellable := true
 
 
 func show_choice(text: String, labels: Array, cancellable: bool = true, illustrations: Array = []) -> void:
+	if notes_open(): notes_panel.hide()
+	if is_instance_valid(map_panel): map_panel.hide()
 	if is_instance_valid(selection_panel): selection_panel.hide()
 	_choice_scroll.stop_motion()
 	_paper_read = false
@@ -2629,6 +2581,14 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			return
 		if bag_open():
 			bag_closed.emit()
+			get_viewport().set_input_as_handled()
+			return
+		if notes_open():
+			notes_panel.dismiss()
+			get_viewport().set_input_as_handled()
+			return
+		if is_instance_valid(map_panel) and map_panel.visible:
+			_close_map()
 			get_viewport().set_input_as_handled()
 			return
 	if not choice_open() or not event is InputEventKey or not event.pressed or event.echo:

@@ -38,7 +38,6 @@ var _watch_pose := {}
 var _anchored: Variant = null
 var prediction := LanPrediction.new()
 var _mic: MicPanel
-var _manual := false
 var _time_prompt := ""
 var _ending_prompt := ""
 var _board_prompt := ""
@@ -368,12 +367,36 @@ func _room_changed(state: Dictionary) -> void:
 			_last_connection.erase("address")
 		var error := history.remember("remote" if _remote_mode else "lan", _last_connection)
 		if not error.is_empty(): app.ui.show_notice(error)
+	if phase == "loading" and not _lost:
+		var members := LanRoomView.active_members(state)
+		var ready := members.filter(func(m: Dictionary) -> bool: return m["connected"] and m["state"] == "alive").size()
+		var cover := _loading_cover("准备合作校园")
+		cover.set_team(ready, members.size(), network.room.minimum_loaded)
+		if network.is_ready(): cover.set_progress(1.0, "本机准备完毕 · 等待队员")
 	if phase == "playing" and _installed and not _paused and not _lost:
+		_enter_ready_room()
+
+
+func _loading_cover(stage: String) -> LoadingScreen:
+	if app.ui.loading(): return app.ui.loading_screen
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	var cover := app.ui.show_loading(stage)
+	cover.leave_requested.connect(app.return_to_menu)
+	return cover
+
+
+func _enter_ready_room() -> void:
+	if not network.is_ready(): return
+	if app.ui.loading():
+		app.ui.set_loading(1.0, "队伍就绪")
+		app.ui.hide_loading()
+		resume()
+	else:
 		panel.hide()
 		_sync_input()
-		if not _opening_handover.is_empty():
-			app.ui.show_notice(_opening_handover)
-			_opening_handover = ""
+	if not _opening_handover.is_empty():
+		app.ui.show_notice(_opening_handover)
+		_opening_handover = ""
 
 
 func send(action: String, fields: Dictionary = {}) -> void:
@@ -386,17 +409,6 @@ func send(action: String, fields: Dictionary = {}) -> void:
 
 
 func choice(index: int) -> void:
-	if _manual:
-		_manual = false
-		app.ui.hide_choice()
-		match index:
-			0: app._open_bag()
-			1: app._show_notes("")
-			2: app._show_map("")
-			3: send("lesson")
-			4: send("think")
-			5: send("seat_card")
-		return
 	if _special_choice != "":
 		send(_special_choice, {"accept": index == 0})
 		_special_choice = ""
@@ -482,7 +494,6 @@ func stop() -> void:
 
 
 func _reset_local_modals() -> void:
-	_manual = false
 	_special_choice = ""
 	_special_id = ""
 	_shown_choice = -1
@@ -501,6 +512,7 @@ func _reset_local_modals() -> void:
 func _snapshot(data: Dictionary) -> void:
 	if not data.get("session") is Dictionary or network.room == null: return
 	var started_at := Time.get_ticks_usec()
+	var prior_focus := app.investigation().current_focus() if app.ui.notes_open() else ""
 	var view: Dictionary = data.get("observed", data) if _spectating else data
 	_observing = String(view.get("id", "")) if _spectating else ""
 	var source: Dictionary = view["session"]
@@ -513,9 +525,11 @@ func _snapshot(data: Dictionary) -> void:
 			if not _preparing_epoch.is_empty(): app.cancel_loading()
 			_preparing_epoch = network.room.epoch
 			# Yield between regions so ENet keeps polling throughout initial load.
-			app._load_then(String(source["world_id"]), _finish_preparation.bind(_preparing_epoch), source.get("player"))
+			_loading_cover("准备合作校园")
+			app._load_then(String(source["world_id"]), _finish_preparation.bind(_preparing_epoch), source.get("player"), true)
 		return
 	if first:
+		_loading_cover("载入原角色")
 		var candidate := SessionFactory.create()
 		for c in range(49, 52): (candidate.modules.get_module(&"school.day") as SchoolModule).assign_own_seat("teach1:%d:11" % c)
 		(candidate.modules.get_module(&"school.day") as SchoolModule).assign_own_seat(String(view["seat"]))
@@ -567,6 +581,8 @@ func _snapshot(data: Dictionary) -> void:
 		app.session.clock.restore(source["clock"])
 		app.session.character_id = StudentCast.resolve(source.get("character"))
 	current = data
+	if app.ui.notes_open() and app.investigation().current_focus() != prior_focus:
+		app._show_notes(app.ui.notes_panel.search.text)
 	if is_instance_valid(app._mates_nodes) and not app._mates_nodes._echoes.is_empty():
 		for person: Dictionary in data.get("team", {}).values():
 			if person.get("seated", false): app._mates_nodes.clear_seat_witness(person.get("seat_id", ""))
@@ -644,7 +660,7 @@ func _snapshot(data: Dictionary) -> void:
 	var choice_data: Dictionary = data.get("choice", {})
 	if choice_data.is_empty() and _shown_choice >= 0:
 		_shown_choice = -1
-		if _special_choice.is_empty() and not _manual: app.ui.hide_choice()
+		if _special_choice.is_empty(): app.ui.hide_choice()
 	if not choice_data.is_empty() and int(choice_data.get("id", -1)) != _shown_choice:
 		_shown_choice = int(choice_data["id"])
 		app.ui.show_choice(String(choice_data.get("text", "请选择")), choice_data.get("labels", []), true)
@@ -713,6 +729,7 @@ func _finish_preparation(epoch: String) -> void:
 
 func _cancel_preparation() -> void:
 	if not _preparing_epoch.is_empty(): app.cancel_loading()
+	elif is_instance_valid(app.ui) and app.ui.loading(): app.ui.hide_loading()
 	_preparing_epoch = ""
 	_loading_snapshot.clear()
 
@@ -721,13 +738,16 @@ func loaded() -> void:
 	var epoch := _epoch
 	# The first Vulkan frame can compile pipelines. Keep the shared loading
 	# barrier until that local work has completed instead of starting the game.
+	app.ui.set_loading(0.98, "绘制校园的第一帧")
 	if DisplayServer.get_name() != "headless": await RenderingServer.frame_post_draw
 	if not _installed or network.room == null or network.room.epoch != epoch: return
 	_measure_render_time = OS.is_debug_build() and DisplayServer.get_name() != "headless"
 	if _measure_render_time:
 		RenderingServer.viewport_set_measure_render_time(app.get_viewport().get_viewport_rid(), true)
+	app.ui.set_loading(1.0, "本机准备完毕")
 	network.loaded()
-	if network.room != null and network.room.phase == "playing": resume()
+	if network.room != null and network.room.phase == "playing": _enter_ready_room()
+	elif network.room != null and network.room.phase == "ended": app.ui.hide_loading()
 
 
 func _event(e: Dictionary) -> void:
@@ -790,7 +810,7 @@ func _update_offers() -> void:
 		_special_choice = ""
 		_special_id = ""
 		app.ui.hide_choice()
-	if _manual or not current.get("choice", {}).is_empty() or app.ui.choice_open() or app.ui.terminal_open(): return
+	if app.ui.notes_open() or not current.get("choice", {}).is_empty() or app.ui.choice_open() or app.ui.terminal_open(): return
 	for offer: Array in offers:
 		var info: Dictionary = offer[1]
 		if info.is_empty() or network.local_id in info.get("confirmed", []): continue
@@ -851,14 +871,14 @@ func _follow_observed(dt: float) -> void:
 
 
 func _remote_step(at: Vector3, running: bool, world: String) -> void:
-	if not playing() or _lost or app.story().over() or network.room.paused_left > 0.0: return
+	if not running or not playing() or _lost or app.story().over() or network.room.paused_left > 0.0: return
 	if at.distance_to(app.player.global_position) > 12.0: return
 	var frame := avatars.space.frame(world) if avatars != null and avatars.space != null else app.router.coordinate_frame.global_transform
 	var local := frame.affine_inverse() * at
 	var location := CampusGeometry.to_world(CampusData.rooms().get(world), local.x, local.z)
 	var outdoor := CampusData.layout("out")
 	var surface := AudioFx.surface(world, world == "bell1" and local.y > 0.4, location, outdoor.get("objects", []), float(outdoor.get("SC", 1.0)))
-	app.audio.step_on(surface, 0.8 if running else 0.55, {"pos": at, "world_pos": true})
+	app.audio.step_on(surface, 0.8, {"pos": at, "world_pos": true})
 
 
 func _process(dt: float) -> void:
@@ -1090,7 +1110,7 @@ func _present(dt: float) -> void:
 
 func _sync_input() -> void:
 	if not playing(): return
-	var blocked: bool = _paused or _lost or _spectating or network.room.phase != "playing" or network.room.paused_left > 0 or app.story().over() or app.ui._mode != "play"
+	var blocked: bool = _paused or _lost or _spectating or network.room.phase != "playing" or app.ui.loading() or network.room.paused_left > 0 or app.story().over() or app.ui._mode != "play"
 	blocked = blocked or app.ui.bag_open() or app.ui.choice_open() or app.ui.terminal_open() or app.phone_open() or app.snake_open() or app.knife_flow.captured() or app._paper_owns_input() or not current.get("choice", {}).is_empty() or bool(current.get("terminal", false)) or bool(current.get("vehicle", false)) or app.body().fall != null
 	for view: Control in [app.ui.map_panel, app.ui.notes_panel, _mic]:
 		if is_instance_valid(view) and view.visible: blocked = true
@@ -1098,17 +1118,6 @@ func _sync_input() -> void:
 		app.player.clear_input()
 		app.ui.clear_touch()
 	app.player.enabled = not blocked
-
-
-func manual() -> void:
-	if not playing() or app.story().over(): return
-	_manual = true
-	app.player.clear_input()
-	app.player.enabled = false
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	var pages := ["背包", "笔记", "地图", "课堂互动", "逃生思路"]
-	if app.school().at_card_seat(): pages.append("我桌上的名牌")
-	app.ui.show_choice("合作手册 · 世界继续运行", pages, false)
 
 
 func open_mic() -> void:

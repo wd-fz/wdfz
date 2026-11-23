@@ -11,11 +11,17 @@ func test_seated_prompt() -> void:
 	app.ui.set_touch_enabled(true)
 	app.start_new_game("hard", "none", "xu")
 	await _frames(3)
+	app._update_minimap()
+	check(app.ui.minimap.visible and app.ui.minimap._room.id == "teach1", "the HUD map opens on the current floor")
+	await _tap(app.ui.minimap)
+	check(is_instance_valid(app.ui.map_panel) and app.ui.map_panel.visible and not app.player.enabled, "tapping the HUD map opens its floor and suspends movement")
+	app.ui._close_map()
 	app._show_notes()
-	var notes: Array[Node] = app.ui._notes_box.find_children("*", "Label", true, false)
+	app.ui.notes_panel.set_page("rules")
+	var notes: Array[Node] = app.ui.notes_panel.entries.find_children("*", "Label", true, false)
 	check(notes.any(func(label: Label) -> bool: return label.text.contains("许棠") and label.text.contains("晚饭") and label.text.contains("底联")), "the notes let the selected student reread the events before class")
 	check(app.investigation_brief().contains("保安岗柜台") and app.investigation().entries.is_empty() and app.school().seat_card.proof.is_empty(), "the background explains the first destination without silently granting evidence")
-	app.ui.notes_panel.hide()
+	app.ui.notes_panel.dismiss()
 	var prompt := app.ui.get_node("%Prompt") as Label
 	var wrong: Array[String] = []
 	for i in 30:
@@ -204,10 +210,10 @@ func test_west_gate_walk(attendance: String = "ink") -> void:
 		app.ui._map_route_select.item_selected.emit(2)
 		var target: Vector2 = app.ui.map_view.plan.get("target", Vector2.INF)
 		check(target.is_finite() and target != app.routes().west_gate_center() / 2.0 and app.ui._map_note.text.contains("行政楼五楼校长室"), "selecting the vehicle lead marks the key's building and names the floor")
-		app.ui.map_panel.hide()
+		app.ui._close_map()
 		app._show_map("campus")
 		check(app.ui.map_view.plan.get("target") == target, "reopening the map remembers an explicit choice")
-		app.ui.map_panel.hide()
+		app.ui._close_map()
 	if attendance == "present":
 		var old := app.session.capture(app.player.capture_pose())
 		old["modules"]["school.day"]["data"]["seat_card"] = {"armed":"", "answered":"", "checked":false}
@@ -215,11 +221,11 @@ func test_west_gate_walk(attendance: String = "ink") -> void:
 		app.load_game()
 		check(app.school().seat_card.proof == "present" and app.school().seat_card.present_slot == "1:0" and not app.school().seat_card.reading("guard1",app.school().active_seconds), "an old solo cabinet record and settled attendance restore the facts without replaying the reading grace")
 	app._show_notes()
-	for button: Button in app.ui._notes_box.find_children("*","Button",true,false):
-		if button.text == "在校园图上找西小门": button.pressed.emit()
+	for button: Button in app.ui.notes_panel.entries.find_children("*","Button",true,false):
+		if button.text == "地图定位 · 西小门": button.pressed.emit()
 	check(is_instance_valid(app.ui.map_view) and app.ui.map_view.plan.get("target") == app.routes().west_gate_center() / 2, "the notebook opens the correct marked campus destination")
 	check(app.ui._map_head.text.contains("保安岗") and app.ui._map_note.text.contains("西南") and app.ui._map_note.text.contains("闸机"), "the map gives a readable origin, bearing and action at phone size")
-	if is_instance_valid(app.ui.map_panel): app.ui.map_panel.hide()
+	if is_instance_valid(app.ui.map_panel): app.ui._close_map()
 	var reader := app.routes().west_gate_center() + Vector2(44, -RollcallCard.EXIT_NORTH)
 	app.travel("out", _campus_pose(null, reader, PI), false)
 	await _frames(5)

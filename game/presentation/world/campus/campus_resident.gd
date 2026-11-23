@@ -18,6 +18,7 @@ var _portals: Array[Dictionary] = []
 var _visible_neighbours := PackedStringArray()
 var _preview_lights: Dictionary = {}
 var _wanted := PackedStringArray()
+var _entry_models := PackedStringArray()
 var _retry_after: Dictionary = {}
 var _worker: Thread
 var _staging: CampusWorld
@@ -65,6 +66,21 @@ func prepare(id: String, with_model: bool = true) -> CampusWorld:
 	if loading_detail and world.geometry_ready:
 		_refresh_visibility()
 	return world
+
+
+func warm_entry_models(ids: PackedStringArray) -> void:
+	_entry_models.clear()
+	for id: String in ids:
+		if not regions[id].geometry_ready:
+			_entry_models.append(id)
+
+
+func entry_models_left() -> int:
+	return _entry_models.size()
+
+
+func cancel_entry_models() -> void:
+	_entry_models.clear()
 
 
 func select(id: String, ready_only: bool = false) -> CampusWorld:
@@ -266,42 +282,51 @@ func _process(_delta: float) -> void:
 		_worker = null
 		_accept_model(model)
 		return
+	if not _entry_models.is_empty():
+		_start_model(_entry_models[0])
+		return
 	if active.is_empty() or not nearby_visuals: return
 	if _release_distant_model(): return
 	for id: String in _wanted:
 		var world := regions.get(id) as CampusWorld
 		if world == null or world.geometry_ready or Time.get_ticks_msec() < int(_retry_after.get(id, 0)): continue
-		_staging = _make(id)
-		_staging.layout = world.layout
-		_staging_tier = CampusData.tier
-		# A detached tree is safe on the Vulkan worker. The headless renderer's
-		# mesh storage runs on the same thread, so engine tests step the queue here.
-		if DisplayServer.get_name() == "headless":
-			_accept_model(_staging._prepare_visual(_staging_tier))
-		else:
-			_worker = Thread.new()
-			if _worker.start(_staging._prepare_visual.bind(_staging_tier), Thread.PRIORITY_LOW) != OK:
-				_worker = null
-				_accept_model(null)
+		_start_model(id)
 		return
+
+
+func _start_model(id: String) -> void:
+	_staging = _make(id)
+	_staging.layout = regions[id].layout
+	_staging_tier = CampusData.tier
+	# The outdoor shell partitions shared render meshes. Keep that step on
+	# the main thread, as in the regular resident path.
+	if id == "out" or DisplayServer.get_name() == "headless":
+		_accept_model(_staging._prepare_visual(_staging_tier))
+		return
+	_worker = Thread.new()
+	if _worker.start(_staging._prepare_visual.bind(_staging_tier), Thread.PRIORITY_LOW) != OK:
+		_worker = null
+		_accept_model(null)
 
 
 func _accept_model(model: Node3D) -> void:
 	var id := _staging.scene_id
+	var entry := _entry_models.has(id)
+	if entry: _entry_models.remove_at(_entry_models.find(id))
 	_staging.free()
 	_staging = null
 	if model == null:
 		_retry_after[id] = Time.get_ticks_msec() + MODEL_RETRY_MS
 		return
 	var world: CampusWorld = regions[id]
-	if _staging_tier != CampusData.tier or world.geometry_ready or not _wanted.has(id):
+	if _staging_tier != CampusData.tier or world.geometry_ready or (not entry and not _wanted.has(id)):
 		model.free()
 		return
 	# Bind just before attaching: doors and the lift may have moved during the load.
 	model.visible = id == active or _visible_neighbours.has(id)
 	world._install_model(model, _staging_tier)
 	world.geometry_ready = true
-	_refresh_visibility()
+	if not active.is_empty(): _refresh_visibility()
 
 
 func _exit_tree() -> void:

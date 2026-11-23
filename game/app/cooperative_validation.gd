@@ -102,7 +102,9 @@ static func validate(data: Dictionary) -> String:
 		if not data["patrol"].get(key) is Dictionary: return "合作巡察个人状态无效。"
 	for report: Variant in data["patrol"]["reports"]:
 		if not report is Dictionary or not actors.has(report.get("member")) or not report.get("signal") is Dictionary or not report["signal"].get("point") is Dictionary: return "合作报点目标无效。"
-		if not SaveSchema.number_in(report["signal"].get("remaining"), 0, 30): return "合作报点时限无效。"
+		if report["signal"].has("kind"):
+			if not PatrolModule.valid_sense(report["signal"]): return "合作巡察感知记录无效。"
+		elif not SaveSchema.number_in(report["signal"].get("remaining"), 0, 30): return "合作报点时限无效。"
 		var point: Dictionary = report["signal"]["point"]
 		if not point.get("scene") in known or not SaveSchema.number_in(point.get("x"), -100000, 100000) or not SaveSchema.number_in(point.get("y"), -100000, 100000): return "合作报点位置无效。"
 	for key: String in inventory["searches"]:

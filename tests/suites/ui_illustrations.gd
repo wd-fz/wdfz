@@ -182,7 +182,7 @@ func test_expanded_interface() -> void:
 	var selector := app.ui._map_select
 	check(selector.get_item_icon(selector.selected) == UIArt.landmark("teach") and selector.get_popup().get_item_icon_max_width(selector.selected) == 28, "map selector uses a bounded landmark icon in both button and popup")
 	check(not app.ui.map_view.room.is_empty() and app.ui.map_view.seen == app.exploration().seen("teach1"), "illustrated map keeps the actual floor and exploration mask")
-	app.ui.map_panel.hide()
+	app.ui._close_map()
 	app.ui.show_prompt("站起身")
 	check(app.ui._prompt_art == "stand", "touch action art follows the real stand-up prompt")
 	for id: String in ["sprint", "interact", "manual", "torch"]:

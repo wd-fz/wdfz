@@ -25,6 +25,7 @@ const TT_SEAT := {
 }
 const FIELD_IDS := ["field", "court2", "track", "bad2", "bad3"]
 const START_TSEC := 700.0
+signal sanity_lost
 ## inspection.js INSPECT_CONFIG.
 const INSPECT := {"times": [770.0, 1070.0], "warning_seconds": 60.0, "late_limit": 3.0, "duration": 8.0, "move_every": 1.0,
 	"move_violation": 2.0, "gaze_san": 2.0, "good_san": 3.0, "bad_san": 8.0, "good_violation": 8.0, "bad_violation": 10.0, "assimilation": 3.0}
@@ -35,7 +36,13 @@ var _campus: Dictionary = {}
 
 var tsec := START_TSEC
 var day := 1
-var san := 100.0
+var _san := 100.0
+var san: float:
+	get: return _san
+	set(value):
+		var lost := clampf(_san, 0.0, 100.0) - clampf(value, 0.0, 100.0)
+		_san = value
+		if lost > 0.000001: sanity_lost.emit()
 var viol := 0.0
 var tt := 0.0
 var stam := 100.0
@@ -85,7 +92,7 @@ func reset() -> void:
 	leave_until = 0.0
 	tsec = START_TSEC
 	day = 1
-	san = 100.0
+	_san = 100.0
 	viol = 0.0
 	tt = 0.0
 	stam = 100.0
@@ -175,7 +182,7 @@ func restore(data: Dictionary) -> void:
 	leave_until = maxf(0.0, float(data.get("leave_until", 0.0)))
 	tsec = float(data["tsec"])
 	day = int(data["day"])
-	san = float(data["san"])
+	_san = float(data["san"])
 	viol = float(data["viol"])
 	tt = float(data["tt"])
 	stam = float(data["stam"])

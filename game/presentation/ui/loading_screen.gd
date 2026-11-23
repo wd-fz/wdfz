@@ -26,6 +26,8 @@ const LINES: PackedStringArray = [
 const LINE_TIME := 4.5
 const LINE_FADE := 0.6
 
+signal leave_requested
+
 @export var fade_in := 0.3
 @export var fade_out := 0.5
 
@@ -44,6 +46,8 @@ var _bar_back: ColorRect
 var _bar: ColorRect
 var _glow: ColorRect
 var _clock: ColorRect
+var _team: HBoxContainer
+var _team_status: Label
 
 
 func _init() -> void:
@@ -214,6 +218,20 @@ void fragment() {
 	_percent.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_percent.add_theme_color_override("font_color", Color(0.62, 0.2, 0.18))
 	info.add_child(_percent)
+	_team = HBoxContainer.new()
+	_team.add_theme_constant_override("separation", 12)
+	_team_status = Label.new()
+	_team_status.name = "LoadingTeamStatus"
+	_team_status.add_theme_color_override("font_color", Color("c6bbba"))
+	_team_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_team.add_child(_team_status)
+	var leave := Button.new()
+	leave.text = "离开房间"
+	leave.custom_minimum_size.y = 44
+	leave.pressed.connect(leave_requested.emit)
+	_team.add_child(leave)
+	bar_column.add_child(_team)
+	_team.hide()
 	resized.connect(_fit)
 	_fit()
 	_apply()
@@ -247,9 +265,16 @@ func _fit() -> void:
 ## Progress 0–1 and, optionally, what is happening now.
 func set_progress(amount: float, what: String = "") -> void:
 	progress = clampf(maxf(progress, amount), 0.0, 1.0)
+	if progress >= 1.0: shown_progress = 1.0
 	if not what.is_empty():
 		stage = what
 	_apply()
+
+
+func set_team(ready: int, total: int, minimum: int) -> void:
+	_team_status.text = "队员就绪  %d/%d" % [ready, total] if total >= minimum else "队员不足，等待重连"
+	_team.show()
+	_fit()
 
 
 ## Fade out over what comes next, then free.
@@ -298,7 +323,7 @@ func _apply() -> void:
 		return
 	_title.text = "正在入梦" + ".".repeat(int(_t * 2.5) % 4)
 	_stage.text = stage
-	_percent.text = "%d%%" % roundi(shown_progress * 100.0)
+	_percent.text = "%d%%" % floori(shown_progress * 100.0)
 	var line: Array = line_at(_t)
 	_line.text = LINES[int(line[0])]
 	_line.modulate.a = float(line[1])

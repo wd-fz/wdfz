@@ -32,8 +32,35 @@ func report(a: CooperativeActor) -> void:
 	while reports.size() > 16: reports.pop_front()
 
 
+func sense(a: CooperativeActor, observation: Dictionary) -> void:
+	if observation.is_empty(): return
+	for pending: Dictionary in reports:
+		if pending["member"] == a.id and pending["signal"].get("kind", "") == observation["kind"]:
+			pending["signal"] = observation
+			return
+	reports.append({"member": a.id, "signal": observation})
+	while reports.size() > 16: reports.pop_front()
+
+
+func _take_report(alive: Array, contexts: Dictionary, precise_only: bool) -> Dictionary:
+	# Preserve precise network pings, then use nearby sounds or coarser SAN reports.
+	for kind: String in ([""] if precise_only else ["", "sprint", "san"]):
+		for i in reports.size():
+			var entry: Dictionary = reports[i]
+			var signal_data: Dictionary = entry["signal"]
+			if not entry["member"] in alive or signal_data.get("kind", "") != kind: continue
+			if kind != "" and bool(contexts[entry["member"]].get("night", false)) and signal_data["point"]["scene"] != "out": continue
+			return reports.pop_at(i)
+	return {}
+
+
 func step(dt: float, actors: Dictionary, contexts: Dictionary) -> Array:
 	var alive: Array = []
+	for i in range(reports.size() - 1, -1, -1):
+		var queued: Dictionary = reports[i]["signal"]
+		if not queued.has("kind"): continue
+		queued["remaining"] = float(queued["remaining"]) - dt
+		if queued["remaining"] <= 0.0: reports.remove_at(i)
 	synchronize(actors)
 	for id: String in actors:
 		if not contexts.has(id): continue
@@ -46,7 +73,13 @@ func step(dt: float, actors: Dictionary, contexts: Dictionary) -> Array:
 				main.set_context(contexts[id])
 				main._enqueue(String(region))
 				for e: Dictionary in main.take_events(): a.event("notice", e)
-		if not a.fate().over(): alive.append(id)
+		if not a.fate().over():
+			alive.append(id)
+			var noise := a.watcher().sprint_report()
+			if id == target and main.pat["sense"] != null:
+				main.use_sense(noise)
+			else:
+				sense(a, noise)
 	alive.sort()
 	var responsible := permanent.has(target) or main.pat["wirelessSignal"] != null
 	var allowed: bool = target in alive and (responsible or (actors[target].watcher().eligible() and not actors[target].watcher().exempt()))
@@ -64,15 +97,22 @@ func step(dt: float, actors: Dictionary, contexts: Dictionary) -> Array:
 			if rank < best:
 				best = rank
 				next = id
-		if next.is_empty() and not reports.is_empty():
-			var report_data: Dictionary = reports.pop_front()
-			if report_data["member"] in alive:
+		if next.is_empty():
+			var active_sense: bool = target in alive and main.pat["sense"] != null
+			var report_data := _take_report(alive, contexts, active_sense)
+			if not report_data.is_empty():
 				next = String(report_data["member"])
 				next_signal = report_data["signal"]
+			elif active_sense:
+				next = target
 		if next != target:
 			main.clear_chase()
+			main.pat["sense"] = null
 			target = next
-		main.pat["wirelessSignal"] = next_signal
+		main.pat["wirelessSignal"] = null
+		if next_signal != null:
+			if next_signal.has("kind"): main.use_sense(next_signal)
+			else: main.pat["wirelessSignal"] = next_signal
 	var context := {"scene": "", "x": 0.0, "y": 0.0, "dead": false, "playing": true, "viol": 0.0}
 	if contexts.has(target):
 		context = contexts[target]

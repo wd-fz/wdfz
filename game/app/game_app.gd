@@ -120,7 +120,9 @@ func _ready() -> void:
 	ui.grade_sound.connect(func(b: String) -> void: audio.play("ui.grade." + b))
 	ui.map_requested.connect(_show_map)
 	ui.map_route_requested.connect(func(route: String) -> void: _show_map("campus", route))
+	ui.documents_closed.connect(_close_document)
 	ui.notes_focus_requested.connect(_notes_focus)
+	ui.handbook_action_requested.connect(_handbook_action)
 	_apply_settings()
 	# ui.click on every button press (audio.js click), including buttons made later (choices).
 	get_tree().node_added.connect(func(n: Node) -> void:
@@ -128,8 +130,7 @@ func _ready() -> void:
 			(n as BaseButton).pressed.connect(func() -> void: audio.play("ui.click")))
 	for b: Node in ui.find_children("*", "BaseButton", true, false):
 		(b as BaseButton).pressed.connect(func() -> void: audio.play("ui.click"))
-	ui.new_requested.connect(_enter_classroom)
-	ui.custom_game_requested.connect(_pick_talent.bind("easy", false))
+	ui.new_requested.connect(_pick_talent.bind("easy", false))
 	ui.new_hard_requested.connect(_pick_talent.bind("hard", false))
 	ui.speedrun_requested.connect(_speedrun_menu)
 	ui.achievements_requested.connect(_show_achievements)
@@ -484,6 +485,17 @@ func _speedrun_menu() -> void:
 
 
 func _pick_talent(difficulty: String, speed: bool = false) -> void:
+	if not speed and saves.exists():
+		_choice_count += 1
+		var request := _choice_count
+		_choice_handler = func(index: int) -> void:
+			if index == 1 and request == _choice_count: _show_new_selection(difficulty, speed)
+		ui.show_choice("这里有一局单人进度。新周目的下一次保存会覆盖这局。", ["保留原进度", "开始新周目"])
+		return
+	_show_new_selection(difficulty, speed)
+
+
+func _show_new_selection(difficulty: String, speed: bool) -> void:
 	var entries: Array = []
 	for k: String in TalentModule.KEYS:
 		var d: Dictionary = TalentModule.DEF[k]
@@ -497,17 +509,6 @@ func _pick_talent(difficulty: String, speed: bool = false) -> void:
 		var pick := String(TalentModule.KEYS[index]) if index < TalentModule.KEYS.size() else String(TalentModule.KEYS[randi() % TalentModule.KEYS.size()])
 		_start_at_desk(difficulty, pick, ui.selection_panel.character_id, speed)
 	ui.show_selection("选择天赋", ("梦魇" if difficulty == "hard" else "预知梦") + (" · 速通" if speed else " · 每局一个"), entries)
-
-
-func _enter_classroom() -> void:
-	if not saves.exists():
-		_start_at_desk("easy", "none", StudentCast.DEFAULT, false)
-		return
-	_choice_count += 1
-	var mine := _choice_count
-	_choice_handler = func(index: int) -> void:
-		if index == 1 and mine == _choice_count: _start_at_desk("easy", "none", StudentCast.DEFAULT, false)
-	ui.show_choice("这里有一局单人进度。重新走进教室后，下次保存会写入新周目。", ["保留原进度", "从第一天重新开始"])
 
 
 func _start_at_desk(difficulty: String, pick: String, character: String, speed: bool) -> void:
@@ -562,77 +563,94 @@ func starting() -> bool:
 	return _starting
 
 
-## Prepare the shared physics world and the models visible at the entry pose.
-func _load_then(world_id: String, work: Callable, entry_pose: Variant = null) -> void:
+const ENTRY_PHYSICS_BUDGET_USEC := 4500
+
+
+## Leave the cover in place for a cooperative load until the room releases it.
+func _load_then(world_id: String, work: Callable, entry_pose: Variant = null, hold_for_team: bool = false) -> void:
 	if _starting:
 		return
 	_starting = true
 	CampusEntryLog.mark("load %s tier=%d" % [world_id, CampusData.tier])
 	_load_generation += 1
 	var generation := _load_generation
-	var curtain := ui.show_loading("读取校园")
+	var curtain := ui.show_loading("读取校园布局")
 	await get_tree().process_frame
 	await get_tree().process_frame
 	if generation != _load_generation: return
 	if world_id == "out" or CampusData.rooms().has(world_id):
-		var ids := router.school_ids() if router.continuous_campus else PackedStringArray([world_id])
-		var at := Vector3.ZERO
-		if world_id != "out":
-			var pose := CampusData.rules().start_pose() if world_id == initial_world else CampusData.rules().default_spawn(world_id)
-			var p: Array = pose["position"]
-			at = Vector3(p[0], p[1], p[2])
-		if entry_pose is Dictionary:
-			var location: Variant = entry_pose.get("position")
-			if location is Array and location.size() == 3 and location.all(func(v: Variant) -> bool: return SaveSchema.number_in(v, -10000, 10000)):
-				at = Vector3(location[0], location[1], location[2])
-		var nearby := router.continuous_campus and router.resident.nearby_visuals
-		var school_at := router.resident.space.frame(world_id) * at if nearby else Vector3.ZERO
-		# Real devices warm exits too. Headless tools have no GPU and run deterministic explicit prefetch tests.
-		if not router.continuous_campus and router.stream.automatic():
-			ids.append_array(CampusConnections.nearby(world_id, at))
-		if router.continuous_campus and ids.has(world_id):
-			# Allocate the playable region before the rest of the resident school on mobile.
-			ids.erase(world_id)
-			ids.insert(0, world_id)
-		elif ids.has("out"):
-			# Reuse the campus geometry for the classroom's outward view instead of processing it twice.
-			ids.erase("out")
-			ids.insert(0, "out")
-		for i in ids.size():
-			ui.set_loading(float(i) / ids.size(), "准备校园")
-			await get_tree().process_frame
+		if router.continuous_campus:
+			await _prepare_school_entry(world_id, entry_pose, generation)
 			if generation != _load_generation: return
-			var with_model := not nearby or router.resident.near_view(ids[i], school_at, world_id, 5.0)
-			if with_model and CampusEntryLog.available():
-				CampusEntryLog.mark("model " + ids[i])
-			router.prepare_background(ids[i], with_model)
-			var waited := 0.0
-			while not router.warm(ids[i]) and router.pending(ids[i]):
+		if not router.continuous_campus or not router.resident.space.contains(world_id):
+			ui.set_loading(0.90 if router.continuous_campus else 0.05, "读取场景模型")
+			router.prepare_background(world_id)
+			while router.pending(world_id) and not router.warm(world_id):
 				router.poll_preparation()
-				ui.set_loading((i + .9 * (1.0 - exp(-waited / 3.0))) / float(ids.size()), "准备校园通道")
-				waited += get_process_delta_time()
 				await get_tree().process_frame
 				if generation != _load_generation: return
-	ui.set_loading(0.95, "进入校园")
+	ui.set_loading(0.95, "载入人物和本局状态")
 	await get_tree().process_frame
 	if generation != _load_generation: return
 	CampusEntryLog.mark("activate " + world_id)
 	work.call()
 	if generation != _load_generation: return
-	ui.set_loading(1.0)
-	ui.hide_loading()
+	if not hold_for_team:
+		ui.set_loading(0.98, "绘制校园的第一帧")
+		if DisplayServer.get_name() != "headless": await RenderingServer.frame_post_draw
+		if generation != _load_generation: return
+		ui.set_loading(1.0, "准备完毕")
+		ui.hide_loading()
 	_starting = false
-	if CampusEntryLog.available() and session != null:
-		# Wait until the opaque loading curtain has left the tree and a game frame has drawn.
+	if not hold_for_team and CampusEntryLog.available() and session != null:
 		if is_instance_valid(curtain) and curtain.is_inside_tree(): await curtain.tree_exited
 		await RenderingServer.frame_post_draw
 		if generation == _load_generation and session != null:
 			CampusEntryLog.mark("first frame " + session.world_id)
 
 
+func _prepare_school_entry(world_id: String, entry_pose: Variant, generation: int) -> void:
+	var ids := router.school_ids()
+	var school := router.resident
+	# Load the full connected collision world. Keep visual models close to the
+	# spawn, with the same predictive streaming used when moving between floors.
+	school.nearby_visuals = true
+	var visual_ids := PackedStringArray()
+	var at := Vector3.ZERO
+	var connected := school.space.contains(world_id)
+	if connected:
+		var pose := CampusData.rules().start_pose() if world_id == initial_world else CampusData.rules().default_spawn(world_id)
+		var location: Variant = entry_pose.get("position") if entry_pose is Dictionary else pose["position"]
+		if not location is Array or location.size() != 3 or not location.all(func(v: Variant) -> bool: return SaveSchema.number_in(v, -10000, 10000)):
+			location = pose["position"]
+		at = school.space.frame(world_id) * Vector3(location[0], location[1], location[2])
+	var slice_started := Time.get_ticks_usec()
+	for i in ids.size():
+		var id := ids[i]
+		school.prepare(id, false)
+		if CampusResident.permanent_model(id) or (connected and school.near_view(id, at, world_id, 5.0)):
+			visual_ids.append(id)
+		ui.set_loading(0.05 + 0.40 * float(i + 1) / ids.size(), "准备校园碰撞  %d/%d" % [i + 1, ids.size()])
+		if Time.get_ticks_usec() - slice_started >= ENTRY_PHYSICS_BUDGET_USEC:
+			await get_tree().process_frame
+			if generation != _load_generation: return
+			slice_started = Time.get_ticks_usec()
+	if connected:
+		visual_ids.remove_at(visual_ids.find(world_id))
+		visual_ids.insert(0, world_id)
+	school.warm_entry_models(visual_ids)
+	while school.entry_models_left() > 0:
+		var complete := visual_ids.size() - school.entry_models_left()
+		ui.set_loading(0.45 + 0.45 * float(complete) / visual_ids.size(), "预载附近场景  %d/%d" % [complete, visual_ids.size()])
+		await get_tree().process_frame
+		if generation != _load_generation: return
+	ui.set_loading(0.90, "场景资源已处理")
+
+
 func cancel_loading() -> void:
 	_load_generation += 1
 	_starting = false
+	if is_instance_valid(router.resident): router.resident.cancel_entry_models()
 	ui.hide_loading()
 
 
@@ -770,6 +788,7 @@ func _unwire(old: GameSession) -> void:
 		var day_old := old.modules.get_module(&"school.day") as SchoolModule
 		if day_old != null:
 			day_old.danger_mul = Callable()
+			if day_old.sanity_lost.is_connected(_report_sanity): day_old.sanity_lost.disconnect(_report_sanity)
 		var route_old := old.modules.get_module(&"story.routes") as RoutesModule
 		if route_old != null:
 			route_old.face_remedy = Callable()
@@ -815,6 +834,7 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	_ach_started = ""
 	session.notice_requested.connect(ui.show_notice)
 	var day_rules := school()
+	if day_rules != null and not player.network_driven: day_rules.sanity_lost.connect(_report_sanity)
 	player.seated = day_rules != null and day_rules.seated
 	var lift_rules := elevator()
 	if lift_rules != null:
@@ -922,6 +942,7 @@ func _restore_loaded_world() -> void:
 
 
 func pause_game() -> void:
+	if ui.loading(): return
 	if playtest.recording and session != null and not get_tree().paused:
 		playtest.horror.pause()
 	if is_instance_valid(lan) and lan.playing():
@@ -1860,33 +1881,37 @@ func _read_seat_card() -> void:
 
 
 func _open_manual() -> void:
-	if is_instance_valid(lan) and lan.playing():
-		lan.manual()
-		return
 	if is_instance_valid(debug_flow) and debug_flow.blocks_simulation(): return
 	if knife_flow.captured() and not story().over():
 		_open_bag()
 		return
-	if session == null or not player.enabled or story().over() or opening_busy():
+	if session == null or not player.enabled or story().over() or opening_busy() or ui.loading():
 		return
-	player.enabled = false
-	player.clear_input()
-	ui.clear_touch()
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	_choice_handler = func(index: int) -> void:
-		match index:
-			0: _open_bag()
-			1: _show_notes("")
-			2: _show_map("")
-			3: _lesson_press()
-			4:
-				facilities().set_context(_facility_context())
-				facilities().think()
-				_apply_facility_events()
-			5: _read_seat_card()
-	var pages := ["背包","笔记","地图","课堂互动","逃生思路"]
-	if school() != null and school().at_card_seat(): pages.append("我桌上的名牌")
-	ui.show_choice("手册", pages)
+	_show_notes()
+
+
+func _handbook_action(action: String) -> void:
+	if ui._mode != "play" or session == null or story().over(): return
+	ui.notes_panel.hide()
+	if action == "bag":
+		_open_bag()
+		return
+	if action == "map":
+		_show_map()
+		if not is_instance_valid(ui.map_panel) or not ui.map_panel.visible: _close_document()
+		return
+	if is_instance_valid(lan) and lan.playing():
+		lan.send(action)
+		_close_document()
+		return
+	match action:
+		"lesson": _lesson_press()
+		"think":
+			facilities().set_context(_facility_context())
+			facilities().think()
+			_apply_facility_events()
+		"seat_card": _read_seat_card()
+	if not ui.choice_open() and not ui.bag_open(): _close_document()
 
 
 func _open_bag() -> void:
@@ -2282,9 +2307,18 @@ func _patrol_context(room: Variant, pose: Dictionary) -> Dictionary:
 		"at_seat": day_rules != null and day_rules.at_my_seat(session.world_id, w), "excused": day_rules != null and day_rules.permit(),
 		"on_leave": school() != null and school().on_leave(), "night": SchoolClock.is_night(tsec), "need_where": SchoolClock.need_where(tsec), "dead": story() != null and story().dead,
 		"viol": day_rules.viol if day_rules != null else 0.0,
+		"running": player.enabled and player.moving and player.sprinting,
 		"playing": true, "inspection_room": String(cur.get("room", "")) if not cur.is_empty() else "",
 		"calm": float(day_rules.inspection.get("calm", 0.0)) if day_rules != null else 0.0, "calm_room": String(day_rules.inspection.get("calm_room", "")) if day_rules != null else "",
 		"has_seal": bag != null and bag.has("seal"), "active_seconds": day_rules.active_seconds if day_rules != null else 0.0, "car_chase": false}
+
+
+func _report_sanity() -> void:
+	var watcher := patrol()
+	if watcher == null or story().over(): return
+	var room: Variant = campus().room(session.world_id)
+	var feet := CampusGeometry.to_world(room, player.position.x, player.position.z)
+	watcher.use_sense(watcher.sanity_report(session.world_id, feet, school().active_seconds))
 
 
 func _patrol_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, room: Variant, pose: Dictionary) -> void:
@@ -2301,6 +2335,7 @@ func _patrol_step(delta: float, watcher: PatrolModule, day_rules: SchoolModule, 
 		elif e["kind"] == "rollcall_sound":
 			audio.play(e["cue"], {"k": .65})
 	watcher.set_context(_patrol_context(room, pose))
+	watcher.use_sense(watcher.sprint_report())
 	watcher.tick(delta)
 	for e: Dictionary in watcher.take_events():
 		match e["kind"]:
@@ -3144,8 +3179,9 @@ func _apply_invest_events() -> void:
 
 func _show_notes(query: String = "") -> void:
 	var inv := investigation()
-	if inv == null:
+	if inv == null or ui.loading() or story().over() or opening_busy():
 		return
+	if ui._mode == "play" and not ui.notes_open(): _lock_document()
 	inv.set_context(_invest_context())
 	var routes := inv.routes()
 	var focus := inv.current_focus()
@@ -3155,7 +3191,11 @@ func _show_notes(query: String = "") -> void:
 	var background := ""
 	if campus().knows(session.world_id):
 		background = OpeningStory.background(session.character_id, is_instance_valid(lan) and lan.playing())
-	ui.show_notes({"goal": inv.goal(), "focus": focus, "routes": routes, "recent": listing["recent"], "groups": listing["groups"],
+	var actions: Array = []
+	if ui._mode == "play":
+		actions = [["bag", "背包"], ["map", "地图"], ["lesson", "课堂互动"], ["think", "逃生思路"]]
+		if school().at_card_seat(): actions.append(["seat_card", "查看名牌"])
+	ui.show_notes({"actions": actions, "goal": inv.goal(), "focus": focus, "routes": routes, "recent": listing["recent"], "groups": listing["groups"],
 		"progress": inv.progress(), "found": listing["found"], "query": query,
 		"landmark": inv.paper_landmark(), "background": background,
 		"seat_record": school().seat_card.journal(), "duty": school().duty_summary(), "permanent": bool(patrol().pat["permanent"])})
@@ -3170,12 +3210,57 @@ func _notes_focus(route: String) -> void:
 	if inv != null and inv.set_focus(route):
 		_map_route = ""
 		save_game()
-		_show_notes(ui._notes_search.text if ui._notes_search != null else "")
+		_show_notes(ui.notes_panel.search.text if ui.notes_open() else "")
 
 
 # ---- the map page (game/features/campus/exploration_module.gd, game/presentation/ui/map_view.gd) ----
 
 var _map_route := ""
+
+
+func _map_scale() -> float:
+	return float(CampusData.layout("out")["SC"]) * CampusGeometry.U2M
+
+
+func _map_landmark(destination: String) -> Dictionary:
+	if destination == "gate_w":
+		return {"name": "西小门", "point": CampusGeometry.gate_center(CampusData.campus(), "w") / float(CampusData.layout("out")["SC"])}
+	for site: Dictionary in CampusData.campus_map()["objects"]:
+		if site["id"] == destination:
+			return {"name": site["name"], "point": Vector2(site["x"], site["y"]) + Vector2(site["w"], site["h"]) * .5}
+	return {}
+
+
+func _update_minimap() -> void:
+	var ex := exploration()
+	if session == null or ex == null or ui._mode != "play" or ui.loading() or opening_busy() or story().over():
+		ui.minimap.hide()
+		return
+	var id := session.world_id
+	var facing := CampusGeometry.ang_from_yaw(player.rotation.y)
+	if id == "out":
+		var target := investigation()
+		var marker := _map_landmark(target.map_destination(target.map_focus(_map_route))) if target != null else {}
+		ui.minimap.show_air(Vector2(player.position.x, player.position.z) / _map_scale(), facing, marker.get("point", Vector2.INF))
+		return
+	var room: Variant = campus().room(id)
+	if room == null or room.get("flags", {}).get("noMap", false) or id in CampusSpace.SEPARATE:
+		ui.minimap.hide()
+		return
+	ui.minimap.show_floor(room, ex.seen(id), CampusGeometry.to_world(room, player.position.x, player.position.z), facing)
+
+
+func _lock_document() -> void:
+	player.enabled = false
+	player.clear_input()
+	ui.clear_touch()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _close_document() -> void:
+	if ui._mode == "play" and session != null and not opening_busy() and not story().over() and not ui.choice_open():
+		resume_game()
+
 
 func _explore_step(delta: float) -> void:
 	var ex := exploration()
@@ -3213,6 +3298,7 @@ func _map_label(r: Dictionary, c: int, row: int) -> String:
 
 
 func _show_map(selected: String = "", route: String = "") -> void:
+	if session == null or ui.loading() or story().over() or opening_busy() or phone_open() or ui.terminal_open() or ui.choice_open(): return
 	if inception_flow.here():
 		ui.show_notice("我：这里没有地图。走廊一直在变。")
 		return
@@ -3234,11 +3320,13 @@ func _show_map(selected: String = "", route: String = "") -> void:
 		selected = session.world_id if session.world_id in ids else "campus"
 	if selected != "campus" and not ids.has(selected):
 		selected = "campus"
-	var options: Array = [["campus", "校园总图"]]
+	var options: Array = [["campus", "校园卫星图"]]
 	for id: String in ids:
 		options.append([id, String(campus().room(id)["name"]) + ("　· 你在这里" if id == session.world_id else "")])
 	var pose := player.capture_pose()
 	var yaw_ang := CampusGeometry.ang_from_yaw(float(pose["yaw"]))
+	if is_instance_valid(ui.notes_panel): ui.notes_panel.hide()
+	_lock_document()
 	if selected == "campus":
 		var notebook := investigation()
 		notebook.set_context(_invest_context())
@@ -3246,46 +3334,39 @@ func _show_map(selected: String = "", route: String = "") -> void:
 		var focus := notebook.map_focus(_map_route if route.is_empty() else route)
 		if not route.is_empty() and focus == route: _map_route = route
 		var destination := notebook.map_destination(focus)
-		var out: Dictionary = CampusData.layout("out")
-		var objects: Array = out["objects"]
+		var out := CampusData.layout("out")
 		var me := Vector2.INF
 		var p: Array = pose["position"]
-		var sc := float(out.get("SC", 2.0))
-		if here_room != null:
-			for o: Dictionary in objects:
-				if o["id"] == here_room.get("host"):
-					me = Vector2(float(o["x"]) + float(o["w"]) / 2.0, float(o["y"]) + float(o["h"]) / 2.0)
-		else:
-			var w1 := CampusGeometry.to_world(null, float(p[0]), float(p[2]))
-			me = w1 / sc
+		var facing := yaw_ang
+		var at := Vector3(p[0], p[1], p[2])
+		if session.world_id == "out":
+			me = Vector2(at.x, at.z) / _map_scale()
+		elif is_instance_valid(router.resident) and router.resident.space.contains(session.world_id):
+			var frame := router.resident.space.frame(session.world_id)
+			var campus_at := frame * at
+			var look := frame.basis * Vector3(cos(yaw_ang), 0.0, sin(yaw_ang))
+			me = Vector2(campus_at.x, campus_at.z) / _map_scale()
+			facing = atan2(look.z, look.x)
 		var plan := CampusData.campus_map().duplicate()
-		var landmark := ""
-		if destination == "gate_w":
-			landmark = "西小门"
-			plan["target"] = CampusGeometry.gate_center(CampusData.campus(), "w") / sc
-		elif not destination.is_empty():
-			for o: Dictionary in objects:
-				if o["id"] != destination: continue
-				landmark = String(o["name"])
-				plan["target"] = Vector2(o["x"] + o["w"] / 2.0, o["y"] + o["h"] / 2.0)
-				break
+		var landmark := _map_landmark(destination)
 		var head := "你在%s　北 ↑" % (String(here_room["name"]) if here_room != null else "校园室外")
 		var note := notebook.goal(focus) if not focus.is_empty() else "可跟进%s。" % "、".join(known.map(func(lead: Array) -> String: return String(lead[1])))
-		if plan.has("target"):
+		if not landmark.is_empty():
+			plan["target"] = landmark["point"]
 			var action := ""
 			if focus == "identity":
 				action = "找柜台上的底联" if destination == "guard" else ("沿闸机旁的白线向外走" if school().seat_card.clearance == 1 else "到闸机前交底联")
 			elif destination == "guard":
 				action = "到柜台核对停车单底联"
-			var bearing := MapView.landmark_note(landmark, plan["target"] - me, here_room != null, action)
+			var bearing := MapView.landmark_note(landmark["name"], plan["target"] - me, here_room != null, action)
 			note = bearing if not action.is_empty() else bearing + "\n" + note
 		plan["me"] = me
-		plan["ang"] = yaw_ang if here_room == null else yaw_ang - int(here_room.get("campus_turn", 0)) * PI * 0.5
+		plan["ang"] = facing
 		var observations := PackedVector2Array()
 		for site: Dictionary in campus().observations("out"):
 			if notebook.visible("campus:" + String(site.id)):
-				var at: Vector2 = site.anchor
-				observations.append(CampusGeometry.to_world(null, at.x, at.y) / sc)
+				var observed_at: Vector2 = site.anchor
+				observations.append(CampusGeometry.to_world(null, observed_at.x, observed_at.y) / float(out["SC"]))
 		if not observations.is_empty():
 			plan["observations"] = observations
 			note += "\n空心方框是已经查过的现场。"
@@ -5794,10 +5875,15 @@ func _menu_frame_cap() -> void:
 
 
 var _stream_tick := 0.0
+var _minimap_tick := 0.0
 
 
 func _process(delta: float) -> void:
 	_stream_tick -= delta
+	_minimap_tick -= delta
+	if _minimap_tick <= 0.0:
+		_minimap_tick = .10
+		_update_minimap()
 	if session != null and not get_tree().paused and _stream_tick <= 0.0:
 		_stream_tick = 0.2
 		router.prefetch(player.position)
@@ -5888,6 +5974,7 @@ func _playtest_state() -> Dictionary:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if ui.loading(): return
 	if is_instance_valid(lan) and lan.playing() and event.is_action_pressed("pause") and not event.is_echo():
 		if lan._paused: lan.resume()
 		else: lan.pause()
@@ -5923,6 +6010,7 @@ func _notification(what: int) -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
+	if ui.loading(): return
 	if is_instance_valid(debug_flow) and debug_flow.blocks_simulation(): return
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo and snake_open():
@@ -5943,6 +6031,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 	if key != null and key.is_action_pressed("notes") and investigation() != null and player.enabled and not story().over():
 		_show_notes("")
+		get_viewport().set_input_as_handled()
+		return
+	if key != null and key.is_action_pressed("map") and session != null and player.enabled:
+		_show_map()
 		get_viewport().set_input_as_handled()
 		return
 	if key != null and key.is_action_pressed("think") and facilities() != null and player.enabled and not story().over():

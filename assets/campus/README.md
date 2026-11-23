@@ -22,6 +22,8 @@
 
 在仓库根目录运行 `python3 tools/remodel/campus_architecture.py` 可以重新生成模型、材质贴图和庭院碰撞。生成工具使用 NumPy 和 Pillow。Godot 通过 `CampusArchitecture` 把这些资源装入可玩场景及相邻场景预览。
 
+`assets/ui/campus_satellite.jpg` 由本项目的室外校园模型生成，沿用项目的 AGPL v3。正交相机北朝上，画幅与 `campus.json` 中的 `bound_map` 对齐。修改室外布局后，从仓库根目录运行 `godot --windowed --rendering-driver vulkan --audio-driver Dummy --script res://tools/capture/capture_campus_satellite.gd` 重新烘焙底图。
+
 ## 坐标
 
 1 Godot 单位 = 1 米，+Y 向上，与旧版 three.js 场景坐标一致。室内场景以房间中心为原点（旧版 `worldToScene`），室外以旧版世界原点为原点；换算见 `game/features/campus/campus_geometry.gd`。

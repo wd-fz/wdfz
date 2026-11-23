@@ -49,7 +49,8 @@ var _panel: PanelContainer
 var _scroll: TouchScroll
 var _state: Dictionary = {}
 var _local_id := ""
-var _gifts: Array = ["none"]
+var _gifts: Array = ["", "none"]
+var _talent_picked := false
 var _pages: Dictionary = {}
 var _heading: Label
 var _search: Button
@@ -250,7 +251,9 @@ func _ready() -> void:
 	lobby.add_child(members)
 	talent = OptionButton.new()
 	talent.custom_minimum_size.y = 48
-	talent.add_item("天赋 · 不选择")
+	talent.add_item("选择天赋")
+	talent.set_item_disabled(0, true)
+	talent.add_item("无天赋")
 	for key: String in TalentModule.KEYS:
 		_gifts.append(key)
 		talent.add_item("天赋 · " + String(TalentModule.DEF[key]["n"]))
@@ -264,6 +267,7 @@ func _ready() -> void:
 	_talent_info.add_child(_talent_image)
 	_talent_text = _label(_talent_info, "", 16)
 	talent.item_selected.connect(func(_index: int) -> void:
+		_talent_picked = true
 		ready_button.set_pressed_no_signal(false)
 		_update_talent()
 		ready_requested.emit(false, String(_gifts[talent.selected])))
@@ -314,7 +318,7 @@ func _ready() -> void:
 	ready_button.text = "准备好了"
 	ready_button.custom_minimum_size.y = 50
 	ready_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	ready_button.toggled.connect(func(value: bool) -> void: ready_requested.emit(value, String(_gifts[talent.selected])))
+	ready_button.toggled.connect(_ready_toggled)
 	_actions.add_child(ready_button)
 	start_button = _button(_actions, "开始合作", func() -> void: start_requested.emit(), "StartCoop")
 	var footer := HBoxContainer.new()
@@ -494,6 +498,7 @@ func _update_layout() -> void:
 
 func show_room(state: Dictionary, local_id: String, addresses: String) -> void:
 	var old_phase := String(_state.get("phase", ""))
+	if local_id != _local_id: _talent_picked = false
 	_state = state
 	_local_id = local_id
 	if not is_node_ready(): return
@@ -549,12 +554,15 @@ func show_room(state: Dictionary, local_id: String, addresses: String) -> void:
 	_update_members()
 	if state.get("phase") == "lobby":
 		var character: String = state["members"].get(local_id,{}).get("character", "")
-		_choose_cast.text = "选择角色  ·  " + (String(StudentCast.PEOPLE[character]["name"]) if StudentCast.valid(character) else "自动分配")
+		_choose_cast.text = "角色  ·  " + String(StudentCast.PEOPLE[character]["name"]) if StudentCast.valid(character) else "选择角色"
 		cast_picker.set_slots(_cast_owners())
 	if state["members"].has(local_id):
 		ready_button.set_pressed_no_signal(state["members"][local_id]["ready"])
 		var chosen := _gifts.find(state["members"][local_id]["talent"])
-		if chosen >= 0: talent.select(chosen)
+		if chosen > 1 or _talent_picked or state["members"][local_id]["ready"] or int(state.get("minimum_loaded", 2)) == 1:
+			talent.select(maxi(1, chosen))
+		else:
+			talent.select(0)
 	if changed or old_phase != String(state.get("phase", "")): _update_layout()
 	else:
 		_update_readiness()
@@ -625,6 +633,22 @@ func _update_readiness() -> void:
 	var paused: bool = float(_state.get("paused", 0)) > 0
 	(_team_actions.get_node("PauseRow/PauseTeam") as Button).disabled = paused
 	(_team_actions.get_node("PauseRow/ResumeTeam") as Button).disabled = not paused
+
+
+func _ready_toggled(value: bool) -> void:
+	if value and int(_state.get("minimum_loaded", 2)) != 1:
+		var member: Dictionary = _state.get("members", {}).get(_local_id, {})
+		if not StudentCast.valid(member.get("character", "")):
+			ready_button.set_pressed_no_signal(false)
+			_open_cast()
+			return
+		if not _talent_picked:
+			ready_button.set_pressed_no_signal(false)
+			feedback("选择本局天赋后即可准备，也可选「无天赋」。")
+			talent.grab_focus()
+			return
+	var chosen := String(_gifts[maxi(1, talent.selected)])
+	ready_requested.emit(value, chosen)
 
 
 func _update_talent() -> void:

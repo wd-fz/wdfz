@@ -205,7 +205,10 @@ func _test_audio(app: GameApp) -> void:
 	var walk := base.duplicate()
 	walk["moving"] = true
 	fx.update(0.1, walk)
-	check(fx.played.has("step.tile"), "walking indoors steps on tile")
+	check(not fx.played.has("step.tile"), "walking is silent")
+	walk["running"] = true
+	fx.update(0.1, walk)
+	check(fx.played.has("step.tile"), "sprinting indoors still plays a tile footstep")
 	fx.played.clear()
 	var low := base.duplicate()
 	low["bpm"] = 120.0

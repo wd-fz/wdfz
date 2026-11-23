@@ -20,22 +20,27 @@ func _watcher(point: Dictionary, violation: float = 0.0) -> PatrolModule:
 
 func test_scaling() -> void:
 	var pm := _watcher(_point(28))
-	for spec: Array in [[-1, 0, 135, 1.0], [0, 0, 135, 1.0], [24.999, 0, 135, 1.0], [25, 1, 153, 1.03],
-			[49.999, 1, 153, 1.03], [50, 2, 171, 1.05], [74.999, 2, 171, 1.05], [75, 3, 189, 1.08], [100, 3, 189, 1.08], [1000, 3, 189, 1.08]]:
+	for spec: Array in [[-1, 0, 288, 1.0], [0, 0, 288, 1.0], [24.999, 0, 288, 1.0], [25, 1, 315, 1.03],
+			[49.999, 1, 315, 1.03], [50, 2, 342, 1.05], [74.999, 2, 342, 1.05], [75, 3, 378, 1.08], [100, 3, 378, 1.08], [1000, 3, 378, 1.08]]:
 		pm.set_context(_pctx("teach1", Vector2.ZERO, {"viol": spec[0]}))
-		check(pm.alert_level() == spec[1] and pm.sight_range() == spec[2] and is_equal_approx(pm.chase_speed(), 31.0 * spec[3]),
+		check(pm.alert_level() == spec[1] and pm.sight_range() == spec[2] and is_equal_approx(pm.chase_speed(), 58.0 * spec[3]),
 			"violation %s chooses the bounded sight and speed tier" % str(spec[0]))
-	check(pm.chase_speed() < 36.4, "even the fastest pursuit is slower than an uninjured normal sprint")
+	check(pm.chase_speed() * CampusGeometry.U2M > CharacterMotor.RUN * 1.5, "pursuit even outruns the snack-aided sprint")
 	for invalid: float in [INF, NAN]:
 		pm.set_context(_pctx("teach1", Vector2.ZERO, {"viol": invalid}))
 		check(pm.alert_level() == 0, "non-finite debug input does not poison patrol arithmetic")
 	for level in 4:
-		var p := _point(28)
-		var at_range := Vector2(p["x"] + [135.0, 153.0, 171.0, 189.0][level], p["y"])
+		var p := _point(8)
+		pm._put(p)
+		var at_range := Vector2(p["x"] + [288.0, 315.0, 342.0, 378.0][level], p["y"])
 		pm.set_context(_pctx("teach1", at_range, {"viol": level * 25}))
 		check(pm.sees(), "tier %d can see through a clear corridor at its range boundary" % level)
 		pm.set_context(_pctx("teach1", at_range + Vector2(0.1, 0), {"viol": level * 25}))
 		check(not pm.sees(), "tier %d cannot see beyond its range boundary" % level)
+		var in_sight := _watcher(p, level * 25)
+		in_sight.set_context(_pctx("teach1",at_range,{"viol":level * 25}))
+		in_sight.tick(.1)
+		check(in_sight.pat["lock"] == 0.0, "outer sight is distinguishable from acquisition range")
 		var acquirer := _watcher(p, level * 25)
 		acquirer.tick(0.1)
 		check(is_equal_approx(acquirer.pat["lock"], 0.11 / [1.0, 0.9, 0.8, 0.75][level]), "tier %d shortens actual acquisition time" % level)
@@ -44,7 +49,7 @@ func test_scaling() -> void:
 		chaser.pat["lastSeen"] = PatrolNav.point("teach1", chaser.pat["x"] + 80.0, chaser.pat["y"])
 		var before := chaser.position()
 		chaser.tick(0.1)
-		check(absf(chaser._dist3(before, chaser.position()) - 3.1 * [1.0, 1.03, 1.05, 1.08][level]) < 0.01, "tier %d changes real pursuit movement" % level)
+		check(absf(chaser._dist3(before, chaser.position()) - 5.8 * [1.0, 1.03, 1.05, 1.08][level]) < 0.01, "tier %d changes real pursuit movement" % level)
 	var wall_pm := _watcher(_point(13), 100)
 	var behind := _point(13, 14)
 	wall_pm.set_context(_pctx("teach1", Vector2(behind["x"], behind["y"]), {"viol": 100}))
@@ -54,7 +59,39 @@ func test_scaling() -> void:
 	warned.tick(0.1)
 	check(warned.pat["warning"] > 3.4 and warned.pat["lock"] == 0.0 and not warned.pat["locked"], "high violation preserves the initial warning")
 	pm.set_context(_pctx("teach1", Vector2.ZERO, {"viol": 0}))
-	check(pm.sight_range() == 135.0 and pm.chase_speed() == 31.0, "current violation falling restores baseline sight and speed")
+	check(pm.sight_range() == 288.0 and pm.chase_speed() == 58.0, "current violation falling restores baseline sight and speed")
+
+
+func test_senses() -> void:
+	var from := _point(20)
+	var watcher := _watcher(from)
+	var feet := Vector2(from["x"] + 80, from["y"])
+	watcher.set_context(_pctx("teach1", feet, {"running": false, "active_seconds": 1.0}))
+	check(watcher.sprint_report().is_empty(), "an ordinary step creates no evidence")
+	watcher.set_context(_pctx("teach1", feet, {"running": true, "active_seconds": 2.0}))
+	var footfall := watcher.sprint_report()
+	check(PatrolModule.valid_sense(footfall) and footfall["point"] == watcher.player_point(), "a nearby audible sprint reports the point where it was heard")
+	watcher.use_sense(footfall)
+	watcher.set_context(_pctx("teach1", feet + Vector2(90, 0), {"running": false, "active_seconds": 3.0}))
+	check(not watcher.pat["locked"] and watcher.pat["sense"]["point"] != watcher.player_point(), "a footfall gives no instant visual lock or live tracking")
+	var san := watcher.sanity_report("teach1", feet, 4.0)
+	check(PatrolModule.valid_sense(san) and san["point"]["scene"] == "teach1" and san["point"] != footfall["point"], "SAN exposes an area within the floor rather than a player coordinate")
+	check(watcher.sanity_report("teach1", feet + Vector2(90, 0), 5.0).is_empty(), "continuous SAN losses do not create a report per tick")
+	watcher.use_sense(san)
+	check(watcher.pat["sense"]["kind"] == "sprint", "a coarse report does not displace a recent stronger stimulus")
+	var saved := watcher.capture()
+	var restored := CampusData.make_patrol()
+	check(restored.validate(saved).is_empty(), "a saved investigation is valid")
+	restored.restore(saved)
+	check(same_json(saved, restored.capture()), "a pending investigation preserves the same point and time on load")
+	var school := SchoolModule.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
+	var events := [0]
+	school.sanity_lost.connect(func() -> void: events[0] += 1)
+	school.change_san(-5.0)
+	var data := school.capture()
+	school.change_san(5.0)
+	school.restore(data)
+	check(events[0] == 1, "restoring and recovering SAN do not report new damage")
 
 
 func test_pursuit_lifecycle() -> void:
@@ -165,7 +202,7 @@ func test_search() -> void:
 func test_elevator() -> void:
 	var arrival_times: Array = []
 	for violation: float in [0.0, 75.0]:
-		var pm := _watcher(_point(30, 19), violation)
+		var pm := _watcher(_point(41, 19), violation)
 		pm.elevator.reset()
 		pm.elevator.lifts["teach"]["door"] = 1.0
 		var cabin := pm.elevator.world("teach1", -1.0, 0.0)

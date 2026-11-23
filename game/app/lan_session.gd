@@ -261,6 +261,10 @@ func loaded() -> void:
 	_send({"kind": "loaded", "epoch": room.epoch})
 
 
+func is_ready() -> bool:
+	return room != null and not room.epoch.is_empty() and _loaded_epoch == room.epoch
+
+
 func command(action: String, fields: Dictionary = {}) -> void:
 	if room == null: return
 	_command_seq += 1
@@ -625,6 +629,8 @@ func _process(dt: float) -> void:
 		if _heartbeat >= 2.0:
 			_heartbeat = 0.0
 			transport.send_control(1, {"kind": "ping", "time": _clock})
+			if room != null and room.phase == "loading" and is_ready() and room.members.get(local_id, {}).get("state") == "loading":
+				_send({"kind": "loaded", "epoch": room.epoch})
 		return
 	if room == null: return
 	for peer_id: int in _peer_heard.keys():

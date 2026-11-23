@@ -12,6 +12,9 @@ const FLOOR_B := Color("#2a241c")
 const TONES := {"route": Color("#e6dcc4"), "seal": Color("#e0675c"), "brass": Color("#e2bd6a"), "done": Color("#8fa28a"), "prop": Color("#9c9384")}
 const MARKS := {"S": "梯", "J": "电", "L": "廊", "O": "出", "H": "藏", "T": "台", "K": "台", "D": "机", "Q": "服", "u": "书", "j": "门", "M": "售", "d": "桌", "f": "柜", "R": "架", "q": "柜", "k": "台", "N": "镜", "C": "仪", "Y": "球", "Z": "摆"}
 const PLAN_LABELS := ["roof", "plaza", "garden", "link"]
+const AERIAL := preload("res://assets/ui/campus_satellite.jpg")
+const PLAYER_PIN := Color("adf2dc")
+const TARGET_PIN := Color("ffd681")
 
 var room: Dictionary = {}
 var seen: PackedByteArray
@@ -64,7 +67,7 @@ static func static_mark(ch: String) -> String:
 
 
 ## Floor sketch of one room.
-func show_floor(r: Dictionary, bits: PackedByteArray, labeler: Callable, player: Vector2, facing: float, is_here: bool, avail: float = 460.0) -> void:
+func show_floor(r: Dictionary, bits: PackedByteArray, labeler: Callable, player: Vector2, facing: float, is_here: bool, avail: float = 460.0, zoom: float = 1.0) -> void:
 	room = r
 	seen = bits
 	label_of = labeler
@@ -72,22 +75,41 @@ func show_floor(r: Dictionary, bits: PackedByteArray, labeler: Callable, player:
 	ang = facing
 	here = is_here
 	plan = {}
-	cell = clampf(floorf(avail / float(r["cols"])), 9.0, 22.0)
+	cell = clampf(floorf(avail / float(r["cols"])), 9.0, 22.0) * zoom
 	custom_minimum_size = Vector2(float(r["cols"]) * cell, float(r["rows"]) * cell)
 	_fit_scroll()
 	queue_redraw()
 
 
-func show_plan(p: Dictionary, avail: Vector2 = Vector2(440, 520)) -> void:
+func show_plan(p: Dictionary, avail: Vector2 = Vector2(440, 520), zoom: float = 1.0) -> void:
 	room = {}
 	plan = p
 	var b: Dictionary = p["bound"]
 	var bw := float(b["x1"]) - float(b["x0"])
 	var bh := float(b["y1"]) - float(b["y0"])
-	plan_scale = minf(avail.x / bw, avail.y / bh)
+	plan_scale = minf(avail.x / bw, avail.y / bh) * zoom
 	custom_minimum_size = Vector2(roundf(bw * plan_scale), roundf(bh * plan_scale))
 	_fit_scroll()
 	queue_redraw()
+
+
+static func aerial_bounds(data: Dictionary) -> Rect2:
+	var b: Dictionary = data["bound"]
+	var origin := Vector2(b["x0"], b["y0"])
+	return Rect2(origin, Vector2(b["x1"], b["y1"]) - origin)
+
+
+func player_pixel() -> Vector2:
+	if not plan.is_empty():
+		return (Vector2(plan.get("me", Vector2.INF)) - aerial_bounds(plan).position) * plan_scale
+	if room.is_empty() or not here: return Vector2.INF
+	return (me - Vector2(room["ox"], room["oy"])) / Vector2(room["tw"], room["th"]) * cell
+
+
+static func pointer(at: Vector2, angle: float, length: float) -> PackedVector2Array:
+	return PackedVector2Array([at + Vector2.from_angle(angle) * length,
+		at + Vector2.from_angle(angle + 2.5) * length * .70,
+		at + Vector2.from_angle(angle - 2.5) * length * .70])
 
 
 ## The scroll area follows the picture (a short floor does not leave a tall empty page).
@@ -242,56 +264,38 @@ static func plan_labels(data: Dictionary, sc: float, extent: Vector2, measure: C
 
 
 func _draw_plan() -> void:
-	var b: Dictionary = plan["bound"]
-	var x0 := float(b["x0"])
-	var y0 := float(b["y0"])
-	var sc := plan_scale
-	draw_rect(Rect2(Vector2.ZERO, size), Color("0d0b09"))
-	draw_rect(Rect2(Vector2.ZERO, Vector2((float(b["x1"]) - x0) * sc, (float(b["y1"]) - y0) * sc)), Color(0.47, 0.71, 0.59, 0.35), false, 2.0)
-	for road: Rect2 in road_rects(plan,sc): draw_rect(road,Color(150.0/255,160.0/255,150.0/255,.16))
+	var bounds := aerial_bounds(plan)
+	var extent := bounds.size * plan_scale
 	var font := get_theme_default_font()
-	for o: Dictionary in plan["objects"]:
-		var col := Color("#182420")
-		match String(o["k"]):
-			"roof":
-				col = Color("#1c2a30")
-			"field":
-				col = Color("#16241b")
-			"court":
-				col = Color("#1a2427")
-			"garden":
-				col = Color("#17251e")
-			"plaza":
-				col = Color("#263632")
-			"link":
-				col = Color("#693d2b") if o["id"] == "c2" else Color("#394745")
-		var rect := Rect2((float(o["x"]) - x0) * sc, (float(o["y"]) - y0) * sc, float(o["w"]) * sc, float(o["h"]) * sc)
-		draw_rect(rect, col)
-		draw_rect(rect, Color(0.47, 0.71, 0.59, 0.3), false, 1.0)
-		# Data still supplies every outline and position. Only roomy, already-public
-		# campus landmarks receive a picture; the labels and player marker stay clear.
-		if rect.size.x >= 16 and rect.size.y >= 22:
-			var art := UIArt.landmark(String(o.get("id", o["k"])))
-			if art != null:
-				var extent := minf(24, minf(rect.size.x - 4, rect.size.y - 14))
-				var at := rect.get_center() + Vector2(0, 7) - Vector2.ONE * extent * 0.5
-				draw_texture_rect(art, Rect2(at, Vector2.ONE * extent), false, Color(1, 1, 1, 0.84))
-	var measure := func(text: String,font_size: int) -> float: return font.get_string_size(text,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x
-	for label: Dictionary in plan_labels(plan,sc,custom_minimum_size,measure):
-		draw_string(font,label["pos"],label["text"],HORIZONTAL_ALIGNMENT_LEFT,-1,label["size"],Color("c8a24a") if label["gate"] else Color(160.0/255,200.0/255,180.0/255,.62))
+	draw_rect(Rect2(Vector2.ZERO, size), Color("0d161b"))
+	draw_texture_rect(AERIAL, Rect2(Vector2.ZERO, extent), false, Color("c5d1cb"))
+	draw_rect(Rect2(Vector2.ZERO, extent), Color("527068"), false, 1.0)
+	var measure := func(text: String, font_size: int) -> float: return font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var labels := plan_labels(plan, plan_scale, extent, measure)
+	labels.reverse() # Give the three gates first claim on the available label space.
+	var occupied: Array[Rect2] = []
+	for label: Dictionary in labels:
+		var fs := int(label["size"])
+		var at: Vector2 = label["pos"]
+		var ink := TARGET_PIN if label["gate"] else UISkin.INK
+		var width := font.get_string_size(label["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var tag := Rect2(at - Vector2(3, fs), Vector2(width + 6, fs + 5))
+		if occupied.any(func(other: Rect2) -> bool: return tag.intersects(other)): continue
+		occupied.append(tag)
+		draw_rect(tag, Color(0.045, 0.085, 0.10, 0.90))
+		draw_string(font, at, label["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, ink)
 	for gate: Array in plan["gates"]:
-		var gp := Vector2((float(gate[1])-x0)*sc,(float(gate[2])-y0)*sc)
-		draw_rect(Rect2(gp-Vector2(2,2),Vector2(4,4)),Color("c8a24a"))
+		var at := (Vector2(gate[1], gate[2]) - bounds.position) * plan_scale
+		draw_rect(Rect2(at - Vector2(2, 2), Vector2(4, 4)), TARGET_PIN)
 	for point: Vector2 in plan.get("observations", []):
-		var dot := (point - Vector2(x0, y0)) * sc
-		draw_rect(Rect2(dot - Vector2(3, 3), Vector2(6, 6)), TONES.done, false, 1.2)
+		var dot := (point - bounds.position) * plan_scale
+		draw_rect(Rect2(dot - Vector2(3, 3), Vector2(6, 6)), UISkin.INK, false, 1.5)
 	if plan.has("target"):
-		var pin: Vector2 = (plan["target"] - Vector2(x0, y0)) * sc
-		draw_arc(pin, 9, 0, TAU, 24, Color("#f4cd7b"), 2.5, true)
-		draw_circle(pin, 2.5, Color("#f4cd7b"))
-	var me_pos: Vector2 = plan.get("me", Vector2.INF)
-	if not me_pos.is_finite(): return
-	var mp := Vector2((me_pos.x - x0) * sc, (me_pos.y - y0) * sc)
-	var green := Color("#79c8a4")
-	draw_circle(mp, 4.5, green)
-	draw_line(mp, mp + Vector2(cos(float(plan["ang"])), sin(float(plan["ang"]))) * 16.0, Color(0.47, 0.78, 0.64, 0.75), 1.5)
+		var pin: Vector2 = (plan["target"] - bounds.position) * plan_scale
+		draw_circle(pin, 9, Color(0.06, 0.10, 0.12, 0.85))
+		draw_arc(pin, 8, 0, TAU, 24, TARGET_PIN, 2.0, true)
+		draw_circle(pin, 2.5, TARGET_PIN)
+	var at := player_pixel()
+	if not at.is_finite(): return
+	draw_circle(at, 10, Color(0.06, 0.10, 0.12, 0.94))
+	draw_colored_polygon(pointer(at, float(plan["ang"]), 9.0), PLAYER_PIN)

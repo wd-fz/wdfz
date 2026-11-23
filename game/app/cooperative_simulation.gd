@@ -30,6 +30,7 @@ func setup(state: CooperativeRoom, seed_value: int) -> void:
 		var a := CooperativeFactory.actor(id, slot, room.difficulty, String(room.members[id]["talent"]), seed_value, shared)
 		a.session.character_id = String(room.members[id]["character"])
 		actors[id] = a
+		a.school().sanity_lost.connect(_report_sanity.bind(id))
 		a.event("notice", {"text": OpeningStory.handover(a.session.character_id)})
 		room.members[id]["seat"] = a.own_seat
 		inventory.reconcile(a)
@@ -56,6 +57,13 @@ func campus() -> CampusModule:
 
 func actor(id: String) -> CooperativeActor:
 	return actors.get(id)
+
+
+func _report_sanity(id: String) -> void:
+	var a := actor(id)
+	if not is_participating(id) or not room.members[id]["connected"] or a.fate().over(): return
+	var feet := a.point(CampusData.rooms())
+	patrol.sense(a, a.watcher().sanity_report(a.location(), feet, a.school().active_seconds))
 
 
 func is_participating(id: String) -> bool:

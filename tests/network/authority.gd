@@ -223,6 +223,13 @@ func patrol_responsibility() -> void:
 	var point: Dictionary = sim.patrol.reports.back()["signal"]["point"].duplicate()
 	b.pose["position"][0] += 5
 	check(sim.patrol.reports.back()["signal"]["point"] == point, "wireless report freezes observed coordinates")
+	place(b, "teach1", Vector2(1100, 1850))
+	b.school().change_san(-10.0)
+	var evidence: Dictionary = sim.patrol.reports.back()
+	check(evidence["member"] == b.id and evidence["signal"].get("kind") == "san" and evidence["signal"]["point"]["scene"] == "teach1", "host authority reports the injured member's area from actual SAN loss")
+	var pending_count := sim.patrol.reports.size()
+	b.school().change_san(-0.2)
+	check(sim.patrol.reports.size() == pending_count, "a persistent drain doesn’t flood the cooperative patrol queue")
 	sim.patrol.lockers[a.id] = {"teach1:1:1": {"scene": "teach1", "c": 1, "r": 1, "ttl": 3.0}}
 	sim.patrol.synchronize(sim.actors)
 	check(b.watcher().pat["lockerMemory"].is_empty(), "another member's locker evidence is private to its target")

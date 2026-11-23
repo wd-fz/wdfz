@@ -85,7 +85,7 @@ func begin(new_epoch: String) -> bool:
 
 
 func loaded(id: String) -> void:
-	if phase != "loading" or not members.has(id): return
+	if phase != "loading" or not members.has(id) or not members[id]["connected"] or members[id]["state"] != "loading": return
 	members[id]["state"] = "alive"
 	check_loaded()
 
@@ -107,6 +107,7 @@ func disconnect_member(id: String) -> void:
 		return
 	members[id]["connected"] = false
 	members[id]["remaining"] = RESERVATION_SECONDS
+	if phase == "loading": members[id]["state"] = "loading"
 	ending_offer.clear()
 	check_loaded()
 

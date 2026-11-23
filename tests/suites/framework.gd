@@ -120,9 +120,16 @@ func _test_app() -> void:
 	app.ui.menu_screen.reveal(app.ui.get_node("%NewGame"))
 	await _frames(3)
 	await _tap(app.ui.get_node("%NewGame"))
+	var selection := app.ui.selection_panel
+	check(selection.visible and app.session == null and not app.starting(), "New Game opens setup instead of starting a default run")
+	await _tap(selection.cards[0])
+	await _tap(selection.confirm_button)
+	check(selection.cast_picker.visible and app.session == null, "selecting a talent still requires a character")
+	await _tap(selection.cast_picker.confirm)
+	await _tap(selection.confirm_button)
 	await _until_started(app)
 	await _frames()
-	check(app.session != null and app.talent().id == "none" and app.session.character_id == StudentCast.DEFAULT, "one touch walks an ordinary student into the classroom")
+	check(app.session != null and app.talent().id == TalentModule.KEYS[0] and app.session.character_id == StudentCast.DEFAULT, "the selected talent and confirmed character begin the run")
 	check(app.ui.opening_on() and paused and not app.player.enabled, "the prologue plays first, with the game waiting")
 	check(app.ui._opening_text.text.contains("林澈") and app.ui._opening_text.text.contains("高二（二）班"), "the text opening establishes this student's name and class")
 	var t0 := app.school().tsec
@@ -199,11 +206,13 @@ func _test_app() -> void:
 	for viewport_size: Vector2i in [Vector2i(1280, 720), Vector2i(390, 844), Vector2i(844, 390)]:
 		root.size = viewport_size
 		await _frames()
-		app.ui.menu_screen.reveal(app.ui.menu_screen.find_child("CustomGame",true,false))
+		app.ui.menu_screen.reveal(app.ui.get_node("%NewGame"))
 		await _frames(3)
 		var content: ScrollContainer = app.ui.menu_screen.scroll
 		check(root.get_visible_rect().encloses(content.get_global_rect()), "scrollable menu fits viewport %s" % viewport_size)
-		await _tap(app.ui.menu_screen.find_child("CustomGame",true,false))
+		await _tap(app.ui.get_node("%NewGame"))
+		app._choice_made(1)
+		await _frames(3)
 		check(app.ui.choice_open(), "the talent pick opens after resize %s" % viewport_size)
 		check(root.get_visible_rect().encloses(app.ui.selection_panel.shell.get_global_rect()), "the talent pick fits viewport %s" % viewport_size)
 		var random_card: Control = app.ui.selection_panel.cards[TalentModule.KEYS.size()]
@@ -211,6 +220,8 @@ func _test_app() -> void:
 		await _frames(2)
 		await _tap(random_card)
 		check(app.session == null, "random selection also waits for confirmation")
+		await _tap(app.ui.selection_panel.confirm_button)
+		await _tap(app.ui.selection_panel.cast_picker.confirm)
 		await _tap(app.ui.selection_panel.confirm_button)
 		await _until_started(app)
 		check(app.session != null and TalentModule.KEYS.has(app.talent().id), "touch button hit-testing after resize %s (random talent)" % viewport_size)

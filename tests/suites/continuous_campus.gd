@@ -343,6 +343,10 @@ func test_portal_continuity(app: GameApp) -> void:
 	for portal: Dictionary in CampusConnections.resident_portals(school.space):
 		var a: String = portal["a"]
 		var b: String = portal["b"]
+		# The fixture jumps to every doorway without a frame for prefetch.
+		# Warm both ends before comparing their fully detailed rendering.
+		school.prepare(a)
+		school.prepare(b)
 		covered[a] = true
 		covered[b] = true
 		if a.begins_with("lift_"):
@@ -385,7 +389,8 @@ func _portal_light_levels(light: CampusLighting) -> Vector4:
 func _portal_visuals(school: CampusResident) -> Array[bool]:
 	var result: Array[bool] = []
 	for world: CampusWorld in school.regions.values():
-		result.append(world.get_node("Model").is_visible_in_tree())
+		var model := world.get_node_or_null("Model") as Node3D
+		result.append(model != null and model.is_visible_in_tree())
 		result.append(world._fixed_props != null and world._fixed_props.is_visible_in_tree())
 	for facade: Node3D in (school.regions.out as CampusWorld).shells.values():
 		result.append(facade.is_visible_in_tree())

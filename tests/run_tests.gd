@@ -480,6 +480,7 @@ func _run_features() -> void:
 	var patrol_awareness := preload("res://tests/suites/patrol_awareness.gd").new(self)
 	print("CASE: patrol_awareness")
 	patrol_awareness.test_scaling()
+	patrol_awareness.test_senses()
 	patrol_awareness.test_pursuit_lifecycle()
 	patrol_awareness.test_search()
 	patrol_awareness.test_elevator()

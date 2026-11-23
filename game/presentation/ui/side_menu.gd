@@ -8,7 +8,7 @@ signal backdrop_requested
 signal entry_report_copied
 
 const GROUPS := {
-	"Rebirth": ["CustomGame", "HardGame", "Speedrun", "DlcMenu", "ImportMenu"],
+	"Rebirth": ["HardGame", "Speedrun", "DlcMenu", "ImportMenu"],
 	"Gallery": ["Achievements", "Archive", "RecordsMenu"],
 	"QuickOptions": ["FullscreenMenu", "TouchToggle", "SoundToggle", "DebugTools"],
 }
@@ -20,11 +20,10 @@ const ICONS := {
 	"ImportMenu": "import", "FullscreenMenu": "fullscreen", "DebugTools": "debug",
 }
 const DETAILS := {
-	"NewGame": "从第一天的教室开始。同桌有张纸条要给你。",
-	"CustomGame": "选择扮演的同学，带一项天赋进入教室。",
+	"NewGame": "选择角色和天赋，从第一天的教室开始。",
 	"LoadGame": "读取最近一次保存的单人进度。",
 	"LanCoop": "创建房间或加入好友，2–4 人一起寻找出口。",
-	"Rebirth": "自选角色与天赋，进入梦魇、速通或规则怪谈，也可导入旧存档。",
+	"Rebirth": "进入梦魇或速通，浏览附加规则，也可导入旧存档。",
 	"Gallery": "回看已发现的结局、成就和通关记录。",
 	"SettingsMenu": "调整画质、帧率、声音、操作与阅读体验。",
 	"QuickOptions": "快速切换声音、触屏等常用选项。",
@@ -119,12 +118,12 @@ func setup(source: VBoxContainer) -> void:
 	_play_actions.add_child(_primary)
 	_load = _move_action(source, _primary, "LoadGame")
 	_new_game = _move_action(source, _primary, "NewGame")
-	_new_game.text = "走进教室"
+	_new_game.text = "开始新游戏"
 	_new_game.tooltip_text = "普通难度 · 预知梦"
 	_utilities = GridContainer.new()
 	_utilities.columns = 2
 	_front.add_child(_utilities)
-	_add_group(source, pages, "Rebirth", "自选开局与玩法")
+	_add_group(source, pages, "Rebirth", "其他玩法")
 	_move_action(source, _utilities, "SettingsMenu")
 	_add_group(source, pages, "Gallery", "档案与记录")
 	_add_group(source, pages, "QuickOptions", "快捷选项")

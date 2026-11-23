@@ -29,6 +29,9 @@ func test_original_draw() -> void:
 
 func test_campus_placement() -> void:
 	var plan := CampusData.campus_map()
+	var bounds := MapView.aerial_bounds(plan)
+	var pixels := MapView.AERIAL.get_size()
+	check(absf(pixels.x / pixels.y - bounds.size.x / bounds.size.y) < .002, "the north-up photo fills the exact campus coordinate bounds")
 	var objects := {}
 	var buildings: Array[Rect2] = []
 	for object: Dictionary in plan.objects:

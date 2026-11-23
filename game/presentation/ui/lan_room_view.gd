@@ -55,7 +55,7 @@ static func member_text(id: String, m: Dictionary, state: Dictionary, local_id: 
 	elif state.get("phase") == "loading": detail = "已就绪" if m.get("state") == "alive" else "正在准备校园"
 	elif state.get("phase") == "ended": detail = "本局已结束"
 	elif m.get("state") == "dead": detail = "观战中"
-	elif state.get("phase") == "lobby": detail = "已准备" if m.get("ready", false) else "选择天赋后准备"
+	elif state.get("phase") == "lobby": detail = "已准备" if m.get("ready", false) else "选择角色与天赋"
 	else: detail = "探索中"
 	var gift: Dictionary = TalentModule.DEF.get(m.get("talent", "none"), {})
 	if not gift.is_empty(): detail += " · " + String(gift["n"])

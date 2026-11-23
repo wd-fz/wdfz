@@ -609,13 +609,12 @@ func _body(delta: float, ctx: Dictionary) -> void:
 
 
 func _steps(delta: float, ctx: Dictionary) -> void:
-	if bool(ctx.get("moving", false)) and not bool(ctx.get("hiding", false)):
+	if bool(ctx.get("moving", false)) and bool(ctx.get("running", false)) and not bool(ctx.get("hiding", false)):
 		_step_t -= delta
 		if _step_t <= 0.0:
-			var run := bool(ctx.get("running", false))
-			_step_t = 0.33 if run else 0.52
+			_step_t = 0.33
 			var wet := bool(ctx.get("out", false)) and String(ctx.get("anomaly", "")) in ["rain", "raindots"]
-			step_on(String(ctx.get("surface", "tile")), 1.35 if run else 1.0, {"wet": wet})
+			step_on(String(ctx.get("surface", "tile")), 1.35, {"wet": wet})
 			# A revisit's echo: the same step again, quiet, behind and late (dread.js DREAD.echo).
 			if bool(ctx.get("echo", false)):
 				step_on(String(ctx.get("surface", "tile")), 0.32, {"pan": 0.25, "lp": 0.55, "at": 0.19})
