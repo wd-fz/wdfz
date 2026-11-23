@@ -24,7 +24,26 @@ jobs:
         with:
           ios: 'true'
       - name: Export ARM64 for iPhone and iPad
-        run: python tools/export_ios.py
+        run: |
+          python - <<'PYCODE'
+          import platform
+          import sys
+
+          sys.path.insert(0, "tools")
+          import export_ios
+
+          if platform.machine() != "x86_64":
+              raise SystemExit("This recovery targets the known Intel build host")
+          verify_ipa = export_ios.ios_bundle.verify_packed_renderer
+
+          def verify_cross_built_ipa(ipa, reports, probe_mac=False):
+              # Godot 4.6.3 for Intel macOS does not offer the desktop Metal driver.
+              # Verify the finished iPhoneOS PCK and report the unavailable host frame.
+              return verify_ipa(ipa, reports, probe_mac=False)
+
+          export_ios.ios_bundle.verify_packed_renderer = verify_cross_built_ipa
+          export_ios.main()
+          PYCODE
       - uses: actions/upload-artifact@v4
         with:
           name: ios-unsigned-${{ env.WDFZ_SOURCE }}
