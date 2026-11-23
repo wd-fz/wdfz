@@ -50,7 +50,7 @@ var _scroll: TouchScroll
 var _state: Dictionary = {}
 var _local_id := ""
 var _gifts: Array = ["", "none"]
-var _talent_picked := false
+var _talent_choice := ""
 var _pages: Dictionary = {}
 var _heading: Label
 var _search: Button
@@ -266,11 +266,11 @@ func _ready() -> void:
 	_talent_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_talent_info.add_child(_talent_image)
 	_talent_text = _label(_talent_info, "", 16)
-	talent.item_selected.connect(func(_index: int) -> void:
-		_talent_picked = true
+	talent.item_selected.connect(func(index: int) -> void:
+		_talent_choice = String(_gifts[index])
 		ready_button.set_pressed_no_signal(false)
 		_update_talent()
-		ready_requested.emit(false, String(_gifts[talent.selected])))
+		ready_requested.emit(false, _talent_choice))
 	_team_actions = _fold(lobby, "队伍操作", "TeamActions")
 	var pause_row := HBoxContainer.new()
 	pause_row.name = "PauseRow"
@@ -498,7 +498,7 @@ func _update_layout() -> void:
 
 func show_room(state: Dictionary, local_id: String, addresses: String) -> void:
 	var old_phase := String(_state.get("phase", ""))
-	if local_id != _local_id: _talent_picked = false
+	if local_id != _local_id: _talent_choice = ""
 	_state = state
 	_local_id = local_id
 	if not is_node_ready(): return
@@ -557,9 +557,10 @@ func show_room(state: Dictionary, local_id: String, addresses: String) -> void:
 		_choose_cast.text = "角色  ·  " + String(StudentCast.PEOPLE[character]["name"]) if StudentCast.valid(character) else "选择角色"
 		cast_picker.set_slots(_cast_owners())
 	if state["members"].has(local_id):
-		ready_button.set_pressed_no_signal(state["members"][local_id]["ready"])
-		var chosen := _gifts.find(state["members"][local_id]["talent"])
-		if chosen > 1 or _talent_picked or state["members"][local_id]["ready"] or int(state.get("minimum_loaded", 2)) == 1:
+		var me: Dictionary = state["members"][local_id]
+		ready_button.set_pressed_no_signal(me["ready"] and (_talent_choice.is_empty() or me["talent"] == _talent_choice))
+		var chosen := _gifts.find(me["talent"] if _talent_choice.is_empty() else _talent_choice)
+		if chosen > 1 or not _talent_choice.is_empty() or me["ready"] or int(state.get("minimum_loaded", 2)) == 1:
 			talent.select(maxi(1, chosen))
 		else:
 			talent.select(0)
@@ -642,7 +643,7 @@ func _ready_toggled(value: bool) -> void:
 			ready_button.set_pressed_no_signal(false)
 			_open_cast()
 			return
-		if not _talent_picked:
+		if _talent_choice.is_empty():
 			ready_button.set_pressed_no_signal(false)
 			feedback("选择本局天赋后即可准备，也可选「无天赋」。")
 			talent.grab_focus()
@@ -658,7 +659,7 @@ func _update_talent() -> void:
 	var data: Dictionary = TalentModule.DEF.get(id, {})
 	_talent_image.texture = UIArt.talent(id) if not data.is_empty() else null
 	_talent_image.visible = _talent_image.texture != null
-	_talent_text.text = String(data.get("does", "不选择天赋也可以开始。每位队员独立选择。"))
+	_talent_text.text = String(data.get("does", "每位队员各自选择本局天赋，也可选择「无天赋」。"))
 	if not data.is_empty(): _talent_text.text += "\n" + String(data["limit"])
 
 

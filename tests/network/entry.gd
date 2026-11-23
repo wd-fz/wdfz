@@ -56,6 +56,8 @@ func run() -> void:
 	root.content_scale_size = Vector2i.ZERO
 	print("CASE: LAN room discovery and touch controls")
 	await interface_checks()
+	print("CASE: LAN setup before readiness")
+	await setup_checks()
 	print("CASE: LAN team controls")
 	await team_experience_checks()
 	print("CASE: LAN handshake")
@@ -222,6 +224,41 @@ func cast_picker_checks(panel: LanPanel, room: CooperativeRoom) -> void:
 	root.size = Vector2i(960,540)
 	panel.show_room(room.public_state(),"a","")
 	await frames(3)
+
+
+func setup_checks() -> void:
+	root.size = Vector2i(720, 360)
+	var panel := LanPanel.new()
+	panel.theme = UISkin.THEME
+	root.add_child(panel)
+	var room := CooperativeRoom.new()
+	room.add_member("a", "房主", true)
+	room.add_member("b", "队友")
+	var requests: Array = []
+	panel.ready_requested.connect(func(value: bool, gift: String) -> void: requests.append([value, gift]))
+	panel.character_requested.connect(func(id: String) -> void:
+		room.select_character("a", id)
+		panel.show_room(room.public_state(), "a", ""))
+	panel.show_room(room.public_state(), "a", "")
+	await frames(6)
+	await tap(panel.ready_button)
+	check(panel.cast_picker.visible and requests.is_empty(), "ready prompts for a character without notifying the host")
+	await tap(panel.cast_picker.cards.qiao)
+	await tap(panel.cast_picker.confirm)
+	await tap(panel.ready_button)
+	check(not room.members.a.character.is_empty() and not panel.ready_button.button_pressed and requests.is_empty(), "a reserved character still requires an explicit talent choice")
+	panel.talent.select(2)
+	panel.talent.item_selected.emit(2)
+	panel.show_room(room.public_state(), "a", "")
+	await tap(panel.ready_button)
+	var gift: String = TalentModule.KEYS[0]
+	check(requests == [[false, gift], [true, gift]], "a room update arriving before the talent acknowledgment preserves the selected talent")
+	panel.talent.select(1)
+	panel.talent.item_selected.emit(1)
+	await tap(panel.ready_button)
+	check(requests.slice(2) == [[false, "none"], [true, "none"]], "an explicit no-talent choice also permits readiness")
+	panel.queue_free()
+	await frames()
 
 
 func team_experience_checks() -> void:
