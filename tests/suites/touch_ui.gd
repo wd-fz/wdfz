@@ -191,9 +191,14 @@ func test_app_actions() -> void:
 	app.set_physics_process(false)
 	await _frames(3)
 	await _tap(app.ui._touch_buttons["manual"])
-	check(app.ui.choice_open() and not app.player.enabled,"mobile manual opens through the running app")
-	app._choice_made(0)
-	check(app.ui.bag_open() and not app.player.enabled,"manual opens the bag with no keyboard")
+	check(app.ui.notes_open() and not app.player.enabled,"mobile manual opens through the running app")
+	if app.ui.notes_open():
+		for button: Button in app.ui.notes_panel.entries.find_children("*", "Button", true, false):
+			if button.text != "背包": continue
+			app.ui.notes_panel._body.ensure_control_visible(button)
+			await _tap(button)
+			break
+	check(app.ui.bag_open() and not app.ui.notes_open() and not app.player.enabled,"manual opens the bag with no keyboard")
 	await _tap(app.ui.bag_panel.find_child("BagClose",true,false))
 	check(app.player.enabled and not app.ui.bag_open(),"touch closing the bag returns gameplay input")
 	app.items().add("torch")
