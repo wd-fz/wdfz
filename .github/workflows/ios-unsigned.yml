@@ -1,33 +1,100 @@
-name: Unsigned iOS IPA
+name: v0.6.3 release recovery
 
 on:
   workflow_dispatch:
-  workflow_call:
 
 permissions:
   contents: read
+  actions: read
+
+env:
+  WDFZ_SOURCE: 2688c4c3898ee8284ae88a535921c107d15949a6
+  WDFZ_RELEASE_RUN: '45224367523'
 
 jobs:
   ios:
-    name: Build and verify unsigned iPhoneOS IPA
-    runs-on: macos-15
+    name: Cross-build and verify unsigned iPhoneOS IPA on an Intel runner
+    runs-on: macos-15-intel
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.WDFZ_SOURCE }}
       - uses: ./.github/actions/setup-godot
         with:
           ios: 'true'
-      - name: Build ARM64 device release without signing
+      - name: Export ARM64 for iPhone and iPad
         run: python tools/export_ios.py
       - uses: actions/upload-artifact@v4
         with:
-          name: ios-unsigned-${{ github.sha }}
-          path: build/packages/wdfz-*-ios-arm64-unsigned.*
+          name: ios-unsigned-${{ env.WDFZ_SOURCE }}
+          path: build/packages/wdfz-0.6.3-ios-arm64-unsigned.*
           if-no-files-found: error
           compression-level: 0
-          retention-days: 14
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: ios-export-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          name: reports-ios-recovery
           path: build/reports/ios/
+
+  publish:
+    name: Publish four verified packages from the same source commit
+    needs: ios
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.WDFZ_SOURCE }}
+      - name: Require source CI and the signed Android and desktop builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$WDFZ_SOURCE"
+          env GITHUB_SHA="$WDFZ_SOURCE" python tools/ci/wait_for_ci.py
+          python - <<'PYCODE'
+          import json
+          import os
+          import subprocess
+          import time
+
+          required = {"Verify and sign release APK", "Build and verify Linux and Windows release"}
+          for _ in range(30):
+              data = json.loads(subprocess.check_output(["gh", "run", "view", os.environ["WDFZ_RELEASE_RUN"],
+                  "--repo", os.environ["GITHUB_REPOSITORY"], "--json", "headSha,jobs"], text=True))
+              if data["headSha"] != os.environ["WDFZ_SOURCE"]:
+                  raise SystemExit("Release assets come from a different commit")
+              jobs = {job["name"]: job["conclusion"] for job in data["jobs"] if job["name"] in required}
+              if {name for name in jobs if jobs[name] == "success"} == required:
+                  break
+              if any(result in ("failure", "cancelled", "timed_out") for result in jobs.values()):
+                  raise SystemExit("Android or desktop build did not succeed")
+              time.sleep(10)
+          else:
+              raise SystemExit("Timed out waiting for Android and desktop packages")
+          PYCODE
+      - uses: ./.github/actions/setup-godot
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-public-release-${{ env.WDFZ_SOURCE }}
+          github-token: ${{ github.token }}
+          run-id: ${{ env.WDFZ_RELEASE_RUN }}
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-public-release-${{ env.WDFZ_SOURCE }}
+          github-token: ${{ github.token }}
+          run-id: ${{ env.WDFZ_RELEASE_RUN }}
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-unsigned-${{ env.WDFZ_SOURCE }}
+          path: release-assets
+      - name: Verify and publish the twelve release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: env GITHUB_SHA="$WDFZ_SOURCE" python tools/publish_release.py --assets release-assets --tag v0.6.3 --notes docs/releases/0.6.3.md
