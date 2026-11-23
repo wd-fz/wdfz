@@ -88,9 +88,9 @@ func _test_patrol_rules() -> void:
 	var locker: Vector2i = Vector2i(12, 16)
 	check(String(t1["grid"][16]).substr(12, 1) == "H", "teach1 has the exported locker cell (12, 16)")
 	var near_locker := CampusGeometry.tile_center(t1, 12, 17)
-	hider.pat["x"] = near_locker.x + 200.0
-	hider.pat["y"] = near_locker.y
 	hider.set_context(_pctx("teach1", near_locker))
+	hider.pat["x"] = near_locker.x + hider.sight_range() + float(t1["tw"])
+	hider.pat["y"] = near_locker.y
 	var spot := hider.hide_in(locker.x, locker.y)
 	check(hider.hide["on"] and not hider.hide["seen"] and absf(spot["ang"] - PI * 0.5) < 0.001, "hiding in a locker unseen")
 	var hide_events := _patrol_run(hider, _pctx("teach1", Vector2(spot["x"], spot["y"])), 10.0)
