@@ -6,8 +6,8 @@
    {
     "room": "teach1",
     "host": "teach",
-    "edge": "n",
-    "at": 57
+    "edge": "s",
+    "at": 49
    },
    {
     "room": "admin1",
@@ -877,7 +877,7 @@
     "teach6"
    ],
    "rise": 3.2,
-   "col": 6,
+   "col": 55,
    "row": 21,
    "n": [
     0,
@@ -899,7 +899,7 @@
     "teach5"
    ],
    "rise": 3.2,
-   "col": 55,
+   "col": 6,
    "row": 21,
    "n": [
     0,
@@ -1027,9 +1027,9 @@
   "pairs": [
    [
     {
+     "edge": "s",
      "room": "admin2",
-     "at": 38,
-     "edge": "s"
+     "at": 38
     },
     {
      "room": "link1",
@@ -1039,9 +1039,9 @@
    ],
    [
     {
+     "edge": "n",
      "room": "lab2",
-     "at": 16,
-     "edge": "n"
+     "at": 16
     },
     {
      "room": "link1",
@@ -1051,9 +1051,9 @@
    ],
    [
     {
+     "edge": "s",
      "room": "lab2",
-     "at": 44,
-     "edge": "s"
+     "at": 37
     },
     {
      "room": "link2",
@@ -1063,9 +1063,9 @@
    ],
    [
     {
+     "edge": "s",
      "room": "teach2",
-     "at": 57,
-     "edge": "n"
+     "at": 12
     },
     {
      "room": "link2",

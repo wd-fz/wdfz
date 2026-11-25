@@ -369,7 +369,7 @@ const GALLERY_RISE := 3.2
 
 
 ## The open outside corridors of the teaching building, floors 2–5 (modules/campus-link/gallery.js): the real campus outside is hung into the
-## scene shifted by the building's offset and dropped by the floor's height, so from the corridor you see the campus, the people below and the
+## scene in the floor's local frame, so from the corridor you see the campus, the people below and the
 ## stair towers in front of the building. Visual only; the collision still stops you at the rail.
 func _build_gallery_view() -> void:
 	if not is_room() or not bool(layout.get("flags", {}).get("gallery", false)):
@@ -377,10 +377,10 @@ func _build_gallery_view() -> void:
 	var model := _load_visual("out")
 	if model == null:
 		return
-	var sh := CampusGeometry.shift_of(layout)
 	var f := int(layout.get("floor", 2))
 	model.name = "GalleryCampus"
-	model.position = Vector3(-(sh.x + float(layout["cx"])) * CampusGeometry.U2M, -float(f - 1) * GALLERY_RISE, -(sh.y + float(layout["cy"])) * CampusGeometry.U2M)
+	model.transform = CampusGeometry.campus_frame(layout).affine_inverse()
+	model.position.y -= float(f - 1) * GALLERY_RISE
 	add_child(model)
 	# The exterior is a view beyond the open gallery, not a second set of interior walls.
 	CampusPreview.clip(model, Plane(Vector3.BACK, _extent().end.y - float(layout["th"]) * CampusGeometry.U2M))

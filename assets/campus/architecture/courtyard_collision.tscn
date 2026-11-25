@@ -56,16 +56,6 @@ shape = SubResource("Cylinder_0")
 position = Vector3(85.09778, 1.14500, 140.62444)
 shape = SubResource("Cylinder_1")
 
-[node name="teachPierLeft" type="CollisionShape3D" parent="."]
-position = Vector3(148.98222, 0.695, 191.52556)
-rotation = Vector3(0, 3.14159265, 0)
-shape = SubResource("PorticoPier")
-
-[node name="teachPierRight" type="CollisionShape3D" parent="."]
-position = Vector3(142.46222, 0.695, 191.52556)
-rotation = Vector3(0, 3.14159265, 0)
-shape = SubResource("PorticoPier")
-
 [node name="labPierLeft" type="CollisionShape3D" parent="."]
 position = Vector3(98.19222, 0.695, 164.79556)
 rotation = Vector3(0, -1.57079633, 0)

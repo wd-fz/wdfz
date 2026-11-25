@@ -4,21 +4,29 @@ window.NativeCampus = (() => {
   const depth = 0.20;
   const layout = window.NATIVE_CAMPUS_LAYOUT;
   const retiredDoors = {};
+  const edges = ['n', 'w', 's', 'e'];
+  function physicalEdge(edge, turn = 0) {
+    return edges[(edges.indexOf(edge) + turn + 4) % 4];
+  }
+  function bridgeX(building, port) {
+    const along = (port.at + .5) * 4.5;
+    return building.x + (building.turn === 2 ? building.w - along : along);
+  }
   function placeBuildings(objects) {
     const byId = Object.fromEntries(objects.map(o => [o.id, o]));
     for (const [id, placement] of Object.entries(layout.buildings)) {
       if (!byId[id]) throw new Error('Unknown campus building: ' + id);
       Object.assign(byId[id], placement);
     }
-    for (const {host, edge} of Object.values(layout.entrances)) byId[host].door = edge;
+    for (const {host, edge} of Object.values(layout.entrances)) byId[host].door = physicalEdge(edge, byId[host].turn);
     for (const {id, name, north, south} of layout.bridges) {
       const bridge = byId[id];
       const a = byId[north.room.slice(0, -1)], b = byId[south.room.slice(0, -1)];
-      const portX = (o, port) => o.x + (port.at + .5) * 4.5;
-      if (portX(a, north) !== portX(b, south) || b.y - (a.y + a.h) !== bridge.h) {
+      if (physicalEdge(north.edge || 's', a.turn) !== 's' || physicalEdge(south.edge || 'n', b.turn) !== 'n'
+          || bridgeX(a, north) !== bridgeX(b, south) || b.y - (a.y + a.h) !== bridge.h) {
         throw new Error('Misaligned campus bridge: ' + id);
       }
-      Object.assign(bridge, {n: name, x: portX(a, north) - bridge.w / 2, y: a.y + a.h});
+      Object.assign(bridge, {n: name, x: bridgeX(a, north) - bridge.w / 2, y: a.y + a.h});
     }
     objects.push({...layout.plaza});
   }
@@ -52,24 +60,27 @@ window.NativeCampus = (() => {
     return layout.bridges.flatMap(({id, north, south}) => {
       const room = 'link' + id.slice(1);
       return [
-        [{...north, edge:'s'}, {room, edge:'n', at:2}],
-        [{...south, edge:'n'}, {room, edge:'s', at:2}]
+        [{edge:'s', ...north}, {room, edge:'n', at:2}],
+        [{edge:'n', ...south}, {room, edge:'s', at:2}]
       ];
     });
   }
   function bridgeApproaches(rooms) {
-    // Teaching wing: use the unused strip beside the last classroom and open
-    // it into the hall before the washroom, keeping its stalls and all desks.
-    const teach = rooms.teach2.grid;
-    for (let row = 1; row <= 15; row++)
-      for (let col = 56; col <= 58; col++) teach[row][col] = '.';
-    for (let row = 16; row <= 18; row++)
-      for (let col = 56; col <= 57; col++) teach[row][col] = '.';
-    for (const {north, south} of layout.bridges) {
-      const grid = rooms[north.room].grid;
-      grid[grid.length - 2][north.at] = 'L';
-      rooms[south.room].grid[1][south.at] = 'L';
+    for (const [port] of bridgePairs()) {
+      const grid = rooms[port.room].grid;
+      grid[port.edge === 's' ? grid.length - 2 : 1][port.at] = 'L';
     }
+  }
+  function teachingColumns(px, pz, width, depth) {
+    const shape = window.teachSouth(px, pz, width, depth);
+    const x = shape.x0 + (layout.entrances.teach1.at + .5) * shape.t;
+    return window.colonnadeColumns(px, pz, width, depth, x).filter(column =>
+      !shape.towers.some(tower => Math.abs(column.x - tower.x) < tower.half + .31));
+  }
+  function teachingTowerBounds(px, pz, width, depth) {
+    return window.teachSouth(px, pz, width, depth).towers.map(tower => ({
+      x: 2 * px - tower.x, z0: 2 * pz - tower.z1, z1: 2 * pz - tower.z0, half: tower.half
+    }));
   }
   function outsidePort(room, port, shift) {
     const turn = window.objById(room.host)?.turn || 0;
@@ -147,11 +158,11 @@ window.NativeCampus = (() => {
   }
   function bridgeOpenings(host) {
     return layout.bridges.flatMap(({north, south}) => [
-      {...north, face: 's'}, {...south, face: 'n'},
+      {edge: 's', ...north}, {edge: 'n', ...south},
     ]).filter(port => port.room.slice(0, -1) === host).map(port => {
       const building = window.objById(host);
       const centre = (building.x + (port.at + .5) * 4.5) * window.SC * window.U2M;
-      return {face: port.face, lo: centre - 1.52, hi: centre + 1.52, base: 3.2, rise: 0, levels: 1};
+      return {face: port.edge, lo: centre - 1.52, hi: centre + 1.52, base: 3.2, rise: 0, levels: 1};
     });
   }
   function entryOpening(o, px, pz) {
@@ -208,9 +219,9 @@ window.NativeCampus = (() => {
   function stairExterior(kit, stair, brick, trim) {
     if (stair.rooms.includes('out')) return;
     const room = window.INTERIORS[stair.rooms[0]];
-    const port = window.StairWorld.port(stair, 0), shift = window.TeachGallery.shift(room);
-    const x = (port.x + shift.x) / 9 + port.n[0] * 2.8;
-    const z = (port.y + shift.y) / 9 + port.n[1] * 2.8;
+    const port = outsidePort(room, window.StairWorld.port(stair, 0), window.TeachGallery.shift(room));
+    const x = port.x / 9 + port.n[0] * 2.8;
+    const z = port.y / 9 + port.n[1] * 2.8;
     const frame = kit.sub(x, z, Math.atan2(port.n[0], port.n[1]), 0);
     const front = -2.8, back = 7.38, half = 2.38;
     const height = (stair.rooms.length - 1) * stair.rise + 3.0;
@@ -238,5 +249,5 @@ window.NativeCampus = (() => {
   }
   return {depth, partition, bounds, frame, leaves, spansOutside, stairOpenings, bridgeOpenings, entryOpening,
     exteriorWalls, bridgeWalls, stairExterior, placeBuildings, entryApproaches, entryDoors, doorPoint, retiredDoors,
-    bridgePairs, bridgeApproaches, outsidePort, plazaRoad};
+    bridgePairs, bridgeApproaches, outsidePort, plazaRoad, teachingColumns, teachingTowerBounds};
 })();

@@ -29,7 +29,7 @@ func _test_campus_app() -> void:
 	await _frames(1)
 	var stood: Array = app.player.capture_pose()["position"]
 	check(not app.school().seated and absf(stood[2] - 1.4456) < 0.15, "moving stands up into the aisle where leaveSeat puts the body")
-	# Real physics: walking into the classroom's north window wall must stop.
+	# Real physics: walking into the classroom's rear window wall must stop.
 	var t1 := CampusData.layout("teach1")
 	app.player.restore_pose(_campus_pose(t1, CampusGeometry.tile_center(t1, 54, 9), -PI * 0.5))
 	await _frames()
@@ -38,7 +38,7 @@ func _test_campus_app() -> void:
 	Input.action_release("move_forward")
 	var stop: Array = app.player.capture_pose()["position"]
 	var wall_z := CampusGeometry.to_scene(t1, Vector2(0, float(t1["oy"]) + 7 * float(t1["th"])))
-	check(stop[2] > wall_z.y + 0.30 and stop[2] < wall_z.y + 0.40, "north wall stops the body at its radius (z=%.3f)" % stop[2])
+	check(stop[2] > wall_z.y + 0.30 and stop[2] < wall_z.y + 0.40, "the rear wall stops the body at its radius (z=%.3f)" % stop[2])
 	# Closed door blocks, open door lets the body through.
 	var corridor := CampusGeometry.tile_center(t1, 10, 17)
 	app.player.restore_pose(_campus_pose(t1, corridor, -PI * 0.5))
@@ -70,7 +70,8 @@ func _test_campus_app() -> void:
 	await _until_world(app, "out")
 	check(app.router.current.world_id == &"out" and app.session.world_id == "out", "walking through the north door switches to the plaza")
 	check(app.router.world_instance() is CampusWorld, "campus outside scene built")
-	app.player.place(_campus_pose(null, port["p"] + CampusGeometry.shift_of(t1) + outward * 8, (-outward).angle()))
+	var local_entry := _campus_pose(t1, port["p"] + outward * 8, (-outward).angle())
+	app.player.place(CampusSpace.transform_pose(CampusGeometry.campus_frame(t1), local_entry))
 	await _frames()
 	Input.action_press("move_forward")
 	await _frames(60)

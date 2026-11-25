@@ -41,7 +41,8 @@ func _init(room_data: Dictionary = {}, out_data: Dictionary = {}, campus_data: D
 			var door := CampusPortals.stair_port(stair, i, rooms, outside)
 			var local := CampusGeometry.to_scene(rooms[id], door["p"])
 			var target: Vector3 = frames[stair["id"]] * Vector3(0, i * float(stair["rise"]), CampusPortals.THRESHOLD_Z)
-			frames[id] = Transform3D(Basis.IDENTITY, target - Vector3(local.x, 0, local.y))
+			var floor_basis := frame(id).basis
+			frames[id] = Transform3D(floor_basis, target - floor_basis * Vector3(local.x, 0, local.y))
 	var lifts := ElevatorModule.new(rooms)
 	lifts.reset()
 	update_lifts(lifts)
@@ -158,6 +159,18 @@ func resume_pose(id: String, pose: Dictionary) -> Dictionary:
 	if id == "out": return outdoor_resume_pose(restored)
 	var room: Dictionary = rooms.get(id, {})
 	var retired: Dictionary = room.get("retired_door", {})
+	# v0.6.3 opened an approach through the back of teaching floors 1 and 2.
+	# Its local coordinates can now fall inside the restored classroom walls.
+	if id in ["teach1", "teach2"] and int(room.get("campus_turn", 0)) == 2:
+		var pos: Array = restored["position"]
+		var p := CampusGeometry.to_world(room, pos[0], pos[2])
+		var col := floori((p.x - float(room["ox"])) / float(room["tw"]))
+		var row := floori((p.y - float(room["oy"])) / float(room["th"]))
+		if Rect2i(56, -1, 3, 20).has_point(Vector2i(col, row)) and (row < 0 or CampusGeometry.tile_at(room, p) == "#"):
+			var hall := CampusGeometry.to_scene(room, CampusGeometry.tile_center(room, 55, 18))
+			var safe := restored.duplicate()
+			safe["position"] = [hall.x, .05, hall.y]
+			return safe
 	if retired.is_empty(): return restored
 	var port := CampusPortals.link_port(rooms, retired, float(retired["width"]))
 	var q: Array = restored["position"]
@@ -180,10 +193,11 @@ func outdoor_resume_pose(pose: Dictionary) -> Dictionary:
 	var p: Array = pose["position"]
 	var at := Vector2(p[0], p[2])
 	var scale_m := float(outside["SC"]) * CampusGeometry.U2M
+	var inside_teaching_shaft := stair_bounds("stair_teach_w").has_point(at) or stair_bounds("stair_teach_e").has_point(at)
 	for building: Dictionary in outside["objects"]:
 		if not building.id in ["gear", "admin", "lab", "teach", "dormN", "dormS", "canteen"]: continue
 		var plot := Rect2(building.x * scale_m, building.y * scale_m, building.w * scale_m, building.h * scale_m)
-		if not plot.grow(-.05).has_point(at): continue
+		if not plot.grow(-.05).has_point(at) and not (building.id == "teach" and inside_teaching_shaft): continue
 		var entrance: Dictionary = building.door_world
 		var safe := pose.duplicate(true)
 		safe["position"] = [entrance.x * CampusGeometry.U2M, .05, entrance.y * CampusGeometry.U2M]

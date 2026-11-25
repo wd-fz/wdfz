@@ -8,7 +8,7 @@ const OUT := "res://build/previews/campus"
 ## [file, world, old world x, old world y, old heading (rad), pitch]
 const SHOTS := [
 	["01-教学楼1F-开局起身位置.png", "teach1", "start", 0, 0, 0.0],
-	["02-教学楼1F-走廊西望.png", "teach1", 1330, 1910, PI, -0.03],
+	["02-教学楼1F-走廊西望.png", "teach1", 1122, 1910, 0.0, -0.03],
 	["03-教学楼1F-北门门槛看出去.png", "teach1", "teach_door", 0, 0, -0.02],
 	["04-室外-教学楼北门.png", "out", "teach_door", 0, 0, 0.12],
 	["05-室外-行政楼与实验楼.png", "out", 1023, 1300, -PI * 0.5, 0.1],
@@ -55,8 +55,12 @@ func _capture() -> void:
 			var p := CampusGeometry.to_scene(room, (door["p"] as Vector2) - normal * 12.0)
 			var heading := normal.angle()
 			if world == "out":
-				p = CampusGeometry.to_scene(null, (door["p"] as Vector2) + CampusGeometry.shift_of(room) + normal * 90.0)
-				heading = (-normal).angle()
+				var frame := CampusGeometry.campus_frame(room)
+				var local := CampusGeometry.to_scene(room, (door["p"] as Vector2) + normal * 90.0)
+				var outside := frame * Vector3(local.x, 0, local.y)
+				var outward := frame.basis * Vector3(normal.x, 0, normal.y)
+				p = Vector2(outside.x, outside.z)
+				heading = Vector2(-outward.x, -outward.z).angle()
 			pose = {"position": [p.x, .05, p.y], "yaw": CampusGeometry.yaw_from_ang(heading), "pitch": 0.0}
 		elif shot[2] is String:
 			pose = rules.default_spawn(world)

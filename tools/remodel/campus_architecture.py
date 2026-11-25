@@ -85,31 +85,29 @@ def facade(name, obj, link_gaps):
             p.block((xx,y,z+d/2), (.18,.16,d+.24), CREAM)
     # The accessible teaching roof has an open parapet on the gallery side.
     crown = floors*rise + (.42 if dorm else (.14 if name=='canteen' else 1.17))
-    for zz in ([z-.10] if name=='teach' else [z-.10,front+.10]):
+    for zz in ([front+.10] if name=='teach' else [z-.10,front+.10]):
         p.block((cx,crown,zz),(w+.55,.19,.34),CREAM)
         p.block((cx,crown+.11,zz),(w+.66,.05,.39),'84918d')
     for xx in (x-.1,x+w+.1):
         p.block((xx,crown,z+d/2),(.30,.19,d+.48),CREAM)
-    if name in ('teach','lab','admin'):
+    if name in ('lab','admin'):
         # The entry trim is built in its doorway frame so it follows the mesh and collision port.
         origin, axes = entrance_frame(obj)
         first = len(p.vertices)
-        spring = 1.12 if name == 'teach' else 1.32
+        spring = 1.32
         face = PORTICO_PROJECTION
         for side in (-1,1):
             xx = side*PORTICO_PIER_X
             p.block((xx,spring/2,face-.12),(.42,spring,.30),CREAM)
             p.block((xx,.22,face-.10),(.54,.44,.38),LIMESTONE)
             p.block((xx,spring-.02,face-.10),(.56,.13,.41),CREAM)
-            p.block((xx,2.98 if name=='teach' else 3.20,face/2),(.27,.20,face),LIMESTONE)
+            p.block((xx,3.20,face/2),(.27,.20,face),LIMESTONE)
             for offset in (4.18, 4.46):
                 p.block((side*offset,1.44,.03),(.16,2.88,.22),PEACH)
-        # The teaching entrance sits below the bridge. Leave the upper threshold clear.
-        lift = -0.67 if name == 'teach' else 0.0
-        arch(p,0,face,(3.06,2.22+lift),spring,.40,.36,[CREAM,'ecdbc3','f3e4ce'])
-        arch(p,0,face+.04,(2.98,2.14+lift),spring,.09,.24,[LIMESTONE])
-        arch(p,0,face+.02,(3.46,2.62+lift),spring,.09,.32,[LIMESTONE])
-        p.block((0,spring+2.49+lift,face+.025),(.32,.39,.39),CREAM)
+        arch(p,0,face,(3.06,2.22),spring,.40,.36,[CREAM,'ecdbc3','f3e4ce'])
+        arch(p,0,face+.04,(2.98,2.14),spring,.09,.24,[LIMESTONE])
+        arch(p,0,face+.02,(3.46,2.62),spring,.09,.32,[LIMESTONE])
+        p.block((0,spring+2.49,face+.025),(.32,.39,.39),CREAM)
         p.vertices[first:] = [origin+v@axes for v in p.vertices[first:]]
         p.normals[first:] = [v@axes for v in p.normals[first:]]
         # Keep the gallery posts beside the south wall and clear of level-two links.
@@ -305,7 +303,7 @@ def collision_scene(solids, x, z, objects):
         data += [f'[node name="GardenPost{i}" type="CollisionShape3D" parent="."]',
                  f'position = Vector3({x:.5f}, {h/2:.5f}, {z:.5f})',
                  f'shape = SubResource("Cylinder_{cylinders.index((r,h))}")', '']
-    for host in ('teach','lab','admin'):
+    for host in ('lab','admin'):
         origin, axes = entrance_frame(objects[host])
         for side in (-1,1):
             xx, _, zz = origin + np.array((side*PORTICO_PIER_X, 0, PORTICO_PROJECTION-.10))@axes
