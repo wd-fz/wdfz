@@ -54,7 +54,11 @@ func _test_achievements() -> void:
 	check(again.unlocked.size() == 1 and again.unlocked.has("n.day2"), "unknown or non-public ids in a profile are dropped")
 	check(ach.points() > 0 and not ach.entries().any(func(r: Dictionary) -> bool: return String(r["id"]).begins_with("h.")), "undiscovered hidden achievements do not appear in the player list")
 	var rows := ach.entries()
-	check(rows.size() == AchievementsModule.LIST.keys().filter(func(k: String) -> bool: return not k.begins_with("h.")).size() and rows.filter(func(r: Dictionary) -> bool: return not r["unlocked"] and r["memo"] != "").is_empty(), "locked public entries show no memory line")
+	var public_ids := AchievementsModule.LIST.keys().filter(func(id: String) -> bool: return not id.begins_with("h.") and id != "e.nolaugh")
+	check(rows.map(func(row: Dictionary) -> String: return row.id) == public_ids, "the current public list omits retired and undiscovered hidden entries")
+	check(rows.all(func(row: Dictionary) -> bool: return row.unlocked or row.memo.is_empty()), "locked public entries show no memory line")
+	again.load_profile({"unlocked": {"e.nolaugh": true}})
+	check(again.entries().any(func(row: Dictionary) -> bool: return row.id == "e.nolaugh" and row.unlocked and not row.memo.is_empty()), "older profiles keep their earned retired achievement")
 
 
 func _test_speedrun_rules() -> void:
