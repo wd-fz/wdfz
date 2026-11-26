@@ -243,6 +243,8 @@ func start() -> String:
 	if not _resume.is_empty():
 		simulation.restore(_resume)
 		_resume.clear()
+	else:
+		for student: CooperativeActor in simulation.active_actors(): student.entrance_exam().prepare()
 	simulation.checkpoint_requested.connect(func() -> void: _queued_save = true)
 	_loading_deadline = Time.get_ticks_msec() / 1000.0 + LOADING_HEARTBEAT_TIMEOUT
 	_publish_room()

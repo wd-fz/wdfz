@@ -771,6 +771,14 @@ func apply_event(a: CooperativeActor, source: String, e: Dictionary) -> void:
 
 func kill(a: CooperativeActor, message: String, fx: String, source: String, capture_allowed: bool = true) -> void:
 	if a.fate().over(): return
+	if source == "assimilation" and a.school().tt >= 100:
+		a.fate().trigger_ending("false_normal")
+		a.fate().dead = true
+		cancel_actor_jobs(a)
+		sim.room.death(a.id)
+		sim.inventory.recover(a)
+		sim.checkpoint_requested.emit()
+		return
 	if capture_allowed and source == "patrol" and (a.feature(&"story.knife") as KnifeModule).catch_player(a.bag().has("small_knife"), message): return
 	var elixir := a.bag().has("elixir")
 	var immune := not elixir and a.talent().prevent_death()
@@ -958,6 +966,7 @@ func _classroom_witnesses(owner: CooperativeActor, stamp: String) -> void:
 
 func _finish_ending() -> void:
 	for a: CooperativeActor in sim.active_actors():
+		if a.fate().ended == "false_normal": continue
 		(a.feature(&"dlc.campus_rules") as RulesDlcModule).fact({"kind": "ending", "legit": not sim.room.debug_run, "fake": false})
 		stories.flush(a, "rules")
 		a.fate().ended = sim.room.ending

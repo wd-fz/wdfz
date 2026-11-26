@@ -125,7 +125,8 @@
     "rules.e.sources": "res://assets/ui/illustrations/achievements/rules_e_sources.tres",
     "rules.e.knock": "res://assets/ui/illustrations/achievements/rules_e_knock.tres",
     "rules.p.survive": "res://assets/ui/illustrations/achievements/rules_p_survive.tres",
-    "rules.h.reply": "res://assets/ui/illustrations/achievements/rules_h_reply.tres"
+    "rules.h.reply": "res://assets/ui/illustrations/achievements/rules_h_reply.tres",
+    "h.perfect_paper": "res://assets/ui/illustrations/achievements/h_perfect_paper.tres"
   },
   "memories": {
     "misread": "res://assets/ui/illustrations/memories/misread.tres",
@@ -168,7 +169,8 @@
     "end:inception": "res://assets/ui/illustrations/memories/end_inception.tres",
     "cut:void_in": "res://assets/ui/illustrations/memories/cut_void_in.tres",
     "cut:void_out": "res://assets/ui/illustrations/memories/cut_void_out.tres",
-    "end:facePaper": "res://assets/ui/illustrations/memories/end_facePaper.tres"
+    "end:facePaper": "res://assets/ui/illustrations/memories/end_facePaper.tres",
+    "end:false_normal": "res://assets/ui/illustrations/memories/end_false_normal.tres"
   },
   "grades": {
     "F": "res://assets/ui/illustrations/grades/F.tres",

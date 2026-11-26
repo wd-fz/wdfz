@@ -1,8 +1,8 @@
 class_name TalentModule
 extends FeatureModule
 ## Talents, based on the Web version (reference wd-fz.github.io@0bf508a, talents.js).
-## One talent per run, picked on the new-game screen (or at random). The other modules only ask
-## "may I / how / by how much" through this module; the app passes the answers in their contexts.
+## Players pick one talent for a run. A perfect entrance exam activates every talent
+## for that student, with each one-shot effect tracking its own charge.
 
 const STATE_VERSION := 1
 const RULES := 6
@@ -24,6 +24,15 @@ const PATROL_SENSE_METRES := 15.0
 
 var id := "none"
 var consumed: Dictionary = {}
+var _exam: EntranceExam
+
+
+func _init(exam: EntranceExam = null) -> void:
+	_exam = exam
+
+
+func all_active() -> bool:
+	return _exam != null and _exam.score == EntranceExam.COUNT
 
 
 func module_id() -> StringName:
@@ -63,7 +72,7 @@ func pick(talent: String) -> void:
 
 
 func has(talent: String) -> bool:
-	return id == talent
+	return id == talent or (all_active() and DEF.has(talent))
 
 
 func name_of(talent: String = "") -> String:
@@ -103,6 +112,7 @@ func face_remedy() -> bool:
 
 ## The pause line (Talent.pauseText).
 func pause_text() -> String:
+	if all_active(): return "天赋 · 六项全部生效　　免疫%s　·　门禁补救%s" % ["已用" if consumed.has("fatalProtection") else "可用", "已用" if consumed.has("faceRemedy") else "可用"]
 	if not DEF.has(id):
 		return "天赋 · 没有天赋"
 	var status := ""

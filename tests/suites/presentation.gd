@@ -40,19 +40,17 @@ func _test_fake_people() -> void:
 	app.start_new_game()
 	await _frames(3)
 	app.patrol().pat["safety"] = 999.0
-	var fnm := app.fake_normal()
-	fnm.fn["on"] = true
-	fnm.fn["v"] = 10.0
 	app.school().day = 2
 	await _frames(4)
-	check(is_instance_valid(app._fake_people) and app._fake_people.get_child_count() >= 1 and app._fake_people.get_child_count() <= 4, "on the fake-normal day a few dull people stand in the room (%d)" % (app._fake_people.get_child_count() if is_instance_valid(app._fake_people) else -1))
-	fnm.fn["v"] = 80.0
-	await _frames(3)
-	check(app._fake_people == null, "past 72 laughs they are gone")
-	fnm.fn["v"] = 10.0
-	fnm.fn["on"] = false
-	await _frames(3)
-	check(app._fake_people == null, "and when the fake-normal day ends")
+	check(not app.fake_normal().active() and app._fake_people == null, "the second day alone never changes the world")
+	app.school().tt = 100
+	app._fake_people_random.seed = 42
+	app._reach_ending("false_normal")
+	check(app.story().ended == "false_normal" and is_instance_valid(app._fake_people), "full assimilation turns the occupied room into the false ending")
+	if is_instance_valid(app._fake_people):
+		check(app._fake_people.get_child_count() <= 4, "the room contains at most four additional figures")
+	app.return_to_menu()
+	check(app._fake_people == null, "the false ending leaves no figures in the next run")
 	app.queue_free()
 	await _frames(2)
 
@@ -459,13 +457,11 @@ func _test_opening() -> void:
 		var name := String(StudentCast.PEOPLE[character]["name"])
 		var full := OpeningStory.captions(character, false)
 		var brief := OpeningStory.captions(character, true)
-		check(OpeningCut.line_at(0.1, full).contains(name) and OpeningCut.line_at(0.22, full) == "" and OpeningCut.line_at(0.95, full).contains("下课铃没有响"), "the full storyboard introduces the selected student")
-		check(OpeningCut.line_at(0.65, brief).contains(name) and OpeningCut.line_at(0.98, brief).contains("保安岗"), "the abbreviated opening still gives a name and a destination")
+		check(OpeningCut.line_at(0.1, full).contains(name) and OpeningCut.line_at(0.22, full) == "" and OpeningCut.line_at(0.95, full).contains("名牌"), "the full storyboard introduces the selected student")
+		check(OpeningCut.line_at(0.65, brief).contains(name) and OpeningCut.line_at(0.98, brief).contains("名牌"), "the abbreviated opening still gives a name and a destination")
 		var pages := OpeningStory.pages(character)
-		check(pages[2].contains("17 号工单") and pages[2].contains("签名最后一笔") and pages[3].contains("我替你应一声") and pages[4].contains("我趴到桌上") and pages[5].contains("长得像同桌"), "the deskmate leaves the marked ticket before the student wakes beside the lookalike")
-		var background := OpeningStory.background(character)
-		check(background.contains(name) and background.contains("晚饭") and background.contains("保安岗") and background.contains("签到册"), "the opening memory links the student's plans, the signature and the lead")
-		check(OpeningStory.background(character, true).contains("17 号工单"), "classmates can compare the shared number on their individual tickets in co-op")
+		check(pages[2].contains(name) and pages[3].contains("交了卷") and pages[4].contains("醒来"), "signed exam, sleep and wake in that order")
+		check(OpeningStory.background(character).contains("保安岗") and OpeningStory.background(character, true).contains("队友"), "notebook identifies the next lead in both modes")
 	check(OpeningCut.mate_pose("still", 0.0, 0.5, 0.0, 0.2) == Vector2.ZERO and OpeningCut.mate_pose("write", 0.08, 0.5, 0.0, 0.8) == Vector2.ZERO and OpeningCut.mate_pose("write", 0.08, 0.5, 0.0, 0.2).x > 0.0 and is_equal_approx(OpeningCut.mate_pose("turn", 0.08, 0.5, 1.0, 0.2).x, 0.02), "mates write, turn a page or stay, and sit up straight again after 70%")
 	check(OpeningCut.ease_k(-1.0) == 0.0 and OpeningCut.ease_k(2.0) == 1.0 and is_equal_approx(OpeningCut.ease_k(0.5), 0.5), "the easing is clamped")
 

@@ -135,9 +135,52 @@ func departed(id: String) -> void:
 	physics.remove_actor(id)
 
 
+func exam_pending() -> bool:
+	for a: CooperativeActor in actors.values():
+		if is_participating(a.id) and room.members[a.id]["connected"] and a.entrance_exam().phase != "done": return true
+	return false
+
+
+func _grade_exam(a: CooperativeActor) -> void:
+	var exam := a.entrance_exam()
+	if not exam.submit(): return
+	if a.talent().all_active():
+		inventory.restore_phone(a)
+		inventory.reconcile(a)
+	checkpoint_requested.emit()
+
+
+func _exam_command(a: CooperativeActor, data: Dictionary) -> Dictionary:
+	var exam := a.entrance_exam()
+	var now := Time.get_unix_time_from_system()
+	if exam.phase == "writing" and now >= exam.deadline: _grade_exam(a)
+	match String(data.get("action", "")):
+		"exam_start":
+			if exam.phase == "waiting":
+				exam.start(now, RandomNumberGenerator.new())
+				checkpoint_requested.emit()
+		"exam_answer":
+			if not SaveSchema.is_integer(data.get("index"), 0, EntranceExam.COUNT - 1) or not SaveSchema.is_integer(data.get("option"), 0, 3):
+				return {"ok": false, "error": "无效的选项。"}
+			if exam.answer(int(data.index), int(data.option), now): checkpoint_requested.emit()
+		"exam_submit": _grade_exam(a)
+		"exam_wake":
+			if exam.phase == "graded":
+				exam.wake()
+				checkpoint_requested.emit()
+		_: return {"ok": false, "error": "等全队收好试卷后再行动。"}
+	return {"ok": true}
+
+
 func tick(dt: float) -> void:
 	normalize_members()
 	if room == null or room.phase != "playing" or room.paused_left > 0.0: return
+	if exam_pending():
+		var now := Time.get_unix_time_from_system()
+		for a: CooperativeActor in actors.values():
+			var exam := a.entrance_exam()
+			if exam.phase == "writing" and now >= exam.deadline: _grade_exam(a)
+		return
 	for i in 6 if gameplay.studying() else 1:
 		if room.phase != "playing": break
 		if i > 0 and not gameplay.studying(): break
@@ -249,7 +292,7 @@ func command(id: String, data: Dictionary) -> Dictionary:
 			spectators[id] = who
 			result = {"ok": true}
 	if room.phase == "playing" and not a.fate().over() and room.members[id]["connected"] and room.paused_left <= 0.0:
-		result = gameplay.command(a, data)
+		result = _exam_command(a, data) if exam_pending() else gameplay.command(a, data)
 	if result.get("ok", false) and data.get("action") in ["interact", "item", "pickup", "drop", "give", "camera_flash", "lift_close"]:
 		a.gesture_until = room.tick + roundi(.5 * Engine.physics_ticks_per_second)
 	room.remember(id, sequence, result)
@@ -259,6 +302,7 @@ func command(id: String, data: Dictionary) -> Dictionary:
 
 func input(id: String, data: Dictionary) -> void:
 	if not is_participating(id) or room.phase != "playing" or room.paused_left > 0 or data.get("epoch") != room.epoch or not room.members[id]["connected"]: return
+	if exam_pending(): return
 	if data.has("frames"):
 		actors[id].queue_inputs(LanProtocol.inputs(data), data.get("phone") == true and actor(id).bag().has("phone"))
 	elif LanProtocol.input_valid(data):
@@ -339,6 +383,9 @@ func state_for(id: String) -> Dictionary:
 	data["car_job"] = gameplay.garage_jobs.get(id, {}).duplicate(true)
 	data["operation_id"] = gameplay.operation_id(a)
 	data["team"] = team_for(a)
+	if exam_pending():
+		data["exam_pending"] = true
+		data["exam_left"] = clampf(a.entrance_exam().deadline - Time.get_unix_time_from_system(), 0, EntranceExam.SECONDS)
 	var radio: BroadcastModule = shared[&"story.broadcast"]
 	data["radio_live"] = {"held": radio.held, "progress": radio.progress}
 	var observing := observed(id)

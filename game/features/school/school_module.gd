@@ -265,7 +265,7 @@ func _settle_san() -> void:
 	san = clampf(san, 0.0, 100.0)
 	stam = clampf(stam, 0.0, stamina_max())
 	if san <= 0.0 and not _requested("san"):
-		_deaths.append({"msg": "你一直撑着的那根弦，断了。", "fx": "vignette", "source": "san"})
+		_deaths.append({"msg": "我努力想起自己的名字。最后一个字也消失了。", "fx": "vignette", "source": "san"})
 
 
 func _add_violation(amount: float, exempt: bool) -> void:

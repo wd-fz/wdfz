@@ -359,15 +359,24 @@ func _skip_cut(app: GameApp) -> void:
 	check(not app._ending_cut.on, "Space skips the live ending through real input")
 
 
+func _hand_in_blank(app: GameApp) -> void:
+	var panel := app.exam_flow.panel
+	if not is_instance_valid(panel): return
+	for _step in 4: panel._submit.pressed.emit()
+	if is_instance_valid(app._opening_cut): app._opening_cut.tick(OpeningCut.DUR_SHORT)
+
+
 func _skip_opening(app: GameApp) -> void:
-	var key := InputEventKey.new()
-	key.keycode = KEY_ESCAPE
-	key.physical_keycode = KEY_ESCAPE
-	key.pressed = true
-	Input.parse_input_event(key)
-	await _frames(2)
-	key.pressed = false
-	Input.parse_input_event(key)
-	await _frames(2)
+	_hand_in_blank(app)
+	if app.opening_busy():
+		var key := InputEventKey.new()
+		key.keycode = KEY_ESCAPE
+		key.physical_keycode = KEY_ESCAPE
+		key.pressed = true
+		Input.parse_input_event(key)
+		await _frames(2)
+		key.pressed = false
+		Input.parse_input_event(key)
+		await _frames(2)
 	check(not app.opening_busy() and not paused and app.player.enabled,
 		"Escape hands control back from a live or text opening")

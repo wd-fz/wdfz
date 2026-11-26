@@ -60,6 +60,10 @@ func fate() -> StoryModule:
 	return feature(&"story.death") as StoryModule
 
 
+func entrance_exam() -> EntranceExam:
+	return feature(&"school.entrance_exam") as EntranceExam
+
+
 func talent() -> TalentModule:
 	return feature(&"story.talent") as TalentModule
 

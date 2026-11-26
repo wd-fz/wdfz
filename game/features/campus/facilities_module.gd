@@ -520,7 +520,7 @@ func _guard() -> void:
 		_emit("clue", {"id": "keys"})
 		flags["guard_told"] = true
 	_parking_records()
-	var line := "底联上也是我的笔迹，离校栏还空着。"
+	var line := "点名底联的姓名栏，连墨点都和我的试卷一样。离校栏还空着。"
 	if borrowed:
 		line += " 同化恢复自然回落。"
 	elif not first:
@@ -540,7 +540,7 @@ func _guard() -> void:
 
 ## The counterfoil, the guard's warning and the old handover kept with them.
 func _parking_records() -> void:
-	_record("parking", "停车登记：可用车辆在车库靠西侧，第 %d 排。签名旁边的离校栏空着，底联盖着「西小门核验」。" % int(_c.get("car_row", 1)), "事实", "保安岗 · 停车登记")
+	_record("parking", "两份记录夹在一起。停车登记记着车库西侧第 %d 排；点名底联写着我的名字，离校栏空着，盖着「西小门核验」。" % int(_c.get("car_row", 1)), "事实", "保安岗 · 停车登记")
 	_record("garageSafety", "车道上的黑影会靠近。手电持续照射能暂时逼退它；硬币可把它引开。拉车门前，先确认它离开车辆。", "事实", "保安岗 · 值班便签")
 	_record("dutyBook1987", InvestigationModule.PAPER_TRIAL_NOTE, "事实", InvestigationModule.PAPER_TRIAL_SOURCE)
 

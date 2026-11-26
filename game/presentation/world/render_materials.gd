@@ -5,6 +5,15 @@ extends RefCounted
 ## so an immediate dependency refresh cannot inspect an already freed material.
 
 
+## The ordinary school uniforms, skin and hair share one authored vertex-colour material.
+static func apply_character_palette(mesh: Mesh) -> void:
+	if mesh == null: return
+	for surface in mesh.get_surface_count():
+		var material := mesh.surface_get_material(surface) as BaseMaterial3D
+		if material != null and material.resource_name == "CampusCloth" and not material.vertex_color_use_as_albedo:
+			material.vertex_color_use_as_albedo = true
+
+
 static func set_override(instance: GeometryInstance3D, material: Material) -> void:
 	var previous := instance.material_override
 	if previous == material: return

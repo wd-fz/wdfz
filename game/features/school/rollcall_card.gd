@@ -8,7 +8,7 @@ const EXIT_OFFSET := 24.0 # Original campus units, east of the old boundary wall
 const EXIT_NORTH := 13.0 # The pedestrian gap north of the vehicle gate is present in all five campus meshes.
 const EXIT_HALF_WIDTH := 4.0
 const EXIT_HINT := "沿闸机旁的白线向外走，看看门外通往哪里。"
-const PROMISE := "纸角还有一行字。「要是先出去了，跟我妹说一声，我没忘。她在北门等我。」"
+const PROMISE := "纸角透出另一张纸的横线。我把它转过来，线头正好是试卷上姓名栏的长度。"
 const PUNCH_EDGES := {"ink": "左边", "present": "上边", "proxy": "右边"}
 
 var armed := ""
@@ -108,7 +108,7 @@ func offer(next: Dictionary, today: int, promised: bool) -> Dictionary:
 	elif promised: why = "登记外出时我答应亲自到场。这一次得自己回来。"
 	if not why.is_empty(): return {"text": why, "labels": ["收好纸条"]}
 	return {"target": id, "leave": true,
-		"text": "纸背上是同桌的字。「点到你，我替你应一声。」\n把名牌留在桌上。%s点名时你若在外，空座会应声，你可以继续行动。同化增加 18，直到去保安岗核对底联才会自然回落。" % stamp(id),
+		"text": "纸背印着一条点名记录。「名牌竖起时，空座也可应到。」\n把名牌留在桌上。%s点名时你若在外，空座会应声，你可以继续行动。同化增加 18，直到去保安岗核对底联才会自然回落。" % stamp(id),
 		"labels": ["竖起名牌，让空座应到", "保持平放，自己应到"]}
 
 
@@ -178,7 +178,7 @@ func journal() -> String:
 	if clearance == 1: lines.append("西小门退回的底联，%s有个半圆缺口。" % PUNCH_EDGES[proof])
 	if trial_done(): lines.append("试走时打在底联%s的半圆缺口还在。白线外又接回了校园。" % PUNCH_EDGES[trial_punch])
 	if heard_promise: lines.append(PROMISE)
-	if stair_promise: lines.append("我在西楼梯二楼答应同桌，先醒的话，就去北门替他捎句话。")
+	if stair_promise: lines.append("西楼梯二楼的动静来自旧扬声器。我听见的是校园采样。")
 	return "\n".join(lines)
 
 

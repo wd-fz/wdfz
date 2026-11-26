@@ -27,7 +27,7 @@ func test_reference() -> void:
 	rules.migrate({})
 	check(same_json(ids(rules.visible("deaths")),original["before"]["deaths"]) and same_json(ids(rules.visible("cuts")),original["before"]["cuts"]),"original unopened archive list")
 	check(not rules.mark_seen("cut:void_in",true) and rules.mark_seen("cut:void_in") and not rules.mark_seen("cut:void_in"),"maze cut marks once only outside replay")
-	check(same_json(rules.state,original["seen"]) and same_json(rules.locked(original["ends"],original["opening"]),original["locked"]),"the retired paper ending is absent from the unlock list")
+	check(same_json(rules.state,original["seen"]) and same_json(rules.locked(original["ends"],original["opening"]),original["locked"] + ["end:false_normal"]),"the assimilation ending extends the archive and the retired paper ending stays out of the unlock list")
 	check(ids(rules.visible("cuts", {"face": 1, "facePaper": 1})).has("end:facePaper") and not rules.real(rules.entries["end:face"], {"face": 1, "facePaper": 1}, false), "historic paper replays still open without unlocking the electronic ending")
 	rules.grant(rules.locked())
 	check(rules.state["unlocked"].is_empty() and rules.state["count"].is_empty() and rules.locked().is_empty(),"direct unlock never fabricates a death, first timestamp or ending")

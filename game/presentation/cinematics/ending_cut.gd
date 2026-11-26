@@ -25,7 +25,7 @@ extends Node
 
 signal finished(skipped: bool)
 
-const DEFS := {"inception":{"dur":20.0,"outdoor":false},"knife":{"dur":16.0,"outdoor":false},"beast":{"dur":9.0,"outdoor":false}, "face": {"dur": 10.0, "outdoor": true}, "international": {"dur": 20.0, "outdoor": false}, "dismissal": {"dur": 18.0, "outdoor": false}, "portal": {"dur": 10.0, "outdoor": false}, "cyber": {"dur": 16.0, "outdoor": false}, "car": {"dur": 10.0, "outdoor": false}}
+const DEFS := {"false_normal":{"dur":6.0,"outdoor":false},"inception":{"dur":20.0,"outdoor":false},"knife":{"dur":16.0,"outdoor":false},"beast":{"dur":9.0,"outdoor":false}, "face": {"dur": 10.0, "outdoor": true}, "international": {"dur": 20.0, "outdoor": false}, "dismissal": {"dur": 18.0, "outdoor": false}, "portal": {"dur": 10.0, "outdoor": false}, "cyber": {"dur": 16.0, "outdoor": false}, "car": {"dur": 10.0, "outdoor": false}}
 const STAGED := ["inception","knife","international", "dismissal", "portal", "cyber", "car"]
 const COAT := [Color("#3a4a6a"), Color("#7a5a3a"), Color("#5a6a4a"), Color("#8a6a6a")]
 const SC := 2.0
@@ -225,6 +225,11 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	cam.far = player.camera.far
 	_root.add_child(cam)
 	cam.current = true
+	if id == "false_normal":
+		cam.global_transform = player.camera.global_transform
+		snd("event.bigBell", {"k": 0.45})
+		_apply(0)
+		return
 	if id=="inception":
 		_inception=InceptionScene.new()
 		_root.add_child(_inception)
@@ -324,6 +329,13 @@ func _set_world_visible(value: bool) -> void:
 
 
 func _apply(kk: float) -> void:
+	if kind == "false_normal":
+		_ui.set_normal_world(1)
+		if is_instance_valid(_live_lighting):
+			_live_lighting.world_normal = 1
+			_live_lighting.update(0, 720, cam)
+		_ui.cut_caption("老师念到了我的名字。" if kk < .5 else "我还没张嘴，教室里已经有人替我说了声「到」。")
+		return
 	if kind=="inception":
 		var frame:=_inception.apply(kk,cam,_frame_delta)
 		_ui.cut_fade(frame["fade"])

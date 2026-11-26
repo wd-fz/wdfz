@@ -151,7 +151,9 @@ func _show_mode(data: Dictionary) -> void:
 				var extras := scene.instantiate() if scene != null else null
 				if extras != null:
 					for mesh: MeshInstance3D in extras.find_children("*","MeshInstance3D",true,false):
-						if mesh.mesh != null: _uniforms.append(mesh.mesh)
+						if mesh.mesh != null:
+							RenderMaterials.apply_character_palette(mesh.mesh)
+							_uniforms.append(mesh.mesh)
 					extras.free()
 				if _uniforms.is_empty(): CampusEntryLog.resource_issue("同学模型缺少可用网格 · classmates.glb")
 			if _uniforms.is_empty():
@@ -164,6 +166,8 @@ func _show_mode(data: Dictionary) -> void:
 		elif data.teacher:
 			var staff := StudentAvatar.new()
 			staff.dress_teacher()
+			if staff.animation != null and staff.animation.has_animation("read"):
+				staff.advance("read", 0.3)
 			staff.rotation.y = PI
 			civilian = staff
 		else:

@@ -63,9 +63,9 @@ func _draw() -> void:
 		y += 142
 	if _ticket != "":
 		draw_rect(Rect2(x, y, width, 110), BOARD)
-		_caption("语文书下的上联", x, y + 23, width, PALE, 16)
+		_caption("课桌下的复写联", x, y + 23, width, PALE, 16)
 		var w := minf(width - 30, 229)
 		var sheet_x := x + (width - w) / 2
 		_sheet(Rect2(sheet_x, y + 34, w, 63), _ticket)
-		_caption("17 号工单", sheet_x, y + 62, w, INK, 16)
+		_caption("点名联　姓名", sheet_x, y + 62, w, INK, 16)
 		draw_line(Vector2(sheet_x + w * 0.24, y + 75), Vector2(sheet_x + w * 0.76, y + 75), INK, 1)

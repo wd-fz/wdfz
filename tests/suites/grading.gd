@@ -114,13 +114,12 @@ func test_app_transitions() -> void:
 	app.start_new_game("hard")
 	app.set_physics_process(false)
 	check(app.ui.scene_post().visible and not app.ui.sensory_on(),"healthy SAN retains base grading without low-SAN feedback")
-	app.fake_normal().fn["on"]=true
-	app.fake_normal().fn["v"]=71
+	app.fake_normal().showing = true
 	app._sensory_step(.5)
 	check(absf(app.ui.scene_post().fake_normal-.8)<.0001,"fake-normal gameplay drives the smooth colour transition")
-	app.fake_normal().fn["v"]=72
+	app.fake_normal().showing = false
 	app._sensory_step(.25)
-	check(absf(app.ui.scene_post().fake_normal-.48)<.0001,"laugh threshold fades back instead of jumping abruptly")
+	check(absf(app.ui.scene_post().fake_normal-.48)<.0001,"leaving the ending fades back instead of jumping abruptly")
 	app._blink_plan=[1,2,3]
 	app._ghost_t=.2
 	app.start_new_game("hard")
@@ -132,7 +131,9 @@ func test_app_transitions() -> void:
 		cut.set_process(false)
 		cut._apply(.3)
 		check(app.ui.scene_post().world_normal==1 and app._campus_world().lighting.world_normal==1,"opening starts in the coloured normal world")
-		cut._apply(.72)
+		cut._apply(.7)
+		check(app.ui.scene_post().world_normal == 1, "the real classroom keeps its colour until the player falls asleep")
+		cut._apply(.78)
 		check(app.ui.scene_post().world_normal==0,"waking removes the normal-world colour before control returns")
 		cut._apply(.3)
 		app.return_to_menu()

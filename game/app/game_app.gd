@@ -47,9 +47,12 @@ var wuda_roll: Callable = func() -> float: return randf()
 var _school_taps: Array = []
 var _graphics_applied: Dictionary = {}
 var lan: LanFlow
+var exam_flow := EntranceExamFlow.new()
 
 
 func _ready() -> void:
+	exam_flow.app = self
+	add_child(exam_flow)
 	router.coordinate_frame = player.get_parent() as Node3D
 	router.world_preparing.connect(_configure_world_rendering)
 	get_viewport().size_changed.connect(_resize_render_target)
@@ -387,14 +390,14 @@ var _ending_cut: EndingCut
 
 ## The opening scene is on (the live cutscene, or the text pages that stand in for it).
 func opening_busy() -> bool:
-	return ui.opening_on() or (_opening_cut != null and _opening_cut.on)
+	return exam_flow.active() or ui.opening_on() or (_opening_cut != null and _opening_cut.on)
 
 
-func _play_opening() -> void:
+func _play_opening(after_exam: bool = false) -> void:
 	if session == null:
 		return
 	player.enabled = false
-	get_tree().paused = true
+	if not lan.playing(): get_tree().paused = true
 	var world := _campus_world()
 	var room: Variant = campus().room(session.world_id) if campus() != null else null
 	if world != null and room != null and session.world_id == "teach1" and DisplayServer.get_name() != "headless":
@@ -412,15 +415,17 @@ func _play_opening() -> void:
 				f.close()
 			_opening_done(skipped))
 		_opening_cut.audio = audio
+		_opening_cut.show_waking = after_exam
 		var at := CampusGeometry.to_world(room,player.position.x,player.position.z)
 		CampusEntryLog.mark("opening actors " + session.world_id)
 		_show_classmates(classmates(),room,at,0)
-		_opening_cut.begin(world, room, player, ui, FileAccess.file_exists(seen), session.character_id)
+		_opening_cut.begin(world, room, player, ui, after_exam or FileAccess.file_exists(seen), session.character_id)
 		return
-	ui.show_opening(session.character_id)
+	ui.show_opening(session.character_id, after_exam)
 
 
 func _opening_done(_skipped: bool) -> void:
+	if exam_flow.cut_finished(): return
 	CampusEntryLog.mark("playable")
 	if _skipped and playtest.recording:
 		playtest.horror.skip()
@@ -515,7 +520,7 @@ func _start_at_desk(difficulty: String, pick: String, character: String, speed: 
 	_load_then(initial_world, func() -> void:
 		if speed: speedrun.arm(difficulty)
 		else: speedrun.disarm()
-		if start_new_game(difficulty, pick, character): _play_opening())
+		if start_new_game(difficulty, pick, character): exam_flow.begin(), null, false, true)
 
 
 ## Carry what can be carried of an old Web save into a new run (game/features/compatibility/legacy_save.gd). Returns "" or why not.
@@ -567,7 +572,7 @@ const ENTRY_PHYSICS_BUDGET_USEC := 4500
 
 
 ## Leave the cover in place for a cooperative load until the room releases it.
-func _load_then(world_id: String, work: Callable, entry_pose: Variant = null, hold_for_team: bool = false) -> void:
+func _load_then(world_id: String, work: Callable, entry_pose: Variant = null, hold_for_team: bool = false, normal_campus: bool = false) -> void:
 	if _starting:
 		return
 	_starting = true
@@ -575,6 +580,7 @@ func _load_then(world_id: String, work: Callable, entry_pose: Variant = null, ho
 	_load_generation += 1
 	var generation := _load_generation
 	var curtain := ui.show_loading("读取校园布局")
+	curtain.normal_campus = normal_campus
 	await get_tree().process_frame
 	await get_tree().process_frame
 	if generation != _load_generation: return
@@ -673,7 +679,7 @@ func _continue_with_loading() -> void:
 		_load_save_result(result)
 		return
 	var saved: Dictionary = result["data"]
-	_load_then(String(saved.get("world_id", "")), _load_save_result.bind(result), saved.get("player"))
+	_load_then(String(saved.get("world_id", "")), _load_save_result.bind(result), saved.get("player"), false, EntranceExam.pending_in(saved))
 
 
 func start_new_game(difficulty: String = "easy", talent_id: String = "none", character_id: String = StudentCast.DEFAULT) -> bool:
@@ -728,9 +734,6 @@ func start_new_game(difficulty: String = "easy", talent_id: String = "none", cha
 	var visit := candidate.modules.get_module(&"story.exchange") as ExchangeModule
 	if visit != null:
 		visit.roll(int((Time.get_ticks_usec() * 23) % 2147483647))
-	var fnm := candidate.modules.get_module(&"story.fake_normal") as FakeNormalModule
-	if fnm != null:
-		fnm.set_seed(int((Time.get_ticks_usec() * 19) % 2147483647))
 	var net := candidate.modules.get_module(&"phone.network") as PhoneModule
 	if net != null:
 		net.set_seed(int((Time.get_ticks_usec() * 17) % 2147483647))
@@ -809,6 +812,7 @@ func _unwire(old: GameSession) -> void:
 
 func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	_cancel_cinematics()
+	_fake_people_clear()
 	_close_mic()
 	ui.hide_terminal()
 	_reset_sensory()
@@ -819,7 +823,6 @@ func _install_session(candidate: GameSession, pose: Dictionary) -> void:
 	_map_route = ""
 	_stream_tick = 0.0
 	_load_profile(achievements())
-	_fn_day = school().day if school() != null else 1
 	_leave_drive()
 	if campus() != null and garage() != null:
 		campus().car_hint = garage().car_hint
@@ -930,6 +933,7 @@ func _load_save_result(result: Dictionary) -> void:
 	if not old_paper.has("proof") and school() != null and investigation() != null and investigation().visible("parking"):
 		school().seat_card.recall_counterfoil()
 	_restore_loaded_world()
+	if exam_flow.resume_paper(): return
 	ui.show_notice("已恢复进度；读档不会再次触发交互奖励。")
 
 
@@ -963,7 +967,7 @@ func _restore_loaded_world() -> void:
 
 
 func pause_game() -> void:
-	if ui.loading(): return
+	if ui.loading() or exam_flow.active(): return
 	if playtest.recording and session != null and not get_tree().paused:
 		playtest.horror.pause()
 	if is_instance_valid(lan) and lan.playing():
@@ -984,7 +988,7 @@ func pause_game() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	ui.set_mode("pause")
 	var detail := investigation_brief()
-	if talent() != null and talent().id != "none": detail += "\n" + talent().pause_text()
+	if talent() != null and (talent().id != "none" or talent().all_active()): detail += "\n" + talent().pause_text()
 	ui.show_pause_detail(detail)
 
 
@@ -1017,6 +1021,7 @@ func resume_game() -> void:
 
 
 func _cancel_cinematics() -> void:
+	exam_flow.cancel()
 	_clear_plane()
 	if is_instance_valid(archive_flow): archive_flow.stop()
 	if is_instance_valid(rules_dlc_flow): rules_dlc_flow.cancel()
@@ -1672,7 +1677,6 @@ func _school_step(delta: float, rules: CampusModule, advance_calendar: bool = tr
 	_phone_step(delta)
 	if story().dead or story().over():
 		return
-	_fake_normal_step(delta)
 	if story().dead or story().over():
 		return
 	_body_step(delta)
@@ -2133,13 +2137,16 @@ func _handle_deaths() -> void:
 		return
 	for req: Dictionary in day_rules.take_deaths():
 		kill(String(req["msg"]), String(req["fx"]), String(req["source"]))
-		if fate.dead:
+		if fate.over():
 			return
 
 
 func kill(msg: String, fx: String, source: String) -> void:
 	var fate := story()
-	if fate == null or fate.dead:
+	if fate == null or fate.over():
+		return
+	if source == "assimilation" and school().tt >= 100.0:
+		_reach_ending("false_normal")
 		return
 	if is_instance_valid(debug_flow) and debug_flow.god:
 		ui.show_notice("【Dev】无敌挡下了死亡。")
@@ -2740,7 +2747,7 @@ func _sensory_step(delta: float) -> void:
 	ui.show_sensory(v, blink, _sense_t)
 	var post := ui.scene_post()
 	var fnm := fake_normal()
-	post.step(delta,fnm != null and fnm.active() and float(fnm.fn["v"])<72.0,school().san)
+	post.step(delta,fnm != null and fnm.active(),school().san)
 	post.parameter("brightness",float(settings.get_int("bright"))/100.0)
 	post.parameter("red",watcher.red if watcher != null else 0.0)
 	var a: Dictionary = anomaly().an if anomaly() != null else {}
@@ -3383,7 +3390,7 @@ func _show_map(selected: String = "", route: String = "") -> void:
 			if focus == "identity":
 				action = "找柜台上的底联" if destination == "guard" else ("沿闸机旁的白线向外走" if school().seat_card.clearance == 1 else "到闸机前交底联")
 			elif destination == "guard":
-				action = "到柜台核对停车单底联"
+				action = "到柜台核对点名底联"
 			var bearing := MapView.landmark_note(landmark["name"], plan["target"] - me, here_room != null, action)
 			note = bearing if not action.is_empty() else bearing + "\n" + note
 		plan["me"] = me
@@ -4034,7 +4041,7 @@ func _show_classmates(mates: ClassmatesModule, room: Variant, me: Vector2, dt: f
 		_mates_nodes.room_sound.connect(func(cue: String, point: Vector3) -> void:
 			if not opening_busy() and not _atmos_busy and audio.ambience and not story().over():
 				audio.play(cue, {"pos": world.to_global(point), "world_pos": true, "unit": 2.2, "k": .34, "pitch": .86, "owner": "classroom"}))
-	_mates_nodes.set_normal(fake_normal()!=null and fake_normal().active())
+	_mates_nodes.set_normal(exam_flow.normal_classroom() or (fake_normal()!=null and fake_normal().active()))
 	if key == "teach1":
 		_mates_nodes.show_name_card(school().name_card_seat(), session.character_id, school().seat_card)
 	var bell: bool = broadcast() != null and broadcast().b["phase"] == "bell"
@@ -4819,29 +4826,6 @@ func _land_outside(room_id: String, side: int) -> void:
 
 # ---- the fake-normal day and the escape ideas ----
 
-var _fn_day := 0
-
-
-func _fake_normal_step(delta: float) -> void:
-	var fnm := fake_normal()
-	if fnm == null:
-		return
-	var day_rules := school()
-	if day_rules.day == 1 and day_rules.tsec >= SchoolClock.LIGHTS_OUT:
-		fnm.lights_out_note()
-	if _fn_day != day_rules.day:
-		if _fn_day == 1 and day_rules.day == 2:
-			fnm.day_two()
-		_fn_day = day_rules.day
-	var room: Variant = campus().room(session.world_id)
-	fnm.tick(delta, {"tag": FakeNormalModule.where_tag(session.world_id, String(room.get("host", "")) if room != null else ""),
-		"busy": ui.choice_open() or day_rules.inspection_pending(), "dead": story().dead})
-	_apply_fake_normal_events()
-	_fake_people_step(fnm, room)
-
-
-# ---- the "normal people" of the fake-normal day (engine/presentation.js fnPeopleBuild) ----
-
 var _fake_people: Node3D
 var _fake_people_room := ""
 var _fake_people_random := RandomNumberGenerator.new()
@@ -4854,10 +4838,9 @@ func _fake_people_clear() -> void:
 	_fake_people_room = ""
 
 
-## While the fake-normal day is on (laughs below 72) four dull figures stand in a room facing you, 2.2–7.5 m
-## away on open tiles; they are rebuilt when you change room and gone when it ends.
+## Familiar figures face the player on open tiles when the model finishes assimilation.
 func _fake_people_step(fnm: FakeNormalModule, room: Variant) -> void:
-	var on := fnm.active() and float(fnm.fn["v"]) < 72.0 and room != null and not story().dead
+	var on := fnm.active() and room != null
 	if not on:
 		if _fake_people != null:
 			_fake_people_clear()
@@ -4891,37 +4874,6 @@ func _fake_people_step(fnm: FakeNormalModule, room: Variant) -> void:
 		fig.rotation.y = atan2(s.x - me.x, s.y - me.y)
 		_fake_people.add_child(fig)
 		made += 1
-
-
-func _apply_fake_normal_events() -> void:
-	var fnm := fake_normal()
-	if fnm == null:
-		return
-	for e: Dictionary in fnm.take_events():
-		match e["kind"]:
-			"notice", "toast":
-				ui.show_notice(String(e["text"]))
-			"hurt":
-				ui.flash_hurt(0.45)
-			"fact":
-				fact({"kind": "fakeNormal", "done": true, "laughs": int(e["laughs"])})
-			"fact_laugh":
-				fact({"kind": "fakeNormal", "laugh": bool(e["laugh"])})
-			"choice":
-				_choice_count += 1
-				var mine := _choice_count
-				_choice_handler = func(index: int) -> void:
-					var f := fake_normal()
-					if f != null and mine == _choice_count:
-						f.choose(index)
-						_apply_fake_normal_events()
-				player.enabled = false
-				player.clear_input()
-				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-				ui.show_choice(String(e["text"]), e["labels"], false)
-			"kill":
-				kill(String(e["msg"]), String(e["fx"]), String(e["source"]))
-				return
 
 
 ## story.js tryFaceRoute / tryTrashRoute from the ideas list.
@@ -5521,14 +5473,28 @@ func _apply_route_events(route: RoutesModule) -> void:
 				return
 
 
+func _show_false_normal() -> void:
+	fake_normal().showing = true
+	ui.set_normal_world(1)
+	var world := _campus_world()
+	if world != null and world.lighting != null:
+		world.lighting.world_normal = 1
+		world.lighting.update(0, 720, player.camera)
+	if is_instance_valid(_mates_nodes): _mates_nodes.set_normal(true)
+	_fake_people_step(fake_normal(), campus().room(session.world_id))
+
+
 ## story.js triggerEnding: the run is over; the save is cleared; the ending is recorded.
 func _reach_ending(id: String) -> void:
+	if id == "false_normal" and (school() == null or school().tt < 100): return
 	var fate := story()
 	var card := fate.trigger_ending(id, school().seat_card, investigation().paper_sample() if investigation() != null else "") if fate != null else {}
 	if card.is_empty():
 		return
 	_clear_talent_view()
 	var fake := bool(card.get("fake",false))
+	var terminal_false := id == "false_normal"
+	if terminal_false: _show_false_normal()
 	_clear_plane()
 	player.enabled = false
 	player.clear_input()
@@ -5541,14 +5507,14 @@ func _reach_ending(id: String) -> void:
 		items().cancel_search()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var run_line := ""
-	if fake:
-		pass # A false ending resumes this same run; neither save nor timer is finished.
+	if fake and not terminal_false:
+		pass # The confiscated-knife interlude resumes this run.
 	elif speedrun.run.is_empty():
 		saves.clear()
 		ui.set_save_available(saves.exists())
 	else:
 		var rec_e := _read_speedrun()
-		run_line = _speedrun_result(speedrun.finish(memory, rec_e), rec_e)
+		run_line = _speedrun_result(speedrun.fail("failed", rec_e) if terminal_false else speedrun.finish(memory, rec_e), rec_e)
 		ui.speedrun_text = ""
 	var path := saves.side_path("ends.json")
 	var seen_ends: Dictionary = {}
@@ -5579,7 +5545,7 @@ func _reach_ending(id: String) -> void:
 			return
 		ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta, achievements().run_new_labels() if achievements() != null else PackedStringArray(),
 			"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""), memory, card.evidence)
-		ui.set_ending_wake(fake)
+		ui.set_ending_wake(fake and not terminal_false)
 	var world := _campus_world()
 	if (id == "dismissal" or id == "cyber") and session != null and session.world_id != "out" and DisplayServer.get_name() != "headless":
 		# The last stage of the dismissal is the real campus at the north gate: take the player outside first, then play (Engine.beginOutsideStage).
@@ -6003,7 +5969,7 @@ func _playtest_state() -> Dictionary:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if ui.loading(): return
+	if ui.loading() or exam_flow.panel_visible(): return
 	if is_instance_valid(lan) and lan.playing() and event.is_action_pressed("pause") and not event.is_echo():
 		if lan._paused: lan.resume()
 		else: lan.pause()
@@ -6039,7 +6005,7 @@ func _notification(what: int) -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	if ui.loading(): return
+	if ui.loading() or exam_flow.active(): return
 	if is_instance_valid(debug_flow) and debug_flow.blocks_simulation(): return
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo and snake_open():

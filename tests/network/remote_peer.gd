@@ -90,6 +90,7 @@ func run() -> void:
 			check(network.start() == "", "remote players start shared authority"))
 	network.snapshot_received.connect(func(data: Dictionary) -> void:
 		state = data
+		preload("res://tests/support/exam_participant.gd").advance(network, data)
 		snapshots += 1
 		if loaded_epoch != network.room.epoch:
 			loaded_epoch = network.room.epoch
@@ -122,7 +123,7 @@ func _process(dt: float) -> bool:
 		check(false, "real tunnel connection/gameplay timeout")
 		finish()
 		return false
-	if network.room != null and network.room.phase == "playing" and not reconnecting:
+	if network.room != null and network.room.phase == "playing" and not reconnecting and not state.get("exam_pending", false):
 		played += dt
 		next_input -= dt
 		if not state.is_empty() and next_input <= 0:

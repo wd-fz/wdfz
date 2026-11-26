@@ -23,6 +23,7 @@ var _retry_after: Dictionary = {}
 var _worker: Thread
 var _staging: CampusWorld
 var _staging_tier := -1
+var _reading_raw_exterior := false
 var _lift_landing := ""
 var _view_at := Vector3.ZERO
 var _shelter := -1.0
@@ -306,12 +307,16 @@ func _start_model(id: String) -> void:
 	var task := _staging._prepare_visual.bind(_staging_tier)
 	if id == "out":
 		var path := CampusWorld.BakedExterior.PATH % _staging_tier
-		if _entry_models.is_empty() or not CampusBatches.enabled or not ResourceLoader.exists(path):
+		if _entry_models.is_empty():
 			_accept_model(_staging._prepare_visual(_staging_tier))
 			return
-		# Only read the packed resources off-thread. Update shared instance
-		# buffers and partition the fallback shell on the main thread.
-		task = ResourceLoader.load.bind(path, "PackedScene")
+		# Source checkouts have no baked exterior. Reading the full imported mesh
+		# on the main thread can stall the first Vulkan frame.
+		_reading_raw_exterior = not CampusBatches.enabled or not ResourceLoader.exists(path)
+		if _reading_raw_exterior:
+			task = CampusData.load_scene.bind("out", _staging_tier)
+		else:
+			task = ResourceLoader.load.bind(path, "PackedScene")
 	elif DisplayServer.get_name() == "headless":
 		_accept_model(_staging._prepare_visual(_staging_tier))
 		return
@@ -324,8 +329,12 @@ func _start_model(id: String) -> void:
 func _restore_exterior(scene: PackedScene) -> Node3D:
 	if _staging_tier != CampusData.tier or not _entry_models.has("out") or regions.out.geometry_ready:
 		return null
-	var baked := CampusWorld.BakedExterior.restore(scene)
-	if baked != null: return baked
+	if _reading_raw_exterior and scene != null:
+		var source := scene.instantiate() as Node3D
+		if source != null: return _staging._prepare_visual(_staging_tier, source)
+	if not _reading_raw_exterior:
+		var baked := CampusWorld.BakedExterior.restore(scene)
+		if baked != null: return baked
 	var raw := CampusData.instantiate_model("out", _staging_tier)
 	return _staging._prepare_visual(_staging_tier, raw) if raw != null else null
 

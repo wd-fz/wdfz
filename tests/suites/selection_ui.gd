@@ -291,7 +291,7 @@ func test_app() -> void:
 	check(not app.starting() and not app.ui.loading(), "the loading screen closes once the run has started")
 	var run := app.session
 	check(run != null and run.character_id == "qiao" and run.capture(app.player.capture_pose()).character == "qiao","the chosen solo model persists in the actual new game save")
-	check(run != null and app.talent().id == "code" and app.ui.opening_on() and not app.speedrun.active(), "confirmation installs the chosen talent and enters the actual opening")
+	check(run != null and app.talent().id == "code" and app.exam_flow.panel_visible() and not app.speedrun.active(), "confirmation installs the chosen talent and opens the normal classroom exam")
 	app.ui.selection_panel._confirm()
 	check(app.session == run, "a late duplicate confirmation cannot replace the running session")
 	app.return_to_menu()

@@ -180,6 +180,11 @@ func _ready() -> void:
 	_watch.visible = false
 	_watch.pressed.connect(func() -> void:
 		_spectating = true
+		app.ui.hide_ending()
+		if app.fake_normal() != null and app.fake_normal().active():
+			app.fake_normal().showing = false
+			app._fake_people_clear()
+			app.exam_flow._lighting(false)
 		app.ui.hide_death()
 		app._stop_death_cg()
 		var ids := network.room.alive_ids()
@@ -394,6 +399,9 @@ func _enter_ready_room() -> void:
 	else:
 		panel.hide()
 		_sync_input()
+	if current.get("exam_pending", false):
+		_opening_handover = ""
+		return
 	if not _opening_handover.is_empty():
 		app.ui.show_notice(_opening_handover)
 		_opening_handover = ""
@@ -494,6 +502,7 @@ func stop() -> void:
 
 
 func _reset_local_modals() -> void:
+	if app.exam_flow.active(): app._cancel_cinematics()
 	_special_choice = ""
 	_special_id = ""
 	_shown_choice = -1
@@ -526,7 +535,7 @@ func _snapshot(data: Dictionary) -> void:
 			_preparing_epoch = network.room.epoch
 			# Yield between regions so ENet keeps polling throughout initial load.
 			_loading_cover("准备合作校园")
-			app._load_then(String(source["world_id"]), _finish_preparation.bind(_preparing_epoch), source.get("player"), true)
+			app._load_then(String(source["world_id"]), _finish_preparation.bind(_preparing_epoch), source.get("player"), true, EntranceExam.pending_in(source))
 		return
 	if first:
 		_loading_cover("载入原角色")
@@ -581,6 +590,8 @@ func _snapshot(data: Dictionary) -> void:
 		app.session.clock.restore(source["clock"])
 		app.session.character_id = StudentCast.resolve(source.get("character"))
 	current = data
+	if network.room.phase == "playing" and not _lost and not _spectating and network.is_ready():
+		app.exam_flow.team_state(bool(data.get("exam_pending", false)), float(data.get("exam_left", 0)))
 	if app.ui.notes_open() and app.investigation().current_focus() != prior_focus:
 		app._show_notes(app.ui.notes_panel.search.text)
 	if is_instance_valid(app._mates_nodes) and not app._mates_nodes._echoes.is_empty():
@@ -631,7 +642,7 @@ func _snapshot(data: Dictionary) -> void:
 	var view_changed: bool = first or member != _view_member or next_scene != _view_scene or app.session.world_id != source["world_id"]
 	if view_changed:
 		_place_view(member, next_scene, String(source["world_id"]), source["player"], not first and not _spectating and view.get("seamless", false))
-	if app.story().dead and not _death_seen:
+	if app.story().dead and app.story().ended.is_empty() and not _death_seen:
 		_death_seen = true
 		_death_t = 0.0
 		app.player.enabled = false
@@ -652,7 +663,11 @@ func _snapshot(data: Dictionary) -> void:
 		app.ui.hide_death()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		var card := RoutesModule.card(app.story().ended, app.school().seat_card, app.investigation().paper_sample())
-		app.ui.show_ending(String(card.get("title", card.get("t", "合作通关"))), "合作通关", card.get("lines", card.get("l", [])), "本局为局域网合作，个人记录与单人分开。", PackedStringArray(), "", card.get("memory", app.story().ended), card.get("evidence", {}))
+		var absorbed := app.story().ended == "false_normal"
+		if absorbed: app._show_false_normal()
+		app.ui.show_ending(String(card.get("title", card.get("t", "合作通关"))), String(card.tag) if absorbed else "合作通关", card.get("lines", card.get("l", [])), "本局为局域网合作，个人记录与单人分开。", PackedStringArray(), "", card.get("memory", app.story().ended), card.get("evidence", {}))
+		_watch.visible = absorbed and not network.room.alive_ids().is_empty()
+		if _watch.visible: _watch.move_to_front()
 	for event: Dictionary in data.get("events", []):
 		if int(event["seq"]) <= _seen_event: continue
 		_seen_event = int(event["seq"])
@@ -1040,6 +1055,7 @@ func _sync_maze_fx() -> void:
 
 
 func _present(dt: float) -> void:
+	if app.exam_flow.active() or current.get("exam_pending", false): return
 	_sync_maze_fx()
 	if is_instance_valid(_maze_fx): _maze_fx.advance(dt, app.settings.get_int("shake") == 0 or app.settings.get_int("reduce_flash") != 0)
 	if is_instance_valid(avatars): avatars.frozen = network.room.paused_left > 0 or network.room.phase != "playing"
@@ -1110,7 +1126,7 @@ func _present(dt: float) -> void:
 
 func _sync_input() -> void:
 	if not playing(): return
-	var blocked: bool = _paused or _lost or _spectating or network.room.phase != "playing" or app.ui.loading() or network.room.paused_left > 0 or app.story().over() or app.ui._mode != "play"
+	var blocked: bool = app.opening_busy() or bool(current.get("exam_pending", false)) or _paused or _lost or _spectating or network.room.phase != "playing" or app.ui.loading() or network.room.paused_left > 0 or app.story().over() or app.ui._mode != "play"
 	blocked = blocked or app.ui.bag_open() or app.ui.choice_open() or app.ui.terminal_open() or app.phone_open() or app.snake_open() or app.knife_flow.captured() or app._paper_owns_input() or not current.get("choice", {}).is_empty() or bool(current.get("terminal", false)) or bool(current.get("vehicle", false)) or app.body().fall != null
 	for view: Control in [app.ui.map_panel, app.ui.notes_panel, _mic]:
 		if is_instance_valid(view) and view.visible: blocked = true

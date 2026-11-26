@@ -395,13 +395,10 @@ func _command(id: String, args: Dictionary = {}) -> String:
 			return report("当前异象已结束。")
 		"fake_normal":
 			dirty()
-			var state: Dictionary=app.fake_normal().fn
-			state["on"]=not bool(state["on"])
-			state["v"]=0
-			if state["on"]: state.merge({"n":0,"next":3.0,"used":{},"shown":false,"left":int(state.get("left",4)) if int(state.get("left",4))>0 else 4},true)
-			else: app._fake_people_clear()
-			app._fake_people_step(app.fake_normal(),app.campus().room(app.session.world_id))
-			return report("假正常："+("开" if state["on"] else "关"))
+			app.school().tt = 100.0
+			app.school()._resolve_assimilation()
+			app._handle_deaths()
+			return report("同化达到上限。")
 		"patrol_start":
 			if not _stage_allowed(): return report("请先结束当前互动、异象、检查或追逐。")
 			dirty()

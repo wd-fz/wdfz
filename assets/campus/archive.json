@@ -283,7 +283,7 @@
       "cut": "dismissal",
       "end": "dismissal",
       "n": "《放学》",
-      "d": "长铃一响，教室里的人陆续抬起头。放学后，有兄妹在北门相见。",
+      "d": "广播念到全体离校。我回到现实课桌前，同桌还在扣笔帽。",
       "stage": "teach1",
       "no": 6
     },
@@ -356,6 +356,16 @@
       "secret": 1,
       "legacy": 1,
       "no": 13
+    },
+    {
+      "id": "end:false_normal",
+      "cut": "false_normal",
+      "end": "false_normal",
+      "n": "《假正常》",
+      "d": "我还没有开口，教室里已经有人替我答了到。",
+      "stage": "teach1",
+      "secret": 1,
+      "no": 14
     }
   ],
   "outdoor": {

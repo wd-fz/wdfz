@@ -1710,7 +1710,7 @@ var _opening_i := -1
 var _opening_t := 0.0
 
 
-func show_opening(character: String = StudentCast.DEFAULT) -> void:
+func show_opening(character: String = StudentCast.DEFAULT, after_exam: bool = false) -> void:
 	if opening_panel == null:
 		opening_panel = ColorRect.new()
 		opening_panel.name = "Opening"
@@ -1736,7 +1736,7 @@ func show_opening(character: String = StudentCast.DEFAULT) -> void:
 			if (e is InputEventMouseButton and e.pressed) or (e is InputEventScreenTouch and e.pressed):
 				_next_opening())
 		$Root.add_child(opening_panel)
-	_opening_pages = OpeningStory.pages(character)
+	_opening_pages = PackedStringArray([OpeningStory.CLASSROOM, OpeningStory.WAKE, OpeningStory.NEXT]) if after_exam else OpeningStory.pages(character)
 	_opening_i = 0
 	_opening_t = 0.0
 	_opening_text.text = _opening_pages[0]
