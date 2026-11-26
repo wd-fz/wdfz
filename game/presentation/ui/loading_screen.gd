@@ -37,6 +37,7 @@ var stage := ""
 var reduce_motion := false          # reduced flashing: the glow holds still
 var _t := 0.0
 var _out_t := -1.0
+var _fade_started_usec := 0
 var _line_index := 0
 var _title: Label
 var _line: Label
@@ -281,6 +282,7 @@ func set_team(ready: int, total: int, minimum: int) -> void:
 func close() -> void:
 	if _out_t < 0.0:
 		_out_t = 0.0
+		_fade_started_usec = Time.get_ticks_usec()
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
@@ -298,11 +300,15 @@ func _process(delta: float) -> void:
 	_t += step
 	shown_progress = move_toward(shown_progress, progress, step * 1.6)
 	if _out_t >= 0.0:
-		_out_t += step
-		modulate.a = clampf(1.0 - _out_t / fade_out, 0.0, 1.0)
+		# A slow first 3D frame can outlast the whole fade. Reveal it as soon
+		# as it is ready instead of keeping the curtain up for more slow frames.
+		var elapsed := (Time.get_ticks_usec() - _fade_started_usec) / 1000000.0
+		_out_t = maxf(_out_t + step, elapsed)
 		if _out_t >= fade_out:
+			modulate.a = 0.0
 			queue_free()
 			return
+		modulate.a = 1.0 - _out_t / fade_out
 	else:
 		modulate.a = clampf(_t / fade_in, 0.0, 1.0) if fade_in > 0.0 else 1.0
 	_apply()
