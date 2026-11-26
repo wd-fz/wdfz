@@ -649,7 +649,8 @@ func _test_dismissal_route(app: GameApp) -> void:
 	app._choice_made(0)
 	await _frames(2)
 	var radio_book := String(app.investigation().entries.get("broadcastBook", {}).get("text", ""))
-	check(radio_book.contains("暂留") and radio_book.contains("一起唤醒") and radio_book.contains("现实教室睁眼"), "the broadcast book explains whom the wake signal reaches")
+	check(radio_book.contains("终止当前的点名循环") and radio_book.contains("主时钟与广播同时停止") and radio_book.contains("出口指示灯亮起"),
+		"the station notebook connects the long bell to the stopped roll call and the exit")
 	app._campus_interact()
 	app._choice_made(3)
 	await _frames(2)
@@ -679,7 +680,9 @@ func _test_dismissal_route(app: GameApp) -> void:
 			break
 	await _skip_cut(app)
 	check(won and app.story().ended == "dismissal" and app.ui.ending_panel.visible, "following the crowd out of the north gate is 《放学》")
-	check(is_instance_valid(app.ui._ending_text) and app.ui._ending_text.text.contains("现实的课桌上睁开") and app.ui._ending_text.text.contains("接过她的书包") and app.ui._ending_text.text.contains("我在楼梯间醒过来"), "the students wake in class before the real reunion at the north gate")
+	var ending := app.ui._ending_text.text if is_instance_valid(app.ui._ending_text) else ""
+	check(ending.contains("现实的课桌上睁开眼") and ending.contains("他摇摇头") and ending.contains("秒针走了一格"),
+		"the player wakes at the real desk and the classmate did not hear the dismissal bell")
 	check(app.achievements().unlocked.has("e.end_dismissal"), "with its achievement")
 	app.return_to_menu()
 	DirAccess.remove_absolute(app._profile_path())
@@ -730,7 +733,9 @@ func _test_cyber_route(app: GameApp) -> void:
 	await _frames(2)
 	await _skip_cut(app)
 	check(app.story().ended == "cyber" and app.ui.ending_panel.visible, "surviving ten minutes is 《网安仙人》")
-	check(app.ui._ending_text.text.contains("现实教室睁开眼") and app.ui._ending_text.text.contains("断开的纸毛都对得上"), "the ending card confirms that the model shuts down and the physical evidence remains")
+	var ending := app.ui._ending_text.text if is_instance_valid(app.ui._ending_text) else ""
+	check(ending.contains("机柜熄了") and ending.contains("现实教室睁开眼") and ending.contains("停掉的量化版本"),
+		"the shutdown returns the player to class and the handover record identifies the model")
 	check(app.achievements().unlocked.has("e.end_cyber"), "with its achievement")
 	app.return_to_menu()
 	DirAccess.remove_absolute(app._profile_path())

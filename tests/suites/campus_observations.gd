@@ -52,7 +52,8 @@ func test_sites() -> void:
 	check(restored.validate(saved).is_empty() and restored.list("试音带").found == 1 and restored.paper_sample() == "", "ordinary observations persist and remain searchable before the punch")
 	var terminal := CampusTerminal.fresh("fieldwork")
 	var incident: String = CampusTerminal.run(terminal, "cat /school/shift.txt").text
-	check(incident.contains("共用一个楼梯间声道") and incident.contains("现实教室另行记录谁醒了"), "the operating report explains which connection the two students share")
+	check(incident.contains("姓名栏找到了答题的人") and incident.contains("楼梯间只剩测绘时的录音"),
+		"the local report identifies the exam link and the source of the stairwell voice")
 	var lab_site: Dictionary = rules.observations("lab1")[0]
 	for choice in 2:
 		var trial := InvestigationModule.new()

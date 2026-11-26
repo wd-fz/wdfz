@@ -19,8 +19,8 @@ func test_seated_prompt() -> void:
 	app._show_notes()
 	app.ui.notes_panel.set_page("rules")
 	var notes: Array[Node] = app.ui.notes_panel.entries.find_children("*", "Label", true, false)
-	check(notes.any(func(label: Label) -> bool: return label.text.contains("许棠") and label.text.contains("晚饭") and label.text.contains("底联")), "the notes let the selected student reread the events before class")
-	check(app.investigation_brief().contains("保安岗柜台") and app.investigation().entries.is_empty() and app.school().seat_card.proof.is_empty(), "the background explains the first destination without silently granting evidence")
+	check(notes.any(func(label: Label) -> bool: return label.text.contains("许棠") and label.text.contains("广播站") and label.text.contains("答完六科综合测验") and label.text.contains("底联")), "the notes let the selected student reread her memory, signed exam and first lead")
+	check(app.investigation_brief().contains("北门旁的保安岗") and app.investigation().entries.is_empty() and app.school().seat_card.proof.is_empty(), "the background explains the first destination without silently granting evidence")
 	app.ui.notes_panel.dismiss()
 	var prompt := app.ui.get_node("%Prompt") as Label
 	var wrong: Array[String] = []

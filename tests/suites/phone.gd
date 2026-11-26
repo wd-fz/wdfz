@@ -170,7 +170,10 @@ func _test_phone_rules() -> void:
 	check(CampusTerminal.run(t, "cat /school/site.txt")["text"].begins_with("试点区域=Z"), "cat reads the school files")
 	var saved_reports := {"history": ["已连接", "/school $ cat ./archive.txt", "旧版档案", "/school $ cat /work/note", "/school $ cat company.txt", "/work $ cat /school/company.txt", "旧版报告"]}
 	CampusTerminal.refresh_saved_reports(saved_reports)
-	check(saved_reports.history[2].contains("纸样实验") and saved_reports.history[6].contains("身体留在现实教室") and saved_reports.history[4] == "/school $ cat company.txt" and saved_reports.history[5] == "/work $ cat /school/company.txt", "opening a saved transcript refreshes the official records and preserves player output and command pairs")
+	check(saved_reports.history[2] == CampusTerminal.REPORTS["/school/archive.txt"] and saved_reports.history[6] == CampusTerminal.REPORTS["/school/company.txt"],
+		"opening a saved transcript refreshes the official records")
+	check(saved_reports.history[4] == "/school $ cat company.txt" and saved_reports.history[5] == "/work $ cat /school/company.txt",
+		"refreshing a transcript preserves player output and command pairs")
 	check(CampusTerminal.run(t, "cat /school/assets.tsv | grep controller | head -n 2")["text"].split("\n").size() == 2, "pipes work")
 	check(CampusTerminal.run(t, "rm -rf /")["error"] and CampusTerminal.run(t, "cat x > y")["error"], "unknown commands and redirection are refused")
 	check(CampusTerminal.run(t, "edit /school/x \"a\"")["text"].contains("只允许写 /work/"), "only /work is writable")
