@@ -10,6 +10,20 @@
     "at": 49
    },
    {
+    "room": "teach1",
+    "host": "teach",
+    "edge": "s",
+    "at": 45,
+    "width": 3
+   },
+   {
+    "room": "teach1",
+    "host": "teach",
+    "edge": "s",
+    "at": 52,
+    "width": 1
+   },
+   {
     "room": "admin1",
     "host": "admin",
     "edge": "n",

@@ -540,49 +540,43 @@ func _trim_door_previews(model: Node3D) -> void:
 func _build_door_preview() -> void:
 	var rooms := CampusData.rooms()
 	var doors: Array = CampusData.campus().get("campus_doors", {}).get("doors", [])
-	if scene_id == "out":
-		for d: Dictionary in doors:
-			var rid := String(d["room"])
-			if not rooms.has(rid):
-				continue
-			var r: Dictionary = rooms[rid]
-			var model := _door_visual(rid)
-			if model == null:
-				continue
-			model.name = "DoorPreview_" + rid
-			model.transform = CampusGeometry.campus_frame(r)
-			add_child(model)
-			var port := CampusGeometry.door_port(r, d)
-			var local := CampusGeometry.to_scene(r, port["p"])
-			var point := model.transform * Vector3(local.x, 0, local.y)
-			var threshold := Vector2(point.x, point.z)
-			var n: Vector2 = port["n"]
-			var outward := model.basis * Vector3(n.x, 0, n.y)
-			var plane := _preview_plane(threshold, -Vector2(outward.x, outward.z))
-			model.set_meta("preview_plane",plane)
-			CampusPreview.clip(model,plane)
-			model.set_meta("door_threshold", threshold)
-			model.hide()
-			door_previews.append(model)
-		return
-	for d: Dictionary in doors:
-		if String(d["room"]) != scene_id:
+	var outside := scene_id == "out"
+	var facades := {}
+	for door: Dictionary in doors:
+		var rid := String(door.room)
+		if not rooms.has(rid) or (not outside and rid != scene_id): continue
+		var room: Dictionary = rooms[rid]
+		var frame := CampusGeometry.campus_frame(room)
+		var port := CampusGeometry.door_port(room, door)
+		var local := CampusGeometry.to_scene(room, port.p)
+		var point := frame * Vector3(local.x, 0, local.y)
+		var threshold := Vector2(point.x, point.z) if outside else local
+		# Bays on one facade share the clipping plane and one copy of the neighbouring scene.
+		var key := rid + ":" + String(door.edge)
+		if facades.has(key):
+			var existing: Node3D = facades[key]
+			var thresholds: PackedVector2Array = existing.get_meta("door_thresholds")
+			thresholds.append(threshold)
+			existing.set_meta("door_thresholds", thresholds)
 			continue
-		var model := _door_visual("out")
-		if model == null:
-			return
-		model.name = "DoorPreview_out"
-		model.transform = CampusGeometry.campus_frame(layout).affine_inverse()
+		var target := rid if outside else "out"
+		var model := _door_visual(target)
+		if model == null: continue
+		model.name = "DoorPreview_" + target
+		model.transform = frame if outside else frame.affine_inverse()
 		add_child(model)
-		var port := CampusGeometry.door_port(layout, d)
-		var threshold := CampusGeometry.to_scene(layout, port["p"])
-		var plane := _preview_plane(threshold, port["n"])
-		model.set_meta("preview_plane",plane)
-		CampusPreview.clip(model,plane)
+		var normal: Vector2 = port.n
+		if outside:
+			var outward := frame.basis * Vector3(normal.x, 0, normal.y)
+			normal = -Vector2(outward.x, outward.z)
+		var plane := _preview_plane(threshold, normal)
+		model.set_meta("preview_plane", plane)
+		CampusPreview.clip(model, plane)
 		model.set_meta("door_threshold", threshold)
+		model.set_meta("door_thresholds", PackedVector2Array([threshold]))
 		model.hide()
 		door_previews.append(model)
-		return
+		facades[key] = model
 
 
 ## The stairwell shafts seen through their doorways (fx/stairwell-view.js): every stair that serves this scene, its shaft model placed
@@ -1025,11 +1019,11 @@ func set_player_scene(p: Vector3) -> void:
 	var distance := INF
 	var here := Vector2(p.x, p.z)
 	for model: Node3D in door_previews:
-		var at: Vector2 = model.get_meta("door_threshold")
-		var d := here.distance_to(at)
-		if d < distance:
-			distance = d
-			nearest = model
+		for at: Vector2 in model.get_meta("door_thresholds"):
+			var d := here.distance_to(at)
+			if d < distance:
+				distance = d
+				nearest = model
 	var show_nearest := nearest != null and distance <= (15.0 if nearest.visible else 12.0)
 	if nearest != null and distance <= 13.0: _ensure_door_preview(nearest)
 	for model: Node3D in door_previews:

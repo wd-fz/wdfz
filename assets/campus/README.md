@@ -18,7 +18,7 @@
 
 ## 实景校园建筑与陈设
 
-`architecture/` 收录楼体装饰、两种连廊、球场、地理园和室内家具。按游戏地图方位，教学楼教室门朝北，外廊面向绿色广场，一楼入口靠近西侧楼梯塔。「橙色之路」从教学楼北侧外廊东端接往实验楼二楼。实验楼西侧拱门接地理园一侧的步道，行政楼北门通往运动区。宿舍两翼从西侧入口进入，内侧阳台和食堂西门朝向院子。室内尺寸沿用游戏地图。模型、碰撞和通行点使用 `tools/export_scenes/campus_placement.json` 的门洞配置。[720 云·绿色广场视点](https://www.720yuntu.com/tour/7e11b56b6f8381ab?startscene=scene_2612736d453a9c83)
+`architecture/` 收录楼体装饰、两种连廊、球场、地理园和室内家具。按游戏地图方位，教学楼教室门朝北，外廊面向绿色广场，一楼入口紧邻西侧楼梯塔。透过入口两侧的红砖柱可以看进走廊，内墙边设一排座椅。柱距和走道宽度按游戏格网估算。「橙色之路」从教学楼北侧外廊东端接往实验楼二楼。实验楼西侧拱门接地理园一侧的步道，行政楼北门通往运动区。宿舍两翼从西侧入口进入，内侧阳台和食堂西门朝向院子。室内尺寸沿用游戏地图。模型、碰撞和通行点使用 `tools/export_scenes/campus_placement.json` 的门洞配置。[720 云·绿色广场视点](https://www.720yuntu.com/tour/7e11b56b6f8381ab?startscene=scene_2612736d453a9c83)
 
 在仓库根目录运行 `python3 tools/remodel/campus_architecture.py` 可以重新生成模型、材质贴图和庭院碰撞。生成工具使用 NumPy 和 Pillow。Godot 通过 `CampusArchitecture` 把这些资源装入可玩场景及相邻场景预览。
 

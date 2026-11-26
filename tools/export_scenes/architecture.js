@@ -42,11 +42,12 @@ window.NativeCampus = (() => {
     }
   }
   function entryDoors(doors) {
-    return doors.map(door => {
+    return doors.flatMap(door => {
       const entry = layout.entrances[door.room];
-      if (!entry) return door;
+      if (!entry) return [door];
       retiredDoors[door.room] = {...door, width: door.width || 3};
-      return {...door, edge: entry.edge, at: entry.at};
+      const main = {...door, edge: entry.edge, at: entry.at};
+      return [main, ...(entry.bays || []).map(bay => ({...main, ...bay}))];
     });
   }
   function doorPoint(object) {

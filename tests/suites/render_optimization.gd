@@ -283,6 +283,28 @@ func test_lazy_portals() -> void:
 	root.add_child(world)
 	await _frames(1)
 	check(world.door_previews.size()>2 and world.door_previews.all(func(n: Node3D)->bool:return n.get_child_count()==0),"distant portals do not instantiate all ground floors")
+	var teaching := world.door_previews.filter(func(view: Node3D) -> bool: return view.get_meta("preview_scene") == "teach1")
+	check(teaching.size() == 1, "the teaching entrance and open bays share one interior preview")
+	if teaching.size() == 1:
+		var view: Node3D = teaching.front()
+		var openings: PackedVector2Array = view.get_meta("door_thresholds")
+		var main: Vector2 = view.get_meta("door_threshold")
+		check(openings.size() == 3 and openings[0] == main, "both side bays keep the primary north entry as the default threshold")
+		var loaded: Node
+		for bay: Vector2 in openings:
+			if bay == main: continue
+			world.set_player_scene(Vector3(1000, 0, 1000))
+			var near := bay + main.direction_to(bay) * 11.9
+			world.set_player_scene(Vector3(near.x, 0, near.y))
+			check(near.distance_to(main) > 12.0 and view.visible and view.get_child_count() == 1,
+				"each side bay reveals the teaching floor outside the primary door's activation radius")
+			if view.get_child_count() == 1:
+				if loaded != null: check(view.get_child(0) == loaded, "walking along the colonnade reuses the loaded interior")
+				loaded = view.get_child(0)
+		world.set_player_scene(Vector3(main.x, 0, main.y + 14.0))
+		check(view.visible, "a visible shared preview keeps the 15-metre release radius")
+		world.set_player_scene(Vector3(main.x, 0, main.y + 16.0))
+		check(not view.visible, "leaving the north facade beyond 15 metres hides the preview")
 	world.apply_doors({"teach1:10:15":true})
 	for i in mini(3,world.door_previews.size()):
 		var portal:=world.door_previews[i]

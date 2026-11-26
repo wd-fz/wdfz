@@ -372,9 +372,11 @@ func _test_chalk_notes() -> void:
 
 
 func _test_day_banner() -> void:
-	var at := DayBanner.spot(CampusData.layout("out"))
-	check(at != Vector3.ZERO and is_equal_approx(at.y, 5.55) and is_equal_approx(at.x, (397.0 + 283.5 / 2.0) * 2.0 / 9.0) and is_equal_approx(at.z, (875.5 + 99.0) * 2.0 / 9.0 + 0.82), "the banner hangs on the front of the teaching building, second floor")
-	check(DayBanner.spot({}) == Vector3.ZERO, "no building, no banner")
+	var facade := DayBanner.facade(CampusData.layout("out"))
+	var at := facade * DayBanner.HANG_POSITION
+	check(at.is_equal_approx(Vector3((397.0 + 283.5 / 2.0) * 2.0 / 9.0, 5.55, 875.5 * 2.0 / 9.0 - 0.82)), "the banner hangs on the second floor above the north plaza")
+	check(facade.basis.z.is_equal_approx(Vector3.FORWARD), "the lettering and the dismissal shot face the green plaza")
+	check(DayBanner.facade({}) == Transform3D.IDENTITY, "no building, no facade")
 
 
 func _test_death_cg() -> void:

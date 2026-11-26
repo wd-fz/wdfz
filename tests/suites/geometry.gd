@@ -261,6 +261,7 @@ func test_resident_doorways() -> void:
 	await _frames(2)
 	# Force the loading overlap and test the actual outdoor triangles from both sides.
 	facade.show()
+	await _check_north_colonnade(hall, outside)
 	tower.show()
 	var body := hall.get_world_3d().direct_space_state
 	for height: float in [.45, 1.58]:
@@ -307,6 +308,58 @@ func test_resident_doorways() -> void:
 	campus.queue_free()
 	await _frames(2)
 	CampusData.tier = original_tier
+
+
+## The home classroom opens toward the plaza. Check the actual indoor mesh, the
+## outdoor mesh and the player's capsule, including both sides of the entrance.
+func _check_north_colonnade(hall: CampusWorld, outside: CampusWorld) -> void:
+	var rules := CampusData.make_module()
+	var body := hall.get_world_3d().direct_space_state
+	var player: PlayerController = preload("res://game/presentation/actors/player.tscn").instantiate()
+	root.add_child(player)
+	player.set_physics_process(false)
+	for pair: Array in [[46, 45], [54, 52]]:
+		var col := int(pair[0])
+		var key := CampusGeometry.door_key(hall.layout, col, 15)
+		hall.set_door_open(key, true)
+		await _frames(2)
+		var doorway := CampusGeometry.to_scene(hall.layout, CampusGeometry.tile_center(hall.layout, col, 15))
+		var bay := CampusGeometry.to_scene(hall.layout, CampusGeometry.tile_center(hall.layout, pair[1], 21))
+		var along := (bay - doorway).normalized()
+		var room_side := doorway - along * 0.9
+		var from := hall.to_global(Vector3(room_side.x, 1.58, room_side.y))
+		var beyond := bay + 1.2 * along
+		var to := hall.to_global(Vector3(beyond.x, 1.58, beyond.y))
+		check(to.z < from.z, "leaving the home classroom faces campus north")
+		for shot: Array in [[from, to], [to, from]]:
+			check(not _mesh_hit(hall, shot[0], shot[1]) and not _mesh_hit(outside, shot[0], shot[1]),
+				"the open classroom doorway sees through the colonnade from both sides at column %d" % col)
+		hall.set_door_open(key, false)
+	for col: int in [45, 47, 49, 51, 52]:
+		var tile := CampusGeometry.to_scene(hall.layout, CampusGeometry.tile_center(hall.layout, col, 21))
+		var inner := hall.to_global(Vector3(tile.x, 1.58, tile.y - 0.85))
+		var outer := hall.to_global(Vector3(tile.x, 1.58, tile.y + 1.3))
+		var pillar := col in [47, 51]
+		var ray := PhysicsRayQueryParameters3D.create(inner, outer, 1)
+		ray.exclude = [player.get_rid()]
+		check(body.intersect_ray(ray).is_empty() != pillar, "only the colonnade piers block sight at column %d" % col)
+		if pillar:
+			check(_mesh_hit(hall, inner, outer) or _mesh_hit(outside, inner, outer), "each solid pier has a visible face")
+		for path: Array in [[inner, outer], [outer, inner]]:
+			var start: Vector3 = path[0] - Vector3.UP * 1.4
+			var finish: Vector3 = path[1] - Vector3.UP * 1.4
+			player.global_position = start
+			var collision := player.move_and_collide(finish - start)
+			check((collision != null) == pillar, "the player capsule crosses bays and stops at piers in both directions at column %d" % col)
+			if pillar: continue
+			var outward: bool = path[0] == inner
+			var pose := player.capture_pose()
+			if outward: pose = CampusSpace.transform_pose(hall.global_transform.affine_inverse(), pose)
+			var crossing := rules.crossing("teach1" if outward else "out", pose)
+			check(crossing.get("world") == ("out" if outward else "teach1"),
+				"walking the bay selects the connected playable region at column %d" % col)
+	player.queue_free()
+	await _frames(2)
 
 
 func _mesh_hit(node: Node3D, from: Vector3, to: Vector3) -> bool:

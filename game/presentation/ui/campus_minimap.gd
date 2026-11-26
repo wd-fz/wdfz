@@ -13,6 +13,7 @@ var _seen: PackedByteArray
 var _bounds := Rect2()
 var _at := Vector2.ZERO
 var _angle := 0.0
+var _floor_turn := 0
 var _target := Vector2.INF
 var _caption := ""
 var _frame: StyleBoxFlat
@@ -36,6 +37,7 @@ func _ready() -> void:
 
 func show_air(at: Vector2, angle: float, target: Vector2) -> void:
 	_room = {}
+	_floor_turn = 0
 	_bounds = MapView.aerial_bounds(CampusData.campus_map())
 	_at = at
 	_angle = angle
@@ -45,8 +47,9 @@ func show_air(at: Vector2, angle: float, target: Vector2) -> void:
 	queue_redraw()
 
 
-func show_floor(room: Dictionary, seen: PackedByteArray, at: Vector2, angle: float) -> void:
+func show_floor(room: Dictionary, seen: PackedByteArray, at: Vector2, angle: float, floor_turn: int) -> void:
 	_room = room
+	_floor_turn = floor_turn
 	_seen = seen
 	_at = at
 	_angle = angle
@@ -68,7 +71,7 @@ func _draw() -> void:
 	draw_colored_polygon(MapView.pointer(centre, _angle, 8.0), MapView.PLAYER_PIN)
 	var compass := plot.position + Vector2(12, 12)
 	draw_circle(compass, 8.0, Color(0.035, 0.065, 0.08, .93))
-	var north := -PI * .5 + int(_room.get("campus_turn", 0)) * PI * .5
+	var north := -PI * .5 + _floor_turn * PI * .5
 	draw_colored_polygon(MapView.pointer(compass, north, 6.0), UISkin.INK)
 	draw_string(get_theme_default_font(), Vector2(8, size.y - 6), _caption, HORIZONTAL_ALIGNMENT_LEFT, size.x - 16, 12, UISkin.INK)
 

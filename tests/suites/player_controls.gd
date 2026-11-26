@@ -13,6 +13,7 @@ func test_seated_prompt() -> void:
 	await _frames(3)
 	app._update_minimap()
 	check(app.ui.minimap.visible and app.ui.minimap._room.id == "teach1", "the HUD map opens on the current floor")
+	check(app.ui.minimap._floor_turn == 2 and app._floor_map_turn(app.campus().room("lift_teach")) == 2 and app._floor_map_turn(app.campus().room("lift_lab")) == 0, "the floor maps show physical north inside each building and its elevator")
 	await _tap(app.ui.minimap)
 	check(is_instance_valid(app.ui.map_panel) and app.ui.map_panel.visible and not app.player.enabled, "tapping the HUD map opens its floor and suspends movement")
 	app.ui._close_map()

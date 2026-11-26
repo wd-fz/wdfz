@@ -91,7 +91,7 @@ index ef637d7..26efccb 100644
      var px2=M(bmx), pz2=M(bmy), sl;
      if(!K.asset('bench_park',px2,0,pz2,0)){
 diff --git a/game3d/js/content/room-recipe.js b/game3d/js/content/room-recipe.js
-index ee812ac..a727c29 100644
+index ee812ac..7fecdc8 100644
 --- a/game3d/js/content/room-recipe.js
 +++ b/game3d/js/content/room-recipe.js
 @@ -50,7 +50,7 @@ function buildRoomRecipe(R,K,view){
@@ -194,7 +194,7 @@ index ee812ac..a727c29 100644
      K.g('decal').quad(-0.15,-(H-2)*th*0.48,0.15,-(H-2)*th*0.48,0.15,(H-2)*th*0.48,-0.15,(H-2)*th*0.48,0.006,0x59636b);
    }
 
-@@ -371,7 +376,7 @@ function roomDecor(c,isRoof){
+@@ -371,10 +376,25 @@ function roomDecor(c,isRoof){
      var lx;
      for(lx=3;lx<W-3;lx+=4){
        if(lx>=56&&lx<=61) continue;
@@ -203,7 +203,25 @@ index ee812ac..a727c29 100644
        K.asset('locker_bank_4',lcx,0,lz,0);                                                          /* 四门储物柜：门缝、百叶、号码牌、锁、拉手 */
        c.solid(lcx, lz, 0.86, 0.42);
      }
-@@ -459,7 +464,7 @@ function corridorExtras(c,zWallS,zWallN){
++    // The linked metal seats at the ground-floor arcade face the plaza, between classroom doors.
++    if(R.floor===1){
++      var seatX=CX(window.NATIVE_CAMPUS_LAYOUT.entrances.teach1.at), seatZ=zWallS+.58;
++      for(var place=-1;place<=1;place++){
++        var chairX=seatX+place*.53;
++        K.box('metal',chairX,.46,seatZ,.48,.065,.44,0x526371,.92);
++        K.box('metal',chairX,.70,seatZ-.20,.48,.41,.06,0x627785,.94);
++      }
++      K.box('metal',seatX,.37,seatZ,1.52,.08,.09,0x383e43,.90);
++      [-.56,.56].forEach(function(off){
++        K.box('metal',seatX+off,.18,seatZ,.055,.36,.08,0x383e43,.90);
++        K.box('metal',seatX+off,.035,seatZ,.08,.07,.40,0x41494f,.90);
++      });
++      c.solid(seatX,seatZ,1.54,.48);
++    }
+     /* 走廊外墙：宣传栏 + 消防栓箱 */
+     var bx2;
+     for(bx2=6;bx2<W-6;bx2+=13){
+@@ -459,7 +479,7 @@ function corridorExtras(c,zWallS,zWallN){
      }
    }
    /* 应急灯：教室门之间、走廊北墙上 */
@@ -212,7 +230,7 @@ index ee812ac..a727c29 100644
    /* 厕所隔墙外面：饮水机 + 分类垃圾桶 */
    var tx=-1;
    for(x=W-2;x>0;x--) if(R.grid[H-5]&&R.grid[H-5][x]==='#'&&R.grid[H-5][x-1]==='.'){ tx=x; break; }
-@@ -552,6 +557,7 @@ function classroomWest(c,i,c0,c1){
+@@ -552,6 +572,7 @@ function classroomWest(c,i,c0,c1){
    function X(t){ return t*c.tw-c.halfW; }
    function Z(t){ return t*c.th-c.halfH; }
    var xw=X(c0), xe=X(c1+1), zn=Z(r0), zs=Z(r1+1), zb=Z(L.mid);
@@ -331,7 +349,7 @@ index 950f52c..d6a5fe5 100644
  var GATE_N={x:514,y:95}, GATE_W={x:200,y:624}, GATE_S={x:386,y:1396};   /* 连续校园 A3：南墙从 1290 推到 1396 */
  var BOUND={x0:200,y0:95,x1:830,y1:1396};
 diff --git a/game3d/js/model/building.js b/game3d/js/model/building.js
-index 4c0a376..34987ed 100644
+index 4c0a376..c31efb1 100644
 --- a/game3d/js/model/building.js
 +++ b/game3d/js/model/building.js
 @@ -55,6 +55,7 @@ function objHeightM(b){
@@ -408,7 +426,16 @@ index 4c0a376..34987ed 100644
      segs.forEach(function(sg){
        var L=sg[1]-sg[0], m=(sg[0]+sg[1])/2; if(L<0.05) return;
        if(f[4]) K.box('plaster',m,y,f[2],L,h,out,col||$imports.WHITEBAND,1.0);
-@@ -275,11 +295,11 @@ function addEntrance(K, grp, px, pz, sw, sd, face, colonnade, name, seam){
+@@ -264,7 +284,7 @@ function roofTop(K,px,top,pz,sw,sd,seed){
+ }
+
+ /* ---- 大门口：门洞暗腔、双开门、门套、雨棚（有柱廊的楼不要雨棚）、台阶、门牌 ---- */
+-function addEntrance(K, grp, px, pz, sw, sd, face, colonnade, name, seam){
++function addEntrance(K, grp, px, pz, sw, sd, face, colonnade, name, seam, openArcade){
+   face=face||'s';
+   var horz=(face==='e'||face==='w');
+   var along=horz?sd:sw;
+@@ -275,13 +295,14 @@ function addEntrance(K, grp, px, pz, sw, sd, face, colonnade, name, seam){
    else if(face==='e'){ nx=1;  bx=px+sw/2; }
    else { nx=-1; bx=px-sw/2; }
    var rot=Math.atan2(nx,nz);
@@ -420,8 +447,11 @@ index 4c0a376..34987ed 100644
 -    K.unframe(); K.frame(bx+(horz?0:(seam.dx||0)),bz+(horz?(seam.dx||0):0),rot);   /* 门中线可以偏离楼中线（实验楼宽 50 格） */
      [-1,1].forEach(function(sx){
        K.bevel('stone',sx*(hw+0.09),1.2,0.11,0.18,2.40,0.22,0xd8d4cc,1.05,0.02);                 /* 门套 */
++      if(openArcade) return;  // No folded leaves in the brick arcade next to the tower.
        var lz=seam.leaf||0.135;                                                                   /* 墙基挑出多少，门扇就贴在它外面 */
-@@ -399,24 +419,23 @@ function linkSpansOn(o,face){
+       K.bevel('metal',sx*(hw+0.85),1.12,lz,1.30,2.18,0.05,0x2a3136,1.02,0.01);                  /* 推开的门扇（贴在墙基外面） */
+       K.box('glass',sx*(hw+0.85),1.25,lz+0.03,1.06,1.70,0.01,0x5a7080,1.0);
+@@ -399,24 +420,23 @@ function linkSpansOn(o,face){
    });
    return out;
  }
@@ -458,7 +488,7 @@ index 4c0a376..34987ed 100644
    /* 女儿墙（挑出的尺寸改成固定值：以前按楼宽的百分比，宽楼挑出半米，插进隔壁钟楼的柱子） */
    K.box('plaster',px,total+0.18,pz,sw-0.02,0.42,sd-0.02,$imports.WHITEBAND,1.0);
    K.box('brick',px,total+0.78,pz,sw+0.12,0.80,sd+0.12,$imports.BRICK,0.99);
-@@ -429,6 +448,7 @@ function bldClassroom(K,grp,o,px,pz,sw,sd){
+@@ -429,6 +449,7 @@ function bldClassroom(K,grp,o,px,pz,sw,sd){
    })();
    /* 柱廊：正中让出大门。位置来自 content/structure-recipe.js，碰撞用同一份 */
    (0,$imports.colonnadeColumns)(px,pz,sw,sd).forEach(function(c){
@@ -466,7 +496,7 @@ index 4c0a376..34987ed 100644
      K.bevel('brick',c.x,g0/2,c.z,0.46,g0,0.46,$imports.BRICK,1.02,0.03);
      K.bevel('stone',c.x,0.16,c.z,0.62,0.32,0.62,$imports.BASE_GREY,0.95,0.03);
      K.bevel('stone',c.x,g0-0.12,c.z,0.56,0.12,0.56,$imports.WHITEBAND,1.0,0.02);
-@@ -473,7 +493,7 @@ function bldClassroom(K,grp,o,px,pz,sw,sd){
+@@ -473,7 +494,7 @@ function bldClassroom(K,grp,o,px,pz,sw,sd){
    addEntrance(K,grp,px,pz,sw,sd,o.door||'s',true,BLD_NAME[o.id],o.seamDoor);
  }
  /* ---- 教学楼（连续校园 A1：按室内 63×22 格重建，砖墙、白腰线、红栏杆、柱廊和正门的样式不变） ----
@@ -475,7 +505,7 @@ index 4c0a376..34987ed 100644
     每层一块楼板（顶面比室内地面低 2 厘米、底面比室内吊顶高 2 厘米，从走廊里看都被室内挡住），外沿红栏杆，
     里面是教室块的南墙（每间教室两扇门、高窗）。楼前三座塔：两部楼梯（西边那部上到天台）和电梯井。 */
  function bldTeach(K,grp,o,px,pz,sw,sd){
-@@ -481,37 +501,53 @@ function bldTeach(K,grp,o,px,pz,sw,sd){
+@@ -481,37 +502,57 @@ function bldTeach(K,grp,o,px,pz,sw,sd){
    var gz=L.gz, zs=L.zs, ge0=L.ge0, ge1=L.ge1, gw=ge1-ge0, gx=(ge0+ge1)/2, k;
    facadeDoor(o,px,pz,sw,sd,'colonnade');
    /* 教室块：北墙到走廊北墙 */
@@ -505,7 +535,11 @@ index 4c0a376..34987ed 100644
 +      K.g('brick').boxFaces((s[0]+s[1])/2,(low+high)/2,z,s[1]-s[0],high-low,.06,$imports.BRICK,.97,'s');
 +    });
 +  }
-+  var groundOpen=streetOpen.concat(entrance.map(function(p){return [p.lo,p.hi];}));
++  var arcade=window.NATIVE_CAMPUS_LAYOUT.entrances.teach1.bays.map(function(bay){
++    var centre=L.x0+(bay.at+.5)*L.t, half=bay.width*L.t/2;
++    return [centre-half,centre+half];
++  });
++  var groundOpen=streetOpen.concat(entrance.map(function(p){return [p.lo,p.hi];}),arcade);
 +  frontBrick(ge0,ge1,0,2.32,groundOpen,zs-.03);
 +  frontBrick(ge0,ge1,2.32,wh,[],zs-.03);
 +  plinthAround(K,px,pz,sw,sd,.9,.08,(0,$imports.shadeHex)($imports.BASE_GREY,.92),{s:groundOpen});
@@ -547,7 +581,7 @@ index 4c0a376..34987ed 100644
    for(si=0;si<=cutsC.length;si++){
      var cx1=si<cutsC.length?cutsC[si][0]:L.x0+sw;
      if(cx1-cx0>0.05){
-@@ -520,10 +556,10 @@ function bldTeach(K,grp,o,px,pz,sw,sd){
+@@ -520,10 +561,12 @@ function bldTeach(K,grp,o,px,pz,sw,sd){
        if(!$imports.DEV_HIDE.canopy) K.bevel('plaster',cm,g0+0.14,zs+0.04+(dep+0.21)/2,cl,0.30,dep+0.21,$imports.WHITEBAND,1.02,0.04);
        K.box('concrete',cm,(beamY0+g0-0.01)/2,zs+0.04+(dep+0.11)/2,cl,g0-0.01-beamY0,dep+0.11,$imports.BRICK_D,0.96);
      }
@@ -556,11 +590,13 @@ index 4c0a376..34987ed 100644
    }
    /* 一楼南窗：避开楼梯塔、电梯井和正门 */
 -  var cuts=L.towers.map(function(b){ return [b.x-b.half-0.6,b.x+b.half+0.6]; }).concat([[px-3.2,px+3.2]]).sort(function(a,b){return a[0]-b[0];});
-+  var cuts=L.towers.map(function(b){ return [b.x-b.half-0.6,b.x+b.half+0.6]; }).sort(function(a,b){return a[0]-b[0];});
++  var cuts=L.towers.map(function(b){ return [b.x-b.half-0.6,b.x+b.half+0.6]; })
++    .concat(arcade,entrance.map(function(p){return [p.lo,p.hi];}))
++    .sort(function(a,b){return a[0]-b[0];});
    var from=ge0+0.6, ci;
    for(ci=0;ci<=cuts.length;ci++){
      var to=ci<cuts.length?cuts[ci][0]:ge1-0.6;
-@@ -547,28 +583,32 @@ function bldTeach(K,grp,o,px,pz,sw,sd){
+@@ -547,41 +590,42 @@ function bldTeach(K,grp,o,px,pz,sw,sd){
      K.box('plaster',gx,y-0.06,zs+0.02,gw,0.24,0.04,$imports.WHITEBAND,1.0);                          /* 楼板外沿的白边 */
      if(k===5) continue;
      /* 教室块南墙上的门和高窗（外廊这一侧） */
@@ -605,9 +641,11 @@ index 4c0a376..34987ed 100644
 +    K.g('brick').boxFaces(b.x,b.top/2,cz,b.half*2,b.top,d,$imports.BRICK,.97,'sew');
 +    K.box('plaster',b.x,b.top+.15,cz,b.half*2+.12,.30,d+.12,$imports.WHITEBAND,1);
    });
-   addEntrance(K,grp,px,pz,sw,sd,o.door||'s',true,BLD_NAME[o.id],o.seamDoor);
+-  addEntrance(K,grp,px,pz,sw,sd,o.door||'s',true,BLD_NAME[o.id],o.seamDoor);
++  addEntrance(K,grp,px,pz,sw,sd,o.door||'s',true,BLD_NAME[o.id],o.seamDoor,true);
  }
-@@ -577,11 +617,8 @@ function bldDorm(K,grp,o,px,pz,sw,sd){
+ /* ---- 宿舍：六层，阳台开在门的对面（贴着食堂的那段不画） ---- */
+ function bldDorm(K,grp,o,px,pz,sw,sd){
    var dh=OBLD_H[o.id], dn=Math.round(dh/3.0), dfl, seam=o.seamDoor;
    if(seam){ sw+=2*SEAM_OUT; sd+=2*SEAM_OUT; }
    facadeDoor(o,px,pz,sw,sd,'big');
@@ -621,7 +659,7 @@ index 4c0a376..34987ed 100644
    K.box('plaster',px,dh+0.16,pz,sw-0.02,0.32,sd-0.02,$imports.WHITEBAND,1.0);
    K.bevel('stone',px,dh+0.45,pz,sw+0.2,0.10,sd+0.2,0xd8d4cb,1.0,0.02);
    roofTop(K,px,dh+0.5,pz,sw,sd,o.y);
-@@ -591,7 +628,7 @@ function bldDorm(K,grp,o,px,pz,sw,sd){
+@@ -591,7 +635,7 @@ function bldDorm(K,grp,o,px,pz,sw,sd){
      for(shx=px-sw/2+2.2;shx<px+sw/2-2;shx+=3.2) solarHeater(K,shx,dh+0.5,pz+sd*0.28,Math.PI);
    }
    downpipe(K,'e',px,pz,sw,sd,pz,dh+0.3); downpipe(K,'w',px,pz,sw,sd,pz,dh+0.3);
@@ -630,7 +668,7 @@ index 4c0a376..34987ed 100644
    var spans=faceFreeSpans(o,balFace), sp2;
    for(dfl=1;dfl<=dn;dfl++){
      var dy=dfl*(dh/(dn+0.5));
-@@ -792,27 +829,24 @@ function ebikeModel(K,x,z,rot,col,low){
+@@ -792,27 +836,24 @@ function ebikeModel(K,x,z,rot,col,low){
  }
  /* ---- 连廊：每层一条走道，两侧玻璃 + 栏杆，柱子落地 ---- */
  function bldLink(K,o,px,pz,sw,sd){
@@ -675,7 +713,7 @@ index 4c0a376..34987ed 100644
  }
  /* ---- 地下车库车道：两侧矮墙 + 一段往下斜的坡 + 门头 ---- */
  function garageRamp(K,px,pz,sw,sd){
-@@ -982,13 +1016,14 @@ var BLD_BY_KIND={
+@@ -982,13 +1023,14 @@ var BLD_BY_KIND={
    court: function(K,grp,o,px,pz,sw,sd){ (0,$imports.courtModel)(K,o,px,pz,sw,sd); },
    link:  function(K,grp,o,px,pz,sw,sd){ bldLink(K,o,px,pz,sw,sd); }
  };
@@ -692,7 +730,7 @@ index 4c0a376..34987ed 100644
    var x0=$imports.BOUND.x0*$imports.SC*$imports.U2M, y0=$imports.BOUND.y0*$imports.SC*$imports.U2M;
    var x1=$imports.BOUND.x1*$imports.SC*$imports.U2M, y1=$imports.BOUND.y1*$imports.SC*$imports.U2M;
    var cx=(x0+x1)/2, cz=(y0+y1)/2;
-@@ -1000,11 +1035,25 @@ function buildOutdoorGeometry(){
+@@ -1000,11 +1042,25 @@ function buildOutdoorGeometry(){
      var o=$imports.OBJ[i], ow=(0,$imports.objWorld)(o);
      var px=(ow.x+ow.w/2)*$imports.U2M, pz=(ow.y+ow.h/2)*$imports.U2M;
      var sw=ow.w*$imports.U2M, sd=ow.h*$imports.U2M;
@@ -774,6 +812,29 @@ index 03f071d..d939ff9 100644
    function doorsOf(room){ return CAMPUS_DOOR.doors.filter(function(d){ return d.room===room; }); }
    function byHost(host){ return CAMPUS_DOOR.doors.filter(function(d){ return d.host===host; })[0]||null; }
    /* 室内这一侧：门洞里、门槛线外 1.5 格以内，侧向留出身体半径 */
+@@ -63,8 +63,12 @@
+   function install(){
+     CAMPUS_DOOR.doors.forEach(function(d){
+       var R=$imports.INTERIORS[d.room], o=(0,$imports.objById)(d.host); if(!R||!o) return;
++      var entrances=doorsOf(d.room);
++      if(d!==entrances[0]) return; /* One facade, spawn and annex per room. */
+       if(!R.__campusDoor){
+-        port(d).cells.forEach(function(cr){ if(R.grid[cr[1]]) R.grid[cr[1]][cr[0]]='O'; });
++        entrances.forEach(function(entry){
++          port(entry).cells.forEach(function(cr){ if(R.grid[cr[1]]) R.grid[cr[1]][cr[0]]='O'; });
++        });
+         var prev=R.annexAt;
+         R.annexAt=function(x,y){ return inAnnex(R,x,y)||(prev?prev.call(this,x,y):false); };
+         R.openExitAt=function(x,y){ return openAt(R,x,y); };
+@@ -72,7 +76,7 @@
+       }
+       /* 房间坐标（R.ox）要等 world.js 的 buildRoomBounds 算好，所以缺口用到时才算，算一次 */
+       var gaps=null;
+-      Object.defineProperty(o,'gaps',{configurable:true,enumerable:false,get:function(){ if(!gaps&&Number.isFinite(R.ox)) gaps=[gapOf(d)]; return gaps; }});
++      Object.defineProperty(o,'gaps',{configurable:true,enumerable:false,get:function(){ if(!gaps&&Number.isFinite(R.ox)) gaps=entrances.map(gapOf); return gaps; }});
+       /* 交给楼体模型：门洞宽、门中线离楼中线多远（米，沿立面）、一楼走廊从外墙到走廊北墙有几格（这一段镂空，门里看得见室内模型） */
+       var hc=Math.floor(d.at), hollow=1; while(R.grid[R.rows-1-hollow]&&'#='.indexOf(R.grid[R.rows-1-hollow][hc])<0) hollow++;
+       var vert=d.edge==='e'||d.edge==='w';
 diff --git a/game3d/js/modules/campus-link/link.js b/game3d/js/modules/campus-link/link.js
 index e1f71f9..e290f41 100644
 --- a/game3d/js/modules/campus-link/link.js

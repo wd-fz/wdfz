@@ -48,7 +48,7 @@ var _campus: Dictionary = {}
 var _lit := false                   # blocks are shaded by the stage's ambient light (the cyber interiors)
 var _stage_env: Environment
 var _dis_gate := Vector3.ZERO
-var _dis_teach := Vector2.ZERO
+var _dis_teach := Transform3D.IDENTITY
 var _campus_env: Environment
 var _campus_light: CampusLighting
 var _cy_base := Vector3.ZERO
@@ -771,8 +771,7 @@ func _setup_dis() -> void:
 	var charm := _label("★", 0.082, Color("#d4af5e"))
 	charm.position = Vector3(0.30, 0.94, 0.239)
 	_dis_sister.add_child(charm)
-	var spot := DayBanner.spot(_world.get("layout") as Dictionary if _world != null else {})
-	_dis_teach = Vector2(spot.x, spot.z - 0.82)   # x centre of the building, z of its front line
+	_dis_teach = DayBanner.facade(_world.get("layout") as Dictionary if _world != null else {})
 	for i in 16:
 		_walkers.append(_fig(_root, "person", Color("#3b4847"), _dis_gate.x + 5.35, _dis_gate.z + 3.8 - float(i) * 0.65, PI))
 	_ledger = _label("北门接送区\n学生请在门内等候", 0.12, Color("#e7e2ca"))
@@ -788,7 +787,7 @@ func _setup_dis() -> void:
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		mat.albedo_color = Color("#aba17c")
 		RenderMaterials.set_override(w, mat)
-		w.position = Vector3(_dis_teach.x, 2.7 + float(i) * 3.2, _dis_teach.y + 0.04)
+		w.transform = _dis_teach.translated_local(Vector3(0, 2.7 + float(i) * 3.2, 0.04))
 		w.visible = false
 		_root.add_child(w)
 		_windows.append(w)
@@ -873,7 +872,7 @@ func _apply_dis(kk: float) -> void:
 		if v < 0.6:
 			_look(g + Vector3(2.55, 1.7, -9.0 - (v - 0.2) * 5.0), g + Vector3(4.1, 1.35, -2.6))
 		else:
-			_look(Vector3(_dis_teach.x, 8.5, _dis_teach.y + 24.0), Vector3(_dis_teach.x, 8.0, _dis_teach.y))
+			_look(_dis_teach * Vector3(0, 8.5, 24.0), _dis_teach * Vector3(0, 8.0, 0))
 		for i in _windows.size():
 			var w := _windows[i] as MeshInstance3D
 			w.visible = v >= 0.6

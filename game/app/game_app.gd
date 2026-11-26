@@ -3255,6 +3255,13 @@ func _map_scale() -> float:
 	return float(CampusData.layout("out")["SC"]) * CampusGeometry.U2M
 
 
+func _floor_map_turn(room: Dictionary) -> int:
+	var id := String(room["id"])
+	if is_instance_valid(router.resident) and router.resident.space.contains(id):
+		return posmod(roundi(router.resident.space.frame(id).basis.get_euler().y / (PI * .5)), 4)
+	return posmod(int(room.get("campus_turn", 0)), 4)
+
+
 func _map_landmark(destination: String) -> Dictionary:
 	if destination == "gate_w":
 		return {"name": "西小门", "point": CampusGeometry.gate_center(CampusData.campus(), "w") / float(CampusData.layout("out")["SC"])}
@@ -3280,7 +3287,7 @@ func _update_minimap() -> void:
 	if room == null or room.get("flags", {}).get("noMap", false) or id in CampusSpace.SEPARATE:
 		ui.minimap.hide()
 		return
-	ui.minimap.show_floor(room, ex.seen(id), CampusGeometry.to_world(room, player.position.x, player.position.z), facing)
+	ui.minimap.show_floor(room, ex.seen(id), CampusGeometry.to_world(room, player.position.x, player.position.z), facing, _floor_map_turn(room))
 
 
 func _lock_document() -> void:
@@ -3408,7 +3415,7 @@ func _show_map(selected: String = "", route: String = "") -> void:
 		return
 	var r: Dictionary = campus().room(selected)
 	var hereb := selected == session.world_id
-	var north: String = ["↑", "→", "↓", "←"][posmod(int(r.get("campus_turn", 0)), 4)]
+	var north: String = ["↑", "→", "↓", "←"][_floor_map_turn(r)]
 	var view2 := ui.open_map(options, selected, "%s　北 %s　%s已看清 %d%%" % [r["name"], north, "你在这一层　" if hereb else "", ex.percent(selected)],
 		"空白处还没看到过。桌、柜、架表示看见过的家具。\n梯 楼梯　电 电梯　廊 连廊　出 出口　锁 门锁着　✓ 已解决　留 有东西没拿　× 钥匙不匹配　记 已记入笔记")
 	var me2 := Vector2.ZERO

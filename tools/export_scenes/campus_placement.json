@@ -12,7 +12,7 @@
     "canteen": {"x": 608, "y": 1096, "w": 126, "h": 279, "door": "w", "turn": -1}
   },
   "entrances": {
-    "teach1": {"host": "teach", "edge": "s", "at": 49, "clear": []},
+    "teach1": {"host": "teach", "edge": "s", "at": 49, "bays": [{"at": 45, "width": 3}, {"at": 52, "width": 1}], "clear": []},
     "admin1": {"host": "admin", "edge": "n", "at": 9, "clear": [[8, 1, 10, 16]]},
     "lab1": {"host": "lab", "edge": "w", "at": 17, "clear": []},
     "dorm1": {"host": "dormN", "edge": "w", "at": 12.5, "clear": [[1, 9, 1, 13], [2, 12, 2, 13]]},

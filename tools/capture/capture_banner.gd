@@ -20,8 +20,9 @@ func _run() -> void:
 	app.start_new_game("easy")
 	for _i in 10:
 		await process_frame
-	var spot := DayBanner.spot(CampusData.layout("out"))
-	app.travel("out", {"position": [spot.x, 0.05, spot.z + 11.0], "yaw": 0.0, "pitch": 0.45}, false)
+	var facade := DayBanner.facade(CampusData.layout("out"))
+	var eye := facade * Vector3(0, 0.05, 11.82)
+	app.travel("out", {"position": [eye.x, eye.y, eye.z], "yaw": facade.basis.get_euler().y, "pitch": 0.45}, false)
 	for _i in 20:
 		await process_frame
 	app._campus_world().banner.set_on(true)

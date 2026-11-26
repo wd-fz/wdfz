@@ -87,9 +87,9 @@ func test_connections() -> void:
 		var id := String(door["room"])
 		var room := CampusData.layout(id)
 		var p: Vector2 = CampusGeometry.door_port(room, door)["p"]
-		var outside := (p + CampusGeometry.shift_of(room)) * CampusGeometry.U2M
 		var inside := CampusGeometry.to_scene(room, p)
-		check(CampusConnections.nearby("out", Vector3(outside.x, 0, outside.y)).has(id), "approaching %s prepares the correct building" % id)
+		var outside := CampusGeometry.campus_frame(room) * Vector3(inside.x, 0, inside.y)
+		check(CampusConnections.nearby("out", outside).has(id), "approaching %s prepares the correct building" % id)
 		check(CampusConnections.nearby(id, Vector3(inside.x, 0, inside.y)).has("out"), "%s prepares the campus before its exit" % id)
 	for stair: Dictionary in CampusData.campus()["stair_layout"]:
 		for level in (stair["rooms"] as Array).size():

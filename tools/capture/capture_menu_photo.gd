@@ -20,8 +20,9 @@ func _run() -> void:
 	for _i in 10:
 		await process_frame
 	app.school().tsec = 1338.0
-	var spot := DayBanner.spot(CampusData.layout("out"))
-	app.travel("out", {"position": [spot.x - 10.0, 1.2, spot.z + 22.0], "yaw": 0.35, "pitch": 0.12}, false)
+	var facade := DayBanner.facade(CampusData.layout("out"))
+	var eye := facade * Vector3(-10.0, 1.2, 22.82)
+	app.travel("out", {"position": [eye.x, eye.y, eye.z], "yaw": facade.basis.get_euler().y + 0.35, "pitch": 0.12}, false)
 	app.player.enabled = false
 	for _i in 60:
 		app.school().tsec = 1338.0

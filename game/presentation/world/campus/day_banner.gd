@@ -7,7 +7,7 @@ extends Node3D
 
 const TEXT := "热烈庆祝武大附中建校纪念日"
 const SIZE := Vector2i(1024, 96)
-const SC := 2.0
+const HANG_POSITION := Vector3(0.0, 5.55, 0.82)
 
 static var _tex: Texture2D
 
@@ -16,26 +16,27 @@ var _ropes: Array[MeshInstance3D] = []
 var _busy := false
 
 
-## The banner's centre and the building's front line in scene coordinates, from the outdoor plan.
-static func spot(layout: Dictionary) -> Vector3:
-	for o: Dictionary in layout.get("objects", []):
-		if String(o["id"]) == "teach":
-			var cx := (float(o["x"]) + float(o["w"]) / 2.0) * SC * CampusGeometry.U2M
-			var fz := (float(o["y"]) + float(o["h"])) * SC * CampusGeometry.U2M
-			return Vector3(cx, 5.55, fz + 0.82)
-	return Vector3.ZERO
+## Centre of the teaching building's entrance facade. Local +Z points out onto the plaza.
+static func facade(layout: Dictionary) -> Transform3D:
+	for building: Dictionary in layout.get("objects", []):
+		if building.id != "teach": continue
+		var outward: Vector2 = CampusGeometry.NORMALS[building.door]
+		var size := Vector2(building.w, building.h)
+		var edge := Vector2(building.x, building.y) + (Vector2.ONE + outward) * size * 0.5
+		edge *= float(layout.SC) * CampusGeometry.U2M
+		return Transform3D(Basis(Vector3.UP, atan2(outward.x, outward.y)), Vector3(edge.x, 0, edge.y))
+	return Transform3D.IDENTITY
 
 
 func setup(layout: Dictionary) -> void:
-	var at := spot(layout)
-	if at == Vector3.ZERO:
-		return
+	transform = facade(layout)
+	if transform == Transform3D.IDENTITY: return
 	_banner = MeshInstance3D.new()
 	_banner.name = "Banner"
 	var q := QuadMesh.new()
 	q.size = Vector2(13.0, 1.1)
 	_banner.mesh = q
-	_banner.position = at
+	_banner.position = HANG_POSITION
 	_banner.visible = false
 	add_child(_banner)
 	var rope := StandardMaterial3D.new()
@@ -46,7 +47,7 @@ func setup(layout: Dictionary) -> void:
 		bm.size = Vector3(0.04, 2.6, 0.04)
 		r.mesh = bm
 		RenderMaterials.set_override(r, rope)
-		r.position = at + Vector3(dx, 0.0, -0.02)
+		r.position = HANG_POSITION + Vector3(dx, 0.0, -0.02)
 		r.visible = false
 		add_child(r)
 		_ropes.append(r)
