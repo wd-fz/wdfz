@@ -18,6 +18,8 @@ def read_report(root, output):
             raise RuntimeError("The export has invalid resource size accounting")
     if not 0 < report.get("unique_textures", 0) <= report.get("textures", 0):
         raise RuntimeError("The export did not verify shared textures")
+    if report.get("exterior_tiers") != POLICY["model_tiers"] or report.get("exterior_bytes", 0) <= 0:
+        raise RuntimeError("The export is missing prepared resident exterior tiers")
     return {key: value for key, value in report.items() if key != "output"}
 
 
@@ -29,3 +31,6 @@ def verify_apk(archive):
         raise RuntimeError("APK is missing the current package policy")
     if not any(name.endswith(".glb.packed.scn") for name in names) or not any(name.startswith("assets/assets/packed_textures/") for name in names):
         raise RuntimeError("APK is missing compacted scenes or shared textures")
+    for tier in POLICY["model_tiers"]:
+        if f"assets/assets/campus/resident/out_{tier}.scn" not in names:
+            raise RuntimeError(f"APK is missing prepared resident exterior tier {tier}")

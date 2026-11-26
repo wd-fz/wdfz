@@ -624,14 +624,18 @@ func _prepare_school_entry(world_id: String, entry_pose: Variant, generation: in
 		if not location is Array or location.size() != 3 or not location.all(func(v: Variant) -> bool: return SaveSchema.number_in(v, -10000, 10000)):
 			location = pose["position"]
 		at = school.space.frame(world_id) * Vector3(location[0], location[1], location[2])
+		# Start the spawn model while the main thread installs the remaining colliders.
+		# Use the same resident queue so cancellation and tier changes still apply.
+		school.prepare(world_id, false)
+		school.warm_entry_models(PackedStringArray([world_id]))
 	var slice_started := Time.get_ticks_usec()
 	for i in ids.size():
 		var id := ids[i]
-		school.prepare(id, false)
+		if not school.regions.has(id): school.prepare(id, false)
 		if CampusResident.permanent_model(id) or (connected and school.near_view(id, at, world_id, 5.0)):
 			visual_ids.append(id)
-		ui.set_loading(0.05 + 0.40 * float(i + 1) / ids.size(), "准备校园碰撞  %d/%d" % [i + 1, ids.size()])
 		if Time.get_ticks_usec() - slice_started >= ENTRY_PHYSICS_BUDGET_USEC:
+			ui.set_loading(0.05 + 0.40 * float(i + 1) / ids.size(), "准备校园碰撞  %d/%d" % [i + 1, ids.size()])
 			await get_tree().process_frame
 			if generation != _load_generation: return
 			slice_started = Time.get_ticks_usec()
@@ -639,9 +643,12 @@ func _prepare_school_entry(world_id: String, entry_pose: Variant, generation: in
 		visual_ids.remove_at(visual_ids.find(world_id))
 		visual_ids.insert(0, world_id)
 	school.warm_entry_models(visual_ids)
+	var shown := -1
 	while school.entry_models_left() > 0:
 		var complete := visual_ids.size() - school.entry_models_left()
-		ui.set_loading(0.45 + 0.45 * float(complete) / visual_ids.size(), "预载附近场景  %d/%d" % [complete, visual_ids.size()])
+		if shown != complete:
+			ui.set_loading(0.45 + 0.45 * float(complete) / visual_ids.size(), "预载附近场景  %d/%d" % [complete, visual_ids.size()])
+			shown = complete
 		await get_tree().process_frame
 		if generation != _load_generation: return
 	ui.set_loading(0.90, "场景资源已处理")
@@ -657,15 +664,16 @@ func cancel_loading() -> void:
 ## 继续入梦 from the main menu: the same loading screen, then the ordinary load. The pause menu's reload and
 ## direct callers keep calling load_game.
 func _continue_with_loading() -> void:
+	if _starting: return
 	if session != null or (is_instance_valid(lan) and lan.active()):
 		load_game()
 		return
 	var result := saves.read()
-	if result.has("error") or not (result["data"] is Dictionary):
-		load_game()
+	if result.has("error"):
+		_load_save_result(result)
 		return
 	var saved: Dictionary = result["data"]
-	_load_then(String(saved.get("world_id", "")), load_game, saved.get("player"))
+	_load_then(String(saved.get("world_id", "")), _load_save_result.bind(result), saved.get("player"))
 
 
 func start_new_game(difficulty: String = "easy", talent_id: String = "none", character_id: String = StudentCast.DEFAULT) -> bool:
@@ -891,12 +899,16 @@ func save_game(quiet: bool = false) -> void:
 
 
 func load_game() -> void:
+	_load_save_result({})
+
+
+func _load_save_result(result: Dictionary) -> void:
 	if is_instance_valid(lan) and lan.active():
 		ui.show_notice("合作存档由房主在大厅恢复。")
 		return
 	speedrun.disarm()
 	ui.speedrun_text = ""
-	var result := saves.read()
+	if result.is_empty(): result = saves.read()
 	if result.has("error"):
 		ui.show_notice(result["error"])
 		return

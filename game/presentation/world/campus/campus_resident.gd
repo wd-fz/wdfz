@@ -60,10 +60,10 @@ func prepare(id: String, with_model: bool = true) -> CampusWorld:
 	world.prepare_collision()
 	if fresh:
 		regions[id] = world
-		add_child(world)
 		world.set_collision_enabled(visible)
+		add_child(world)
 		builds += 1
-	if loading_detail and world.geometry_ready:
+	if loading_detail and world.geometry_ready and visible:
 		_refresh_visibility()
 	return world
 
@@ -278,10 +278,15 @@ func _refresh_visibility() -> void:
 func _process(_delta: float) -> void:
 	if _worker != null:
 		if _worker.is_alive(): return
-		var model := _worker.wait_to_finish() as Node3D
+		var result: Variant = _worker.wait_to_finish()
 		_worker = null
-		_accept_model(model)
-		return
+		if _staging.scene_id == "out":
+			_accept_model(_restore_exterior(result as PackedScene))
+		else:
+			_accept_model(result as Node3D)
+		# Dispatch the next detached load now. A synchronous exterior still
+		# gets its own frame, as do normal gameplay adoptions and evictions.
+		if _entry_models.is_empty() or _entry_models[0] == "out": return
 	if not _entry_models.is_empty():
 		_start_model(_entry_models[0])
 		return
@@ -298,28 +303,47 @@ func _start_model(id: String) -> void:
 	_staging = _make(id)
 	_staging.layout = regions[id].layout
 	_staging_tier = CampusData.tier
-	# The outdoor shell partitions shared render meshes. Keep that step on
-	# the main thread, as in the regular resident path.
-	if id == "out" or DisplayServer.get_name() == "headless":
+	var task := _staging._prepare_visual.bind(_staging_tier)
+	if id == "out":
+		var path := CampusWorld.BakedExterior.PATH % _staging_tier
+		if _entry_models.is_empty() or not CampusBatches.enabled or not ResourceLoader.exists(path):
+			_accept_model(_staging._prepare_visual(_staging_tier))
+			return
+		# Only read the packed resources off-thread. Update shared instance
+		# buffers and partition the fallback shell on the main thread.
+		task = ResourceLoader.load.bind(path, "PackedScene")
+	elif DisplayServer.get_name() == "headless":
 		_accept_model(_staging._prepare_visual(_staging_tier))
 		return
 	_worker = Thread.new()
-	if _worker.start(_staging._prepare_visual.bind(_staging_tier), Thread.PRIORITY_LOW) != OK:
+	if _worker.start(task, Thread.PRIORITY_LOW) != OK:
 		_worker = null
-		_accept_model(null)
+		_accept_model(_staging._prepare_visual(_staging_tier) if id == "out" else null)
+
+
+func _restore_exterior(scene: PackedScene) -> Node3D:
+	if _staging_tier != CampusData.tier or not _entry_models.has("out") or regions.out.geometry_ready:
+		return null
+	var baked := CampusWorld.BakedExterior.restore(scene)
+	if baked != null: return baked
+	var raw := CampusData.instantiate_model("out", _staging_tier)
+	return _staging._prepare_visual(_staging_tier, raw) if raw != null else null
 
 
 func _accept_model(model: Node3D) -> void:
 	var id := _staging.scene_id
 	var entry := _entry_models.has(id)
-	if entry: _entry_models.remove_at(_entry_models.find(id))
 	_staging.free()
 	_staging = null
+	if _staging_tier != CampusData.tier:
+		if model != null: model.free()
+		return # An entry ticket stays pending until its current detail tier is ready.
+	if entry: _entry_models.erase(id)
 	if model == null:
 		_retry_after[id] = Time.get_ticks_msec() + MODEL_RETRY_MS
 		return
 	var world: CampusWorld = regions[id]
-	if _staging_tier != CampusData.tier or world.geometry_ready or (not entry and not _wanted.has(id)):
+	if world.geometry_ready or (not entry and not _wanted.has(id)):
 		model.free()
 		return
 	# Bind just before attaching: doors and the lift may have moved during the load.

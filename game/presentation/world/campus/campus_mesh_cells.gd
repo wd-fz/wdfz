@@ -83,21 +83,8 @@ static func apply(model: Node3D, cache: bool = true) -> int:
 		if overrides: continue
 		var bounds := source.mesh.get_aabb().size
 		if maxf(bounds.x,bounds.z) <= CELL*1.5: continue
-		var triangles := 0
-		var native_mesh := source.mesh as ArrayMesh
-		for s in source.mesh.get_surface_count():
-			if native_mesh != null:
-				# Godot stores both counts in the resource. Reading vertex buffers
-				# here stalls the Vulkan worker even for meshes we will never split.
-				var indices := native_mesh.surface_get_array_index_len(s)
-				triangles += (indices if indices > 0 else native_mesh.surface_get_array_len(s)) / 3
-			else:
-				var arrays := source.mesh.surface_get_arrays(s)
-				if not arrays.is_empty() and arrays[Mesh.ARRAY_VERTEX] != null:
-					triangles += (arrays[Mesh.ARRAY_INDEX].size() if arrays[Mesh.ARRAY_INDEX] != null and not arrays[Mesh.ARRAY_INDEX].is_empty() else arrays[Mesh.ARRAY_VERTEX].size()) / 3
-		# Small wall/floor batches cost less to submit than many additional draws. In
-		# open spaces (e.g. the garage) splitting them creates work without occlusion.
-		if triangles<MIN_TRIANGLES: continue
+		# Small wall/floor batches cost less to submit than many additional draws.
+		if CampusBatches.triangle_count(source.mesh) < MIN_TRIANGLES: continue
 		var pieces := _pieces(source.mesh, cache)
 		if pieces.is_empty(): continue
 		for piece in pieces:

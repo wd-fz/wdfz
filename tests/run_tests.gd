@@ -447,6 +447,8 @@ func _run_features() -> void:
 	geometry.test_clipping()
 	print("CASE: geometry.test_instances")
 	geometry.test_instances()
+	print("CASE: geometry.test_empty_baked_exterior")
+	geometry.test_empty_baked_exterior()
 	print("CASE: geometry.test_campus_joins")
 	await geometry.test_campus_joins()
 	await geometry.test_stair_entrances()

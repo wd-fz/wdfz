@@ -39,8 +39,31 @@ static func _side(bounds: AABB, plane: Plane) -> int:
 	return 0 if front and back else (1 if front else -1)
 
 
-## Use the exported transforms as well as MultiMesh: the headless dummy rendering server
-## does not retain instance transforms, while geometry verification must use the same data.
+## Campus metadata stores transforms column by column. The native instance
+## buffer expects three rows, each followed by the matching origin component.
+static func upload_instances(mm: MultiMesh, xf: PackedFloat32Array, colors: PackedFloat32Array) -> void:
+	var count := mm.instance_count
+	var stride := 16 if mm.use_colors else 12
+	var buffer := PackedFloat32Array()
+	buffer.resize(count * stride)
+	for i in count:
+		var source_offset := i * 12
+		var target_offset := i * stride
+		for axis in 3:
+			buffer[target_offset + axis * 4] = xf[source_offset + axis]
+			buffer[target_offset + axis * 4 + 1] = xf[source_offset + axis + 3]
+			buffer[target_offset + axis * 4 + 2] = xf[source_offset + axis + 6]
+			buffer[target_offset + axis * 4 + 3] = xf[source_offset + axis + 9]
+		if stride == 16:
+			buffer[target_offset + 12] = colors[i * 3]
+			buffer[target_offset + 13] = colors[i * 3 + 1]
+			buffer[target_offset + 14] = colors[i * 3 + 2]
+			buffer[target_offset + 15] = 1.0
+	mm.buffer = buffer
+
+
+## The headless rendering server does not retain uploaded instance transforms.
+## Read the same source matrix when clipping in the editor or at runtime.
 static func instance_transform(node: MultiMeshInstance3D, index: int) -> Transform3D:
 	var xf: PackedFloat32Array = node.get_meta("campus_transforms", PackedFloat32Array())
 	if xf.size() < (index + 1) * 12:
@@ -77,6 +100,12 @@ static func _clip_instances(node: MultiMeshInstance3D, plane: Plane) -> void:
 			node.add_child(edge)
 	if kept.size() == source.instance_count:
 		return
+	set_instances(node, kept, kept_colors)
+
+
+## Install a private subset without changing another region's shared MultiMesh.
+static func set_instances(node: MultiMeshInstance3D, kept: Array[Transform3D], kept_colors: Array[Color]) -> void:
+	var source := node.multimesh
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = source.use_colors
@@ -116,30 +145,54 @@ static func clip_mesh(source: Mesh, plane: Plane, tint: Color = Color.WHITE) -> 
 			for i in colors.size():
 				colors[i] *= tint
 			arrays[Mesh.ARRAY_COLOR] = colors
-		var output := PackedInt32Array()
-		var edges := {}
-		for i in range(0, indices.size(), 3):
-			var polygon: Array[int] = []
-			for j in 3:
-				var a := indices[i + j]
-				var b := indices[i + (j + 1) % 3]
-				var da := plane.distance_to(positions[a])
-				var db := plane.distance_to(positions[b])
-				if da >= -EPS:
-					polygon.append(a)
-				if (da >= -EPS) != (db >= -EPS):
-					var key := Vector2i(mini(a, b), maxi(a, b))
-					if not edges.has(key):
-						edges[key] = _intersection(arrays, a, b, clampf(da / (da - db), 0.0, 1.0))
-					polygon.append(int(edges[key]))
-			for j in range(1, polygon.size() - 1):
-				output.append_array(PackedInt32Array([polygon[0], polygon[j], polygon[j + 1]]))
+		var output := clip_triangles(arrays, indices, plane)
 		if output.is_empty():
 			continue
 		arrays[Mesh.ARRAY_INDEX] = output
 		result.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		result.surface_set_material(result.get_surface_count() - 1, source.surface_get_material(surface))
 	return result
+
+
+## Clip indexed triangles on the CPU, appending edge attributes to this surface.
+## Box subtraction can feed the retained indices directly into its next plane.
+static func clip_triangles(arrays: Array, indices: PackedInt32Array, plane: Plane) -> PackedInt32Array:
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var output := PackedInt32Array()
+	var edges := {}
+	for i in range(0, indices.size(), 3):
+		var a := indices[i]
+		var b := indices[i + 1]
+		var c := indices[i + 2]
+		var da := plane.distance_to(vertices[a])
+		var db := plane.distance_to(vertices[b])
+		var dc := plane.distance_to(vertices[c])
+		if da >= -EPS and db >= -EPS and dc >= -EPS:
+			output.append(a)
+			output.append(b)
+			output.append(c)
+			continue
+		if da < -EPS and db < -EPS and dc < -EPS:
+			continue
+		var distances := [da, db, dc]
+		var polygon := PackedInt32Array()
+		for j in 3:
+			var k := (j + 1) % 3
+			var from := indices[i + j]
+			var to := indices[i + k]
+			var d0: float = distances[j]
+			var d1: float = distances[k]
+			if d0 >= -EPS: polygon.append(from)
+			if (d0 >= -EPS) != (d1 >= -EPS):
+				var key := Vector2i(mini(from, to), maxi(from, to))
+				if not edges.has(key):
+					edges[key] = _intersection(arrays, from, to, clampf(d0 / (d0 - d1), 0.0, 1.0))
+				polygon.append(edges[key])
+		for j in range(1, polygon.size() - 1):
+			output.append(polygon[0])
+			output.append(polygon[j])
+			output.append(polygon[j + 1])
+	return output
 
 
 static func _intersection(arrays: Array, a: int, b: int, t: float) -> int:
@@ -152,9 +205,11 @@ static func _intersection(arrays: Array, a: int, b: int, t: float) -> int:
 			value = value.normalized()
 		arrays[slot].append(value)
 	if arrays[Mesh.ARRAY_TANGENT] != null and not arrays[Mesh.ARRAY_TANGENT].is_empty():
-		var tangent: PackedFloat32Array = arrays[Mesh.ARRAY_TANGENT]
-		var v := Vector3(tangent[a * 4], tangent[a * 4 + 1], tangent[a * 4 + 2]).lerp(
-			Vector3(tangent[b * 4], tangent[b * 4 + 1], tangent[b * 4 + 2]), t).normalized()
-		tangent.append_array(PackedFloat32Array([v.x, v.y, v.z, tangent[a * 4 + 3]]))
-		arrays[Mesh.ARRAY_TANGENT] = tangent
+		var start := a * 4
+		var end := b * 4
+		var from := Vector3(arrays[Mesh.ARRAY_TANGENT][start], arrays[Mesh.ARRAY_TANGENT][start + 1], arrays[Mesh.ARRAY_TANGENT][start + 2])
+		var to := Vector3(arrays[Mesh.ARRAY_TANGENT][end], arrays[Mesh.ARRAY_TANGENT][end + 1], arrays[Mesh.ARRAY_TANGENT][end + 2])
+		var v := from.lerp(to, t).normalized()
+		var handedness: float = arrays[Mesh.ARRAY_TANGENT][start + 3]
+		arrays[Mesh.ARRAY_TANGENT].append_array(PackedFloat32Array([v.x, v.y, v.z, handedness]))
 	return index

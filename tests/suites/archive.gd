@@ -95,6 +95,8 @@ func test_app() -> void:
 		if is_instance_valid(stage.cut): stage.cut.set_process(false)
 		check(app.session == null and app.router.world_instance() == null and stage.player != app.player,"isolated archive world and player: "+String(entry["id"]))
 		if stage.death != null:
+			var backdrop := stage.router.world_instance() as CampusWorld
+			check(backdrop != null and backdrop.lighting != null and not backdrop.has_node("Model") and not backdrop.has_node("Collision"), "archived death retains the room lighting without preparing an invisible campus: " + String(entry["id"]))
 			var expected:=DeathCG.resolve(String(entry["id"]),String(entry["fx"]))
 			check(stage.death.fx==expected and is_equal_approx(stage.duration,DeathCG.duration(expected,0)),"archive uses the same source and duration as live death: "+String(entry["id"]))
 			for t: float in [.2,.55,.85]: stage.death.update(stage.duration*t)

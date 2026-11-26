@@ -1,5 +1,6 @@
 @tool
 extends EditorExportPlugin
+const Exterior := preload("res://game/presentation/world/campus/baked_exterior.gd")
 const RSCC := preload("rscc.gd")
 const POLICY := {"version": 1, "model_tiers": [0, 1, 2, 3], "scene_block_max": 1048576, "lossless": true}
 var _textures: Dictionary = {}
@@ -17,6 +18,38 @@ func _export_begin(_features: PackedStringArray, _debug: bool, path: String, _fl
 	_report = {"policy": POLICY, "output": path, "scenes": 0, "scene_bytes_before": 0, "scene_bytes_after": 0,
 		"textures": 0, "unique_textures": 0, "texture_bytes_before": 0, "texture_bytes_after": 0, "lossless_verified": 0}
 	add_file("res://assets/package_policy.json", JSON.stringify(POLICY).to_utf8_buffer(), false)
+	_add_exteriors()
+
+
+func _add_exteriors() -> void:
+	var directory := "res://.godot/resident-exterior-%d-%d" % [OS.get_process_id(), Time.get_ticks_usec()]
+	if DirAccess.make_dir_recursive_absolute(directory) != OK:
+		push_error("Cannot create temporary directory for the resident campus")
+		return
+	var output := []
+	var code := OS.execute(OS.get_executable_path(), [
+		"--headless", "--path", ProjectSettings.globalize_path("res://"),
+		"--script", "res://addons/package_optimizer/bake_exterior.gd", "--", directory,
+	], output, true)
+	_report.exterior_bytes = 0
+	_report.exterior_tiers = []
+	if code != 0:
+		push_error("Exterior bake failed (%d): %s" % [code, "\n".join(output)])
+	else:
+		for tier: int in POLICY.model_tiers:
+			var destination := Exterior.PATH % tier
+			var path := directory.path_join(destination.get_file())
+			var result := RSCC.compact(FileAccess.get_file_as_bytes(path))
+			if result.has("error"):
+				push_error("Exterior bake: %s: %s" % [path, result.error])
+				break
+			add_file(destination, result.data, false)
+			_report.exterior_bytes += result.data.size()
+			_report.exterior_tiers.append(tier)
+	for file in DirAccess.get_files_at(directory):
+		DirAccess.remove_absolute(directory.path_join(file))
+	DirAccess.remove_absolute(directory)
+	print("RESIDENT EXTERIORS: %.1f MiB" % (_report.exterior_bytes / 1048576.0))
 
 
 func _export_file(path: String, type: String, features: PackedStringArray) -> void:

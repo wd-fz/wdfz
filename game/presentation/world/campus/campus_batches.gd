@@ -7,6 +7,8 @@ extends RefCounted
 const LOCAL_SPAN := 12.0
 const MAX_SPAN := 64.0
 const TRIANGLES_PER_BATCH := 2048
+const GEOMETRY_KEY := &"campus_batch_geometry"
+const OCCLUDER_FACES := &"campus_occluder_faces"
 ## The profiling runner can compare the original submission path in a separate process.
 static var enabled := true
 
@@ -53,6 +55,29 @@ static func _material_key(mat: Material) -> PackedByteArray:
 	return var_to_bytes(values)
 
 
+## Imported campus meshes are immutable. The editor records geometry alone here;
+## current materials are checked separately after recolouring and live-light setup.
+static func geometry_key(mesh: Mesh) -> String:
+	var bytes := PackedByteArray()
+	for s in mesh.get_surface_count():
+		bytes.append_array(var_to_bytes([_primitive(mesh, s), mesh.surface_get_arrays(s)]))
+	return _digest(bytes)
+
+
+static func triangle_count(mesh: Mesh) -> int:
+	var count := 0
+	for s in mesh.get_surface_count():
+		if mesh is ArrayMesh:
+			var indices := (mesh as ArrayMesh).surface_get_array_index_len(s)
+			count += (indices if indices > 0 else (mesh as ArrayMesh).surface_get_array_len(s)) / 3
+		else:
+			var arrays := mesh.surface_get_arrays(s)
+			if not arrays.is_empty() and arrays[Mesh.ARRAY_VERTEX] != null:
+				var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+				count += (arrays[Mesh.ARRAY_VERTEX].size() if indices.is_empty() else indices.size()) / 3
+	return count
+
+
 ## A fixed tiny grid creates thousands of almost-empty draws outdoors. Split a spatial
 ## tree only when a batch has enough vertex work to justify another draw, or spans too
 ## much of the campus. Cheap isolated props can share a larger batch.
@@ -84,6 +109,7 @@ static func optimize(model: Node3D) -> Dictionary:
 	if not enabled: return {}
 	var meshes := {}
 	var signatures := {}
+	var material_keys := {}
 	var groups := {}
 	var removed: Array[MultiMeshInstance3D] = []
 	var instances := 0
@@ -93,25 +119,21 @@ static func optimize(model: Node3D) -> Dictionary:
 		if node.material_override != null or node.material_overlay != null or mm.use_custom_data or mm.visible_instance_count >= 0: continue
 		var mesh := mm.mesh
 		if not signatures.has(mesh):
-			var bytes := PackedByteArray()
+			var geometry: String = mesh.get_meta(GEOMETRY_KEY, "")
+			if geometry.is_empty(): geometry = geometry_key(mesh)
+			var key_parts: Array = [geometry]
 			for s in mesh.get_surface_count():
 				var mat := mesh.surface_get_material(s)
-				var material_key := _digest(_material_key(mat))
-				# The winning prototype already carries byte-identical materials. Do not mutate
-				# imported meshes: a streaming worker may share them with a currently visible room.
-				bytes.append_array(var_to_bytes([_primitive(mesh,s), material_key, mesh.surface_get_arrays(s)]))
-			signatures[mesh] = _digest(bytes)
+				if not material_keys.has(mat): material_keys[mat] = _digest(_material_key(mat))
+				key_parts.append(material_keys[mat])
+			signatures[mesh] = _digest(var_to_bytes(key_parts))
 		var signature: String = signatures[mesh]
 		if not meshes.has(signature): meshes[signature] = mesh
 		var xf := _relative(node, model)
 		var colors: PackedFloat32Array = node.get_meta("campus_colors", PackedFloat32Array())
 		var key := "%s:%s:%s:%s" % [signature, node.layers, node.cast_shadow, mm.use_colors]
 		if not groups.has(key):
-			var triangles := 0
-			for s in mesh.get_surface_count():
-				var arrays := mesh.surface_get_arrays(s)
-				if not arrays.is_empty() and arrays[Mesh.ARRAY_VERTEX] != null:
-					triangles += (arrays[Mesh.ARRAY_INDEX].size() if arrays[Mesh.ARRAY_INDEX] != null and not arrays[Mesh.ARRAY_INDEX].is_empty() else arrays[Mesh.ARRAY_VERTEX].size())/3
+			var triangles := triangle_count(mesh)
 			groups[key] = {"mesh": meshes[signature], "places": [], "colors": [], "layers": node.layers, "shadow": node.cast_shadow, "colored": mm.use_colors,"triangles":triangles}
 		for i in mm.instance_count:
 			var place := xf * CampusPreview.instance_transform(node, i)
@@ -133,14 +155,20 @@ static func optimize(model: Node3D) -> Dictionary:
 		mm.instance_count = group.places.size()
 		var xf := PackedFloat32Array()
 		var colors := PackedFloat32Array()
+		var buffer := PackedFloat32Array()
 		for i in mm.instance_count:
 			var place: Transform3D = group.places[i]
-			mm.set_instance_transform(i, place)
-			xf.append_array(PackedFloat32Array([place.basis.x.x, place.basis.x.y, place.basis.x.z, place.basis.y.x, place.basis.y.y, place.basis.y.z, place.basis.z.x, place.basis.z.y, place.basis.z.z, place.origin.x, place.origin.y, place.origin.z]))
+			# The native buffer stores each basis row followed by its translation.
+			var b := place.basis
+			var p := place.origin
+			buffer.append_array(PackedFloat32Array([b.x.x, b.y.x, b.z.x, p.x,
+				b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z]))
+			xf.append_array(PackedFloat32Array([b.x.x, b.x.y, b.x.z, b.y.x, b.y.y, b.y.z, b.z.x, b.z.y, b.z.z, p.x, p.y, p.z]))
 			if mm.use_colors:
 				var tint: Color = group.colors[i]
-				mm.set_instance_color(i, tint)
+				buffer.append_array(PackedFloat32Array([tint.r, tint.g, tint.b, tint.a]))
 				colors.append_array(PackedFloat32Array([tint.r, tint.g, tint.b]))
+		mm.buffer = buffer
 		var batch := MultiMeshInstance3D.new()
 		batch.name = "SpatialBatch_%d" % index
 		batch.layers = group.layers
@@ -170,20 +198,16 @@ static func add_occluder(model: Node3D) -> int:
 			if mat == null or mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or mat.no_depth_test: continue
 			if mat.billboard_mode != BaseMaterial3D.BILLBOARD_DISABLED or mat.proximity_fade_enabled or mat.distance_fade_mode != BaseMaterial3D.DISTANCE_FADE_DISABLED: continue
 			if _primitive(node.mesh,s) != Mesh.PRIMITIVE_TRIANGLES: continue
-			var arrays := node.mesh.surface_get_arrays(s)
-			if arrays.is_empty() or arrays[Mesh.ARRAY_VERTEX] == null: continue
-			var source: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-			var faces: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
-			for i in range(0, faces.size() if not faces.is_empty() else source.size(), 3):
-				var a := xf * source[faces[i] if not faces.is_empty() else i]
-				var b := xf * source[faces[i+1] if not faces.is_empty() else i+1]
-				var c := xf * source[faces[i+2] if not faces.is_empty() else i+2]
-				var normal := (b-a).cross(c-a)
-				if normal.length_squared() < 1.0 or absf(normal.y) > normal.length() * .02: continue
-				var start := vertices.size()
-				vertices.append_array(PackedVector3Array([a,b,c]))
-				indices.append_array(PackedInt32Array([start,start+1,start+2]))
-	if indices.is_empty(): return 0
+			var faces: PackedVector3Array
+			var baked: Dictionary = node.mesh.get_meta(OCCLUDER_FACES, {})
+			if xf == Transform3D.IDENTITY and baked.has(s):
+				faces = baked[s]
+			else:
+				faces = occluding_faces(node.mesh, s, xf)
+			vertices.append_array(faces)
+	if vertices.is_empty(): return 0
+	indices.resize(vertices.size())
+	for i in indices.size(): indices[i] = i
 	var resource := ArrayOccluder3D.new()
 	resource.set_arrays(vertices, indices)
 	var occluder := OccluderInstance3D.new()
@@ -191,3 +215,23 @@ static func add_occluder(model: Node3D) -> int:
 	occluder.name = "OpaqueWallOccluder"
 	occluder.occluder = resource
 	return indices.size()/3
+
+
+## The transform affects both the minimum area and the permitted wall slope.
+## Clipped, rotated or rebuilt meshes run the same calculation as the importer.
+static func occluding_faces(mesh: Mesh, surface: int, xf: Transform3D) -> PackedVector3Array:
+	var vertices := PackedVector3Array()
+	var arrays := mesh.surface_get_arrays(surface)
+	if arrays.is_empty() or arrays[Mesh.ARRAY_VERTEX] == null: return vertices
+	var source: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var faces: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+	for i in range(0, faces.size() if not faces.is_empty() else source.size(), 3):
+		var a := xf * source[faces[i] if not faces.is_empty() else i]
+		var b := xf * source[faces[i+1] if not faces.is_empty() else i+1]
+		var c := xf * source[faces[i+2] if not faces.is_empty() else i+2]
+		var normal := (b-a).cross(c-a)
+		if normal.length_squared() < 1.0 or absf(normal.y) > normal.length() * .02: continue
+		vertices.append(a)
+		vertices.append(b)
+		vertices.append(c)
+	return vertices
