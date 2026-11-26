@@ -155,6 +155,7 @@ func test_talent_effects() -> void:
 
 
 func test_scene_materials() -> void:
+	_check_campus_vertex_colours()
 	var model := Node3D.new()
 	var mesh := MeshInstance3D.new()
 	mesh.mesh = BoxMesh.new()
@@ -205,6 +206,44 @@ func test_scene_materials() -> void:
 	check(materials.all(func(material: StandardMaterial3D) -> bool: return is_equal_approx(material.roughness, SceneMaterials.MATTE)), "changing clarity never reintroduces PBR in a neighbouring view")
 	CampusLighting.quality = keep_quality
 	world.free()
+
+
+func _check_campus_vertex_colours() -> void:
+	var library := CampusArchitecture.FURNITURE.instantiate()
+	var desk := (library.find_child("Desk", true, false) as MeshInstance3D).mesh.duplicate() as ArrayMesh
+	var colours: PackedColorArray = desk.surface_get_arrays(0)[Mesh.ARRAY_COLOR]
+	check(not colours.is_empty() and colours[0].r > colours[0].b, "the real classroom desk carries its warm wood colour in the mesh")
+	var shared := desk.surface_get_material(0).duplicate() as BaseMaterial3D
+	shared.vertex_color_use_as_albedo = false
+	desk.surface_set_material(0, shared)
+	library.free()
+
+	var model := Node3D.new()
+	var plain := MeshInstance3D.new()
+	var plain_mesh := ArrayMesh.new()
+	var box := BoxMesh.new()
+	plain_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, box.get_mesh_arrays())
+	plain_mesh.surface_set_material(0, shared)
+	plain.mesh = plain_mesh
+	model.add_child(plain)
+	var desk_batch := MultiMeshInstance3D.new()
+	desk_batch.multimesh = MultiMesh.new()
+	desk_batch.multimesh.mesh = desk
+	model.add_child(desk_batch)
+	var textured := StandardMaterial3D.new()
+	var texture := GradientTexture1D.new()
+	textured.albedo_texture = texture
+	textured.albedo_color = Color(.2, .4, .6)
+	var tile := MeshInstance3D.new()
+	tile.mesh = box
+	box.material = textured
+	model.add_child(tile)
+
+	SceneMaterials.apply(model, 0)
+	check(shared.vertex_color_use_as_albedo, "a desk batch keeps its palette when a colourless surface shares the same material and was visited first")
+	check(not textured.vertex_color_use_as_albedo and textured.albedo_texture == texture and textured.albedo_color == Color(.2, .4, .6),
+		"a texture-only tile keeps its albedo and gains no vertex tint")
+	model.free()
 
 
 func test_rain_buffers() -> void:

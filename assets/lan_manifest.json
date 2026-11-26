@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "digest": "36597b9e2e6c85a63fad35a3168b1e9ef3595affd23f7e4ea45f923761513912",
+  "digest": "788efed0a5d36ca91ac2d08812d890cc4985a94c79808c8389edd34eaa65e801",
   "files": {
     "assets/campus/architecture/courtyard_collision.tscn": "6ee93d9e1cc3a3181e225918af93939b1b0535de5f219f6efeaeeb5f662ac523",
     "assets/campus/archive.json": "fd595a812142a17e3852e9448a5d4cba122704c6f591c0e89e8e134982f7d4db",
@@ -213,7 +213,7 @@
     "game/presentation/world/campus/paper_plane_view.gd": "6afb56262a5b5589308364221fe30877530f68eb846d5ffa98a79b66c191acc7",
     "game/presentation/world/campus/phantoms.gd": "d79d4d09a6819d8da6e2612d21c28d4dbd6a0a00f885619a469eaeb08286bf5f",
     "game/presentation/world/campus/portal_device.gd": "a3a6d9a1b80bb6a9e546ab727c25710994bc2dab955e5136ff0b2a0d6f8c8d90",
-    "game/presentation/world/campus/scene_materials.gd": "7486d9afbc31f3a9e507cfe832c7369736c0fca370295315db84cfdd4b438dc4",
+    "game/presentation/world/campus/scene_materials.gd": "6859c3716f21c07ee7277b2747179249265a2e7b525daaa8cd500ee2870b4be3",
     "game/presentation/world/campus/stair_lining.gd": "0f6b7c1cc7711e93084d093e2f35cf663384119af6ebbdb6bd48cd6b7cedbf89",
     "game/presentation/world/campus/traces.gd": "7e139fd920a307f5f1336f8d88f4b990dfc5d076e37530a90738887ae6d3c66c",
     "game/presentation/world/campus/visual_ground.gd": "37e180647a121d42ba02873dfaa08720be63b514e2d6fcb9757a4ed33fd84596",

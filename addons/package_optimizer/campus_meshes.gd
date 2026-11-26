@@ -10,6 +10,11 @@ func _post_import(scene: Node) -> Object:
 	for node: MeshInstance3D in nodes:
 		var mesh := node.mesh as ArrayMesh
 		if mesh == null or mesh.resource_local_to_scene or mesh.get_script() != null: continue
+		# Preserve glTF COLOR_0 in the native models shipped inside the APK.
+		for surface in mesh.get_surface_count():
+			var material := mesh.surface_get_material(surface) as BaseMaterial3D
+			if material != null and not material.vertex_color_use_as_albedo and SceneMaterials.has_vertex_palette(mesh, surface):
+				material.vertex_color_use_as_albedo = true
 		if source == "furnishings.glb" or node.get_meta("extras", {}).has("wdfz_instances"):
 			if not mesh.has_meta(CampusBatches.GEOMETRY_KEY):
 				mesh.set_meta(CampusBatches.GEOMETRY_KEY, CampusBatches.geometry_key(mesh))
