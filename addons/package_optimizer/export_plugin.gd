@@ -32,6 +32,7 @@ func _add_exteriors() -> void:
 		"--script", "res://addons/package_optimizer/bake_exterior.gd", "--", directory,
 	], output, true)
 	_report.exterior_bytes = 0
+	_report.exterior_tiers = []
 	if code != 0:
 		push_error("Exterior bake failed (%d): %s" % [code, "\n".join(output)])
 	else:
@@ -44,6 +45,7 @@ func _add_exteriors() -> void:
 				break
 			add_file(destination, result.data, false)
 			_report.exterior_bytes += result.data.size()
+			_report.exterior_tiers.append(tier)
 	for file in DirAccess.get_files_at(directory):
 		DirAccess.remove_absolute(directory.path_join(file))
 	DirAccess.remove_absolute(directory)

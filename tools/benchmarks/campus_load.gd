@@ -80,6 +80,7 @@ func _run() -> void:
 		return
 
 	var settings := app.settings.graphics().duplicate(true)
+	print("CAMPUS LOAD START ", scenario, " quality=", quality)
 	var report := {"scenario": scenario, "quality": quality, "graphics": settings,
 		"engine": Engine.get_version_info().string, "display": DisplayServer.get_name(),
 		"renderer": RenderingServer.get_current_rendering_method(), "driver": RenderingServer.get_current_rendering_driver_name(),
@@ -98,12 +99,14 @@ func _run() -> void:
 		_fail("classroom entry failed")
 		return
 	report["loading_complete_ms"] = _elapsed()
+	print("CAMPUS LOAD READY ", report.loading_complete_ms, " ms")
 	if is_instance_valid(curtain) and curtain.is_inside_tree(): await curtain.tree_exited
 	if app.opening_busy():
 		if app._opening_cut != null and app._opening_cut.on: app._opening_cut.end(true)
 		else: app.ui._end_opening(true)
 	if not headless: await RenderingServer.frame_post_draw
 	report["playable_ms"] = _elapsed()
+	print("CAMPUS LOAD PLAYABLE ", report.playable_ms, " ms")
 	_frame()
 	process_frame.disconnect(_frame)
 	report["entry_worst_frame_ms"] = worst_frame_ms

@@ -72,6 +72,27 @@ func test_instances() -> void:
 	node.free()
 
 
+## Android can provide an instantiable scene with all the expected facade names
+## even when its geometry resources did not decode. Let normal GLB recovery run.
+func test_empty_baked_exterior() -> void:
+	var model := Node3D.new()
+	var paths := {}
+	for id: String in ["teach1", "lab1", CampusShell.ROOFLINE]:
+		var group := Node3D.new()
+		group.name = id
+		model.add_child(group)
+		group.owner = model
+		if id != CampusShell.ROOFLINE: paths[id] = model.get_path_to(group)
+	model.set_meta(CampusWorld.BakedExterior.FACADES, paths)
+	model.set_meta(CampusWorld.BakedExterior.GEOMETRY, Vector2i(64, 12))
+	var scene := PackedScene.new()
+	scene.pack(model)
+	model.free()
+	var exterior := CampusWorld.BakedExterior.restore(scene)
+	check(exterior == null, "a native exterior with missing meshes must fall back to the source model")
+	if exterior != null: exterior.free()
+
+
 func test_campus_joins() -> void:
 	var world := CampusWorld.new()
 	world.scene_id = "teach1"

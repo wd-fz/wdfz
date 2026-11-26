@@ -49,15 +49,16 @@ func _save(model: Node3D, path: String) -> Error:
 	# Flatten instance ownership so the native scene includes every runtime
 	# edit (cuts, material overrides and reparented children of source scenes).
 	model.scene_file_path = ""
+	var instances := 0
 	for child: Node in model.find_children("*", "", true, false):
 		child.owner = model
 		child.scene_file_path = ""
 		if child is MultiMeshInstance3D:
-			var mm: MultiMesh = child.multimesh
-			var transforms: PackedFloat32Array = child.get_meta("campus_transforms", PackedFloat32Array())
-			var colors: PackedFloat32Array = child.get_meta("campus_colors", PackedFloat32Array())
-			if mm == null or mm.mesh == null or transforms.size() != mm.instance_count * 12 or (mm.use_colors and colors.size() != mm.instance_count * 3):
-				return ERR_INVALID_DATA
+			if not Exterior.valid_batch(child): return ERR_INVALID_DATA
+			instances += child.multimesh.instance_count
+	var counts := Vector2i(Exterior.static_surface_count(model), instances)
+	if counts.x <= 0 or counts.y <= 0: return ERR_INVALID_DATA
+	model.set_meta(Exterior.GEOMETRY, counts)
 	var packed := PackedScene.new()
 	var result := packed.pack(model)
 	if result != OK: return result

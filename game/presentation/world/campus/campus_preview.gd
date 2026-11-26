@@ -39,8 +39,6 @@ static func _side(bounds: AABB, plane: Plane) -> int:
 	return 0 if front and back else (1 if front else -1)
 
 
-## Use the exported transforms as well as MultiMesh: the headless dummy rendering server
-## does not retain instance transforms, while geometry verification must use the same data.
 ## Campus metadata stores transforms column by column. The native instance
 ## buffer expects three rows, each followed by the matching origin component.
 static func upload_instances(mm: MultiMesh, xf: PackedFloat32Array, colors: PackedFloat32Array) -> void:
@@ -64,6 +62,8 @@ static func upload_instances(mm: MultiMesh, xf: PackedFloat32Array, colors: Pack
 	mm.buffer = buffer
 
 
+## The headless rendering server does not retain uploaded instance transforms.
+## Read the same source matrix when clipping in the editor or at runtime.
 static func instance_transform(node: MultiMeshInstance3D, index: int) -> Transform3D:
 	var xf: PackedFloat32Array = node.get_meta("campus_transforms", PackedFloat32Array())
 	if xf.size() < (index + 1) * 12:

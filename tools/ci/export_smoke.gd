@@ -55,14 +55,26 @@ func _check_mesh_preparation(model: Node, path: String) -> void:
 ## The smoke runs with a real renderer. Read back the native instance matrices
 ## and tints, including orientation, for every repacked tier.
 func _check_baked_exteriors() -> void:
-	var world := CampusWorld.new()
-	world.resident = true
-	world.layout = CampusData.layout("out")
-	world.space = CampusSpace.new(CampusData.rooms(), world.layout, CampusData.campus())
+	var original := CampusData.tier
+	var space := CampusSpace.new(CampusData.rooms(), CampusData.layout("out"), CampusData.campus())
 	for tier: int in CampusData.MODEL_TIERS:
-		var model := world._prepare_visual(tier)
+		CampusData.tier = tier
+		var school := CampusResident.new()
+		school.space = space
+		school.hide()
+		root.add_child(school)
+		var world := school.prepare("out", false)
+		school.warm_entry_models(PackedStringArray(["out"]))
+		school._process(0)
+		_check(school._worker != null, "packaged exterior read must run in the loading worker: %d" % tier)
+		var until := Time.get_ticks_msec() + 60000
+		while school.entry_models_left() > 0 and Time.get_ticks_msec() < until:
+			await process_frame
+		var model := world.get_node_or_null("Model")
 		_check(model != null and model.has_meta(CampusWorld.BakedExterior.FACADES), "resident exterior not loaded from package: %d" % tier)
-		if model == null: continue
+		if model == null:
+			school.free()
+			continue
 		var facades: Dictionary = model.get_meta("facades", {})
 		_check(facades.has("teach1") and facades.has("lab1") and model.has_node(CampusShell.ROOFLINE), "exterior lost storey visibility groups: %d" % tier)
 		var instances := 0
@@ -78,8 +90,8 @@ func _check_baked_exteriors() -> void:
 					ok = ok and color.is_equal_approx(Color(colors[i * 3], colors[i * 3 + 1], colors[i * 3 + 2]))
 			instances += mm.instance_count
 		_check(ok and instances > 0, "exterior instance buffer differs from partition metadata: %d" % tier)
-		model.free()
-	world.free()
+		school.free()
+	CampusData.tier = original
 
 
 func _run() -> void:
@@ -91,7 +103,7 @@ func _run() -> void:
 	print("EXPORT RENDERER: %s / %s" % [driver, method])
 	for folder: String in ["tests", "tools", "docs", "pictures", "addons", "assets/campus_q4"]:
 		_check(not DirAccess.dir_exists_absolute("res://" + folder), "development folder shipped: " + folder)
-	_check_baked_exteriors()
+	await _check_baked_exteriors()
 	var model_paths := _model_paths("res://assets")
 	_check(model_paths.size() >= 172, "the four model tiers are not present in the export")
 	for model_path in model_paths:
