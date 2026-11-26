@@ -12,7 +12,7 @@ iOS 导出将 `rendering_device/driver.ios` 设为 `metal`，使用 Godot Mobile
 
 Android 继续要求 API 24+、ARM64。Android 版本达到要求不等于 GPU 满足 Vulkan 要求；官方模板根据 Mobile + Vulkan 自动写入必需的 `android.hardware.vulkan.version` 功能，以及 `org.godotengine.rendering.method=mobile` 元数据。导出脚本读取 APK 的实际 Manifest 验证这两项。横屏启动、强制全屏的启动参数、签名、16 KB 对齐和资源校验继续执行。
 
-Android Debug 与 Release 都改用官方 Gradle 模板，自动安装到不入库的 `build/android-project/`。这是为了避开固定版本 Godot 4.6.3 非 Gradle 导出将 Vulkan `required`／`version` 写成字符串、导致 `aapt dump badging` 失败的问题。Gradle 使用 Android 工具链编译 Manifest，不修改引擎、不手工修补签名后的 APK，也不放宽校验。
+Android Debug 与 Release 都改用官方 Gradle 模板，自动安装到不入库的 `build/android-project/`。项目在 Godot 4.6.3 采用此路径，以避开当时非 Gradle 导出将 Vulkan `required`／`version` 写成字符串、导致 `aapt dump badging` 失败的问题。Gradle 使用 Android 工具链编译 Manifest，不修改引擎、不手工修补签名后的 APK，也不放宽校验。
 
 ## 材质与效果
 
@@ -26,7 +26,7 @@ Android Debug 与 Release 都改用官方 Gradle 模板，自动安装到不入�
 
 所有档位都移除逐窗投影、普通灯具实时阴影、SSAO、泛光、体积雾和高倍抗锯齿。保留天空、普通雾、昼夜与停电、附近最多四盏局部灯，以及精细起的太阳和手电投影。最高只用 2× MSAA、2048 阴影图集；室内单张太阳阴影、室外最多两级。画质不改变规则、碰撞和存档。
 
-Godot 4.6.3 Mobile 仍不启用 FSR 1 和 FXAA：前者不支持，后者曾在档案回放中复现编译停顿。工作线程池暂保留 8，背景见上游 [Godot #123060](https://github.com/godotengine/godot/issues/123060)。辉光现在已从全部渲染路径移除。更换引擎时仍需跑冷缓存和档案回放验证，不能仅凭效果减少就宣称引擎编译问题已修复。
+Mobile 使用双线性放大。项目继续关闭 Mobile 的 FXAA，4.6.3 的档案回放曾在此处出现编译停顿。工作线程池暂保留 8，背景见上游 [Godot #123060](https://github.com/godotengine/godot/issues/123060)。辉光现在已从全部渲染路径移除。更换引擎时仍需跑冷缓存和档案回放验证，不能仅凭效果减少就宣称引擎编译问题已修复。
 
 ## 空间剔除与性能对照
 

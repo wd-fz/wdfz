@@ -16,7 +16,7 @@ from ci.common import ENGINE, ROOT, check_version, run
 from ci import terracotta_android
 import terracotta
 
-BUILD_TOOLS = "36.0.0"
+BUILD_TOOLS = "36.1.0"
 PACKAGE = "org.wdfz.godot.debug"
 RELEASE_PACKAGE = "org.wdfz.godot"
 RELEASE_VERSION = "0.6.3"
@@ -119,7 +119,7 @@ def verify_launcher_orientation(tree):
         raise RuntimeError("APK must have exactly one verifiable launcher activity")
     launcher = launchers[0]
     if launcher["kind"] == "activity-alias":
-        # Godot 4.6 launches through GodotAppLauncher; orientation belongs to its target.
+        # GodotAppLauncher uses the orientation declared by its target activity.
         package_match = re.search(r'A: package="([^"]+)"', tree)
         package = package_match[1] if package_match else ""
 
@@ -134,7 +134,7 @@ def verify_launcher_orientation(tree):
         if not target or len(targets) != 1:
             raise RuntimeError("Launcher alias must resolve to exactly one declared activity")
         launcher = targets[0]
-    # Pinned Godot 4.6.3 maps SCREEN_SENSOR_LANDSCAPE to Android USER_LANDSCAPE (11).
+    # Godot maps SCREEN_SENSOR_LANDSCAPE to Android USER_LANDSCAPE (11).
     # See platform/android/export/gradle_export_util.cpp in the official engine tag.
     orientation = re.search(r"android:screenOrientation\([^)]*\)=\(type 0x10\)(0x[0-9a-fA-F]+)", launcher["attributes"])
     if not orientation or int(orientation[1], 16) != 11:
@@ -181,7 +181,7 @@ def main():
     if not sys.platform.startswith("linux"):
         raise RuntimeError("This automation runs on Linux; use the Android Debug preset in Godot on other systems")
     if not args.sdk:
-        raise RuntimeError("Set ANDROID_HOME or pass --sdk with platform-tools and build-tools;36.0.0 installed")
+        raise RuntimeError(f"Set ANDROID_HOME or pass --sdk with platform-tools and build-tools;{BUILD_TOOLS} installed")
     sdk = Path(args.sdk).expanduser().resolve()
     java = shutil.which("java")
     jdk = Path(args.jdk).expanduser().resolve() if args.jdk else Path(java).resolve().parents[1] if java else None
