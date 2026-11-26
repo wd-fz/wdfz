@@ -64,6 +64,14 @@ func test_live() -> void:
 	var exam := app.exam_flow.paper()
 	var panel := app.exam_flow.panel
 	check(app.school().seated and paused and not app.player.enabled and exam.phase == "waiting", "normal campus starts seated at the exam")
+	var uniforms := ClassmatesView._uniforms
+	check(not uniforms.is_empty() and (uniforms[0].surface_get_material(0) as BaseMaterial3D).vertex_color_use_as_albedo, "normal students wear the colours painted on the meshes")
+	var staff_cloth: BaseMaterial3D
+	for child in app._mates_nodes.teacher.get_children():
+		if child is StudentAvatar:
+			var uniform := child.find_child("Uniform", true, false) as MeshInstance3D
+			if uniform != null: staff_cloth = uniform.get_active_material(0) as BaseMaterial3D
+	check(staff_cloth != null and staff_cloth.vertex_color_use_as_albedo, "the invigilator uses the authored clothing and skin colours")
 	panel._submit.pressed.emit()
 	panel._pick(2)
 	panel._go(1)

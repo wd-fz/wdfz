@@ -368,14 +368,15 @@ func _hand_in_blank(app: GameApp) -> void:
 
 func _skip_opening(app: GameApp) -> void:
 	_hand_in_blank(app)
-	var key := InputEventKey.new()
-	key.keycode = KEY_ESCAPE
-	key.physical_keycode = KEY_ESCAPE
-	key.pressed = true
-	Input.parse_input_event(key)
-	await _frames(2)
-	key.pressed = false
-	Input.parse_input_event(key)
-	await _frames(2)
+	if app.opening_busy():
+		var key := InputEventKey.new()
+		key.keycode = KEY_ESCAPE
+		key.physical_keycode = KEY_ESCAPE
+		key.pressed = true
+		Input.parse_input_event(key)
+		await _frames(2)
+		key.pressed = false
+		Input.parse_input_event(key)
+		await _frames(2)
 	check(not app.opening_busy() and not paused and app.player.enabled,
 		"Escape hands control back from a live or text opening")

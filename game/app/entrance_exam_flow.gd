@@ -155,8 +155,9 @@ func cancel() -> void:
 		panel.hide()
 		panel.queue_free()
 		panel = null
-		if app.session != null: _lighting(false)
-		app.ui.cut_mode(false)
+		if app.ui.is_inside_tree():
+			if app.session != null: _lighting(false)
+			app.ui.cut_mode(false)
 	_cut = false
 	_wake_sent = false
 	_waiting_for_team = false

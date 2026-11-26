@@ -39,6 +39,8 @@ func _load_actor(id: String, height: float) -> void:
 	var scene := CampusData.actor_scene("res://assets/characters/%s.glb" % id)
 	_model = scene.instantiate() as Node3D if scene != null else null
 	if _model == null: return
+	for part: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
+		RenderMaterials.apply_character_palette(part.mesh)
 	add_child(_model)
 	_model.scale = Vector3.ONE * height
 	animation = _model.get_node_or_null("AnimationPlayer")
