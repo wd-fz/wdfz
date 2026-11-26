@@ -535,8 +535,7 @@ func _snapshot(data: Dictionary) -> void:
 			_preparing_epoch = network.room.epoch
 			# Yield between regions so ENet keeps polling throughout initial load.
 			_loading_cover("准备合作校园")
-			var exam_data: Dictionary = source.modules.get("school.entrance_exam", {}).get("data", {})
-			app._load_then(String(source["world_id"]), _finish_preparation.bind(_preparing_epoch), source.get("player"), true, exam_data.get("phase", "done") != "done")
+			app._load_then(String(source["world_id"]), _finish_preparation.bind(_preparing_epoch), source.get("player"), true, EntranceExam.pending_in(source))
 		return
 	if first:
 		_loading_cover("载入原角色")

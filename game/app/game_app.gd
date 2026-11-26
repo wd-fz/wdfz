@@ -679,8 +679,7 @@ func _continue_with_loading() -> void:
 		_load_save_result(result)
 		return
 	var saved: Dictionary = result["data"]
-	var exam_data: Dictionary = saved.modules.get("school.entrance_exam", {}).get("data", {})
-	_load_then(String(saved.get("world_id", "")), _load_save_result.bind(result), saved.get("player"), false, exam_data.get("phase", "done") != "done")
+	_load_then(String(saved.get("world_id", "")), _load_save_result.bind(result), saved.get("player"), false, EntranceExam.pending_in(saved))
 
 
 func start_new_game(difficulty: String = "easy", talent_id: String = "none", character_id: String = StudentCast.DEFAULT) -> bool:

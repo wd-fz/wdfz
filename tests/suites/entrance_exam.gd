@@ -5,6 +5,8 @@ func test_paper() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 619
 	var exam := EntranceExam.new()
+	check(not EntranceExam.pending_in({}) and not EntranceExam.pending_in({"modules": []}), "legacy and malformed saves can be presented to the normal loader")
+	check(EntranceExam.pending_in({"modules": {"school.entrance_exam": {"data": {"phase": "graded"}}}}), "a submitted paper still opens in the classroom on continue")
 	var seen := {}
 	for subject in 6:
 		check(EntranceExam.rows(subject).size() == 50, "50 questions in " + EntranceExamBank.SUBJECTS[subject])

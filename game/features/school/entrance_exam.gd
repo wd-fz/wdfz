@@ -34,6 +34,16 @@ static func rows(subject: int) -> PackedStringArray:
 	return _subjects[subject]
 
 
+## Read the loading-screen hint before the rest of a save is validated.
+static func pending_in(snapshot: Dictionary) -> bool:
+	var modules: Variant = snapshot.get("modules")
+	if not modules is Dictionary: return false
+	var wrapper: Variant = modules.get("school.entrance_exam")
+	if not wrapper is Dictionary: return false
+	var data: Variant = wrapper.get("data")
+	return data is Dictionary and data.get("phase") in ["waiting", "writing", "graded"]
+
+
 func prepare() -> void:
 	reset()
 	phase = "waiting"

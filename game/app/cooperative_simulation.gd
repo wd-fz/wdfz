@@ -137,7 +137,7 @@ func departed(id: String) -> void:
 
 func exam_pending() -> bool:
 	for a: CooperativeActor in actors.values():
-		if room.members[a.id]["connected"] and is_participating(a.id) and a.entrance_exam().phase != "done": return true
+		if is_participating(a.id) and room.members[a.id]["connected"] and a.entrance_exam().phase != "done": return true
 	return false
 
 
