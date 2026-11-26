@@ -101,6 +101,10 @@ func _run() -> void:
 	report["loading_complete_ms"] = _elapsed()
 	print("CAMPUS LOAD READY ", report.loading_complete_ms, " ms")
 	if is_instance_valid(curtain) and curtain.is_inside_tree(): await curtain.tree_exited
+	# Finish the real opening without including player thinking time in the measurement.
+	if app.exam_flow.panel_visible():
+		for _step in 4: app.exam_flow.panel._submit.pressed.emit()
+		if is_instance_valid(app._opening_cut): app._opening_cut.tick(OpeningCut.DUR_SHORT)
 	if app.opening_busy():
 		if app._opening_cut != null and app._opening_cut.on: app._opening_cut.end(true)
 		else: app.ui._end_opening(true)

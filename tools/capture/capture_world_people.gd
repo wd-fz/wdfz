@@ -75,14 +75,13 @@ func _run() -> void:
 	room = CampusData.rules().room("teach1")
 	p = Vector2(room["ox"]+48.8*room["tw"],room["oy"]+11.39*room["th"])
 	app.travel("teach1",_pose(room,p,PI/2),false)
-	app.fake_normal().fn["on"] = true
-	app.fake_normal().fn["v"] = 10
+	app.fake_normal().showing = true
 	app._fake_people_random.seed = 42
 	app._fake_people_step(app.fake_normal(),room)
 	app.ui.scene_post().fake_normal = 1
 	app._campus_world().lighting.fake_normal = 1
 	await _shot("假正常人群")
-	app.fake_normal().fn["on"] = false
+	app.fake_normal().showing = false
 	app._fake_people_step(app.fake_normal(),room)
 	app.ui.scene_post().fake_normal = 0
 	app._campus_world().lighting.fake_normal = 0

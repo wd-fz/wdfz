@@ -18,6 +18,7 @@ const EXPLORE := ["teach1", "teach2", "teach3", "teach4", "teach5", "teach6", "a
 const EXPLORE_ANY := [["dorm1", "dorm2", "dorm3"], ["dorm4", "dorm5", "dorm6"]]
 ## id -> [tier, name, memory]
 const LIST := {
+	"h.perfect_paper": ["h", "满分答卷", "老师收走了试卷。三十道题，一道也没错。"],
 	"h.inception":["h","《盗梦空间》","桌上的陀螺还在转。"],
 	"h.beast":["h","《先辈》","穿旧校服的人回头看了我一眼。"],
 	"h.knife":["h","《管制刀具》","东西被收走了。我还在这里。"],
@@ -180,7 +181,7 @@ func entries() -> Array[Dictionary]:
 	for id: String in LIST:
 		var row: Array = LIST[id]
 		var got := unlocked.has(id)
-		if row[0] == "h" and not got:
+		if not got and (row[0] == "h" or id == "e.nolaugh"):
 			continue
 		var e := {"id": id, "tier": TIERS[row[0]]["name"], "name": row[1], "unlocked": got, "memo": row[2] if got else ""}
 		var prog := progress(id)
@@ -280,6 +281,8 @@ func _public_end(f: Dictionary) -> bool:
 func _test(id: String, f: Dictionary) -> bool:
 	var kind := String(f["kind"])
 	match id:
+		"h.perfect_paper":
+			return kind == "entrance_exam" and f.get("score") == EntranceExam.COUNT
 		"n.day2":
 			return kind == "day" and int(f["day"]) == 2
 		"n.snake":

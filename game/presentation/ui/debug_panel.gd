@@ -402,7 +402,7 @@ func _make_pages(parent: VBoxContainer) -> VBoxContainer:
 	_button(ar,"触发异象","DevAnomalyStart",func() -> void: _send("anomaly",{"id":selected("DevAnomaly")}))
 	_button(ar,"结束异象","DevAnomalyEnd",_send.bind("anomaly_end",{}))
 	var er:=_row(events)
-	for pair: Array in [["fake_normal","切换假正常"],["patrol_start","重置巡察"],["patrol_end","解除追逐"],["inspection","开始检查"],["inspection_end","取消检查"]]:
+	for pair: Array in [["fake_normal","同化至满"],["patrol_start","重置巡察"],["patrol_end","解除追逐"],["inspection","开始检查"],["inspection_end","取消检查"]]:
 		_button(er,pair[1],"Dev"+pair[0],_send.bind(pair[0],{}))
 	var causes: Array=[]
 	for id: String in DeathCG.CAUSES: causes.append([id,DeathCG.title(id)])

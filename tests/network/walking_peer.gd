@@ -58,6 +58,7 @@ func run() -> void:
 	network = app.lan.network
 	network.room_changed.connect(room_changed)
 	network.motion_received.connect(motion)
+	network.snapshot_received.connect(func(data: Dictionary) -> void: preload("res://tests/support/exam_participant.gd").advance(network, data, app))
 	var reason := network.host("walking","host",port) if hosting else network.join("127.0.0.1:%d" % port,"guest-1")
 	check(reason.is_empty(),"real ENet connection starts")
 	var deadline := Time.get_ticks_msec()+120000
@@ -72,6 +73,10 @@ func run() -> void:
 		check(false,"both full applications enter the campus")
 	else:
 		check(checked_barrier and network.is_ready() and not app.ui.loading(), "the group enters only after local readiness and the room's playing phase")
+		while Time.get_ticks_msec() < deadline and (app.lan.current.get("exam_pending", true) or app.exam_flow.active()):
+			if app.lan.current.has("session") and not app.lan.current.get("exam_pending", false) and app.exam_flow.paper().phase == "done" and not app.exam_flow.active(): break
+			await process_frame
+		check(app.exam_flow.paper().phase == "done" and not app.exam_flow.active(), "both players have handed in their paper and woken up")
 		var notice := app.ui.get_node("%Toast") as Label
 		check(notice.text == OpeningStory.handover(app.session.character_id), "each new co-op player sees their own character and the first lead")
 		if hosting:

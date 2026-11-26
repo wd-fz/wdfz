@@ -47,7 +47,7 @@ func begin(entry: Dictionary, worlds: Array[WorldDefinition], view: GameUI, opti
 	var error := router.switch_to(stage)
 	if not error.is_empty(): return error
 	var pose: Dictionary
-	if kind == "opening":
+	if kind in ["opening", "false_normal"]:
 		pose = CampusData.rules().start_pose()
 		player.seated = true
 	elif stage == "out":

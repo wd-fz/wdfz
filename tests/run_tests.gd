@@ -58,6 +58,10 @@ func _run() -> void:
 
 
 func _run_features() -> void:
+	var entrance := preload("res://tests/suites/entrance_exam.gd").new(self)
+	entrance.test_paper()
+	await entrance.test_live()
+	await entrance.test_cooperation()
 	var fieldwork := preload("res://tests/suites/campus_observations.gd").new(self)
 	print("CASE: campus_observations")
 	fieldwork.test_sites()

@@ -22,6 +22,9 @@ const LINES: PackedStringArray = [
 	"值日表上多了一个名字。",
 	"广播里的沙沙声，一直没有停。",
 ]
+const EXAM_LINES: PackedStringArray = ["窗外传来操场上的哨声。", "监考老师在讲台上清点试卷。", "有人晃了晃笔，试着在草稿纸上划了一道。"]
+var normal_campus := false
+
 ## Seconds each line stays, and its crossfade.
 const LINE_TIME := 4.5
 const LINE_FADE := 0.6
@@ -321,17 +324,17 @@ func line_at(t: float) -> Array:
 	var alpha := clampf(into / LINE_FADE, 0.0, 1.0) * clampf((LINE_TIME - into) / LINE_FADE, 0.0, 1.0)
 	if turn == 0:
 		alpha = clampf((LINE_TIME - into) / LINE_FADE, 0.0, 1.0)
-	return [(_line_index + turn) % LINES.size(), alpha]
+	return [(_line_index + turn) % (EXAM_LINES.size() if normal_campus else LINES.size()), alpha]
 
 
 func _apply() -> void:
 	if _title == null:
 		return
-	_title.text = "正在入梦" + ".".repeat(int(_t * 2.5) % 4)
+	_title.text = ("正在进入教室" if normal_campus else "正在入梦") + ".".repeat(int(_t * 2.5) % 4)
 	_stage.text = stage
 	_percent.text = "%d%%" % floori(shown_progress * 100.0)
 	var line: Array = line_at(_t)
-	_line.text = LINES[int(line[0])]
+	_line.text = EXAM_LINES[int(line[0])] if normal_campus else LINES[int(line[0])]
 	_line.modulate.a = float(line[1])
 	_bar.size = Vector2(_bar_back.custom_minimum_size.x * shown_progress, _bar_back.custom_minimum_size.y)
 	var bar_mat := _bar_back.material as ShaderMaterial

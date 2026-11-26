@@ -565,5 +565,5 @@ func test_paper_evidence() -> void:
 		var blank := RoutesModule.card(id, card)
 		card.heard_promise = true
 		var promised := RoutesModule.card(id, card)
-		check(blank.lines != promised.lines and promised.lines.any(func(t: String) -> bool: return t.contains("没忘")), "the promise changes the " + id + " epilogue")
+		check(blank.lines == promised.lines, "old promise flags do not put a real classmate into " + id)
 		card.heard_promise = false

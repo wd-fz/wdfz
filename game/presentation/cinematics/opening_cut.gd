@@ -1,19 +1,9 @@
 class_name OpeningCut
 extends Node
-## The new-game opening, played live in the first classroom (opening.js and CUT_DEF.opening, reference
-## wd-fz.github.io@0bf508a), then the camera is handed to the player exactly where the game starts (seat,
-## facing, sitting posture like a normal start). Storyboard (full, about 26 s):
-##   1 an ordinary fourth period: from the back row, slowly towards the podium, chalk dust in the light;
-##   2 something is off: the teacher beside the podium reads half a line, stops, starts again;
-##   3 time stops: the chalk dust hangs in the air; the camera turns from the dust to "you";
-##   4 falling: you slump onto the desk, eyes close, black;
-##   5 first person: the head comes up from the desk and turns toward the still deskmate;
-##   6 handover.
-## Old players (the opening was seen before) get only 4–6 (about 11 s). The world does not move
-## (the app keeps the game paused), no SAN is spent, nothing appears, no saving. Click, Space, Enter or Esc skip;
-## skipping and finishing hand over the same way. Captions are the prologue's text.
-## Layout (domain/classroom-layout.js v4, in cells; one cell = one tile of the room): the player's class starts at
-## column 45, the desk rows are 7,8,10,11,13,14, the midline is row 11.0, the board is on the west wall.
+## The exam hands off to the short sequence in the player's own seat. The student falls
+## asleep in the ordinary classroom and first sees the simulation upon waking.
+## The archive can replay the full sequence, including the ordinary classroom beforehand.
+## Both sequences return the camera to the same seated first-person pose.
 
 signal finished(skipped: bool)
 
@@ -28,6 +18,7 @@ const AISLE_S := 12.5
 const CAPTION_TIMES := [[0.03, 0.21], [0.24, 0.41], [0.42, 0.58], [0.59, 0.76], [0.78, 0.925], [0.93, 1.01]]
 
 var on := false
+var show_waking := false
 var short := false
 var audio: AudioFx  ## set by the caller; the opening's beat sounds (crackle, blink, wake)
 var _sounded := {}
@@ -133,7 +124,7 @@ func begin(world: Node3D, room: Dictionary, player: PlayerController, ui: GameUI
 	_me.name = "SeatedProtagonist"
 	_root.add_child(_me)
 	_me.dress(character)
-	_me.position = _cell(C0 + 3.8, MID + 0.39, 0.0)
+	_me.position = Vector3(_seat_eye.x, 0, _seat_eye.z) if show_waking else _cell(C0 + 3.8, MID + 0.39, 0.0)
 	_me.rotation.y = PI / 2.0
 	_me.advance("sit", 0.0)
 	# The seat across the shared desktop is empty in the procedural classroom layout.
@@ -217,7 +208,7 @@ static func mate_pose(kind: String, amp: float, f: float, ph: float, kk: float) 
 func _beats(kk: float) -> void:
 	if audio == null or not is_instance_valid(audio):
 		return
-	if kk > 0.37 and not _sounded.has("hum"):
+	if kk > 0.76 and not _sounded.has("hum"):
 		_sounded["hum"] = true
 		audio.play("world.crackle", {"k": 0.6, "pan": 0.5})
 	if kk >= 0.72 and not _sounded.has("flip"):
@@ -229,7 +220,7 @@ func _beats(kk: float) -> void:
 
 
 func _apply(kk: float) -> void:
-	var norm := 1.0-.45*phase(kk,.46,.58) if kk<.58 else .55*(1.0-phase(kk,.6,.7))
+	var norm := 1.0 - phase(kk, .72, .76)
 	_ui.set_normal_world(norm)
 	if is_instance_valid(_lighting):
 		_lighting.world_normal=norm
@@ -354,6 +345,9 @@ func tick(delta: float) -> void:
 
 
 func end(skipped: bool) -> void:
+	if skipped and show_waking and story_time(k, short) < .88:
+		k = maxf(k, (.72 - SHORT_FROM) / (1.0 - SHORT_FROM))
+		return
 	_finish(skipped, true)
 
 

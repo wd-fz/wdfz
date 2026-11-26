@@ -280,5 +280,25 @@
       "stairs",
       "elevator"
     ]
+  ],
+  [
+    "classroom_exam",
+    "achievements",
+    2,
+    1,
+    [
+      "h.perfect_paper",
+      null
+    ]
+  ],
+  [
+    "classroom_exam",
+    "memories",
+    2,
+    1,
+    [
+      null,
+      "end:false_normal"
+    ]
   ]
 ]

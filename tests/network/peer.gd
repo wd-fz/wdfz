@@ -157,6 +157,7 @@ func run() -> void:
 			# Reproduce a slow first world build that blocks ENet polling.
 			OS.delay_msec(12000)
 		state = data
+		preload("res://tests/support/exam_participant.gd").advance(network, data, app if ui_mode else null)
 		snapshots += 1
 		if loaded_epoch != network.room.epoch:
 			loaded_epoch = network.room.epoch
@@ -236,7 +237,7 @@ func _process(dt: float) -> bool:
 		began = false
 		check(network.host("restored", "host", port, true).is_empty(), "host reopens the saved room with original credentials")
 		stage = 3
-	if network.room != null and network.room.phase == "playing": elapsed += dt
+	if network.room != null and network.room.phase == "playing" and not state.get("exam_pending", false): elapsed += dt
 	if network.room != null and network.room.phase == "playing" and not state.is_empty():
 		if role != "host" and elapsed > 1.0 and not peers_verified:
 			peers_verified = true

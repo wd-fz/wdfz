@@ -359,7 +359,15 @@ func _skip_cut(app: GameApp) -> void:
 	check(not app._ending_cut.on, "Space skips the live ending through real input")
 
 
+func _hand_in_blank(app: GameApp) -> void:
+	var panel := app.exam_flow.panel
+	if not is_instance_valid(panel): return
+	for _step in 4: panel._submit.pressed.emit()
+	if is_instance_valid(app._opening_cut): app._opening_cut.tick(OpeningCut.DUR_SHORT)
+
+
 func _skip_opening(app: GameApp) -> void:
+	_hand_in_blank(app)
 	var key := InputEventKey.new()
 	key.keycode = KEY_ESCAPE
 	key.physical_keycode = KEY_ESCAPE

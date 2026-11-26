@@ -10,12 +10,17 @@ extends FeatureModule
 ## Events out: say {text}, choice {text, labels}, save, outing, chalk, spots {names}, supply {pay},
 ## continue (the supply choice was declined: go on with the facility), record is silent.
 
+const DESK_RECORDS := {
+	"desk": "名牌底下压着点名联。我认出了姓名栏里蹭花的墨点——刚才那张试卷上，我就在这里停过笔。纸背写着，底联在北门旁的保安岗，讲台上还有钥匙移交单。",
+	"landing:knock": "喇叭里响了三下球鞋声，接着是开门声。隔了四秒，又是同样的三下，连鞋底打滑的位置都相同。",
+	"landing:star": "标签背面写着「西梯二楼，实地采录」。录音的日期比今天早了好几年。我取下耳朵旁边的听筒，楼下静悄悄的。",
+}
 const STATE_VERSION := 1
 const KINDS := ["事实", "推测", "验证", "线索", "规则"]
 const RECENT_MAX := 8
 const PAPER_TRIAL_SOURCE := "保安岗 · 17 号工单观察联"
 const PAPER_TRIAL_NOTE := "安抄派智能，17 号工单。纸袋里装着半圆形纸屑，旁边订着值班员的手记。\n「试员在模型里给甲纸打孔。我在现实的岗亭看着玻璃盒，甲纸右边掉了一小片，乙纸四边还齐。封条是我亲手拆的。现把纸屑附上。」"
-const BROADCAST_NOTE := "行政楼二楼广播站。放学通知被撕成四页，蓝黑墨水、日期「第二天」。第二天起，第八节下课后至熄灯前播出。教导处文件柜、琴凳、保安岗登记簿、天台喇叭箱各有一页。\n「全体」底下有人划了一道线，旁边写着「暂留的也一起唤醒」。背页是一次试播的记录：「听到长铃后，试员在现实教室睁眼。他说刚才自己一直在二楼找楼梯。」"
+const BROADCAST_NOTE := "行政楼二楼广播站。放学通知被撕成四页，蓝黑墨水、日期「第二天」。第二天起，第八节下课后至熄灯前播出。教导处文件柜、琴凳、保安岗登记簿、天台喇叭箱各有一页。\n「全体」底下有人划了一道线，旁边写着「终止当前的点名循环」。背页是一次试播的记录：「听到长铃后，主时钟与广播同时停止，出口指示灯亮起。」"
 
 var entries: Dictionary = {}   # id → {text, kind, source, day}
 var recent: Array = []
@@ -77,6 +82,10 @@ func restore(data: Dictionary) -> void:
 	if entries.has("dutyBook1987"):
 		entries["dutyBook1987"]["text"] = PAPER_TRIAL_NOTE
 		entries["dutyBook1987"]["source"] = PAPER_TRIAL_SOURCE
+	for key: String in DESK_RECORDS:
+		if entries.has(key): entries[key]["text"] = DESK_RECORDS[key]
+	if entries.has("campus:stair_teach_w"):
+		entries["campus:stair_teach_w"]["text"] = CampusObservations.LANDINGS["stair_teach_w"][2]
 	if entries.has("broadcastBook"): entries["broadcastBook"]["text"] = BROADCAST_NOTE
 	recent = (data.get("recent", []) as Array).filter(func(id: Variant) -> bool: return id is String and entries.has(id)).slice(-RECENT_MAX)
 	focus = String(data.get("focus", ""))
@@ -137,7 +146,7 @@ func observe(site: Dictionary) -> void:
 		_emit("save")
 	if site.id == "stair_teach_w":
 		_pending = {"kind": "stair_voice"}
-		_emit("choice", {"text": "两道粉笔杠旁边写着「我又回二楼了」。我敲一下扶手，下面有人敲了两下。我想临时出道题，听听他会怎么答。", "labels": ["敲两下，请他少敲一下", "问他妹妹书包上挂着什么", "轻轻走开"]})
+		_emit("choice", {"text": "扶手旁有两道粉笔杠。铁盖下藏着个小扬声器，标签上写着「楼梯间采样」。", "labels": ["听完这段录音", "翻看标签背面", "轻轻走开"]})
 		return
 	if site.id != "lab1":
 		_emit("say", {"text": site.text})
@@ -156,9 +165,9 @@ func observe(site: Dictionary) -> void:
 func open_desk() -> bool:
 	if not bool(_c.get("desk_ok", false)) or visible("desk"):
 		return false
-	record("desk", "同桌递给我时，停车单上联的四边都是齐的。右上角印着「17 号工单」，签名最后一笔和我写的一样。纸背写着，底联在北门旁的保安岗，讲台上还有钥匙移交单。", "事实", "自己的课桌")
+	record("desk", DESK_RECORDS.desk, "事实", "自己的课桌")
 	_emit("spots", {"names": ["guard"]})
-	_emit("say", {"text": "停车单上的签名是我的。去保安岗查底联，或者先看看讲台上的钥匙移交单。", "keep": true})
+	_emit("say", {"text": "点名联上的名字来自我的试卷。去保安岗查底联，或者先看看讲台上的钥匙移交单。", "keep": true})
 	_emit("save")
 	return true
 
@@ -218,8 +227,7 @@ func choose(index: int) -> void:
 	match String(p.get("kind", "")):
 		"stair_voice":
 			if index not in [0, 1]: return
-			var reply := "扶手只响了一下。「两下少一下。一点儿也不难。你再问个难的？」下面的人说着，自己先笑了。" if index == 0 else "「一颗掉了漆的星星。她每次都要我猜朝外的是哪一面。」他停了一下，问我北门几点关。"
-			var line := reply + "「你就在上面吧？我再下一层，还是我画的那两道杠。你要是先醒，跟我妹说，我没忘。」我答应了。"
+			var line := DESK_RECORDS["landing:knock" if index == 0 else "landing:star"] as String
 			record("landing:knock" if index == 0 else "landing:star", line, "事实", "教学楼西梯 · 二楼扶手")
 			_emit("stair_promise")
 			_emit("say", {"text": line})

@@ -100,19 +100,18 @@ func test_app() -> void:
 	var fake: Dictionary = old["fake"]
 	var classroom: Dictionary = CampusData.rules().room(fake["room"])
 	app.travel(fake["room"],_campus_pose(classroom,Vector2(fake["player"][0],fake["player"][1]),0),false)
-	app.fake_normal().fn["on"] = true
-	app.fake_normal().fn["v"] = 10
+	app.fake_normal().showing = true
 	app._fake_people_random.seed = 42
 	app._fake_people_step(app.fake_normal(),classroom)
-	check(app._fake_people.get_child_count()==4,"fake-normal day supplies four figures on open tiles")
+	check(app._fake_people.get_child_count()==4,"the false ending places four figures on open tiles")
 	for fig: Node3D in app._fake_people.get_children():
 		appearance(fig,fake["figures"][0]["body"])
 		var to_player := app.player.position-fig.position
 		to_player.y = 0
 		check(to_player.length()>=2.2 and to_player.length()<=7.5 and (-fig.basis.z).normalized().dot(to_player.normalized())>.9999,"fake-normal figures face the player at the original range")
-	app.fake_normal().fn["v"] = 72
+	app.fake_normal().showing = false
 	app._fake_people_step(app.fake_normal(),classroom)
-	check(app._fake_people==null,"figures disappear at exactly 72 laughs")
+	check(app._fake_people==null,"figures leave when the false ending closes")
 	app.return_to_menu()
 	app.queue_free()
 	await _frames(3)
