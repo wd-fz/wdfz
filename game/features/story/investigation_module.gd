@@ -78,12 +78,14 @@ func restore(data: Dictionary) -> void:
 	reset()
 	RandomState.restore(_rng, data)
 	entries = (data.get("entries", {}) as Dictionary).duplicate(true)
-	# Preserve discovery, day and reading order for the guard and radio exhibits in older notebooks.
+	# Refresh the wording of previously discovered exhibits without changing their history.
 	if entries.has("dutyBook1987"):
 		entries["dutyBook1987"]["text"] = PAPER_TRIAL_NOTE
 		entries["dutyBook1987"]["source"] = PAPER_TRIAL_SOURCE
 	for key: String in DESK_RECORDS:
 		if entries.has(key): entries[key]["text"] = DESK_RECORDS[key]
+	if entries.has("campus:teach1"):
+		entries["campus:teach1"]["text"] = CampusObservations.INDOORS["teach1"][5]
 	if entries.has("campus:stair_teach_w"):
 		entries["campus:stair_teach_w"]["text"] = CampusObservations.LANDINGS["stair_teach_w"][2]
 	if entries.has("broadcastBook"): entries["broadcastBook"]["text"] = BROADCAST_NOTE

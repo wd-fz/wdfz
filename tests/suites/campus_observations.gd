@@ -50,6 +50,12 @@ func test_sites() -> void:
 	var restored := InvestigationModule.new()
 	restored.restore(saved)
 	check(restored.validate(saved).is_empty() and restored.list("试音带").found == 1 and restored.paper_sample() == "", "ordinary observations persist and remain searchable before the punch")
+	var older_notebook := saved.duplicate(true)
+	older_notebook.entries["campus:teach1"].text = "旧版换座申请"
+	restored.restore(older_notebook)
+	check(restored.entries == saved.entries and restored.recent == saved.recent, "an old seating note gets today's exhibit text and keeps its original discovery details")
+	restored.restore({})
+	check(not restored.visible("campus:teach1"), "loading an unexplored classroom does not reveal the seating note")
 	var terminal := CampusTerminal.fresh("fieldwork")
 	var incident: String = CampusTerminal.run(terminal, "cat /school/shift.txt").text
 	check(incident.contains("姓名栏找到了答题的人") and incident.contains("楼梯间只剩测绘时的录音"),
@@ -199,12 +205,12 @@ func test_player() -> void:
 	if is_instance_valid(app._ending_cut):
 		var cut := app._ending_cut
 		cut._apply(12.7 / 18)
-		check(cut._dis_desk.visible and not cut._world.visible, "the broadcast opens on the real classroom before the reunion")
+		check(cut._dis_desk.visible and not cut._world.visible, "the broadcast returns to the real classroom before the gate")
 		cut._apply(14.7 / 18)
 		var hidden := cut._dis_model_props.duplicate()
 		check(not cut._dis_desk.visible and cut._world.visible and not hidden.is_empty() and hidden.all(func(n: Node3D) -> bool: return not n.visible), "only the physical campus appears after school")
 		cut.end(true)
-		check(hidden.all(func(n: Node3D) -> bool: return n.visible), "skipping the reunion restores exactly the borrowed visibility")
+		check(hidden.all(func(n: Node3D) -> bool: return n.visible), "skipping the gate shot restores exactly the borrowed visibility")
 	check(app.ui._ending_text.text.contains("甲纸上边少了半圆") and app.ui._ending_papers.visible and app.ui._ending_papers._samples == "甲", "the normal ending screen displays the real sheets the player earned")
 	check(not app.ui.hud.visible and not app.ui.touch_controls.visible, "the simulated clock, location, and controls stay off the physical evidence")
 	app.queue_free()

@@ -1048,7 +1048,7 @@ func _tick_anomaly(dt: float) -> void:
 				d["hitT"] = 0.0
 				_hurt("我站住了。于是全班一起站了起来，椅子腿在地上刮出同一声。然后他们又一起坐下。", 18.0, false, true)
 			elif t > 12.0:
-				_say("我：他们慢慢地转回去了。最后转回去的，是我的同桌。")
+				_say("我：他们慢慢转回黑板。教室里又响起了写字声。")
 				_end()
 		"lamps":
 			if not bool(_c.get("moving", false)):

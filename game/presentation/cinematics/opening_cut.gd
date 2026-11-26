@@ -33,7 +33,6 @@ var _root: Node3D
 var _other_teacher: OtherworldFigure
 var _teacher: StudentAvatar
 var _me: StudentAvatar
-var _deskmate: OtherworldFigure
 var _dust: MultiMeshInstance3D
 var _dust_data: Array = []
 var _flow := 0.0
@@ -127,12 +126,6 @@ func begin(world: Node3D, room: Dictionary, player: PlayerController, ui: GameUI
 	_me.position = Vector3(_seat_eye.x, 0, _seat_eye.z) if show_waking else _cell(C0 + 3.8, MID + 0.39, 0.0)
 	_me.rotation.y = PI / 2.0
 	_me.advance("sit", 0.0)
-	# The seat across the shared desktop is empty in the procedural classroom layout.
-	_deskmate = OtherworldFigure.make("sit")
-	_deskmate.name = "StillDeskmate"
-	_root.add_child(_deskmate)
-	_deskmate.position = _cell(C0 + 3.82, MID - 0.39, 0.0)
-	_deskmate.rotation.y = PI / 2.0
 	_build_dust()
 	# The classmates' small movements: some write (nodding forward again and again), some turn a page (a little turn), some stay.
 	_classroom = world.get_node_or_null("Classmates") as ClassmatesView
@@ -236,7 +229,6 @@ func _apply(kk: float) -> void:
 		book.seek(fmod(read_time*DUR_FULL,book.current_animation_length),true)
 	_teacher.visible = kk < .72
 	_other_teacher.visible = kk >= .72
-	_deskmate.visible = kk >= .76
 	_other_teacher.face.rotation = Vector3(-.18, .7*phase(kk,.72,.79), -.11)
 	_me.visible = kk < .735
 	if _me.animation != null and _me.animation.is_playing() and _me.animation.current_animation_length > 0:
@@ -307,12 +299,8 @@ func _apply(kk: float) -> void:
 		var pos := _seat_eye + fwd * 0.28 * (1.0 - t5)
 		pos.y = _seat_eye.y + lerpf(-0.19, 0.0, t5)
 		var pitch := lerpf(-0.62, 0.0, t5)
-		var glance := phase(kk, 0.80, 0.85) * (1.0 - phase(kk, 0.90, 0.95))
-		var toward := _deskmate.position + Vector3.UP * 1.13 - pos
-		var yaw := lerp_angle(_seat_yaw, atan2(-toward.x, -toward.z), glance)
-		pitch = lerpf(pitch, atan2(toward.y, Vector2(toward.x, toward.z).length()), glance)
 		cam.position = pos
-		cam.rotation = Vector3(pitch, yaw, 0.0)
+		cam.rotation = Vector3(pitch, _seat_yaw, 0.0)
 		_ui.cut_fade(1.0 - (kk - 0.76) / 0.06 if kk < 0.82 else 0.0)
 
 

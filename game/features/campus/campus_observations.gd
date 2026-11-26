@@ -3,7 +3,7 @@ extends RefCounted
 ## The same positions and facing directions drive the exhibit meshes, HUD and authority.
 ## Indoor anchors are walkable tiles on the visitor's side of the mounted object.
 const INDOORS := {
-	"teach1": [51, 16, "n", "paper", "换座申请", "我在走廊的座次表上找到了同桌。他嫌窗缝漏风，申请往里挪一排。班主任批了一个「准」，座次表却还贴着换座前的照片。"],
+	"teach1": [51, 16, "n", "paper", "换座申请", "换座申请上写着「窗缝漏风，想往里挪一排」。班主任批了个「准」。我对了对走廊里的座次表，申请人的照片还贴在窗边那一格。"],
 	"teach2": [21, 12, "w", "tape", "朗读录音", "朗读示范带的盒底写着「第四节，课前留样」。读到第三句有人咳了一声。把带子倒回去，那声咳嗽还夹在同两个字之间。"],
 	"teach3": [38, 16, "n", "paper", "订正栏", "一道错题旁边，红笔把三个解法分三栏抄好。每栏末尾都有同一滴墨水，连溅出去的小点都对得上。"],
 	"teach4": [45, 9, "w", "height", "窗边身高线", "五月那根身高线量到了我的眉毛。下面贴着全班合照，照片里这道粉笔线也刚画到一半。有人把没拍进照片的那截留白了。"],

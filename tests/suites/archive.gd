@@ -155,7 +155,7 @@ func test_app() -> void:
 		var replay:=flow.stage.cut as OpeningCut
 		check(replay._me.character==StudentCast.resolve(value) and flow.stage.player.seated,"archive restores the selected character and seat, including legacy markers")
 		replay._apply(.83)
-		check(not replay._me.visible,"archive first-person wake has no second player body")
+		check(not replay._me.visible and is_zero_approx(angle_difference(replay.cam.rotation.y, replay._seat_yaw)), "the first-person replay wakes facing the classroom from the player's seat")
 		flow.stop(false)
 		await _frames(1)
 	app.queue_free()

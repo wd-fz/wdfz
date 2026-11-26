@@ -439,7 +439,7 @@ func _test_ending_cut() -> void:
 	check(EndingCut.face_lamp(0.1) == Color("#d23a2e") and EndingCut.face_lamp(0.2) == Color("#e8e4d2"), "the gate's lamp is red, then white")
 	check(EndingCut.face_fade(0.1) == 0.0 and EndingCut.face_fade(0.3) == 1.0 and is_equal_approx(EndingCut.face_fade(0.33), 0.5) and EndingCut.face_fade(0.6) == 0.0 and is_equal_approx(EndingCut.face_fade(0.95), 0.5), "black after the beep, clear outside, black at the end")
 	check(EndingCut.dis_stage(3.1) == 0 and EndingCut.dis_stage(7.8) == 2 and EndingCut.dis_stage(12.0) == 3 and EndingCut.dis_edge(3.2) == 1.0 and EndingCut.dis_edge(10.0) == 0.0 and EndingCut.dis_caption(12.5).contains("全体离校"), "the four stages of the dismissal, fades and captions")
-	check(EndingCut.dis_caption(14.0).contains("「哥」") and EndingCut.dis_caption(17.0).contains("现实中的教学楼"), "the dismissal cut marks the reunion on the real side of the gate")
+	check(EndingCut.dis_caption(14.0).contains("北门外") and EndingCut.dis_caption(17.0).contains("现实中的教学楼"), "dismissal watches the crowd from the real gate before looking up at the school")
 	check(EndingCut.portal_state(0.2)["charge"] < 1.0 and not EndingCut.portal_state(0.2)["open"] and EndingCut.portal_state(0.5)["open"] and EndingCut.portal_state(0.5)["enter"] == 0.0 and EndingCut.portal_state(1.0)["enter"] == 1.0, "the device charges, opens, then is entered")
 	var pc := EndingCut.portal_camera(0.55, Vector3.ZERO, 1.6)
 	var pe := EndingCut.portal_camera(1.0, Vector3.ZERO, 1.6)

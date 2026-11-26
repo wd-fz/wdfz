@@ -79,8 +79,6 @@ var _speakers: Array = []
 var _students: Array = []
 var _line: Array = []
 var _walkers: Array = []
-var _dis_deskmate: Node3D
-var _dis_sister: Node3D
 var _dis_desk: Node3D
 var _dis_model_props: Array[Node3D] = []
 var _windows: Array = []
@@ -628,8 +626,8 @@ static func dis_caption(t: float) -> String:
 	if t < 13.2:
 		return "准予全体离校。我在课桌上睁开眼。"
 	if t < 15.6:
-		return "放学后到了北门。一个女孩喊了声「哥」。"
-	return "你回过头。现实中的教学楼一层层熄了灯。"
+		return "放学后，我站在北门外。学生三三两两地从我身边走过。"
+	return "我回过头。现实中的教学楼一层层熄了灯。"
 
 
 func _room(g: Node3D, w: float, d: float) -> void:
@@ -754,26 +752,19 @@ func _setup_dis() -> void:
 	_dis_desk.add_child(pencil)
 	_box(pencil, 0.009, 0.009, 0.17, Color("#ae6642"), 0, 0, 0)
 	_box(pencil, 0.009, 0.009, 0.012, Color("#424442"), 0, 0, 0.089)
-	_fig(_dis_desk, "sit", Color("#617e99"), 1.2, 0.15, PI)
 	_dis_desk.hide()
 	# The last stage is the real campus: the north gate and the front of the teaching building (the world comes back for it).
 	var d: Node3D = _st[3]
 	_dis_gate = gate_scene(_campus, "n")
 	d.position = _dis_gate
-	# The shot extends past the outdoor map so the reunion still has a street under it.
+	# The gate shot follows the students onto the street beyond the outdoor map.
 	_box(d, 64.0, 0.06, 26.0, Color("#585956"), 0.0, -0.05, -13.0)
-	_dis_deskmate = FigureModel.make("person", Color("#506782"), false, 0.95, Color.BLACK, true, false, null, true)
-	d.add_child(_dis_deskmate)
-	_dis_sister = FigureModel.make("person", Color("#b27465"), false, 0.72)
-	_dis_sister.position = Vector3(2.9, 0.0, -3.8)
-	d.add_child(_dis_sister)
-	_box(_dis_sister, 0.31, 0.39, 0.19, Color("#556e83"), 0.23, 1.01, 0.13)
-	var charm := _label("★", 0.082, Color("#d4af5e"))
-	charm.position = Vector3(0.30, 0.94, 0.239)
-	_dis_sister.add_child(charm)
 	_dis_teach = DayBanner.facade(_world.get("layout") as Dictionary if _world != null else {})
-	for i in 16:
-		_walkers.append(_fig(_root, "person", Color("#3b4847"), _dis_gate.x + 5.35, _dis_gate.z + 3.8 - float(i) * 0.65, PI))
+	for i in 8:
+		var uniform := Color("#637485").lerp(Color("#96a4b3"), float(i % 3) * 0.30)
+		var student := FigureModel.make("person", uniform, false, 0.94 + 0.025 * (i % 4), Color.BLACK, true, false, null, true)
+		d.add_child(student)
+		_walkers.append(student)
 	_ledger = _label("北门接送区\n学生请在门内等候", 0.12, Color("#e7e2ca"))
 	_ledger.position = _dis_gate + Vector3(-1.3, 1.1, 1.0)
 	_ledger.rotation.x = -0.4
@@ -860,17 +851,16 @@ func _apply_dis(kk: float) -> void:
 		var v := (t - 12.0) / 6.0
 		var g := _dis_gate
 		for i in _walkers.size():
+			var student: Node3D = _walkers[i]
 			var lane := float(i % 3) * 0.68
-			(_walkers[i] as Node3D).position = g + Vector3(5.4 + lane, 0.0, 3.8 - float(i) * 0.54 - v * 8.0)
-		var reunion := phase(t, 13.2, 15.1)
-		var from := _dis_deskmate.position
-		_dis_deskmate.position = Vector3(5.35, 0.0, 0.3).lerp(Vector3(3.65, 0.0, -3.65), reunion)
-		_dis_deskmate.look_at(_dis_sister.global_position)
-		_dis_sister.look_at(_dis_deskmate.global_position)
-		FigureGait.step(_dis_deskmate, from.distance_to(_dis_deskmate.position), _frame_delta)
+			var stride := 7.0 + float(i % 5) * 0.6
+			var to := Vector3(4.5 + lane, 0.0, 4.8 - float(i) * 0.9 - v * stride)
+			var distance := student.position.distance_to(to)
+			student.position = to
+			FigureGait.step(student, distance, _frame_delta)
 		_ledger.visible = true
 		if v < 0.6:
-			_look(g + Vector3(2.55, 1.7, -9.0 - (v - 0.2) * 5.0), g + Vector3(4.1, 1.35, -2.6))
+			_look(g + Vector3(1.8, 1.65, -7.9 - v * 3.0), g + Vector3(4.5, 1.45, 1.5))
 		else:
 			_look(_dis_teach * Vector3(0, 8.5, 24.0), _dis_teach * Vector3(0, 8.0, 0))
 		for i in _windows.size():
@@ -889,8 +879,6 @@ func _apply_dis(kk: float) -> void:
 	for w2: MeshInstance3D in _windows:
 		w2.visible = w2.visible and s == 3
 	_ledger.visible = at_gate
-	for f3: Node3D in _walkers:
-		f3.visible = at_gate
 	_ui.cut_fade(clampf(dis_edge(t), 0.0, 1.0))
 
 
