@@ -6,6 +6,7 @@ extends Node3D
 ## game's own static collision rectangles (tools/export_scenes). Rendering-only spatial
 ## batches, mesh cells and occluders keep the original full-detail surfaces and collision.
 
+const BakedExterior := preload("res://game/presentation/world/campus/baked_exterior.gd")
 const WALL_TOP := 10.0     # the bell tower top platform is at 6.4 m
 const WALL_BOTTOM := -0.5
 const BOUNDARY := 1.0
@@ -49,6 +50,8 @@ var render_options: Dictionary = {}
 var visual_ground:=VisualGround.new()
 ## Authority worlds use exactly the same collision geometry, without loading any meshes.
 var collision_only := false
+## Archived death shots supply their own set and inherit the room's environment.
+var archive_backdrop := false
 var resident := false
 var streamed_detail := false
 var space: CampusSpace
@@ -65,6 +68,9 @@ var _patrol_asset: PackedScene
 func _ready() -> void:
 	set_process(false)
 	layout = CampusData.layout(scene_id)
+	if archive_backdrop:
+		_build_lighting()
+		return
 	if collision_only:
 		prepare_collision()
 		return
@@ -683,7 +689,7 @@ func discard_resident_model() -> void:
 func reload_models(player_position: Vector3) -> void:
 	if visual_tier == CampusData.tier:
 		return
-	var replacement := CampusData.instantiate_model(scene_id)
+	var replacement := _load_visual_source(CampusData.tier)
 	if replacement == null: return
 	var doors := _open_doors.duplicate()
 	var lift_amount := _lift_amount
@@ -724,10 +730,17 @@ func _build_model(model: Node3D = null) -> void:
 	_install_model(ready, CampusData.tier)
 
 
+func _load_visual_source(tier: int) -> Node3D:
+	if resident and scene_id == "out" and not streamed_detail and CampusBatches.enabled:
+		var exterior := BakedExterior.instantiate(tier)
+		if exterior != null: return exterior
+	return CampusData.instantiate_model(scene_id, tier)
+
+
 ## Processes a detached model; the background loader never touches a live World3D.
 func _prepare_visual(tier: int, model: Node3D = null) -> Node3D:
-	if model == null: model = CampusData.instantiate_model(scene_id, tier)
-	if model == null: return null
+	if model == null: model = _load_visual_source(tier)
+	if model == null or model.has_meta(BakedExterior.FACADES): return model
 	model = CampusArchitecture.refit(model, scene_id)
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		if mesh.has_meta("extras") and (mesh.get_meta("extras") as Dictionary).has("wdfz_instances"):
@@ -839,24 +852,7 @@ static func _to_multimesh(source: MeshInstance3D) -> void:
 	mm.use_colors = colors.size() >= count * 3
 	mm.mesh = source.mesh
 	mm.instance_count = count
-	var stride := 16 if mm.use_colors else 12
-	var buffer := PackedFloat32Array()
-	buffer.resize(count * stride)
-	for i in count:
-		var source_offset := i * 12
-		var target_offset := i * stride
-		# Godot's buffer stores each row of the basis followed by the origin component.
-		for axis in 3:
-			buffer[target_offset + axis * 4] = xf[source_offset + axis]
-			buffer[target_offset + axis * 4 + 1] = xf[source_offset + axis + 3]
-			buffer[target_offset + axis * 4 + 2] = xf[source_offset + axis + 6]
-			buffer[target_offset + axis * 4 + 3] = xf[source_offset + axis + 9]
-		if stride == 16:
-			buffer[target_offset + 12] = colors[i * 3]
-			buffer[target_offset + 13] = colors[i * 3 + 1]
-			buffer[target_offset + 14] = colors[i * 3 + 2]
-			buffer[target_offset + 15] = 1.0
-	mm.buffer = buffer
+	CampusPreview.upload_instances(mm, xf, colors)
 	if mm.use_colors and source.mesh != null:
 		for s in source.mesh.get_surface_count():
 			var mat := source.mesh.surface_get_material(s) as BaseMaterial3D

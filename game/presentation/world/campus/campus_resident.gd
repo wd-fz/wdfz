@@ -60,10 +60,10 @@ func prepare(id: String, with_model: bool = true) -> CampusWorld:
 	world.prepare_collision()
 	if fresh:
 		regions[id] = world
-		add_child(world)
 		world.set_collision_enabled(visible)
+		add_child(world)
 		builds += 1
-	if loading_detail and world.geometry_ready:
+	if loading_detail and world.geometry_ready and visible:
 		_refresh_visibility()
 	return world
 
@@ -281,7 +281,9 @@ func _process(_delta: float) -> void:
 		var model := _worker.wait_to_finish() as Node3D
 		_worker = null
 		_accept_model(model)
-		return
+		# Dispatch the next detached load now. A synchronous exterior still
+		# gets its own frame, as do normal gameplay adoptions and evictions.
+		if _entry_models.is_empty() or _entry_models[0] == "out": return
 	if not _entry_models.is_empty():
 		_start_model(_entry_models[0])
 		return
@@ -312,14 +314,17 @@ func _start_model(id: String) -> void:
 func _accept_model(model: Node3D) -> void:
 	var id := _staging.scene_id
 	var entry := _entry_models.has(id)
-	if entry: _entry_models.remove_at(_entry_models.find(id))
 	_staging.free()
 	_staging = null
+	if _staging_tier != CampusData.tier:
+		if model != null: model.free()
+		return # An entry ticket stays pending until its current detail tier is ready.
+	if entry: _entry_models.erase(id)
 	if model == null:
 		_retry_after[id] = Time.get_ticks_msec() + MODEL_RETRY_MS
 		return
 	var world: CampusWorld = regions[id]
-	if _staging_tier != CampusData.tier or world.geometry_ready or (not entry and not _wanted.has(id)):
+	if world.geometry_ready or (not entry and not _wanted.has(id)):
 		model.free()
 		return
 	# Bind just before attaching: doors and the lift may have moved during the load.

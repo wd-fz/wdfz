@@ -40,6 +40,48 @@ func _check_outdoor_props(model: Node, path: String) -> void:
 	_check(not tint_by_mesh.is_empty() and tint_by_mesh.size() < batches, "outdoor prop meshes were not shared at import: " + path)
 
 
+func _check_mesh_preparation(model: Node, path: String) -> void:
+	var prepared_props := 0
+	var prepared_walls := 0
+	for node: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		if node.mesh == null: continue
+		if node.mesh.has_meta(CampusBatches.GEOMETRY_KEY): prepared_props += 1
+		var walls: Dictionary = node.mesh.get_meta(CampusBatches.OCCLUDER_FACES, {})
+		for faces: PackedVector3Array in walls.values():
+			if not faces.is_empty(): prepared_walls += 1
+	_check(prepared_props > 0 and prepared_walls > 0, "missing precomputed prop/occluder geometry: " + path)
+
+
+## The smoke runs with a real renderer. Read back the native instance matrices
+## and tints, including orientation, for every repacked tier.
+func _check_baked_exteriors() -> void:
+	var world := CampusWorld.new()
+	world.resident = true
+	world.layout = CampusData.layout("out")
+	world.space = CampusSpace.new(CampusData.rooms(), world.layout, CampusData.campus())
+	for tier: int in CampusData.MODEL_TIERS:
+		var model := world._prepare_visual(tier)
+		_check(model != null and model.has_meta(CampusWorld.BakedExterior.FACADES), "resident exterior not loaded from package: %d" % tier)
+		if model == null: continue
+		var facades: Dictionary = model.get_meta("facades", {})
+		_check(facades.has("teach1") and facades.has("lab1") and model.has_node(CampusShell.ROOFLINE), "exterior lost storey visibility groups: %d" % tier)
+		var instances := 0
+		var ok := true
+		for node: MultiMeshInstance3D in model.find_children("*", "MultiMeshInstance3D", true, false):
+			var mm := node.multimesh
+			var colors: PackedFloat32Array = node.get_meta("campus_colors", PackedFloat32Array())
+			for i in mm.instance_count:
+				var intended := CampusPreview.instance_transform(node, i)
+				ok = ok and intended.is_equal_approx(mm.get_instance_transform(i))
+				if mm.use_colors:
+					var color := mm.get_instance_color(i)
+					ok = ok and color.is_equal_approx(Color(colors[i * 3], colors[i * 3 + 1], colors[i * 3 + 2]))
+			instances += mm.instance_count
+		_check(ok and instances > 0, "exterior instance buffer differs from partition metadata: %d" % tier)
+		model.free()
+	world.free()
+
+
 func _run() -> void:
 	var driver := RenderingServer.get_current_rendering_driver_name()
 	var method := RenderingServer.get_current_rendering_method()
@@ -49,6 +91,7 @@ func _run() -> void:
 	print("EXPORT RENDERER: %s / %s" % [driver, method])
 	for folder: String in ["tests", "tools", "docs", "pictures", "addons", "assets/campus_q4"]:
 		_check(not DirAccess.dir_exists_absolute("res://" + folder), "development folder shipped: " + folder)
+	_check_baked_exteriors()
 	var model_paths := _model_paths("res://assets")
 	_check(model_paths.size() >= 172, "the four model tiers are not present in the export")
 	for model_path in model_paths:
@@ -58,6 +101,7 @@ func _run() -> void:
 			var model := packed.instantiate()
 			_check(model != null, "exported model cannot instantiate: " + model_path)
 			if model != null:
+				if model_path.get_file() in ["out.glb", "teach1.glb"]: _check_mesh_preparation(model, model_path)
 				if model_path.get_file() == "out.glb": _check_outdoor_props(model, model_path)
 				model.free()
 		await process_frame

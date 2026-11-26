@@ -1,12 +1,34 @@
 @tool
 extends EditorScenePostImport
-## The campus exporter writes one mesh per prop batch, even for identical props.
-## Share their native resources at import, before a Vulkan streaming worker uploads them.
+## Record immutable geometry while the imported arrays are available. Runtime
+## clipping creates new meshes and automatically uses the uncached path.
 
 func _post_import(scene: Node) -> Object:
+	var nodes := scene.find_children("*", "MeshInstance3D", true, false)
+	var source := get_source_file().get_file()
+	if source == "out.glb": _share_outdoor_props(nodes)
+	for node: MeshInstance3D in nodes:
+		var mesh := node.mesh as ArrayMesh
+		if mesh == null or mesh.resource_local_to_scene or mesh.get_script() != null: continue
+		if source == "furnishings.glb" or node.get_meta("extras", {}).has("wdfz_instances"):
+			if not mesh.has_meta(CampusBatches.GEOMETRY_KEY):
+				mesh.set_meta(CampusBatches.GEOMETRY_KEY, CampusBatches.geometry_key(mesh))
+		elif not mesh.has_meta(CampusBatches.OCCLUDER_FACES) and not CampusBatches._dynamic(node, scene):
+			var faces := {}
+			for s in mesh.get_surface_count():
+				var mat := mesh.surface_get_material(s) as BaseMaterial3D
+				if mat == null or mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED: continue
+				if mesh.surface_get_primitive_type(s) == Mesh.PRIMITIVE_TRIANGLES:
+					faces[s] = CampusBatches.occluding_faces(mesh, s, Transform3D.IDENTITY)
+			if not faces.is_empty(): mesh.set_meta(CampusBatches.OCCLUDER_FACES, faces)
+	return scene
+
+
+## The original outdoor exporter emitted a separate mesh even for identical props.
+func _share_outdoor_props(nodes: Array[Node]) -> void:
 	var prototypes := {}
 	var material_keys := {}
-	for node: MeshInstance3D in scene.find_children("*", "MeshInstance3D", true, false):
+	for node: MeshInstance3D in nodes:
 		var extras: Dictionary = node.get_meta("extras", {})
 		var mesh := node.mesh as ArrayMesh
 		if mesh == null or not extras.has("wdfz_instances"): continue
@@ -18,7 +40,6 @@ func _post_import(scene: Node) -> Object:
 			node.mesh = prototypes[key]
 		else:
 			prototypes[key] = mesh
-	return scene
 
 
 func _mesh_key(mesh: ArrayMesh, materials: Dictionary) -> String:

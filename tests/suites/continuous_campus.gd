@@ -4,11 +4,12 @@ extends "res://tests/support/test_suite.gd"
 func test_collision() -> void:
 	var worlds: Array[CampusWorld] = []
 	var space := CampusSpace.new(CampusData.rooms(),CampusData.layout("out"),CampusData.campus())
+	_check_footprint_index(space)
 	var wall := BoxMesh.new()
 	wall.size=Vector3(5,10,.2)
 	var xf := Transform3D(Basis.IDENTITY,Vector3(0,5,0))
 	var floors := ["teach1","teach2","teach3","teach4"]
-	var parts := CampusShell._floor_parts(wall,xf,"teach2",{"teach2":floors},space)
+	var parts := CampusShell._floor_parts(wall,xf,"teach2",CampusShell._bands(floors,space))
 	check(parts.size()==5 and parts.has(CampusShell.ROOFLINE),"a tall facade retains the strips between its four playable storeys")
 	for id: String in floors:
 		var bounds: AABB=xf*(parts[id] as Mesh).get_aabb()
@@ -116,6 +117,20 @@ func test_collision() -> void:
 			check(not hit.is_empty(),"fixed shaft blocks from either side while car is downstairs")
 	for world: CampusWorld in worlds: world.queue_free()
 	await _frames(2)
+
+
+func _check_footprint_index(space: CampusSpace) -> void:
+	var footprints: Array[Dictionary] = [
+		{"rect": Rect2(30, -2, 2, 4), "floors": ["lift_teach"]},
+		{"rect": Rect2(20, -8, 20, 16), "floors": ["teach1"]},
+		{"rect": Rect2(-40, -4, 10, 8), "floors": ["lab1"]},
+	]
+	var grid := CampusShell._index_footprints(footprints)
+	for x: float in [-34.0, -32.0, 0.0, 30.5, 31.5, 32.0, 33.0]:
+		var box := AABB(Vector3(x, 1, 0), Vector3(.8, 1, .2))
+		var nearby := CampusShell._candidates(box, footprints, grid)
+		check(CampusShell._box_owner(box, nearby, space) == CampusShell._box_owner(box, footprints, space),
+			"facade footprint index preserves shaft priority and shared edges at x=" + str(x))
 
 
 func _check_garage_entrance(space: CampusSpace) -> void:
@@ -456,6 +471,13 @@ func test_nearby_visuals() -> void:
 	app.router.school_ids()
 	var school := app.router.resident
 	school.nearby_visuals = true
+	school.prepare("teach1", false)
+	school.warm_entry_models(PackedStringArray(["teach1"]))
+	school._staging = school._make("teach1")
+	school._staging_tier = (CampusData.tier + 1) % 4
+	var stale := Node3D.new()
+	school._accept_model(stale)
+	check(school.entry_models_left() == 1 and not is_instance_valid(stale), "a model finished at the previous tier cannot release the entry barrier")
 	await app._load_then("teach1", app.start_new_game)
 	var models := 0
 	for world: CampusWorld in school.regions.values():

@@ -50,6 +50,18 @@ func test_instances() -> void:
 	node.multimesh = mm
 	node.set_meta("campus_transforms", values)
 	node.set_meta("campus_colors", PackedFloat32Array([1,0,0,0,1,0,0,0,1]))
+	var facade := Node3D.new()
+	var props := node.duplicate() as MultiMeshInstance3D
+	facade.add_child(props)
+	CampusShell.carve_box(facade, AABB(Vector3(8, 0, 0), Vector3.ONE))
+	check(props.multimesh == mm and props.get_child_count() == 0, "a distant doorway leaves an untouched instance batch shared")
+	CampusShell.carve_box(facade, AABB(Vector3(-.25, -.25, -.25), Vector3(.5, .5, .5)))
+	check(props.multimesh != mm and props.multimesh.instance_count == 2 and props.get_child_count() == 1,
+		"only the instance overlapping the doorway becomes a separate mesh")
+	check(CampusPreview.instance_transform(props, 0).origin.x == -2 and CampusPreview.instance_transform(props, 1).origin.x == 2
+		and props.get_meta("campus_colors") == PackedFloat32Array([1,0,0,0,0,1]), "doorway carving preserves instance order, positions and tints")
+	check(node.multimesh.instance_count == 3 and node.get_meta("campus_transforms") == values, "other users of the shared instance batch retain the original transforms")
+	facade.free()
 	CampusPreview.clip(node, Plane(Vector3.RIGHT, 0))
 	check(node.multimesh.instance_count == 1 and node.get_child_count() == 1, "preview keeps the outside instance, clips the crossing one, removes the inside one")
 	check(CampusPreview.instance_transform(node, 0).origin == Vector3(2,0,0), "surviving instances retain their real transforms even with a headless renderer")

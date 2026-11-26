@@ -5,6 +5,7 @@ extends RefCounted
 
 const ROOFLINE := "PermanentRooflines"
 const CROSSES_BOUNDARY := "*"
+const FOOTPRINT_CELL := 32.0
 
 
 static func partition(model: Node3D, space: CampusSpace) -> Dictionary:
@@ -13,7 +14,7 @@ static func partition(model: Node3D, space: CampusSpace) -> Dictionary:
 	for opening: AABB in space.bridge_volumes() + space.bridge_openings(): carve_box(model, opening)
 	var groups := {}
 	var footprints: Array[Dictionary] = []
-	var storeys := {}
+	var bands_by_floor := {}
 	for object: Dictionary in space.outside.get("objects", []):
 		var floors: Array[String] = []
 		for id: String in space.frames:
@@ -25,8 +26,9 @@ static func partition(model: Node3D, space: CampusSpace) -> Dictionary:
 		rect.position *= 2.0 / 9.0
 		rect.size *= 2.0 / 9.0
 		footprints.append({"rect": rect.grow(0.8), "floors": floors})
+		var bands := _bands(floors, space)
 		for id: String in floors:
-			storeys[id] = floors
+			bands_by_floor[id] = bands
 			var group := Node3D.new()
 			group.name = "Facade_" + id
 			groups[id] = group
@@ -41,6 +43,7 @@ static func partition(model: Node3D, space: CampusSpace) -> Dictionary:
 		group.name = "Facade_" + id
 		groups[id] = group
 		footprints.push_front({"rect": space.lift_bounds(id).grow(.5), "floors": [id]})
+	var footprint_grid := _index_footprints(footprints)
 	var batches := {}
 	var crown := Node3D.new()
 	crown.name = ROOFLINE
@@ -48,11 +51,12 @@ static func partition(model: Node3D, space: CampusSpace) -> Dictionary:
 	for node: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		if node.mesh == null: continue
 		var xf := _transform(node, model)
-		var whole := _box_owner(xf*node.mesh.get_aabb(), footprints, space)
+		var bounds := xf * node.mesh.get_aabb()
+		var whole := _box_owner(bounds, _candidates(bounds, footprints, footprint_grid), space)
 		if whole == "": continue
-		var parts := _partition_faces(node.mesh, xf, footprints, space) if whole == CROSSES_BOUNDARY else {whole:node.mesh}
+		var parts := _partition_faces(node.mesh, xf, footprints, space, footprint_grid) if whole == CROSSES_BOUNDARY else {whole:node.mesh}
 		for id: String in parts:
-			if id != "": _place_parts(parts[id], xf, id, groups, storeys, space, batches)
+			if id != "": _place_parts(parts[id], xf, id, groups, bands_by_floor, batches)
 		node.mesh = parts.get("")
 	for node: MultiMeshInstance3D in model.find_children("*", "MultiMeshInstance3D", true, false):
 		var xf := _transform(node, model)
@@ -62,21 +66,21 @@ static func partition(model: Node3D, space: CampusSpace) -> Dictionary:
 			var it := CampusPreview.instance_transform(node, i)
 			if it.origin.y < -9999: continue
 			var box := (xf * it) * node.multimesh.mesh.get_aabb()
-			var owner := _box_owner(box, footprints, space)
+			var owner := _box_owner(box, _candidates(box, footprints, footprint_grid), space)
 			var tint := Color(colors[i*3],colors[i*3+1],colors[i*3+2]) if colors.size() >= (i+1)*3 else Color.WHITE
 			if owner == CROSSES_BOUNDARY:
 				# A single instance can span a shaft, the main facade and open space.
-				var split := _partition_faces(node.multimesh.mesh, xf*it, footprints, space)
+				var split := _partition_faces(node.multimesh.mesh, xf*it, footprints, space, footprint_grid)
 				if split.size()==1: owner=split.keys()[0]
 				else:
 					for id: String in split:
-						_place_parts(split[id], xf*it, id, groups, storeys, space, batches, tint, model)
+						_place_parts(split[id], xf*it, id, groups, bands_by_floor, batches, tint, model)
 					continue
 			var id := owner
-			if storeys.has(id):
-				var band := _whole_band(box, id, storeys, space)
+			if bands_by_floor.has(id):
+				var band := _whole_band(box, bands_by_floor[id])
 				if band == CROSSES_BOUNDARY:
-					_place_parts(node.multimesh.mesh, xf*it, id, groups, storeys, space, batches, tint)
+					_place_parts(node.multimesh.mesh, xf*it, id, groups, bands_by_floor, batches, tint)
 					continue
 				id = band
 			if not bins.has(id): bins[id] = []
@@ -126,6 +130,30 @@ static func partition(model: Node3D, space: CampusSpace) -> Dictionary:
 	return groups
 
 
+## A triangle or prop inside a single grid cell can only touch the footprints
+## indexed there. Keep their original order: lift and stair apertures take priority.
+static func _index_footprints(footprints: Array[Dictionary]) -> Dictionary:
+	var grid := {}
+	for footprint in footprints:
+		var rect: Rect2 = footprint.rect
+		for z in range(floori(rect.position.y / FOOTPRINT_CELL), floori(rect.end.y / FOOTPRINT_CELL) + 1):
+			for x in range(floori(rect.position.x / FOOTPRINT_CELL), floori(rect.end.x / FOOTPRINT_CELL) + 1):
+				var cell := Vector2i(x, z)
+				if not grid.has(cell):
+					var occupants: Array[Dictionary] = []
+					grid[cell] = occupants
+				grid[cell].append(footprint)
+	return grid
+
+
+static func _candidates(bounds: AABB, footprints: Array[Dictionary], grid: Dictionary) -> Array[Dictionary]:
+	var start := Vector2i(floori(bounds.position.x / FOOTPRINT_CELL), floori(bounds.position.z / FOOTPRINT_CELL))
+	var end := Vector2i(floori(bounds.end.x / FOOTPRINT_CELL), floori(bounds.end.z / FOOTPRINT_CELL))
+	if start != end: return footprints
+	if grid.has(start): return grid[start]
+	return []
+
+
 ## A footprint must contain the whole primitive before it may disappear with that
 ## room. Large facade triangles routinely extend far beyond the elevator or stair.
 static func _box_owner(box: AABB, footprints: Array[Dictionary], space: CampusSpace) -> String:
@@ -145,23 +173,29 @@ static func _storey(y: float, floors: Array, space: CampusSpace) -> String:
 	return chosen
 
 
-static func _partition_faces(mesh: Mesh, xf: Transform3D, footprints: Array[Dictionary], space: CampusSpace) -> Dictionary:
+static func _partition_faces(mesh: Mesh, xf: Transform3D, footprints: Array[Dictionary], space: CampusSpace, grid: Dictionary = {}) -> Dictionary:
+	if grid.is_empty(): grid = _index_footprints(footprints)
 	var parts := {}
 	for s in mesh.get_surface_count():
 		var arrays := mesh.surface_get_arrays(s)
-		var v: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var vertices: PackedVector3Array = xf * (arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array)
 		var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
-		if indices.is_empty(): indices = PackedInt32Array(range(v.size()))
+		if indices.is_empty(): indices = PackedInt32Array(range(vertices.size()))
 		var bins := {}
 		for i in range(0,indices.size(),3):
-			var face := PackedInt32Array([indices[i],indices[i+1],indices[i+2]])
-			var a := xf*v[face[0]]
-			var bounds := AABB(a,Vector3.ZERO).expand(xf*v[face[1]]).expand(xf*v[face[2]])
-			var id := _box_owner(bounds,footprints,space)
-			if id == CROSSES_BOUNDARY: _cut_face(arrays,face,xf,footprints,0,bins,space)
+			var a := indices[i]
+			var b := indices[i+1]
+			var c := indices[i+2]
+			var bounds := AABB(vertices[a],Vector3.ZERO).expand(vertices[b]).expand(vertices[c])
+			var candidates := _candidates(bounds, footprints, grid)
+			var id := _box_owner(bounds, candidates, space)
+			if id == CROSSES_BOUNDARY:
+				_cut_face(arrays,PackedInt32Array([a,b,c]),xf,candidates,0,bins,space)
 			else:
 				if not bins.has(id): bins[id]=PackedInt32Array()
-				bins[id].append_array(face)
+				bins[id].append(a)
+				bins[id].append(b)
+				bins[id].append(c)
 		for id: String in bins:
 			if not parts.has(id): parts[id]=ArrayMesh.new()
 			var part: ArrayMesh=parts[id]
@@ -220,8 +254,8 @@ static func _split_polygon(face: PackedInt32Array, arrays: Array, plane: Plane) 
 	return [inside, outside]
 
 
-static func _place_parts(mesh: Mesh, xf: Transform3D, id: String, groups: Dictionary, storeys: Dictionary, space: CampusSpace, batches: Dictionary, tint: Color = Color.WHITE, outdoor: Node3D = null) -> void:
-	var parts := _floor_parts(mesh,xf,id,storeys,space)
+static func _place_parts(mesh: Mesh, xf: Transform3D, id: String, groups: Dictionary, bands_by_floor: Dictionary, batches: Dictionary, tint: Color = Color.WHITE, outdoor: Node3D = null) -> void:
+	var parts := _floor_parts(mesh, xf, id, bands_by_floor.get(id, []))
 	for part_id: String in parts:
 		var section: Mesh = parts[part_id] if tint==Color.WHITE else CampusPreview.clip_mesh(parts[part_id],Plane(Vector3.UP,-10000),tint)
 		var parent: Node3D = outdoor if part_id=="" else groups[part_id]
@@ -272,43 +306,58 @@ static func carve_box(model: Node3D, hole: AABB) -> void:
 		if (xf * node.mesh.get_aabb()).intersects(hole): node.mesh = _subtract(node.mesh, xf, hole)
 	for node: MultiMeshInstance3D in model.find_children("*", "MultiMeshInstance3D", true, false):
 		var parent := _transform(node, model)
-		var xf: PackedFloat32Array = node.get_meta("campus_transforms", PackedFloat32Array())
+		var source := node.multimesh
 		var colors: PackedFloat32Array = node.get_meta("campus_colors", PackedFloat32Array())
-		for i in node.multimesh.instance_count:
+		var removed := PackedInt32Array()
+		var bounds := source.mesh.get_aabb()
+		for i in source.instance_count:
 			var it := CampusPreview.instance_transform(node, i)
-			if not ((parent * it) * node.multimesh.mesh.get_aabb()).intersects(hole): continue
+			if not ((parent * it) * bounds).intersects(hole): continue
+			removed.append(i)
 			var copy := MeshInstance3D.new()
-			copy.mesh = _subtract(node.multimesh.mesh, parent * it, hole)
+			copy.mesh = _subtract(source.mesh, parent * it, hole)
 			copy.transform = it
-			if node.multimesh.use_colors and colors.size() >= (i + 1) * 3:
+			if source.use_colors and colors.size() >= (i + 1) * 3:
 				copy.mesh = CampusPreview.clip_mesh(copy.mesh, Plane(Vector3.UP, -10000), Color(colors[i*3], colors[i*3+1], colors[i*3+2]))
 			node.add_child(copy)
-			var empty := Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * 0.000001), Vector3(0,-10000,0))
-			node.multimesh.set_instance_transform(i, empty)
-			if xf.size() >= (i+1)*12:
-				for k in 12: xf[i*12+k] = 0.0
-				xf[i*12] = 0.000001
-				xf[i*12+4] = 0.000001
-				xf[i*12+8] = 0.000001
-				xf[i*12+10] = -10000
-		node.set_meta("campus_transforms", xf)
-		CampusPreview._clip_instances(node, Plane(Vector3.UP,-9999))
+		if removed.is_empty(): continue
+		var kept: Array[Transform3D] = []
+		var tints: Array[Color] = []
+		var next_removed := 0
+		for i in source.instance_count:
+			if next_removed < removed.size() and i == removed[next_removed]:
+				next_removed += 1
+				continue
+			kept.append(CampusPreview.instance_transform(node, i))
+			if source.use_colors:
+				tints.append(Color(colors[i*3],colors[i*3+1],colors[i*3+2]) if colors.size() >= (i+1)*3 else source.get_instance_color(i))
+		CampusPreview.set_instances(node, kept, tints)
 
 
 static func _subtract(mesh: Mesh, xf: Transform3D, box: AABB) -> ArrayMesh:
-	var rest := mesh
 	var result := ArrayMesh.new()
+	var surfaces: Array[Array] = []
+	var remaining: Array[PackedInt32Array] = []
+	for s in mesh.get_surface_count():
+		var arrays := mesh.surface_get_arrays(s)
+		surfaces.append(arrays)
+		var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+		if indices.is_empty(): indices = PackedInt32Array(range(arrays[Mesh.ARRAY_VERTEX].size()))
+		remaining.append(indices)
+	var inverse := xf.affine_inverse()
 	for plane: Plane in [Plane(Vector3.LEFT,-box.position.x), Plane(Vector3.RIGHT,box.end.x),
 		Plane(Vector3.DOWN,-box.position.y), Plane(Vector3.UP,box.end.y),
 		Plane(Vector3.FORWARD,-box.position.z), Plane(Vector3.BACK,box.end.z)]:
-		var local := xf.affine_inverse() * plane
-		var part := CampusPreview.clip_mesh(rest, local)
-		for s in part.get_surface_count():
-			var arrays := part.surface_get_arrays(s)
-			result.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _compact(arrays, arrays[Mesh.ARRAY_INDEX]))
-			result.surface_set_material(result.get_surface_count()-1, part.surface_get_material(s))
-		rest = CampusPreview.clip_mesh(rest, Plane(-local.normal,-local.d))
-		if rest.get_surface_count() == 0: break
+		var local := inverse * plane
+		for s in surfaces.size():
+			var indices := remaining[s]
+			if indices.is_empty(): continue
+			var arrays := surfaces[s]
+			var outside := CampusPreview.clip_triangles(arrays, indices, local)
+			if not outside.is_empty():
+				result.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _compact(arrays, outside))
+				result.surface_set_material(result.get_surface_count() - 1, mesh.surface_get_material(s))
+			remaining[s] = CampusPreview.clip_triangles(arrays, indices, Plane(-local.normal,-local.d))
 	return result
 
 
@@ -325,11 +374,14 @@ static func _compact(arrays: Array, indices: PackedInt32Array) -> Array:
 	result.resize(Mesh.ARRAY_MAX)
 	for slot: int in [Mesh.ARRAY_VERTEX,Mesh.ARRAY_NORMAL,Mesh.ARRAY_COLOR,Mesh.ARRAY_TEX_UV,Mesh.ARRAY_TEX_UV2,Mesh.ARRAY_TANGENT]:
 		if arrays[slot] == null: continue
-		var data: Variant = arrays[slot].duplicate()
-		data.resize(0)
-		var stride := 4 if slot == Mesh.ARRAY_TANGENT else 1
-		for i in unique:
-			for k in stride: data.append(arrays[slot][i * stride + k])
+		var source: Variant = arrays[slot]
+		var data: Variant = source.slice(0, 0)
+		if slot == Mesh.ARRAY_TANGENT:
+			for i in unique:
+				var offset := i * 4
+				for k in 4: data.append(source[offset + k])
+		else:
+			for i in unique: data.append(source[i])
 		result[slot] = data
 	result[Mesh.ARRAY_INDEX] = mapped
 	return result
@@ -337,9 +389,8 @@ static func _compact(arrays: Array, indices: PackedInt32Array) -> Array:
 
 ## Storeys can be taller than the exported interior wall (3 m). The band between
 ## floors and the original upper roof still belong to the exterior at close range.
-static func _bands(id: String, storeys: Dictionary, space: CampusSpace) -> Array[Dictionary]:
+static func _bands(floors: Array, space: CampusSpace) -> Array[Dictionary]:
 	var result: Array[Dictionary]=[]
-	var floors: Array=storeys.get(id,[])
 	for i in floors.size():
 		var floor_id: String=floors[i]
 		var base:=space.frame(floor_id).origin.y
@@ -353,41 +404,52 @@ static func _bands(id: String, storeys: Dictionary, space: CampusSpace) -> Array
 	return result
 
 
-static func _whole_band(bounds: AABB, id: String, storeys: Dictionary, space: CampusSpace) -> String:
-	for band: Dictionary in _bands(id,storeys,space):
+static func _whole_band(bounds: AABB, bands: Array) -> String:
+	for band: Dictionary in bands:
 		if bounds.position.y >= band.low-CampusPreview.EPS and bounds.end.y < band.high-CampusPreview.EPS: return band.id
 	return CROSSES_BOUNDARY
 
 
-static func _floor_parts(mesh: Mesh, xf: Transform3D, id: String, storeys: Dictionary, space: CampusSpace) -> Dictionary:
-	if not storeys.has(id): return {id:mesh}
+static func _floor_parts(mesh: Mesh, xf: Transform3D, id: String, bands: Array) -> Dictionary:
+	if bands.is_empty(): return {id:mesh}
 	var bounds:=xf*mesh.get_aabb()
-	var whole:=_whole_band(bounds,id,storeys,space)
+	var whole:=_whole_band(bounds, bands)
 	if whole!= CROSSES_BOUNDARY: return {whole:mesh}
-	var result: Dictionary={}
-	for band: Dictionary in _bands(id,storeys,space):
-		if bounds.end.y<band.low or bounds.position.y>=band.high: continue
-		var section:=mesh
-		if bounds.position.y<band.low: section=CampusPreview.clip_mesh(section,xf.affine_inverse()*Plane(Vector3.UP,band.low))
-		if bounds.end.y>band.high: section=CampusPreview.clip_mesh(section,xf.affine_inverse()*Plane(Vector3.DOWN,-band.high))
-		if section.get_surface_count()==0: continue
-		if not result.has(band.id): result[band.id]=ArrayMesh.new()
-		var compact: ArrayMesh=result[band.id]
-		for s in section.get_surface_count():
-			var arrays:=section.surface_get_arrays(s)
-			var indices: PackedInt32Array=arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX]!=null else PackedInt32Array(range(arrays[Mesh.ARRAY_VERTEX].size()))
-			if is_finite(band.high) and bounds.end.y>=band.high-.00001:
-				var top_plane:=xf.affine_inverse()*Plane(Vector3.UP,band.high)
-				var vertices: PackedVector3Array=arrays[Mesh.ARRAY_VERTEX]
-				var lower:=PackedInt32Array()
-				for i in range(0,indices.size(),3):
+	var result := {}
+	var surfaces: Array[Array] = []
+	for s in mesh.get_surface_count():
+		surfaces.append(mesh.surface_get_arrays(s))
+	var inverse := xf.affine_inverse()
+	for band: Dictionary in bands:
+		if bounds.end.y < band.low or bounds.position.y >= band.high: continue
+		var cut_bottom: bool = bounds.position.y < band.low
+		var cut_top: bool = bounds.end.y > band.high
+		var touches_top: bool = is_finite(band.high) and bounds.end.y >= band.high - CampusPreview.EPS
+		var bottom_plane := Plane()
+		var top_plane := Plane()
+		if cut_bottom: bottom_plane = inverse * Plane(Vector3.UP, band.low)
+		if cut_top or touches_top: top_plane = inverse * Plane(Vector3.UP, band.high)
+		for s in surfaces.size():
+			# Cuts append interpolated vertices. Each band owns its arrays while
+			# fully retained attributes share the source's packed buffers.
+			var arrays := surfaces[s].duplicate()
+			var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+			if indices.is_empty(): indices = PackedInt32Array(range(arrays[Mesh.ARRAY_VERTEX].size()))
+			if cut_bottom: indices = CampusPreview.clip_triangles(arrays, indices, bottom_plane)
+			if cut_top: indices = CampusPreview.clip_triangles(arrays, indices, Plane(-top_plane.normal, -top_plane.d))
+			if touches_top:
+				var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+				var lower := PackedInt32Array()
+				for i in range(0, indices.size(), 3):
 					# Horizontal faces on a split plane belong to the upper band once.
-					if top_plane.has_point(vertices[indices[i]],.00001) and top_plane.has_point(vertices[indices[i+1]],.00001) and top_plane.has_point(vertices[indices[i+2]],.00001): continue
-					lower.append_array(PackedInt32Array([indices[i],indices[i+1],indices[i+2]]))
-				indices=lower
+					if top_plane.has_point(vertices[indices[i]], CampusPreview.EPS) and top_plane.has_point(vertices[indices[i+1]], CampusPreview.EPS) and top_plane.has_point(vertices[indices[i+2]], CampusPreview.EPS): continue
+					lower.append(indices[i])
+					lower.append(indices[i+1])
+					lower.append(indices[i+2])
+				indices = lower
 			if indices.is_empty(): continue
-			compact.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,_compact(arrays,indices))
-			compact.surface_set_material(compact.get_surface_count()-1,section.surface_get_material(s))
-	for key: String in result.keys():
-		if (result[key] as Mesh).get_surface_count()==0: result.erase(key)
+			if not result.has(band.id): result[band.id] = ArrayMesh.new()
+			var section: ArrayMesh = result[band.id]
+			section.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _compact(arrays, indices))
+			section.surface_set_material(section.get_surface_count() - 1, mesh.surface_get_material(s))
 	return result

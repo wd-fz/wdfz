@@ -21,11 +21,14 @@ var _clock := 700.0
 func begin(entry: Dictionary, worlds: Array[WorldDefinition], view: GameUI, options: GameSettings, muted: bool = false, character: String = StudentCast.DEFAULT) -> String:
 	ui = view
 	settings = options
+	var kind := String(entry.get("cut",""))
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	router = WorldRouter.new()
 	router.worlds = worlds
 	router.world_preparing.connect(func(world: Node3D) -> void:
-		if world is CampusWorld: world.render_options=settings.graphics())
+		if world is CampusWorld:
+			world.render_options = settings.graphics()
+			world.archive_backdrop = kind.is_empty())
 	add_child(router)
 	player = PLAYER.instantiate()
 	add_child(player)
@@ -38,9 +41,6 @@ func begin(entry: Dictionary, worlds: Array[WorldDefinition], view: GameUI, opti
 	audio.volume = settings.get_int("vol") / 100.0
 	audio.muted = muted
 	audio.ambience = false
-	_lift = ElevatorModule.new(CampusData.rooms())
-	_lift.reset()
-	var kind := String(entry.get("cut",""))
 	var stage := String(entry["stage"])
 	if kind == "face": stage = "out"
 	_clock = float(entry.get("hour",700.0/60.0))*60.0
@@ -83,6 +83,8 @@ func begin(entry: Dictionary, worlds: Array[WorldDefinition], view: GameUI, opti
 		opening.finished.connect(func(_skipped: bool) -> void: _done())
 		opening.begin(router.world_instance(),CampusData.rules().room(stage),player,ui,false,character)
 	elif kind in ["void_in","void_out"]:
+		_lift = ElevatorModule.new(CampusData.rooms())
+		_lift.reset()
 		var maze := MazeCut.new()
 		cut = maze
 		add_child(maze)
