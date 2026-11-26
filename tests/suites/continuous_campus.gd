@@ -63,12 +63,17 @@ func test_collision() -> void:
 				"the bridge and its room share the same physical threshold: " + id)
 			for d: float in [-.8,0,.8]:
 				free_at(space.frame(id)*Vector3(p.x+port.n.x*d,.92,p.y+port.n.y*d),"bridge "+id+" "+str(d))
-	for host: String in ["gear1", "admin1", "lab1", "dorm1", "dorm4", "canteen1"]:
+	for host: String in ["teach1", "gear1", "admin1", "lab1", "dorm1", "dorm4", "canteen1"]:
 		var center := space.frame(host).origin
 		var previous := {"position":[center.x, .05, center.z], "yaw":.4, "pitch":.1}
 		var safe := space.outdoor_resume_pose(previous)
 		check(safe.position != previous.position and safe.yaw == previous.yaw, "an old outdoor save inside " + host + " moves to its entrance")
 		free_at(Vector3(safe.position[0], .92, safe.position[2]), "old outdoor save outside " + host)
+	for id: String in ["stair_teach_w", "stair_teach_e"]:
+		var centre := space.stair_bounds(id).get_center()
+		var safe := space.outdoor_resume_pose({"position": [centre.x, .05, centre.y], "yaw": .4, "pitch": .1})
+		check(safe.position != [centre.x, .05, centre.y], "a v0.6.3 plaza save moves outside the relocated " + id)
+		free_at(Vector3(safe.position[0], .92, safe.position[2]), "old plaza save after moving " + id)
 	var lift:=ElevatorModule.new(space.rooms)
 	lift.reset()
 	lift.lifts.teach.door=1.0

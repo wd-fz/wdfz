@@ -14,7 +14,7 @@ func _test_campus_rules() -> void:
 	var behind_wall := CampusGeometry.to_world(t1, -20.2, 3.8)
 	check(CampusGeometry.tile_los(t1, hall_side, along_wall, -1, -1, {}), "the reclaimed corridor strip has clear line of sight along the partition")
 	check(not CampusGeometry.tile_los(t1, hall_side, behind_wall, -1, -1, {}), "the 20 cm partition blocks line of sight across its face")
-	# Door 10:15 is the front door of the first classroom; stand in the corridor facing north.
+	# Door 10:15 is the front door of the first classroom; approach it from the corridor.
 	var door := CampusGeometry.tile_center(t1, 10, 15)
 	var pose := _campus_pose(t1, door + Vector2(0, 14), -PI * 0.5)
 	check(campus.hint("teach1", pose) == "开门", "closed classroom door offers to open")
@@ -30,38 +30,60 @@ func _test_campus_rules() -> void:
 	var l3: Dictionary = rooms["lab3"]
 	var locked := campus.interact_at("lab3", _campus_pose(l3, CampusGeometry.tile_center(l3, 41, 15) + Vector2(0, 14), -PI * 0.5))
 	check(String(locked.get("toast", "")).contains("机房钥匙") and not campus.is_open("lab3:41:15"), "locked door keeps the Web lock and key name")
-	# The plaza entrance and retired south doorway share the same resident floor.
+	# The plaza entrance is on the corridor side of the rotated teaching floor.
+	var space := CampusSpace.new(rooms, CampusData.layout("out"), CampusData.campus())
 	var cfg: Dictionary = CampusData.campus()["campus_doors"]
 	var spec: Dictionary = cfg["doors"][0]
 	var port := CampusGeometry.door_port(t1, spec)
 	var outward: Vector2 = port["n"]
-	check(outward == Vector2.UP and not String(t1["grid"][-1]).contains("O"), "teaching entry faces the plaza and the south wall is sealed")
+	var frame := space.frame("teach1")
+	var facing := frame.basis * Vector3(outward.x, 0, outward.y)
+	check(facing.is_equal_approx(Vector3.FORWARD) and not String(t1["grid"][0]).contains("O"),
+		"the plaza entry faces campus north and the rear wall is sealed")
+	for level in range(1, 6):
+		check((space.frame("teach%d" % level).basis * Vector3.BACK).is_equal_approx(Vector3.FORWARD),
+			"the classroom doors face the plaza gallery on floor %d" % level)
+	var west := space.frame("stair_teach_w").origin
+	var east := space.frame("stair_teach_e").origin
+	var street: Dictionary = t1["exit_world"]
+	check(west.x < street.x * CampusGeometry.U2M and (street.x * CampusGeometry.U2M - west.x) < 10.0 and east.x > west.x
+		and west.z < frame.origin.z and east.z < frame.origin.z, "the north entrance is beside the physical west stair")
+	check(space.frame("teach6").basis.is_equal_approx(frame.basis), "western stair meets the roof in the teaching floor's orientation")
 	var inside := campus.crossing("teach1", _campus_pose(t1, port["p"] - outward * 2, outward.angle()))
 	check(inside.is_empty(), "no switch before the threshold line")
 	var out := campus.crossing("teach1", _campus_pose(t1, port["p"] + outward * .5, outward.angle()))
 	check(out.get("world") == "out", "crossing the threshold leaves to the campus")
 	var back := campus.crossing("out", out["pose"])
 	check(back.is_empty(), "standing outside the gap does not bounce back")
-	var shift := CampusGeometry.shift_of(t1)
-	var entering := campus.crossing("out", _campus_pose(null, port["p"] + shift - outward, (-outward).angle()))
+	var walking_in := _campus_pose(t1, port["p"] - outward, (-outward).angle())
+	var entering := campus.crossing("out", space.global_pose("teach1", walking_in))
 	check(entering.get("world") == "teach1", "walking into the doorway enters teach1")
 	var p_in: Array = entering["pose"]["position"]
 	var expect := CampusGeometry.to_scene(t1, port["p"] - outward)
-	check(absf(p_in[0] - expect.x) < 0.001 and absf(p_in[2] - expect.y) < 0.001, "threshold keeps position through the room/campus translation")
+	check(absf(p_in[0] - expect.x) < 0.001 and absf(p_in[2] - expect.y) < 0.001
+		and is_zero_approx(wrapf(entering.pose.yaw - walking_in.yaw, -PI, PI)), "threshold keeps the local position and facing after the campus rotation")
 	var garage := campus.interact_at("out", _campus_pose(null, Vector2(956, 326), PI * 0.5))
 	check(garage.get("travel", {}).get("world") == "garage1", "E at the garage entrance enters garage1")
 	var entrance: Dictionary = t1["exit_world"]
-	var at_teach := campus.interact_at("out", _campus_pose(null, Vector2(entrance.x, entrance.y), (-outward).angle()))
+	var at_teach := campus.interact_at("out", _campus_pose(null, Vector2(entrance.x, entrance.y), Vector2(-facing.x, -facing.z).angle()))
 	check(at_teach == {"notice": ""}, "the seamless teaching entrance needs no button action")
 	var retired := CampusGeometry.door_port(t1, t1["retired_door"])
-	var space := CampusSpace.new(rooms, CampusData.layout("out"), CampusData.campus())
 	var saved_in_wall := _campus_pose(t1, retired.p - (retired.n as Vector2) * 3.0, 0.2)
 	var repaired := space.resume_pose("teach1", saved_in_wall)
 	var repaired_at := CampusGeometry.to_world(t1, repaired.position[0], repaired.position[2])
-	check(CampusGeometry.tile_at(t1, repaired_at) == "." and repaired.yaw == saved_in_wall.yaw, "a save at the retired south door is restored inside the same corridor")
+	check(CampusGeometry.tile_at(t1, repaired_at) == "." and repaired.yaw == saved_in_wall.yaw, "a Web-era save at the retired door is restored inside the same corridor")
+	for id: String in ["teach1", "teach2"]:
+		var floor_data: Dictionary = rooms[id]
+		var old_passage := _campus_pose(floor_data, CampusGeometry.tile_center(floor_data, 57, 4), .4)
+		var hall := space.resume_pose(id, old_passage)
+		var hall_at := CampusGeometry.to_world(floor_data, hall.position[0], hall.position[2])
+		check(CampusGeometry.tile_at(floor_data, hall_at) == "." and hall.yaw == old_passage.yaw,
+			"a v0.6.3 save in the sealed rear passage recovers on " + id)
+		var classroom := _campus_pose(floor_data, CampusGeometry.tile_center(floor_data, 47, 11), .4)
+		check(space.resume_pose(id, classroom) == classroom, "a classroom save keeps its local position on " + id)
 	var exit_room: Dictionary = rooms["trash1"]
 	check(exit_room["exit_world"] != null, "rooms know where their host door is outside")
-	# Stairwell threshold (stairwell.js): teach1 west stair cell (6..7, 21) opens to stair_teach_w.
+	# The west stair's ground-floor portal opens into the matching shaft.
 	var stair_port := CampusPortals.stair_port(CampusPortals.stair_config(CampusData.campus()["stair_layout"], "stair_teach_w"), 0, rooms, CampusData.layout("out"))
 	var before_stair := campus.crossing("teach1", _campus_pose(t1, stair_port["p"] - Vector2(0, 2), PI * 0.5))
 	check(before_stair.is_empty(), "approaching the stair doorway does not switch yet")
@@ -74,11 +96,12 @@ func _test_campus_rules() -> void:
 	var surfaces := CampusPortals.stair_surfaces(6, 3.2)
 	check(surfaces.size() == 6 * 2 + 5 * 3, "stair surfaces match StairGeometry for six levels")
 	check(is_equal_approx(CampusPortals.surface_at(surfaces, -1.25, 3.2, 0.8)["h"], 0.8), "half way up the first flight is 0.8 m")
-	# Corridor bridge teach2 -> link2 (campus-link/link.js, a pure translation).
+	# The orange bridge meets the teach2 gallery on the same side as the classroom doors.
 	var t2: Dictionary = rooms["teach2"]
 	var link_cfg: Dictionary = CampusData.campus()["campus_link"]
 	var tp := CampusPortals.link_port(rooms, link_cfg["pairs"][3][0], 3)
-	var bridged := campus.crossing("teach2", _campus_pose(t2, (tp["p"] as Vector2) + Vector2(0, -0.5), -PI * 0.5))
+	var bridge_out: Vector2 = tp["n"]
+	var bridged := campus.crossing("teach2", _campus_pose(t2, tp["p"] + bridge_out * .5, bridge_out.angle()))
 	check(bridged.get("world") == "link2", "walking out of teach2's north opening enters the bridge")
 	var back_t2 := campus.crossing("link2", bridged["pose"])
 	check(back_t2.is_empty(), "arriving on the bridge does not bounce back")

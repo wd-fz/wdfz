@@ -2,6 +2,7 @@
   "buildings": {
     "admin": {"x": 356.5},
     "lab": {"x": 455.5},
+    "teach": {"turn": 2},
     "gear": {"x": 257, "ic": [344, 459]},
     "garden": {"n": "地理园", "x": 360, "y": 600, "w": 82, "h": 64},
     "bad2": {"x": 617, "y": 217, "w": 46, "h": 170},
@@ -11,16 +12,16 @@
     "canteen": {"x": 608, "y": 1096, "w": 126, "h": 279, "door": "w", "turn": -1}
   },
   "entrances": {
-    "teach1": {"host": "teach", "edge": "n", "at": 57, "clear": [[56, 1, 58, 15]]},
+    "teach1": {"host": "teach", "edge": "s", "at": 49, "clear": []},
     "admin1": {"host": "admin", "edge": "n", "at": 9, "clear": [[8, 1, 10, 16]]},
     "lab1": {"host": "lab", "edge": "w", "at": 17, "clear": []},
     "dorm1": {"host": "dormN", "edge": "w", "at": 12.5, "clear": [[1, 9, 1, 13], [2, 12, 2, 13]]},
     "dorm4": {"host": "dormS", "edge": "w", "at": 2.5, "clear": [[1, 2, 1, 6], [2, 2, 2, 3]]}
   },
-  "plaza": {"id": "plaza", "n": "绿色广场", "k": "plaza", "x": 354, "y": 799, "w": 266, "h": 68},
+  "plaza": {"id": "plaza", "n": "绿色广场", "k": "plaza", "x": 354, "y": 799, "w": 258, "h": 68},
   "bridges": [
     {"id": "c1", "name": "空中连廊", "north": {"room": "admin2", "at": 38}, "south": {"room": "lab2", "at": 16}},
-    {"id": "c2", "name": "橙色之路", "north": {"room": "lab2", "at": 44}, "south": {"room": "teach2", "at": 57}}
+    {"id": "c2", "name": "橙色之路", "north": {"room": "lab2", "at": 37}, "south": {"room": "teach2", "edge": "s", "at": 12}}
   ],
   "roads": [
     [470, 97, 548, 207],

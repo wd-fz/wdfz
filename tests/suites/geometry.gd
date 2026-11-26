@@ -269,7 +269,7 @@ func test_resident_doorways() -> void:
 		for path: Array in paths:
 			var a: Vector3 = frame * path[0]
 			var b: Vector3 = frame * path[1]
-			check(not _mesh_hit(outside, a, b) and not _mesh_hit(outside, b, a), "outdoor models leave the drinking fountain corridor and east stairs clear at %s m" % height)
+			check(not _mesh_hit(outside, a, b) and not _mesh_hit(outside, b, a), "outdoor models leave the drinking fountain corridor and west stairs clear at %s m" % height)
 			check(body.intersect_ray(PhysicsRayQueryParameters3D.create(a, b, 1)).is_empty(), "no invisible collider across the same passage")
 	for stair: Dictionary in campus.space.campus.stair_layout:
 		var transform := campus.space.frame(stair.id)

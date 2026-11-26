@@ -87,7 +87,7 @@ func test_reference_collision() -> void:
 			node.queue_free()
 		await _frames(2)
 	check(data["scenes"].size() == 34 and total == 55954, "collision comparison covers 34 planar scenes and 55,954 original-game samples")
-	check(adjusted_total == 1335, "all 1,335 intentional geometry changes remain under test")
+	check(adjusted_total == 1180, "all 1,180 intentional geometry changes remain under test")
 
 
 func test_camera_lifecycle() -> void:
