@@ -12,7 +12,7 @@
 
 ## 代码与资源
 
-- 使用 Godot 4.6.3、GDScript 和 UTF-8；GDScript 使用 Tab 缩进，文件名用 `snake_case`，类型名用 `PascalCase`。
+- 使用 Godot 4.7.2、GDScript 和 UTF-8；GDScript 使用 Tab 缩进，文件名用 `snake_case`，类型名用 `PascalCase`。
 - 提交 `.gd.uid`，不要提交 `.godot/`、导出包、编辑器缓存或本机存档。移动脚本时同时移动 UID 文件。
 - 规则层不调用 `Input`、场景树、渲染器和文件 API。外部依赖通过构造参数或应用层连接；表现适配器可以使用 Node 和信号。
 - 资源与场景使用稳定 ID，存档中不保存 Node、Resource、Callable、文件路径或引擎对象句柄。

@@ -15,6 +15,7 @@ static func _pieces(mesh: Mesh, cache: bool = true) -> Array[ArrayMesh]:
 	var id := mesh.get_instance_id()
 	if cache and _cache.has(id) and _cache[id].source.get_ref() == mesh: return _cache[id].pieces
 	var buckets := {}
+	var surface_arrays: Array[Array] = []
 	for s in mesh.get_surface_count():
 		if CampusBatches._primitive(mesh,s) != Mesh.PRIMITIVE_TRIANGLES: return []
 		var mat := mesh.surface_get_material(s) as BaseMaterial3D
@@ -22,6 +23,7 @@ static func _pieces(mesh: Mesh, cache: bool = true) -> Array[ArrayMesh]:
 		if mat == null or mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED: return []
 		var arrays := mesh.surface_get_arrays(s)
 		if arrays.is_empty() or arrays[Mesh.ARRAY_VERTEX] == null: return []
+		surface_arrays.append(arrays)
 		# Exported static campus meshes have no skinning, blend shapes or custom streams.
 		for unsupported in [Mesh.ARRAY_BONES, Mesh.ARRAY_WEIGHTS, Mesh.ARRAY_CUSTOM0, Mesh.ARRAY_CUSTOM1, Mesh.ARRAY_CUSTOM2, Mesh.ARRAY_CUSTOM3]:
 			if arrays[unsupported] != null: return []
@@ -47,7 +49,7 @@ static func _pieces(mesh: Mesh, cache: bool = true) -> Array[ArrayMesh]:
 	for surfaces: Dictionary in buckets.values():
 		var builder := ImporterMesh.new()
 		for s: int in surfaces:
-			var arrays := mesh.surface_get_arrays(s)
+			var arrays := surface_arrays[s]
 			var buffer: Dictionary = surfaces[s]
 			var output := []
 			output.resize(Mesh.ARRAY_MAX)
@@ -81,11 +83,18 @@ static func apply(model: Node3D, cache: bool = true) -> int:
 		if overrides: continue
 		var bounds := source.mesh.get_aabb().size
 		if maxf(bounds.x,bounds.z) <= CELL*1.5: continue
-		var triangles:=0
+		var triangles := 0
+		var native_mesh := source.mesh as ArrayMesh
 		for s in source.mesh.get_surface_count():
-			var arrays:=source.mesh.surface_get_arrays(s)
-			if not arrays.is_empty() and arrays[Mesh.ARRAY_VERTEX]!=null:
-				triangles+=(arrays[Mesh.ARRAY_INDEX].size() if arrays[Mesh.ARRAY_INDEX]!=null and not arrays[Mesh.ARRAY_INDEX].is_empty() else arrays[Mesh.ARRAY_VERTEX].size())/3
+			if native_mesh != null:
+				# Godot stores both counts in the resource. Reading vertex buffers
+				# here stalls the Vulkan worker even for meshes we will never split.
+				var indices := native_mesh.surface_get_array_index_len(s)
+				triangles += (indices if indices > 0 else native_mesh.surface_get_array_len(s)) / 3
+			else:
+				var arrays := source.mesh.surface_get_arrays(s)
+				if not arrays.is_empty() and arrays[Mesh.ARRAY_VERTEX] != null:
+					triangles += (arrays[Mesh.ARRAY_INDEX].size() if arrays[Mesh.ARRAY_INDEX] != null and not arrays[Mesh.ARRAY_INDEX].is_empty() else arrays[Mesh.ARRAY_VERTEX].size()) / 3
 		# Small wall/floor batches cost less to submit than many additional draws. In
 		# open spaces (e.g. the garage) splitting them creates work without occlusion.
 		if triangles<MIN_TRIANGLES: continue

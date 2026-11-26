@@ -17,6 +17,8 @@ import terracotta
 
 
 class TerracottaBuildTests(unittest.TestCase):
+    template_version = (ROOT / '.godot-version').read_text().strip() + '.stable'
+
     def test_windows_archive_bundles_its_required_runtime(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -51,7 +53,7 @@ class TerracottaBuildTests(unittest.TestCase):
                 bundle.writestr('gradlew', '#!/bin/sh\n')
                 bundle.writestr('src/main/AndroidManifest.xml', manifest)
             template = root / 'android-project'
-            terracotta_android.install_template(template, archive, '4.6.3.stable')
+            terracotta_android.install_template(template, archive, self.template_version)
             library = root / 'libterracotta.so'
             library.write_bytes(b'fixture native library')
             for _ in range(2): terracotta_android.install(ROOT, template, library)
@@ -71,7 +73,7 @@ class TerracottaBuildTests(unittest.TestCase):
             self.assertTrue((template / 'build/src/main/java/org/wdfz/diagnostics/WdfzEntryDiagnostics.java').is_file())
             for variant in ('debug', 'release'):
                 self.assertEqual((template / f'build/libs/{variant}/arm64-v8a/libterracotta.so').read_bytes(), library.read_bytes())
-            self.assertEqual((template / '.build_version').read_text(), '4.6.3.stable\n')
+            self.assertEqual((template / '.build_version').read_text(), self.template_version + '\n')
             self.assertEqual((template / 'build/build.gradle').read_text().count('android.sourceSets.main.assets.srcDirs'), 1)
             self.assertTrue((template / 'build/terracotta_assets/terracotta/LICENSE').is_file())
 
@@ -83,5 +85,5 @@ class TerracottaBuildTests(unittest.TestCase):
                 bundle.writestr('build.gradle', '')
                 bundle.writestr('../outside', '')
             with self.assertRaises(RuntimeError):
-                terracotta_android.install_template(root / 'target', archive, '4.6.3.stable')
+                terracotta_android.install_template(root / 'target', archive, self.template_version)
             self.assertFalse((root / 'target/outside').exists())

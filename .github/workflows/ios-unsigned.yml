@@ -11,6 +11,8 @@ jobs:
   ios:
     name: Build and verify unsigned iPhoneOS IPA
     runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4

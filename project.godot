@@ -1,4 +1,4 @@
-; Open this directory in Godot 4.6.3 (standard edition, GDScript).
+; Open this directory in Godot 4.7.2 (standard edition, GDScript).
 config_version=5
 
 [application]
@@ -7,7 +7,7 @@ config/description="探索校园、遵守规则，寻找里世界的出口。"
 config/version="0.6.3"
 config/icon="res://assets/branding/icon.svg"
 run/main_scene="res://game/app/app.tscn"
-config/features=PackedStringArray("4.6", "Forward Plus")
+config/features=PackedStringArray("4.7", "Forward Plus")
 config/use_custom_user_dir=true
 config/custom_user_dir_name="wdfz-godot"
 

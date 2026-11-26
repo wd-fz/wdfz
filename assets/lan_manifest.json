@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "digest": "5bfa2e1d405fb34f47860fbe176b2b7b48ecd86631db2d0cb001db28f0a84d17",
+  "digest": "943ce29941a1737fa7ec4aed1ae21541ff77998e40064632aa60771fdc87e519",
   "files": {
     "assets/campus/architecture/courtyard_collision.tscn": "ea4550e9f850e4065041590edc2ca5ea3a54f79737f8a0b0647458f8fbcf1632",
     "assets/campus/archive.json": "353ffc614efc0061db8929ea1fcb855e6a016f9b00ba461929ccc3c5a8be3755",
@@ -179,7 +179,7 @@
     "game/presentation/world/campus/campus_batches.gd": "bf2a82171404df7fa94308b9e0c1adcf31668151c38a6d77d6da6d967937d6d2",
     "game/presentation/world/campus/campus_connections.gd": "d4569174f4a117b9555d0688ca0a3a475d1939fe2ba999b871810538499609d6",
     "game/presentation/world/campus/campus_lighting.gd": "e3b9e417146fb582afa7484b510eea1966f940e106ea7ad8af33bcb47bffabbb",
-    "game/presentation/world/campus/campus_mesh_cells.gd": "ea891af2f47b88ca0bee4f934c74b6e02fafb3eeace5b788657180a05da262d3",
+    "game/presentation/world/campus/campus_mesh_cells.gd": "eb3569e58a1637f3aedb8fe8fedda7adbf5feb29f1197e8f6b3c466fdd49d97f",
     "game/presentation/world/campus/campus_preview.gd": "bf9106178cb930659b5473c5a9cd8c59f22486d6ebc6d430986462017d629cb1",
     "game/presentation/world/campus/campus_resident.gd": "63aca2e5b0e8e24485c6f9d55388b8773c533053b0dc63149f0359e44e73d612",
     "game/presentation/world/campus/campus_shell.gd": "8e9b37796fe1f3af92200f22af9221d44afcfe21c5e9e4d67862165920fae98e",

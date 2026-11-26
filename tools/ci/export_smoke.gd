@@ -27,6 +27,19 @@ func _model_paths(directory: String) -> PackedStringArray:
 	return result
 
 
+func _check_outdoor_props(model: Node, path: String) -> void:
+	var tint_by_mesh := {}
+	var batches := 0
+	for prop: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		var extras: Dictionary = prop.get_meta("extras", {})
+		if not extras.has("wdfz_instances"): continue
+		var tinted := extras.has("wdfz_colors")
+		_check(prop.mesh != null and tint_by_mesh.get(prop.mesh, tinted) == tinted, "outdoor prop colour binding: " + path)
+		tint_by_mesh[prop.mesh] = tinted
+		batches += 1
+	_check(not tint_by_mesh.is_empty() and tint_by_mesh.size() < batches, "outdoor prop meshes were not shared at import: " + path)
+
+
 func _run() -> void:
 	var driver := RenderingServer.get_current_rendering_driver_name()
 	var method := RenderingServer.get_current_rendering_method()
@@ -44,7 +57,9 @@ func _run() -> void:
 		if packed != null:
 			var model := packed.instantiate()
 			_check(model != null, "exported model cannot instantiate: " + model_path)
-			if model != null: model.free()
+			if model != null:
+				if model_path.get_file() == "out.glb": _check_outdoor_props(model, model_path)
+				model.free()
 		await process_frame
 	print("EXPORTED MODELS: %d loaded with native typed material dependencies" % model_paths.size())
 	var path := "user://framework-tests/export-%s/" % Time.get_ticks_usec()

@@ -153,6 +153,10 @@ func test_residency(quality: int = -1) -> void:
 	app.set_physics_process(false)
 	app.set_process(false)
 	app.player.enabled = false
+	if DisplayServer.get_name() != "headless":
+		# The entry curtain stays up until the first campus frame is drawn.
+		# Begin the player's walk after the same barrier as GameApp._load_then().
+		await RenderingServer.frame_post_draw
 	var first := app._campus_world()
 	var mesh := first.get_node("Model")
 	var collision := first.get_node("Collision")

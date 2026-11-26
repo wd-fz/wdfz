@@ -1,8 +1,8 @@
 @tool
 extends RefCounted
-## Godot 4.6 FileAccessCompressed container. Only the block layout changes;
+## Godot FileAccessCompressed container. Only the block layout changes;
 ## the complete decompressed native resource must remain byte-identical.
-## Format: godotengine/godot@4.6.3-stable core/io/file_access_compressed.cpp.
+## Format: godotengine/godot@4.7.2-stable core/io/file_access_compressed.cpp.
 static var MAGIC := PackedByteArray([82, 83, 67, 67])
 static var EMPTY_ZSTD := PackedByteArray([40, 181, 47, 253, 32, 0, 1, 0, 0])
 const BLOCK := 1024 * 1024
