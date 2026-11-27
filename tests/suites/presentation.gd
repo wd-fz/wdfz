@@ -44,11 +44,16 @@ func _test_fake_people() -> void:
 	await _frames(4)
 	check(not app.fake_normal().active() and app._fake_people == null, "the second day alone never changes the world")
 	app.school().tt = 100
-	app._fake_people_random.seed = 42
 	app._reach_ending("false_normal")
-	check(app.story().ended == "false_normal" and is_instance_valid(app._fake_people), "full assimilation turns the occupied room into the false ending")
-	if is_instance_valid(app._fake_people):
-		check(app._fake_people.get_child_count() <= 4, "the room contains at most four additional figures")
+	check(app.story().ended == "false_normal", "full assimilation reaches the false ending")
+	if DisplayServer.get_name() != "headless":
+		var cut := app._ending_cut
+		check(is_instance_valid(cut) and cut.on and cut.kind == "false_normal", "assimilation starts the classroom cut")
+		if is_instance_valid(cut):
+			check(is_instance_valid(cut._replacement) and cut._replacement.character == app.session.character_id, "the student at the desk is the player's double")
+			cut.end(true)
+			check(app._campus_world().visible and app.player.camera.current, "skipping the classroom cut restores the campus and camera")
+	check(app.ui.ending_panel.visible and app.ui._ending_text.text.contains("替我答到"), "the false ending card explains who answered for the player")
 	app.return_to_menu()
 	check(app._fake_people == null, "the false ending leaves no figures in the next run")
 	app.queue_free()
