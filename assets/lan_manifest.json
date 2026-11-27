@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "digest": "ba73357d155eb0b883cca906c59f46d3fbab9d79450ae74f060ceedf66f02296",
+  "digest": "a1f78fa8881654fed1ca802215ce921ed64716e97379360d372e1c91807e9e7a",
   "files": {
     "assets/campus/architecture/courtyard_collision.tscn": "6ee93d9e1cc3a3181e225918af93939b1b0535de5f219f6efeaeeb5f662ac523",
     "assets/campus/archive.json": "542c7b9b76bac2a772366438dc137f9a9a9bce5b3d939ba0e900f1724dd63394",
@@ -53,7 +53,7 @@
     "assets/campus/maze/maze.json": "086b280304f21c70e7719a95a4e17f8f3eacfa4794ac44ba3f45d91c999c1143",
     "assets/campus/maze_death_geometry.json": "532834aac5b31652b8f9fdceb91643622e96b6ba33a81152df5bf57f6e5cd4b6",
     "assets/campus/patrol/patrol_data.json": "3a445d5535bb20f6074c2aee9a93b4a1894d62f9f5a0a3a351f53d9503065c3c",
-    "assets/campus/rules_dlc.json": "8ac14ef23fb3485f3768aa1289618247d5e2ea287f99d647d81ee277cefc526e",
+    "assets/campus/rules_dlc.json": "540265974a8731d7c4006e5013ba2c8c2f96fc982a3760fca46d8211134ec6db",
     "assets/campus/scenes/index.json": "23d6e7d28a95d9c3e77353b9c57a7acd22601f46d73746509eed4b43cde7e3ac",
     "game/app/application_exit.gd": "29c003e84374a00b930eda83ffcdc655b3b1f61c69b877b0193f23713f94acc4",
     "game/app/archive_flow.gd": "91b1044670c9d396db5b2cfe16b8658f89bf629ab54b6dd94ef2b0926f3e4ce4",
@@ -149,7 +149,7 @@
     "game/features/story/opening_story.gd": "59ffc8fe0178dced02c31eaf7fbe668a9adb5d43f2982a2a5d7145c5ee2a26fa",
     "game/features/story/paper_plane_module.gd": "e725ec590e2abae2dc8f9edd045eae778a4ec71337eb29b56c6b72c7e384f09e",
     "game/features/story/routes_module.gd": "d17f11308576e61be847a6194068d9ca6c6510aa7d8d257e6f57330a23f27329",
-    "game/features/story/rules_dlc_module.gd": "1514aa0f1817c41a9658809aee3a32c57fe791f3a6ea8a63fd9b9859c185726a",
+    "game/features/story/rules_dlc_module.gd": "538cce771fec7292d9861f3fab198ba5cf84d49808ff35c02d925a8b42856056",
     "game/features/story/story_module.gd": "a88b79b901b980e25e0181bc9eaed4ecab55a495cc296f0b63530b2eaf830296",
     "game/features/story/talent_module.gd": "09d6b4fed03a662e3ab09e1fd3b5a95c3395cfb5d2813aa271c2a9a19477cbed",
     "game/features/story/window_gaze_module.gd": "4612758c784ac98423e1b6a33221b8001ad2d934e06b513d7ea30a235fcc1c71",

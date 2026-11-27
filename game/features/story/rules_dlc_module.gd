@@ -112,6 +112,11 @@ func spots() -> Array:
 			if not windows.is_empty():
 				var window: Dictionary=windows[mini(int(where["win"]),windows.size()-1)]
 				pos={"room":where["room"],"x":window["p"].x,"y":window["p"].y+window["nz"]*room["th"]*.45,"h":1.5}
+		elif where.has("tile"):
+			var tile: Array = where["tile"]
+			var point := CampusGeometry.tile_center(room, int(tile[0]), int(tile[1]))
+			if CampusGeometry.tile_at(room, point) == where["ch"]:
+				pos = {"room": where["room"], "x": point.x, "y": point.y, "h": .03}
 		else:
 			var n:=0
 			for row in int(room["rows"]):

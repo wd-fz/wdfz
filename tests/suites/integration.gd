@@ -682,8 +682,8 @@ func _test_dismissal_route(app: GameApp) -> void:
 	await _skip_cut(app)
 	check(won and app.story().ended == "dismissal" and app.ui.ending_panel.visible, "following the crowd out of the north gate is 《放学》")
 	var ending := app.ui._ending_text.text if is_instance_valid(app.ui._ending_text) else ""
-	check(ending.contains("现实的课桌上睁开眼") and ending.contains("他摇摇头") and ending.contains("秒针走了一格"),
-		"the player wakes at the real desk and the classmate did not hear the dismissal bell")
+	check(ending.contains("现实的课桌上睁开眼") and ending.contains("讲台上的钟") and ending.contains("秒针走了一格"),
+		"the player wakes at the real desk and sees the classroom clock running")
 	check(app.achievements().unlocked.has("e.end_dismissal"), "with its achievement")
 	app.return_to_menu()
 	DirAccess.remove_absolute(app._profile_path())

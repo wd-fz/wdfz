@@ -155,10 +155,11 @@ func test_app() -> void:
 	app._lift_crowd_step(0)
 	# Exercise the real capsule through both animated doors, not a position teleport.
 	var out: Vector2=app.elevator().frame("teach3")["out"]
+	var outward := app.player.get_parent_node_3d().global_basis * Vector3(out.x, 0, out.y)
 	app._campus_world().apply_lift_doors(app.elevator())
 	await _frames(2)
 	for i in 70:
-		app.player.velocity=Vector3(out.x*2.5,0,out.y*2.5)
+		app.player.velocity = outward * 2.5
 		app.player.move_and_slide()
 		app.elevator().step(1.0/60,app.session.world_id,app.player.capture_pose())
 		app._lift_crowd_step(1.0/60)
