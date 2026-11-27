@@ -20,13 +20,15 @@ extends Node
 ##   and through the ring, white at the end.
 ##   international (《外国语学生》) — 20 s on four little stages of its own (the world is hidden): the visitors pass
 ##   the north gate, the guard checks the reception list while two searchers stop inside, outside the colours are
-##   ordinary and a temporary reception pass is handed back, the pass names a school that sounds unfamiliar.
+##   ordinary and the player's school is printed under a different heading on the returned reception pass.
 ## The rest of the endings still go straight to their cards (docs/plan/结局分镜.md).
 
 signal finished(skipped: bool)
 
 const DEFS := {"false_normal":{"dur":6.0,"outdoor":false},"inception":{"dur":20.0,"outdoor":false},"knife":{"dur":16.0,"outdoor":false},"beast":{"dur":9.0,"outdoor":false}, "face": {"dur": 10.0, "outdoor": true}, "international": {"dur": 20.0, "outdoor": false}, "dismissal": {"dur": 18.0, "outdoor": false}, "portal": {"dur": 10.0, "outdoor": false}, "cyber": {"dur": 16.0, "outdoor": false}, "car": {"dur": 10.0, "outdoor": false}}
-const STAGED := ["inception","knife","international", "dismissal", "portal", "cyber", "car"]
+const STAGED := ["false_normal", "inception","knife","international", "dismissal", "portal", "cyber", "car"]
+const PAPER_REVIEW := "paper_review"
+const PAPER_SECONDS := 6.0
 const COAT := [Color("#3a4a6a"), Color("#7a5a3a"), Color("#5a6a4a"), Color("#8a6a6a")]
 const SC := 2.0
 
@@ -105,6 +107,10 @@ var _frame_delta := 0.0
 var _normal_before := 0.0
 var _cut_clock := 700.0
 var _live_lighting: CampusLighting
+var _replacement: StudentAvatar
+var _replacement_arm: Dictionary = {}
+var _paper_room: Node3D
+var _paper_sample := ""
 
 
 static func has(id: String) -> bool:
@@ -136,7 +142,7 @@ static func intl_caption(stage: int, how: String) -> String:
 			return "门卫对着名单点了点头。门里的两个搜查员停住了，没有再往前走。"
 		2:
 			return "门外的声音很平常。有人把临时接待证递还给我：「Danke.」「Merci.」"
-	return "接待证上的学校名字，好像和我记得的不太一样。队伍在前面轻声叫我。"
+	return "接待证上的学校名字是「武汉大学附属中学」。我一直在这儿上学，名单上却写着「来访」。"
 
 
 static func ease_k(x: float) -> float:
@@ -177,7 +183,7 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	_live_lighting = world.lighting if world is CampusWorld else null
 	_player = player
 	_on_beep = on_beep
-	_dur = float(DEFS[id]["dur"])
+	_dur = PAPER_SECONDS if id == PAPER_REVIEW else float(DEFS[id]["dur"])
 	k = 0.0
 	_paper_exit = opts.get("paper_exit", false)
 	_beeped = _paper_exit
@@ -186,6 +192,7 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	_root = Node3D.new()
 	_root.name = "EndingProps"
 	_world = world
+	_world_was_visible = world.visible
 	_school = world.get_parent() as CampusResident
 	if _school != null: _school_was_visible = _school.visible
 	# 《门》 plays in the real lab with the real rig when the player is there (the ending only starts there).
@@ -196,10 +203,9 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 		_car_switch = opts["switch"]
 		_car_tsec = float(opts.get("tsec", 0.0))
 		add_child(_root)
-	elif STAGED.has(id) and not live_portal:
+	elif (STAGED.has(id) and not live_portal) or id == PAPER_REVIEW:
 		# Its own stages far from the real scene: the world is hidden meanwhile.
 		_how = String(opts.get("how", "exam"))
-		_world_was_visible = world.visible
 		_set_world_visible(false)
 		add_child(_root)
 		var env := WorldEnvironment.new()
@@ -223,9 +229,15 @@ func begin(id: String, world: Node3D, campus: Dictionary, player: PlayerControll
 	cam.far = player.camera.far
 	_root.add_child(cam)
 	cam.current = true
+	var evidence: Dictionary = opts.get("evidence", {})
+	_paper_sample = String(evidence.get("sample", ""))
+	if _paper_sample in ["甲", "乙"]:
+		_setup_paper_review()
+	if id == PAPER_REVIEW:
+		_apply_paper_review(0.0)
+		return
 	if id == "false_normal":
-		cam.global_transform = player.camera.global_transform
-		snd("event.bigBell", {"k": 0.45})
+		_setup_false_normal(String(opts.get("character", StudentCast.DEFAULT)))
 		_apply(0)
 		return
 	if id=="inception":
@@ -327,12 +339,11 @@ func _set_world_visible(value: bool) -> void:
 
 
 func _apply(kk: float) -> void:
+	if kind == PAPER_REVIEW:
+		_apply_paper_review(kk)
+		return
 	if kind == "false_normal":
-		_ui.set_normal_world(1)
-		if is_instance_valid(_live_lighting):
-			_live_lighting.world_normal = 1
-			_live_lighting.update(0, 720, cam)
-		_ui.cut_caption("老师念到了我的名字。" if kk < .5 else "我还没张嘴，教室里已经有人替我说了声「到」。")
+		_apply_false_normal(kk)
 		return
 	if kind=="inception":
 		var frame:=_inception.apply(kk,cam,_frame_delta)
@@ -429,7 +440,11 @@ func tick(delta: float) -> void:
 	k += delta / _dur
 	_frame_delta=delta
 	if k >= 1.0:
-		end(false)
+		var paper_progress := (k - 1.0) * _dur / PAPER_SECONDS
+		if _paper_room != null and kind != PAPER_REVIEW and paper_progress < 1.0:
+			_apply_paper_review(paper_progress)
+		else:
+			end(false)
 		return
 	_apply(k)
 
@@ -459,7 +474,7 @@ func _finish(skipped: bool, notify: bool) -> void:
 		_ui.cut_fade(0.0)
 	if (kind == "cyber" or not notify) and audio != null and is_instance_valid(audio):
 		audio.stop("scene")
-	if STAGED.has(kind) and is_instance_valid(_world):
+	if (STAGED.has(kind) or _paper_room != null) and is_instance_valid(_world):
 		_world.visible = _world_was_visible
 	for prop in _dis_model_props:
 		if is_instance_valid(prop): prop.show()
@@ -570,7 +585,7 @@ func _setup_intl() -> void:
 	var e: Node3D = _st[3]
 	_box(e, 30, 0.05, 30, Color("#7a776c"), 0, 0, 0)
 	_box(e, 30, 6, 0.2, Color("#b8c4c8"), 0, 3, -10)
-	_pass2 = _card(["临时接待证", "武大附属外国语学校", "高二（二）班"])
+	_pass2 = _card(["临时接待证 · 来访", "武汉大学附属中学", "高中 · 高二（二）班"])
 	_pass2.position = Vector3(0.0, 1.3, -0.5)
 	_pass2.scale = Vector3.ONE * 1.6
 	e.add_child(_pass2)
@@ -634,6 +649,139 @@ func _room(g: Node3D, w: float, d: float) -> void:
 	_box(g, w, 0.08, d, Color("#414944"), 0, -0.04, 0)
 	_box(g, w, 3.0, 0.08, Color("#65706a"), 0, 1.5, -d / 2.0)
 	_box(g, 0.08, 3.0, d, Color("#4e5b58"), -w / 2.0, 1.5, 0)
+
+
+func _setup_false_normal(character: String) -> void:
+	_stage_env.background_color = Color("#aeb9b9")
+	_stage_env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	_stage_env.ambient_light_color = Color("#e8dfc9")
+	_stage_env.ambient_light_energy = 0.85
+	var room := Node3D.new()
+	room.name = "AssimilationClassroom"
+	_root.add_child(room)
+	_room(room, 6.2, 8.0)
+	_box(room, 6.2, 0.04, 8.0, Color("#b5b4a9"), 0, 0, 0)
+	_box(room, .08, 3.0, 8.0, Color("#7d8984"), 3.1, 1.5, 0)
+	for z: float in [-2.52, -.18, 2.16]:
+		_box(room, .06, 1.35, 1.64, Color("#c8d5cd"), 3.04, 1.98, z)
+		for rail: float in [-.76, .0, .76]:
+			_box(room, .075, 1.35, .035, Color("#526664"), 2.99, 1.98, z + rail)
+		_box(room, .18, .06, 1.72, Color("#767e72"), 2.96, 1.29, z)
+	_box(room, 5.4, 1.12, 0.05, Color("#303b33"), 0, 1.92, -3.92)
+	var board := _label("点　名", 0.18, Color("#f2ebd6"))
+	board.position = Vector3(0, 2.21, -3.87)
+	room.add_child(board)
+	_box(room, 1.28, 0.86, 0.49, Color("#85745d"), 1.04, 0.43, -2.92)
+	for z: float in [-1.45, -.52, .69, 1.74]:
+		for x: float in [-1.66, 0.0, 1.66]:
+			_box(room, 1.12, 0.07, 0.66, Color("#ad8962"), x, 0.75, z)
+			for side: float in [-0.44, 0.44]:
+				_box(room, .045, .72, .50, Color("#777e79"), x + side, .36, z)
+			if x != 0.0 and z != 1.74: _fig(room, "sit", Color("#637080"), x, z + .35, PI)
+	var teacher := StudentAvatar.new()
+	room.add_child(teacher)
+	teacher.dress_teacher()
+	teacher.position = Vector3(1.04, 0, -3.3)
+	teacher.rotation.y = PI
+	teacher.advance("read", .3)
+	_replacement = StudentAvatar.new()
+	_replacement.name = "Replacement"
+	room.add_child(_replacement)
+	_replacement.dress(character)
+	_replacement.position.z = -.09
+	_replacement.advance("sit", .3)
+	if _replacement.skeleton != null:
+		for bone: String in ["ArmR", "ElbowR"]:
+			var index := _replacement.skeleton.find_bone(bone)
+			if index >= 0: _replacement_arm[index] = _replacement.skeleton.get_bone_pose_rotation(index)
+	var paper := _card(["综合测验", OpeningStory.student_name(character), "已应到"])
+	paper.position = Vector3(0.07, .792, -.53)
+	paper.rotation.x = -PI / 2
+	room.add_child(paper)
+
+
+func _apply_false_normal(kk: float) -> void:
+	_ui.set_normal_world(1)
+	var lift := phase(kk, .40, .58)
+	var i := 0
+	for bone: int in _replacement_arm:
+		var target := Quaternion(Vector3.RIGHT, 1.23 if i == 0 else 1.56)
+		_replacement.skeleton.set_bone_pose_rotation(bone, (_replacement_arm[bone] as Quaternion).slerp(target, lift))
+		i += 1
+	if kk < .37:
+		_look(Vector3(.79, 1.5, 1.54), Vector3(.48, 1.26, -2.6))
+		_ui.cut_caption("教室里又响起了点名。老师念到「%s」。" % OpeningStory.student_name(_replacement.character))
+	else:
+		var from := Vector3(-1.01, 1.42, -.92).lerp(Vector3(-.82, 1.46, -1.04), lift)
+		_look(from, Vector3(-.12, 1.16 + lift * .13, -.14))
+		_ui.cut_caption("坐在我座位上的人先举起了手。" if kk < .78 else "轮到我的名字时，名册上已经画好了勾。")
+	_ui.cut_fade(maxf(1.0 - phase(kk, 0, .11), phase(kk, .91, 1.0)))
+	if kk >= .18 and not _beeped:
+		_beeped = true
+		snd("event.bigBell", {"k": 0.36})
+
+
+func _setup_paper_review() -> void:
+	_paper_room = Node3D.new()
+	_paper_room.name = "NorthGatePaperReview"
+	_paper_room.position = Vector3(320, 0, -360)
+	_root.add_child(_paper_room)
+	_room(_paper_room, 4.8, 4.4)
+	_box(_paper_room, 2.56, .13, .91, Color("#ad9479"), 0, .86, -.12)
+	_box(_paper_room, 2.42, .77, .76, Color("#796853"), 0, .42, -.12)
+	_box(_paper_room, .94, .53, .06, Color("#313d42"), 0, 1.235, -.19)
+	for i in 2:
+		var x := -.19 if i == 0 else .19
+		var sample := MeshInstance3D.new()
+		sample.name = "SampleA" if i == 0 else "SampleB"
+		sample.mesh = ObservationProps.paper_mesh(i == 0 and _paper_sample == "甲")
+		sample.position = Vector3(x, 1.255, -.15)
+		RenderMaterials.set_override(sample, FigureModel.material(Color("#f1e4bf"), true))
+		_paper_room.add_child(sample)
+		var mark := _label("甲" if i == 0 else "乙", .023, Color("#3c3428"))
+		mark.position = sample.position + Vector3(.0, -.016, .004)
+		_paper_room.add_child(mark)
+	for x: float in [-.474, .474]:
+		_box(_paper_room, .019, .55, .23, Color("#7e9695"), x, 1.24, -.10)
+	for y: float in [.969, 1.51]:
+		_box(_paper_room, .965, .022, .23, Color("#7e9695"), 0, y, -.10)
+	var pane := MeshInstance3D.new()
+	var quad := QuadMesh.new()
+	quad.size = Vector2(.94, .52)
+	pane.mesh = quad
+	pane.position = Vector3(0, 1.24, .018)
+	var glass := FigureModel.material(Color(0.65, 0.82, 0.83, 0.12), true)
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	RenderMaterials.set_override(pane, glass)
+	_paper_room.add_child(pane)
+	_box(_paper_room, .39, .082, .014, Color("#dfd0a7"), .0, 1.50, .034)
+	var seal := _label("封存　四·二", .039, Color("#594034"))
+	seal.position = Vector3(0, 1.50, .045)
+	_paper_room.add_child(seal)
+	_box(_paper_room, .32, .15, .022, Color("#d9c8a3"), .65, 1.105, -.024)
+	var pairing := _label("配对表　甲", .033, Color("#46362b"))
+	pairing.position = Vector3(.65, 1.105, -.009)
+	_paper_room.add_child(pairing)
+	var sign := _label("北门岗亭", 0.12, Color("#e7e2ca"))
+	sign.position = Vector3(0, 1.94, -2.14)
+	_paper_room.add_child(sign)
+	_paper_room.hide()
+
+
+func _apply_paper_review(progress: float) -> void:
+	if _root.get_parent() == _world: _root.reparent(self)
+	_set_world_visible(false)
+	_paper_room.show()
+	if is_instance_valid(_stage_env): cam.environment = _stage_env
+	_ui.set_normal_world(1)
+	var at := _paper_room.position
+	var lean := phase(progress, .10, .62)
+	_look(at + Vector3(.75, 1.69, 1.79).lerp(Vector3(.17, 1.44, 1.04), lean), at + Vector3(.13, 1.25, -.12))
+	if progress < .40:
+		_ui.cut_caption("现实的北门岗亭。封条上是「四·二」，配对表只圈了甲。")
+	else:
+		_ui.cut_caption("甲纸少了半个圆。乙纸还是整张。" if _paper_sample == "甲" else "两张都完整。刚才缺了一块的乙纸，在现实里连折痕都没有。")
+	_ui.cut_fade(maxf(1.0 - phase(progress, 0, .09), phase(progress, .92, 1.0)))
 
 
 ## An exported piece of equipment (tools/export_scenes --only props): feet at the origin, placed as the old Kit.asset did.

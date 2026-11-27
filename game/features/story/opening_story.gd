@@ -5,7 +5,7 @@ extends RefCounted
 const SIGNATURE := "这笔是我自己的。我刚在试卷的姓名栏这样写过。"
 const LESSON := "请先在姓名栏写下自己的名字。"
 const CLASSROOM := "我交了卷。老师收走它，我把脸埋进校服袖子，趴在课桌上睡着了。"
-const WAKE := "我在自己的课桌上醒来。阳光没了。前面一排人的手同时抬起，又同时落下。笔尖始终没碰到纸。"
+const WAKE := "我在自己的课桌上醒来。阳光没了。全班在同一瞬间转过来，连椅子都没挪一下。"
 const NEXT := "桌角的名牌底下压着一张点名联。我先看看自己的名字，再去北门旁的保安岗查底联。"
 const FIRST_LEAD := "低头看课桌上的名牌，再去北门旁的保安岗核对点名底联。"
 const PERSONAL_MEMORY := {
@@ -30,7 +30,7 @@ static func captions(character: String, short: bool) -> PackedStringArray:
 	var name := student_name(character)
 	if short:
 		return PackedStringArray(["", "", "", "试卷收上去了。我是%s。我趴了一会儿，睡着了。" % name,
-			"我醒了。铃没有响，所有人的笔却同时落下。", "我的名牌还在。底下压了一张点名联。"])
+			WAKE, "我的名牌还在。底下压了一张点名联。"])
 	return PackedStringArray([identity(character), "窗外响着哨声，课代表正把试卷往后传。",
 		"我在姓名栏写下了「%s」。" % name, CLASSROOM, WAKE, NEXT])
 

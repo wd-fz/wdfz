@@ -60,6 +60,8 @@ func test_sites() -> void:
 	var incident: String = CampusTerminal.run(terminal, "cat /school/shift.txt").text
 	check(incident.contains("姓名栏找到了答题的人") and incident.contains("楼梯间只剩测绘时的录音"),
 		"the local report identifies the exam link and the source of the stairwell voice")
+	var handover: String = book.entries["campus:admin5"].text
+	check(handover.contains("张九虎") and handover.contains("K-17") and incident.contains("K-17"), "the physical handover and server log identify the same exam paper")
 	var lab_site: Dictionary = rules.observations("lab1")[0]
 	for choice in 2:
 		var trial := InvestigationModule.new()

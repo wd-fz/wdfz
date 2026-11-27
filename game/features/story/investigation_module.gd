@@ -86,6 +86,11 @@ func restore(data: Dictionary) -> void:
 		if entries.has(key): entries[key]["text"] = DESK_RECORDS[key]
 	if entries.has("campus:teach1"):
 		entries["campus:teach1"]["text"] = CampusObservations.INDOORS["teach1"][5]
+	if entries.has("campus:admin5"):
+		entries["campus:admin5"]["text"] = CampusObservations.INDOORS["admin5"][5]
+		var source := String(entries["campus:admin5"].get("source", ""))
+		if source.ends_with("退回的附件"):
+			entries["campus:admin5"]["source"] = source.trim_suffix("退回的附件") + String(CampusObservations.INDOORS["admin5"][4])
 	if entries.has("campus:stair_teach_w"):
 		entries["campus:stair_teach_w"]["text"] = CampusObservations.LANDINGS["stair_teach_w"][2]
 	if entries.has("broadcastBook"): entries["broadcastBook"]["text"] = BROADCAST_NOTE

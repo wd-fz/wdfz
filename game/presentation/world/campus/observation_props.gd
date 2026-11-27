@@ -159,13 +159,13 @@ func _tray(mount: Node3D) -> void:
 	_box(mount, Vector3(0.58, 0.36, 0.010), Vector3(0, 0.04, 0.078), IRON)
 	for side: int in 2:
 		var x := -0.145 if side == 0 else 0.145
-		_samples.append(_piece(mount, _paper(false), Vector3(x, 0.072, 0.09), SHEET))
+		_samples.append(_piece(mount, paper_mesh(false), Vector3(x, 0.072, 0.09), SHEET))
 		_label(mount, "甲" if side == 0 else "乙", Vector3(x, -0.104, 0.095), 0.0007)
 	_box(mount, Vector3(0.052, 0.27, 0.05), Vector3(0, 0.06, 0.11), RED)
 
 
 ## The half-round cut removes geometry so the dark tray shows through at any angle.
-static func _paper(notched: bool) -> ArrayMesh:
+static func paper_mesh(notched: bool) -> ArrayMesh:
 	if _paper_meshes.has(notched): return _paper_meshes[notched]
 	var points := PackedVector2Array([Vector2(-0.105, -0.13), Vector2(0.105, -0.13), Vector2(0.105, 0.13)])
 	if notched:
@@ -188,5 +188,5 @@ static func _paper(notched: bool) -> ArrayMesh:
 func set_sample(selected: String) -> void:
 	if selected == _selected or _samples.size() != 2: return
 	_selected = selected
-	_samples[0].mesh = _paper(selected == "甲")
-	_samples[1].mesh = _paper(selected == "乙")
+	_samples[0].mesh = paper_mesh(selected == "甲")
+	_samples[1].mesh = paper_mesh(selected == "乙")

@@ -36,7 +36,7 @@ func resume_paper() -> bool:
 	if exam.phase == "writing" and exam.deadline <= Time.get_unix_time_from_system():
 		_submit()
 	get_tree().paused = true
-	_present(exam.deadline - Time.get_unix_time_from_system())
+	_present(exam.deadline - Time.get_unix_time_from_system() if exam.phase == "writing" else -1.0)
 	return true
 
 
@@ -93,13 +93,13 @@ func _action(operation: String, index: int, option: int) -> void:
 		_submit()
 	elif exam.answer(index, option, now):
 		app.save_game(true)
-	_present(exam.deadline - now)
+	_present(exam.deadline - now if exam.phase == "writing" else -1.0)
 
 
 func _expired() -> void:
 	if not app.lan.playing() and paper().phase == "writing":
 		_submit()
-		_present(0)
+		_present(-1.0)
 
 
 func _submit() -> void:
@@ -127,7 +127,7 @@ func cut_finished() -> bool:
 	if app.lan.playing():
 		_waiting_for_team = true
 		_wake_sent = true
-		app.lan.send("exam_wake")
+		if paper().phase == "graded": app.lan.send("exam_wake")
 		return true
 	paper().wake()
 	app.save_game(true)

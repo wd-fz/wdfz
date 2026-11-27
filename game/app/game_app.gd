@@ -5501,7 +5501,6 @@ func _reach_ending(id: String) -> void:
 	_clear_talent_view()
 	var fake := bool(card.get("fake",false))
 	var terminal_false := id == "false_normal"
-	if terminal_false: _show_false_normal()
 	_clear_plane()
 	player.enabled = false
 	player.clear_input()
@@ -5553,7 +5552,6 @@ func _reach_ending(id: String) -> void:
 		ui.show_ending(String(card["title"]), String(card["tag"]), card["lines"], meta, achievements().run_new_labels() if achievements() != null else PackedStringArray(),
 			"rated" if bool(_last_result.get("rated", false)) else ("debug" if bool(_last_result.get("debug", false)) else ""), memory, card.evidence)
 		ui.set_ending_wake(fake and not terminal_false)
-	var world := _campus_world()
 	if (id == "dismissal" or id == "cyber") and session != null and session.world_id != "out" and DisplayServer.get_name() != "headless":
 		# The last stage of the dismissal is the real campus at the north gate: take the player outside first, then play (Engine.beginOutsideStage).
 		var gate := EndingCut.gate_scene(CampusData.campus(), "n")
@@ -5562,24 +5560,37 @@ func _reach_ending(id: String) -> void:
 		await get_tree().process_frame
 		if session != ending_session:
 			return
-		world = _campus_world()
-	if EndingCut.has(id) and world != null and session != null and (session.world_id == "out" or not EndingCut.needs_outdoor(id)) and DisplayServer.get_name() != "headless":
-		if _ending_cut != null and is_instance_valid(_ending_cut):
-			_ending_cut.queue_free()
-		_ending_cut = EndingCut.new()
-		_ending_cut.name = "EndingCut"
-		add_child(_ending_cut)
-		var was_paused := get_tree().paused
-		get_tree().paused = true
-		_ending_cut.finished.connect(func(_skipped: bool) -> void:
-			if _skipped and playtest.recording: playtest.horror.skip()
-			get_tree().paused = was_paused
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-			show_card.call())
-		_ending_cut.audio = audio
-		_ending_cut.begin(id, world, CampusData.campus(), player, ui, func() -> void: audio.play("ui.click"), {"how": String(exchange().s.get("how", "exam")) if exchange() != null else "exam","tsec":school().tsec})
-		return
+	var cut := id
+	if not card.evidence.get("sample", "").is_empty() and EndingCut.needs_outdoor(id) and session.world_id != "out":
+		cut = EndingCut.PAPER_REVIEW
+	if _play_ending_cut(cut, card.evidence, show_card): return
+	if terminal_false: _show_false_normal()
 	show_card.call()
+
+
+func _play_ending_cut(id: String, evidence: Dictionary, show_card: Callable) -> bool:
+	var world := _campus_world()
+	if world == null or session == null or DisplayServer.get_name() == "headless": return false
+	if id != EndingCut.PAPER_REVIEW and (not EndingCut.has(id) or (EndingCut.needs_outdoor(id) and session.world_id != "out")): return false
+	if is_instance_valid(_ending_cut):
+		_ending_cut.cancel()
+		_ending_cut.queue_free()
+	_ending_cut = EndingCut.new()
+	_ending_cut.name = "EndingCut"
+	add_child(_ending_cut)
+	var was_paused := get_tree().paused
+	var pauses_world := not lan.playing()
+	if pauses_world: get_tree().paused = true
+	_ending_cut.finished.connect(func(skipped: bool) -> void:
+		if skipped and playtest.recording: playtest.horror.skip()
+		if pauses_world: get_tree().paused = was_paused
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		show_card.call())
+	_ending_cut.audio = audio
+	_ending_cut.begin(id, world, CampusData.campus(), player, ui, func() -> void: audio.play("ui.click"), {
+		"how": String(exchange().s.get("how", "exam")) if exchange() != null else "exam",
+		"tsec": school().tsec, "character": session.character_id, "evidence": evidence})
+	return true
 
 
 func _anomaly_context(room: Variant, pose: Dictionary) -> Dictionary:

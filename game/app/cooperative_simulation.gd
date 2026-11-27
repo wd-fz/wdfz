@@ -2,6 +2,7 @@ class_name CooperativeSimulation
 extends Node
 ## Host authority. No UI or device input; one simulation tick for the shared campus.
 signal checkpoint_requested
+const EXAM_WAKE_GRACE := 30.0
 var room: CooperativeRoom
 var actors: Dictionary = {}
 var shared: Dictionary = {}
@@ -122,6 +123,8 @@ func release(id: String, stop_movement: bool = true) -> void:
 
 func disconnect_member(id: String) -> void:
 	gameplay.disconnected(id)
+	if room.phase == "playing" and not exam_pending():
+		_finish_offline_exams(Time.get_unix_time_from_system())
 
 
 func departed(id: String) -> void:
@@ -137,23 +140,50 @@ func departed(id: String) -> void:
 
 func exam_pending() -> bool:
 	for a: CooperativeActor in actors.values():
-		if is_participating(a.id) and room.members[a.id]["connected"] and a.entrance_exam().phase != "done": return true
+		if is_participating(a.id) and room.members[a.id]["connected"] and not a.fate().over() and a.entrance_exam().phase != "done": return true
 	return false
 
 
-func _grade_exam(a: CooperativeActor) -> void:
+func _grade_exam(a: CooperativeActor, now: float) -> void:
 	var exam := a.entrance_exam()
+	if exam.phase == "waiting": exam.start(now, RandomNumberGenerator.new())
 	if not exam.submit(): return
+	exam.deadline = now + EXAM_WAKE_GRACE
 	if a.talent().all_active():
 		inventory.restore_phone(a)
 		inventory.reconcile(a)
 	checkpoint_requested.emit()
 
 
+func _finish_offline_exams(now: float) -> void:
+	for a: CooperativeActor in actors.values():
+		var exam := a.entrance_exam()
+		if exam.phase == "done" or not is_participating(a.id) or room.members[a.id]["connected"]: continue
+		_grade_exam(a, now)
+		exam.wake()
+		checkpoint_requested.emit()
+
+
+func _advance_exams(now: float) -> void:
+	for a: CooperativeActor in active_actors():
+		if a.fate().over(): continue
+		var exam := a.entrance_exam()
+		if exam.phase == "done": continue
+		if exam.deadline == 0.0:
+			exam.deadline = now + (EXAM_WAKE_GRACE if exam.phase == "graded" else EntranceExam.SECONDS)
+			checkpoint_requested.emit()
+		if now < exam.deadline: continue
+		if exam.phase == "graded":
+			exam.wake()
+			checkpoint_requested.emit()
+		else:
+			_grade_exam(a, now)
+
+
 func _exam_command(a: CooperativeActor, data: Dictionary) -> Dictionary:
 	var exam := a.entrance_exam()
 	var now := Time.get_unix_time_from_system()
-	if exam.phase == "writing" and now >= exam.deadline: _grade_exam(a)
+	if exam.phase in ["waiting", "writing"] and exam.deadline > 0.0 and now >= exam.deadline: _grade_exam(a, now)
 	match String(data.get("action", "")):
 		"exam_start":
 			if exam.phase == "waiting":
@@ -163,7 +193,8 @@ func _exam_command(a: CooperativeActor, data: Dictionary) -> Dictionary:
 			if not SaveSchema.is_integer(data.get("index"), 0, EntranceExam.COUNT - 1) or not SaveSchema.is_integer(data.get("option"), 0, 3):
 				return {"ok": false, "error": "无效的选项。"}
 			if exam.answer(int(data.index), int(data.option), now): checkpoint_requested.emit()
-		"exam_submit": _grade_exam(a)
+		"exam_submit":
+			if exam.phase == "writing": _grade_exam(a, now)
 		"exam_wake":
 			if exam.phase == "graded":
 				exam.wake()
@@ -175,12 +206,11 @@ func _exam_command(a: CooperativeActor, data: Dictionary) -> Dictionary:
 func tick(dt: float) -> void:
 	normalize_members()
 	if room == null or room.phase != "playing" or room.paused_left > 0.0: return
+	var exam_window := _seconds == 0.0
 	if exam_pending():
-		var now := Time.get_unix_time_from_system()
-		for a: CooperativeActor in actors.values():
-			var exam := a.entrance_exam()
-			if exam.phase == "writing" and now >= exam.deadline: _grade_exam(a)
-		return
+		_advance_exams(Time.get_unix_time_from_system())
+		if exam_pending(): return
+	if exam_window: _finish_offline_exams(Time.get_unix_time_from_system())
 	for i in 6 if gameplay.studying() else 1:
 		if room.phase != "playing": break
 		if i > 0 and not gameplay.studying(): break
@@ -385,7 +415,8 @@ func state_for(id: String) -> Dictionary:
 	data["team"] = team_for(a)
 	if exam_pending():
 		data["exam_pending"] = true
-		data["exam_left"] = clampf(a.entrance_exam().deadline - Time.get_unix_time_from_system(), 0, EntranceExam.SECONDS)
+		var deadline := a.entrance_exam().deadline
+		data["exam_left"] = clampf(deadline - Time.get_unix_time_from_system(), 0, EntranceExam.SECONDS) if deadline > 0.0 else -1.0
 	var radio: BroadcastModule = shared[&"story.broadcast"]
 	data["radio_live"] = {"held": radio.held, "progress": radio.progress}
 	var observing := observed(id)
@@ -457,6 +488,12 @@ func restore(data: Dictionary) -> void:
 		if not active or expired: release_source(source, owner.id)
 	physics.sync_doors(campus(),gameplay.lifts,gameplay.lift_engines)
 	_seconds = float(data.get("seconds", 0))
+	# Earlier checkpoints could advance while an offline player still had an unfinished paper.
+	if _seconds > 0.0:
+		for member: CooperativeActor in active_actors():
+			if member.entrance_exam().phase == "done": continue
+			_grade_exam(member, Time.get_unix_time_from_system())
+			member.entrance_exam().wake()
 	room.tick = int(data["room"]["tick"])
 	room.debug_run = bool(data["room"].get("debug", false))
 	for a: CooperativeActor in actors.values(): inventory.reconcile(a)

@@ -93,7 +93,7 @@ func _fit() -> void:
 func present(exam: EntranceExam, student: String, seconds_left: float) -> void:
 	_exam = exam
 	_title.text = "武大附中　·　高二综合测验　　　姓名　" + student
-	_until_ms = Time.get_ticks_msec() + roundi(seconds_left * 1000)
+	_until_ms = Time.get_ticks_msec() + roundi(seconds_left * 1000) if seconds_left >= 0.0 else -1
 	if _phase != exam.phase:
 		_confirming = false
 		_submitted = false
@@ -139,7 +139,7 @@ func _commit() -> void:
 func _paint() -> void:
 	var writing := _phase == "writing"
 	var reading := writing and not _confirming
-	_clock.visible = writing
+	_clock.visible = _until_ms >= 0 and _phase in ["waiting", "writing", "graded"]
 	_pages.visible = reading
 	_prev.visible = writing
 	_prev.disabled = _submitted or (not _confirming and index == 0)
@@ -171,7 +171,7 @@ func _paint() -> void:
 	elif _confirming:
 		_prompt.text = "还有 %d 道题未答。交卷后只公布总分，无法再改答案。" % _exam.answers.count(-1)
 	elif _phase == "waiting":
-		_prompt.text = "监考老师把试卷放上课桌。「先写姓名。六科各五题，十分钟。交卷前可以改答案。」窗外传来操场上的哨声。"
+		_prompt.text = "监考老师把试卷放上课桌。姓名栏右侧少了一小截横线。\n「先写姓名。六科各五题，十分钟。交卷前可以改答案。」"
 	elif _phase == "graded":
 		_prompt.text = "得分　%d / %d" % [_exam.score, EntranceExam.COUNT]
 	else:
@@ -179,11 +179,11 @@ func _paint() -> void:
 
 
 func _process(_dt: float) -> void:
-	if not visible or _phase != "writing": return
+	if not visible or not _clock.visible: return
 	var left := maxi(0, ceili((_until_ms - Time.get_ticks_msec()) / 1000.0))
 	if left != _last_second:
 		_clock.text = "%02d:%02d" % [floori(left / 60.0), left % 60]
 		_last_second = left
-	if left == 0 and not _expired:
+	if left == 0 and _phase == "writing" and not _expired:
 		_expired = true
 		expired.emit()

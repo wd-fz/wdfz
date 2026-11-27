@@ -591,7 +591,7 @@ func _snapshot(data: Dictionary) -> void:
 		app.session.character_id = StudentCast.resolve(source.get("character"))
 	current = data
 	if network.room.phase == "playing" and not _lost and not _spectating and network.is_ready():
-		app.exam_flow.team_state(bool(data.get("exam_pending", false)), float(data.get("exam_left", 0)))
+		app.exam_flow.team_state(bool(data.get("exam_pending", false)), float(data.get("exam_left", -1.0)))
 	if app.ui.notes_open() and app.investigation().current_focus() != prior_focus:
 		app._show_notes(app.ui.notes_panel.search.text)
 	if is_instance_valid(app._mates_nodes) and not app._mates_nodes._echoes.is_empty():
@@ -664,10 +664,18 @@ func _snapshot(data: Dictionary) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		var card := RoutesModule.card(app.story().ended, app.school().seat_card, app.investigation().paper_sample())
 		var absorbed := app.story().ended == "false_normal"
-		if absorbed: app._show_false_normal()
-		app.ui.show_ending(String(card.get("title", card.get("t", "合作通关"))), String(card.tag) if absorbed else "合作通关", card.get("lines", card.get("l", [])), "本局为局域网合作，个人记录与单人分开。", PackedStringArray(), "", card.get("memory", app.story().ended), card.get("evidence", {}))
-		_watch.visible = absorbed and not network.room.alive_ids().is_empty()
-		if _watch.visible: _watch.move_to_front()
+		var ending_id := app.story().ended
+		var ending_session := app.session
+		var show_card := func() -> void:
+			if app.session != ending_session or network.room == null: return
+			app.ui.show_ending(String(card.get("title", "合作通关")), String(card.tag) if absorbed else "合作通关", card.get("lines", []), "本局为局域网合作，个人记录与单人分开。", PackedStringArray(), "", card.get("memory", ending_id), card.get("evidence", {}))
+			_watch.visible = absorbed and not network.room.alive_ids().is_empty()
+			if _watch.visible: _watch.move_to_front()
+		var evidence: Dictionary = card.get("evidence", {})
+		var cut := ending_id if absorbed else (EndingCut.PAPER_REVIEW if evidence.has("sample") else "")
+		if cut.is_empty() or not app._play_ending_cut(cut, evidence, show_card):
+			if absorbed: app._show_false_normal()
+			show_card.call()
 	for event: Dictionary in data.get("events", []):
 		if int(event["seq"]) <= _seen_event: continue
 		_seen_event = int(event["seq"])

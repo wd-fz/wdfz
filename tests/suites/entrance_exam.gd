@@ -129,8 +129,12 @@ func test_cooperation() -> void:
 		msg.merge(extra)
 		return sim.command(actor.id, msg)
 	var clock := sim.calendar.tsec
+	sim.tick(0.1)
+	var unsigned_deadline := b.entrance_exam().deadline
+	check(unsigned_deadline > Time.get_unix_time_from_system() and b.entrance_exam().capture().deadline == unsigned_deadline, "an unsigned LAN exam already has a saved deadline")
 	cmd.call(a, "exam_start")
 	cmd.call(b, "exam_start")
+	check(b.entrance_exam().deadline == unsigned_deadline, "signing cannot restart the shared exam clock")
 	check(not cmd.call(a, "interact").ok and sim.exam_pending(), "neither peer can explore during the exam")
 	var a_paper := a.entrance_exam()
 	for i in EntranceExam.COUNT: cmd.call(a, "exam_answer", {"index": i, "option": a_paper.option_order(i).find(0)})
@@ -147,6 +151,24 @@ func test_cooperation() -> void:
 	cmd.call(b, "exam_wake")
 	sim.tick(.25)
 	check(not sim.exam_pending() and sim.calendar.tsec > clock, "both students waking releases the shared calendar")
+	b.entrance_exam().prepare()
+	b.entrance_exam().deadline = Time.get_unix_time_from_system() - 1
+	sim.tick(.25)
+	check(b.entrance_exam().phase == "graded" and b.entrance_exam().score == 0, "an unsigned paper is collected automatically")
+	b.entrance_exam().deadline = Time.get_unix_time_from_system() - 1
+	sim.tick(.25)
+	check(not sim.exam_pending() and b.entrance_exam().phase == "done", "an unattended score page releases the team after the grace period")
+	b.entrance_exam().prepare()
+	room.disconnect_member("b")
+	sim.disconnect_member("b")
+	var rejoined := room.reconnect("b")
+	sim.tick(.25)
+	check(rejoined and not sim.exam_pending() and b.entrance_exam().phase == "done", "a returning player cannot reopen an unfinished exam after the team has been released")
+	var legacy := sim.capture()
+	legacy.actors.b.session.modules["school.entrance_exam"].data = {"phase": "waiting", "score": -1}
+	check(CooperativeValidation.validate(legacy).is_empty(), "an older checkpoint can contain an unfinished paper in an active game")
+	sim.restore(legacy)
+	check(not sim.exam_pending() and b.entrance_exam().phase == "done", "an older active checkpoint resumes without reopening the exam")
 	a.school().tt = 100
 	sim.gameplay.kill(a, "同化", "names", "assimilation")
 	check(a.fate().ended == "false_normal" and room.alive_ids() == ["b"] and room.phase == "playing", "assimilation only ends the affected participant's run")

@@ -58,7 +58,7 @@ func start(now: float, rng: RandomNumberGenerator) -> void:
 			var row := int(pool.pop_at(draw))
 			paper.append(row * PERMUTATIONS + rng.randi_range(0, PERMUTATIONS - 1))
 			answers.append(-1)
-	deadline = now + SECONDS
+	if deadline == 0.0: deadline = now + SECONDS
 	phase = "writing"
 
 
@@ -102,11 +102,16 @@ func submit() -> bool:
 
 
 func wake() -> void:
-	if phase == "graded": phase = "done"
+	if phase == "graded":
+		phase = "done"
+		deadline = 0.0
 
 
 func capture() -> Dictionary:
-	if phase != "writing": return {"phase": phase, "score": score}
+	if phase != "writing":
+		var state := {"phase": phase, "score": score}
+		if deadline > 0.0: state["deadline"] = deadline
+		return state
 	return {"phase": phase, "score": -1, "paper": paper.duplicate(), "answers": answers.duplicate(), "deadline": deadline}
 
 
@@ -115,7 +120,8 @@ func validate(data: Dictionary) -> String:
 		return "考试状态无效"
 	if data.phase == "graded" and int(data.score) < 0: return "考试成绩无效"
 	if data.phase in ["writing", "waiting"] and int(data.score) != -1: return "试卷尚未评分"
-	if data.phase != "writing": return ""
+	if data.phase != "writing":
+		return "" if SaveSchema.number_in(data.get("deadline", 0), 0, 1e12) else "考试截止时间无效"
 	if not SaveSchema.number_in(data.get("deadline"), 1, 1e12): return "考试截止时间无效"
 	for key: String in ["paper", "answers"]:
 		if not data.get(key) is Array or data[key].size() != COUNT: return "答卷长度无效"

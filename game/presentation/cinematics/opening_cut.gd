@@ -133,13 +133,16 @@ func begin(world: Node3D, room: Dictionary, player: PlayerController, ui: GameUI
 		if is_instance_valid(_classroom.teacher): _classroom.teacher.hide()
 		var mr := RandomNumberGenerator.new()
 		mr.seed = 4141
+		var classroom := "%s:%d" % [_room.id, ClassmatesModule.OWN["class"]]
 		for figure: Dictionary in _classroom.figures:
 			if figure.teacher: continue
 			var node: Node3D = figure.node
 			var r := mr.randf()
 			var kind := "write" if r < 0.5 else ("turn" if r < 0.78 else "still")
+			var to_seat := node.position - _seat_eye
 			node.rotation_order = EULER_ORDER_YXZ
-			_mates.append({"node": node, "base_y": node.rotation.y, "kind": kind, "amp": 0.0 if kind == "still" else (0.05 if kind == "write" else 0.06) + 0.05 * mr.randf(), "f": 0.35 + 0.55 * mr.randf(), "ph": mr.randf() * TAU})
+			_mates.append({"node": node, "base_y": node.rotation.y, "kind": kind, "amp": 0.0 if kind == "still" else (0.05 if kind == "write" else 0.06) + 0.05 * mr.randf(), "f": 0.35 + 0.55 * mr.randf(), "ph": mr.randf() * TAU,
+				"turn_on_wake": node.get_meta("cls", "") == classroom, "seat_yaw": atan2(to_seat.x, to_seat.z)})
 	_ui.cut_fade(0.0)
 	_apply(story_time(0.0, short))
 
@@ -198,6 +201,10 @@ static func mate_pose(kind: String, amp: float, f: float, ph: float, kk: float) 
 	return Vector2(0.02, amp * w)
 
 
+static func wake_stare(kk: float) -> float:
+	return phase(kk, .824, .847) * (1.0 - phase(kk, .902, .920))
+
+
 func _beats(kk: float) -> void:
 	if audio == null or not is_instance_valid(audio):
 		return
@@ -210,6 +217,9 @@ func _beats(kk: float) -> void:
 	if kk > 0.78 and not _sounded.has("wake"):
 		_sounded["wake"] = true
 		audio.play("foley.wake")
+	if kk >= .847 and not _sounded.has("class_turn"):
+		_sounded["class_turn"] = true
+		audio.play("dread.chair", {"k": 0.6})
 
 
 func _apply(kk: float) -> void:
@@ -239,7 +249,10 @@ func _apply(kk: float) -> void:
 	for m: Dictionary in _mates:
 		if is_instance_valid(m["node"]):
 			var pz := mate_pose(String(m["kind"]), float(m["amp"]), float(m["f"]), float(m["ph"]), kk)
-			(m["node"] as Node3D).rotation = Vector3(pz.x, float(m["base_y"]) + pz.y, 0.0)
+			var yaw := float(m["base_y"]) + pz.y
+			if m["turn_on_wake"]:
+				yaw = lerp_angle(yaw, float(m["seat_yaw"]), wake_stare(kk))
+			(m["node"] as Node3D).rotation = Vector3(pz.x, yaw, 0.0)
 	var line := line_at(kk, _lines)
 	if line != _caption:
 		_caption = line
