@@ -6,7 +6,7 @@ on:
       tag:
         description: Formal version for Android, iOS (unsigned), Windows and Linux
         required: true
-        default: v0.6.4
+        default: v0.6.5
         type: string
       draft:
         description: Stop at a verified draft release after uploading all twelve assets
@@ -66,8 +66,8 @@ jobs:
         with:
           name: desktop-public-release-${{ github.sha }}
           path: |
-            build/packages/wdfz-0.6.4-linux-x86_64.*
-            build/packages/wdfz-0.6.4-windows-x86_64.*
+            build/packages/wdfz-0.6.5-linux-x86_64.*
+            build/packages/wdfz-0.6.5-windows-x86_64.*
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -145,9 +145,9 @@ jobs:
         with:
           name: android-public-release-${{ github.sha }}
           path: |
-            build/packages/wdfz-0.6.4-android-arm64.apk
-            build/packages/wdfz-0.6.4-android-arm64.apk.sha256
-            build/packages/wdfz-0.6.4-android-arm64.build.json
+            build/packages/wdfz-0.6.5-android-arm64.apk
+            build/packages/wdfz-0.6.5-android-arm64.apk.sha256
+            build/packages/wdfz-0.6.5-android-arm64.build.json
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -193,4 +193,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
-        run: python tools/publish_release.py --assets release-assets --tag "$RELEASE_TAG" --notes docs/releases/0.6.4.md ${{ inputs.draft && '--draft-only' || '' }}
+        run: python tools/publish_release.py --assets release-assets --tag "$RELEASE_TAG" --notes docs/releases/0.6.5.md ${{ inputs.draft && '--draft-only' || '' }}
