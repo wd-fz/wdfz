@@ -13,6 +13,11 @@ on:
         required: true
         default: true
         type: boolean
+      wait_for_regression:
+        description: Wait for full regression before publishing (push CI runs independently)
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -24,7 +29,7 @@ concurrency:
 
 jobs:
   regression:
-    name: Require successful CI for this source
+    name: Verify release source and optionally wait for CI
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
@@ -43,6 +48,7 @@ jobs:
               raise SystemExit('Tag must match the release version')
           PYCODE
       - name: Wait for single-player, cooperation and Vulkan CI on the exact commit
+        if: inputs.wait_for_regression
         env:
           GH_TOKEN: ${{ github.token }}
         run: python tools/ci/wait_for_ci.py
@@ -112,6 +118,7 @@ jobs:
               raise SystemExit('Tag must match the APK release version')
           PY
       - name: Import and run complete headless regression
+        if: inputs.wait_for_regression
         # Font metrics are part of the UI regression, even with a headless display.
         # Keep this environment consistent with Godot CI.
         run: |
