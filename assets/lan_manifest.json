@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "digest": "a1f78fa8881654fed1ca802215ce921ed64716e97379360d372e1c91807e9e7a",
+  "digest": "bbbfb611c8c49353f87f6037da887f726fd92816531a6a6bb0ce1765ef0b4d54",
   "files": {
     "assets/campus/architecture/courtyard_collision.tscn": "6ee93d9e1cc3a3181e225918af93939b1b0535de5f219f6efeaeeb5f662ac523",
     "assets/campus/archive.json": "542c7b9b76bac2a772366438dc137f9a9a9bce5b3d939ba0e900f1724dd63394",
@@ -157,8 +157,8 @@
     "game/infrastructure/network/lan_chunks.gd": "1c53b8391826a3588b334593e0219a995cf81c58dface9c4f1df25c7f7d692e2",
     "game/infrastructure/network/lan_discovery.gd": "a0c18caeb13ca95b078497f54a18d64d4e43d807ec42d067d30a0442e08a1268",
     "game/infrastructure/network/lan_network_route.gd": "6ceb295210ae4a11b739505ddf49f2486dcb8a43907eeec9d8eaf83840e90d33",
-    "game/infrastructure/network/lan_protocol.gd": "84da6560e84fa7955597fcb96ec18198d323ab7c9734417454ed80b63a088c8a",
-    "game/infrastructure/network/lan_transport.gd": "29fcf88113384f1b5dc4364d1d23f6cf7ab0e005047b5d2c72896a12e6e18305",
+    "game/infrastructure/network/lan_protocol.gd": "dcc038b03af4d2c2ced887d15198b87bcb4c60eaf0e0c9377284ebb006567d3b",
+    "game/infrastructure/network/lan_transport.gd": "64d36d274a1fb88c109663eb0079dc3c302a3912df8fd3c2ae2762a9535d407b",
     "game/infrastructure/network/terracotta_bridge.gd": "592a9d6d21f5ef4ebe18a9f8b7bbf8f878b4cc6360c979ce7f354b1f556f26ed",
     "game/infrastructure/network/terracotta_gateway.gd": "6dea2d992c8f20a4a470d7c7c04476234e2b0364112e70d43d184b76bc669769",
     "game/infrastructure/network/terracotta_protocol.gd": "9c5e5b4c6efc335bff8a68c784b2cc73c76b15748f820efa0156be2a112b2f1c",

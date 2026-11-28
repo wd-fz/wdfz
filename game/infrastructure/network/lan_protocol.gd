@@ -6,6 +6,7 @@ const RULES := "coop-1"
 const PORT := 24560
 const DISCOVERY_PORT := 24561
 const MAX_PACKET := 64 * 1024
+const MAX_INPUT_PACKET := 1200
 const MAX_BASELINE := 2 * 1024 * 1024
 const CHUNK := 16 * 1024
 const CHANNELS := 4
@@ -15,6 +16,21 @@ const INPUT_WINDOW := 12
 
 static func encode(value: Dictionary) -> PackedByteArray:
 	return JSON.stringify(value).to_utf8_buffer()
+
+
+static func encode_input(data: Dictionary) -> PackedByteArray:
+	var packet := encode(data)
+	if packet.size() <= MAX_INPUT_PACKET: return packet
+	var frames: Variant = data.get("frames")
+	if not frames is Array or frames.size() > INPUT_WINDOW: return PackedByteArray()
+	# Analog movement and look values can make the full JSON window exceed the datagram budget.
+	# Keep a contiguous suffix anchored at seq so the host can acknowledge the newest sample.
+	var payload := data.duplicate()
+	for start in range(1, frames.size()):
+		payload["frames"] = frames.slice(start)
+		packet = encode(payload)
+		if packet.size() <= MAX_INPUT_PACKET: return packet
+	return PackedByteArray()
 
 
 static func decode(bytes: PackedByteArray, limit: int = MAX_PACKET) -> Dictionary:
@@ -45,7 +61,7 @@ static func safe(value: Variant, depth: int = 0) -> bool:
 	return false
 
 
-## A packet repeats the last six physics samples. Sequence numbers are implicit
+## A packet repeats up to INPUT_WINDOW physics samples. Sequence numbers are implicit
 ## in the ordered window, and the sender never supplies a simulation duration.
 static func inputs(data: Dictionary) -> Array:
 	var frames: Variant = data.get("frames")

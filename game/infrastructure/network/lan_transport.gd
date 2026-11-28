@@ -161,7 +161,7 @@ func send_control(id: int, data: Dictionary) -> void:
 
 
 func send_input(data: Dictionary) -> void:
-	if not serving: _send(1, Packet.INPUT, data, 1200, MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED, 2)
+	if not serving: _send(1, Packet.INPUT, data, LanProtocol.MAX_INPUT_PACKET, MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED, 2)
 
 
 func send_chunk(id: int, data: Dictionary) -> void:
@@ -174,8 +174,8 @@ func send_motion(id: int, data: Dictionary) -> void:
 
 func _send(id: int, kind: Packet, data: Dictionary, limit: int, mode: MultiplayerPeer.TransferMode, channel: int) -> void:
 	if not can_send(id): return
-	var packet := LanProtocol.encode(data)
-	if packet.size() > limit: return
+	var packet := LanProtocol.encode_input(data) if kind == Packet.INPUT else LanProtocol.encode(data)
+	if packet.is_empty() or packet.size() > limit: return
 	# Messages contain JSON, not scene nodes. Raw SceneMultiplayer packets avoid
 	# RPC path-cache IDs arriving ahead of their reliable registration after a
 	# reconnect. Preserve independent ENet delivery/order for all four streams.
@@ -196,7 +196,7 @@ func _allowed(id: int, size: int, input: bool = false) -> bool:
 		_budget_time = now
 	var key := "%d:%s" % [id, input]
 	_budgets[key] = int(_budgets.get(key, 0)) + 1
-	return size <= (1200 if input else LanProtocol.MAX_PACKET) and int(_budgets[key]) <= (90 if input else 80)
+	return size <= (LanProtocol.MAX_INPUT_PACKET if input else LanProtocol.MAX_PACKET) and int(_budgets[key]) <= (90 if input else 80)
 
 
 func _receive_packet(sender: int, packet: PackedByteArray) -> void:
@@ -208,7 +208,7 @@ func _receive_packet(sender: int, packet: PackedByteArray) -> void:
 			if not _allowed(sender, packet.size() - 1): return
 		Packet.INPUT:
 			if not serving or not _allowed(sender, packet.size() - 1, true): return
-			limit = 1200
+			limit = LanProtocol.MAX_INPUT_PACKET
 		Packet.CHUNK:
 			if serving: return
 		Packet.MOTION:

@@ -240,6 +240,22 @@ func input_bandwidth() -> void:
 	while not guest.can_send(1) and Time.get_ticks_msec() < until: await process_frame
 	check(guest.can_send(1), "bandwidth peers connect")
 	if guest.can_send(1):
+		var frame := [-0.478357374668121, -0.0964137315750122, -0.529185771942139, 0.185979843139648, false, false, {}]
+		var frames: Array = []
+		frames.resize(LanProtocol.INPUT_WINDOW)
+		frames.fill(frame)
+		var input := {"epoch": "3".repeat(48), "scene": 1, "seq": 12345, "phone": false, "frames": frames}
+		check(LanProtocol.encode(input).size() > LanProtocol.MAX_INPUT_PACKET, "a held diagonal stick with fractional look exceeds the full-window packet limit")
+		var analog_packets: Array[Dictionary] = []
+		var on_input := func(_id: int, data: Dictionary) -> void: analog_packets.append(data)
+		host.input_received.connect(on_input)
+		guest.send_input(input)
+		await create_timer(0.10).timeout
+		host.input_received.disconnect(on_input)
+		var samples := LanProtocol.inputs(analog_packets[0]) if not analog_packets.is_empty() else []
+		check(not samples.is_empty() and int(samples.back().seq) == input.seq, "the real host receives and can acknowledge the newest analog sample")
+		check(samples.size() == LanProtocol.INPUT_WINDOW - 1 and int(samples[0].seq) == input.seq - samples.size() + 1 and is_equal_approx(samples.back().x, frame[0]), "only the oldest sample is dropped and sequence numbering stays contiguous")
+		check(input.frames.size() == LanProtocol.INPUT_WINDOW, "packet sizing leaves the client's resend history intact")
 		var received := [0]
 		host.input_received.connect(func(_id: int, _data: Dictionary) -> void: received[0] += 1)
 		for i in 150:

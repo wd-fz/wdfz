@@ -150,6 +150,8 @@ func walk() -> void:
 	check(error<.08,"after stopping the guest and the authority converge within eight centimetres")
 	print("WALK: distance_m=",start.z-previous.z," reverse_ticks=",reverse_ticks," max_reverse_m=",worst," stopped_error_m=",error)
 
+	await _walk_with_touch()
+
 	# Looking up signals the host to place this guest just inside the real school door.
 	app.player.set_pitch(.72)
 	var deadline := Time.get_ticks_msec()+20000
@@ -182,3 +184,37 @@ func walk() -> void:
 	app.lan._snapshot(old_snapshot)
 	check(app.session.world_id=="out" and app.lan._view_scene==current_region,"an older reliable snapshot cannot undo an already presented crossing")
 	print("DOOR: distance_m=",(previous-start).dot(ahead)," reverse_ticks=",reverse_ticks," max_forward_m=",worst_forward)
+
+
+func _walk_with_touch() -> void:
+	app.ui.set_touch_enabled(true)
+	await process_frame
+	var stick := app.ui.stick
+	var axis := Vector2(-0.478357374668121, -0.0964137315750122)
+	var centre := stick.get_global_rect().get_center()
+	var point := centre + axis * stick.size.x * 0.35
+	app.player.rotation.y = -0.529185771942139
+	app.player.set_pitch(0.185979843139648)
+	var start := last_authority
+	var press := InputEventScreenTouch.new()
+	press.index = 1
+	press.pressed = true
+	press.position = root.get_final_transform() * centre
+	Input.parse_input_event(press)
+	await physics_frame
+	var drag := InputEventScreenDrag.new()
+	drag.index = press.index
+	drag.position = root.get_final_transform() * point
+	drag.relative = root.get_final_transform().basis_xform(point - centre)
+	Input.parse_input_event(drag)
+	for i in 105: await physics_frame
+	check(app.ui.movement_touch().distance_to(axis) < 0.01, "the guest's real touchscreen drag drives an analog stick")
+	check(start.distance_to(last_authority) > 0.8, "the host keeps moving the guest with fractional touch movement and look")
+	var release := InputEventScreenTouch.new()
+	release.index = press.index
+	release.position = drag.position
+	Input.parse_input_event(release)
+	for i in 60: await physics_frame
+	var stopped := last_authority
+	for i in 30: await physics_frame
+	check(app.ui.movement_touch().is_zero_approx() and last_authority.distance_to(stopped) < 0.08, "releasing the stick stops the guest on the host")
