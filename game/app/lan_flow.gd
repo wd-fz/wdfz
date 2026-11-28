@@ -35,6 +35,7 @@ var _observing := ""
 var _view_scene := -1
 var _view_member := ""
 var _watch_pose := {}
+var _patrol_sample: Variant = null
 var _anchored: Variant = null
 var prediction := LanPrediction.new()
 var _mic: MicPanel
@@ -475,6 +476,7 @@ func stop() -> void:
 	_death_seen = false
 	_ended_seen = false
 	_last_motion = -1
+	_patrol_sample = null
 	_watch_pose.clear()
 	_view_member = ""
 	_view_scene = -1
@@ -563,6 +565,8 @@ func _snapshot(data: Dictionary) -> void:
 		_presentation_elapsed = 0.0
 		_reset_frame_timings()
 		app._install_session(candidate, source["player"])
+		var world := app._campus_world()
+		if world != null: world.prepare_patrol_figure()
 		_load_album()
 		if is_instance_valid(avatars): avatars.queue_free()
 		avatars = RemoteStudents.new()
@@ -576,6 +580,7 @@ func _snapshot(data: Dictionary) -> void:
 		_death_seen = false
 		_ended_seen = false
 		_last_motion = -1
+		_patrol_sample = null
 		_host_ack = int(data.get("input_seq", -1))
 		_input_seq = maxi(0, _host_ack)
 		network._command_seq = int(data.get("command_seq", 0)) + 1
@@ -634,8 +639,8 @@ func _snapshot(data: Dictionary) -> void:
 	if _view_scene != int(view["scene"]) or _last_motion <= int(data["room"]["tick"]) or _spectating:
 		app.player.seated = app.school().seated
 		app.player.hiding = bool(app.patrol().hide["on"])
-	app.player.can_sprint = app.school().can_run(app.items().snack_active()) and app.body().can_run()
-	app.player.speed_multiplier = (1.5 if app.items().snack_active() else 1.0) * app.body().speed_mul()
+		app.player.can_sprint = app.school().can_run(app.items().snack_active()) and app.body().can_run()
+		app.player.speed_multiplier = (1.5 if app.items().snack_active() else 1.0) * app.body().speed_mul()
 	_scene = int(data["scene"])
 	var next_scene := int(view["scene"])
 	var member := _observing if _spectating else network.local_id
@@ -734,10 +739,14 @@ func _place_view(member: String, scene: int, destination: String, pose: Dictiona
 		prediction.clear()
 		_input_window.clear()
 	if app.session.world_id != destination:
-		app.router.switch_to(destination, app.router.same_space(app.session.world_id, destination))
+		# Returning from an isolated space can also use the resident campus collision.
+		app.router.switch_to(destination, app.router.school_ready())
 		app.session.world_id = destination
 	if continuous: app.player.place(pose)
 	else: app.player.restore_pose(pose)
+	app._hint_cooldown = 0.0
+	app._ground_target = -1
+	app.ui.show_prompt("")
 	app.inception_flow.changed_world()
 	app._sync_world(true, not _spectating)
 
@@ -857,6 +866,7 @@ func _update_offers() -> void:
 func _motion(data: Dictionary) -> void:
 	if not playing() or data.get("epoch") != _epoch or int(data.get("tick", -1)) <= _last_motion: return
 	_last_motion = int(data["tick"])
+	_patrol_sample = data.get("patrol", [])
 	var member := _observing if _spectating else network.local_id
 	var own: Dictionary = data.get("players", {}).get(member, {})
 	if not own.is_empty() and not _spectating:
@@ -875,11 +885,13 @@ func _motion(data: Dictionary) -> void:
 	var position := Vector3(p[0], p[1], p[2])
 	app.player.seated = bool(own["seated"])
 	app.player.hiding = bool(own["hiding"])
+	if own.has("sprint"): app.player.can_sprint = bool(own["sprint"])
+	if own.has("speed"): app.player.speed_multiplier = float(own["speed"]) / 1000.0
 	var fixed_pose: bool = app.player.seated or app.player.hiding or bool(own["dead"]) or own.get("act", "") in ["vault","fall","drive","ride"]
 	var transition: bool = _anchored != null and fixed_pose != _anchored
 	_anchored = fixed_pose
 	if transition: app.player.velocity = Vector3.ZERO
-	prediction.reconcile(app.player, position, int(own["ack"]), not fixed_pose and not transition)
+	prediction.reconcile(app.player, position, int(own["ack"]), not fixed_pose and not transition, app.player.wants_move())
 
 
 func _follow_observed(dt: float) -> void:
@@ -970,6 +982,10 @@ func _refresh_diagnostics() -> void:
 
 func _step_input(dt: float) -> void:
 	var player := app.player
+	var vehicle := bool(current.get("vehicle", false))
+	var active := (player.enabled or vehicle) and not _paused and not player.debug_frozen
+	var axis := player.movement_axis() if active else Vector2.ZERO
+	var intent := Basis(Vector3.UP, player.rotation.y) * Vector3(axis.x, 0, axis.y)
 	# If the host stalls, continue resending the recent ticks until it catches up.
 	# Capping prediction also bounds the amount of stale movement on release.
 	if not network.transport.serving and _input_seq - _host_ack >= CooperativeActor.MAX_INPUT_LEAD and not _input_window.is_empty():
@@ -977,10 +993,9 @@ func _step_input(dt: float) -> void:
 			network.input({"seq": _input_seq, "scene": _scene, "frames": _input_window, "phone": app.phone_open()})
 		player.moving = false
 		player.sprinting = false
+		if not vehicle and not player.debug_frozen and not app.story().over() and app.body().fall == null:
+			prediction.advance(player, dt, Vector3.ZERO, intent)
 		return
-	var vehicle := bool(current.get("vehicle", false))
-	var active := (player.enabled or vehicle) and not _paused and not player.debug_frozen
-	var axis := player.movement_axis() if active else Vector2.ZERO
 	var run := active and player.run_requested() and not player.editing_text()
 	var vault := player.enabled and not player.editing_text() and Input.is_physical_key_pressed(KEY_SPACE)
 	var steer := app._paper_steer() if app._paper_owns_input() and not _paused else {}
@@ -989,7 +1004,7 @@ func _step_input(dt: float) -> void:
 		var before := player.position
 		if active or not (player.seated or player.hiding):
 			player.step_movement(axis, run, dt)
-		prediction.advance(player, dt, player.position - before)
+		prediction.advance(player, dt, player.position - before, intent)
 	prediction.record(_input_seq, player.position)
 	_input_window.append([axis.x, axis.y, wrapf(player.rotation.y, -PI, PI), player._look_pitch, run, vault, steer])
 	if _input_window.size() > LanProtocol.INPUT_WINDOW: _input_window.pop_front()
@@ -1074,6 +1089,7 @@ func _present(dt: float) -> void:
 	app.phone().set_context(app._phone_context())
 	app.patrol().set_context(app._patrol_context(room, pose))
 	app.anomaly().set_context(app._anomaly_context(room, pose))
+	app.broadcast().set_context(app._broadcast_context())
 	app.ui.show_status(school.place_name(app.session.world_id, float(pose["position"][1])), school.period_text(false), school.period_class(false), school.clock_text(app.items().has_clock()))
 	app.ui.show_stamina(school.stam, school.stamina_max(), school.tired)
 	app.ui.show_sprint_available(app.player.can_sprint)
@@ -1092,13 +1108,13 @@ func _present(dt: float) -> void:
 	if world != null: world.show_checkup(app.tales().checkup_today() and app.session.world_id == TalesModule.CHECKUP["room"], app.tales().queue_on(), app.tales().chart_line())
 	CampusWorld.pending_traces = app.anomaly().traces
 	if world != null: world.sync_traces(app.anomaly().traces)
-	app._refresh_interaction_prompt()
+	if app.player.enabled: app.player._update_focus()
+	app._ground_step(app.items())
+	app._refresh_interaction_prompt(dt)
 	app._show_classmates(app.classmates(), room, CampusGeometry.to_world(room, float(pose["position"][0]), float(pose["position"][2])), dt)
-	app.broadcast().set_context(app._broadcast_context())
 	app._show_crowd(app.broadcast())
 	app._show_visit(app.exchange())
 	app._show_marks()
-	app._ground_step(app.items())
 	app.ui.set_lift_close(app.elevator().show_close_button(app.session.world_id, pose))
 	if app.snake_open(): app._snake_step(dt)
 	app._sensory_step(dt)
@@ -1170,8 +1186,16 @@ func ground_target() -> int:
 	return CooperativeGround.target(ground_entries(), app.player.position, eye.origin, -eye.basis.z)
 
 
+func patrol_view() -> Dictionary:
+	if _patrol_sample == null: return app._patrol_view()
+	if not _patrol_sample is Array or _patrol_sample.size() != 7: return {}
+	var at := Vector2(_patrol_sample[1], _patrol_sample[2]) / 100.0
+	var look := Vector2(_patrol_sample[4], _patrol_sample[5]) / 100.0
+	return app._patrol_view_at(String(_patrol_sample[0]), at, float(_patrol_sample[3]) / 1000.0, look, String(_patrol_sample[6]))
+
+
 func visible_patrol() -> Dictionary:
-	var view := app._patrol_view()
+	var view := patrol_view()
 	if view.is_empty(): return {}
 	var at: Vector3 = view["position"]
 	var eye := app.player.camera.global_position

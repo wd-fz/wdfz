@@ -129,6 +129,8 @@ func observe_student() -> void:
 
 
 func walk() -> void:
+	_check_ground_prompt()
+	_check_patrol_motion()
 	var start := app.player.global_position
 	var previous := start
 	var reverse_ticks := 0
@@ -163,6 +165,7 @@ func walk() -> void:
 	# A delayed pre-crossing snapshot must not send us back through the door.
 	var old_snapshot := app.lan.current.duplicate(true)
 	network.snapshot_received.disconnect(app.lan._snapshot)
+	var patrol := app._campus_world()._patrol_figure
 	var ahead := -app.player.global_basis.z
 	start = app.player.global_position
 	previous = start
@@ -179,11 +182,51 @@ func walk() -> void:
 	Input.action_release("move_forward")
 	check(app.session.world_id=="out" and (previous-start).dot(ahead)>2.0,"holding one direction crosses the ordinary teaching-building threshold")
 	check(reverse_ticks==0 and worst_forward<.13,"crossing spaces preserves motion and camera position without a backwards or double stride")
+	check(is_instance_valid(patrol) and app._campus_world()._patrol_figure == patrol, "the same prepared patrol model survives a real doorway crossing")
 	var current_region := app.lan._view_scene
 	network.snapshot_received.connect(app.lan._snapshot)
 	app.lan._snapshot(old_snapshot)
 	check(app.session.world_id=="out" and app.lan._view_scene==current_region,"an older reliable snapshot cannot undo an already presented crossing")
 	print("DOOR: distance_m=",(previous-start).dot(ahead)," reverse_ticks=",reverse_ticks," max_forward_m=",worst_forward)
+
+
+func _check_ground_prompt() -> void:
+	var label := app.ui.get_node("%Prompt") as Label
+	var bag := app.items()
+	var prior_ground := bag.ground.duplicate(true)
+	var pitch := app.player.look_pitch()
+	app.player.set_pitch(-.98)
+	bag.place_on_ground("pen", app.session.world_id, app.player.position - app.player.basis.z)
+	app.lan._present(0.12)
+	check(label.visible and label.text.contains("拾取"), "a new ground target is used by the prompt in the same presentation tick")
+	bag.ground = prior_ground
+	app._hint_cooldown = 0.1
+	app.lan._present(0.12)
+	check(not label.text.contains("拾取"), "the prompt leaves the old target after it is picked up by a teammate")
+	app.player.set_pitch(pitch)
+
+
+func _check_patrol_motion() -> void:
+	var world := app._campus_world()
+	var position := app.player.position + Vector3.FORWARD * 5.0
+	var point := CampusGeometry.to_world(null, position.x, position.z)
+	var tick := app.lan._last_motion
+	var prior_sample: Variant = app.lan._patrol_sample
+	var watcher := app.patrol()
+	var prior_state: String = watcher.pat["state"]
+	watcher.pat["state"] = "idle"
+	var sample := ["out", roundi(point.x * 100), roundi(point.y * 100), 0,
+		roundi(point.x * 100), roundi((point.y + 9.0) * 100), "patrol"]
+	app.lan._motion({"epoch": network.room.epoch, "tick": tick + 1, "players": {}, "patrol": sample})
+	app.lan._present(0.0)
+	check(world.patrol_figure_shown() and world._patrol_figure.position.distance_to(Vector3(position.x, 0, position.z)) < .01,
+		"the visible patrol appears with its motion datagram while the reliable state still says idle")
+	app.lan._motion({"epoch": network.room.epoch, "tick": tick + 2, "players": {}})
+	app.lan._present(0.0)
+	check(not world.patrol_figure_shown(), "the next motion datagram can also hide the patrol immediately")
+	app.lan._last_motion = tick
+	app.lan._patrol_sample = prior_sample
+	watcher.pat["state"] = prior_state
 
 
 func _walk_with_touch() -> void:

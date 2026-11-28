@@ -242,7 +242,7 @@ func _step(dt: float, physics_tick: bool = true) -> void:
 		a.input_age += dt
 		a.enter_cool = maxf(0.0, a.enter_cool - dt)
 		if a.input_age > 0.25 or not room.members[id]["connected"]: a.clear_input()
-		if physics_tick: a.consume_input()
+		if physics_tick: a.consume_input(id != room.host_id)
 		a.school().advance_game_time(minutes)
 		a.session.clock.advance(dt)
 		if a.school().seated and (absf(float(a.input["x"])) + absf(float(a.input["y"]))) > 0.08 and a.choice.is_empty():
@@ -370,6 +370,10 @@ func motion(for_id: String) -> Dictionary:
 		var state: Dictionary = data["players"][id]
 		if a.seamless_from >= 0: state["seam"] = true
 		var body := a.feature(&"body.injury") as BodyModule
+		if id == viewer.id:
+			var snack := a.bag().snack_active()
+			state["sprint"] = a.school().can_run(snack) and body.can_run()
+			state["speed"] = roundi(1000.0 * (1.5 if snack else 1.0) * body.speed_mul())
 		var act := ""
 		if a.vehicle: act = "drive" if gameplay.driver == id else "ride"
 		elif body.fall != null: act = "fall" if body.fall["kind"] == "roof" else "vault"
@@ -387,6 +391,14 @@ func motion(for_id: String) -> Dictionary:
 			if act.is_empty() and not a.moving and not a.school().seated: act = "read"
 		if not act.is_empty(): state["act"] = act
 		if gear != 0: state["gear"] = gear
+	var watcher := patrol.main
+	var where := watcher.position()
+	var source := String(where["scene"])
+	if watcher.pat["state"] == "walk" and watcher.pat["transition"] == null and (source == viewer.location() or (physics.space.contains(source) and physics.space.contains(viewer.location()))):
+		var toward := watcher.look_point()
+		# Keep the figure on the motion stream, independent of reliable snapshots.
+		data["patrol"] = [source, roundi(where["x"] * 100), roundi(where["y"] * 100), roundi(where["fy"] * 1000),
+			roundi(toward["x"] * 100), roundi(toward["y"] * 100), watcher.pat["behavior"]]
 	return data
 
 

@@ -83,7 +83,7 @@ func step_movement(direction: Vector2, run: bool, delta: float) -> void:
 		velocity = Vector3.ZERO
 		moving = false
 		sprinting = false
-		_update_focus()
+		if not network_driven: _update_focus()
 		return
 	sprinting = run and direction.length() > 0.08 and can_sprint
 	var before := global_position
@@ -91,7 +91,7 @@ func step_movement(direction: Vector2, run: bool, delta: float) -> void:
 	moving = Vector2(global_position.x - before.x, global_position.z - before.z).length() > 0.0001 / 9.0
 	if not moving:
 		sprinting = false
-	_update_focus()
+	if not network_driven: _update_focus()
 
 
 ## Movement input this frame (old updatePlayer: a seated player stands up when it exceeds 0.08).

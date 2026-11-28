@@ -4,6 +4,7 @@ extends RefCounted
 const HISTORY_LIMIT := 180
 const TOLERANCE := 0.012
 const HARD_CORRECTION := 0.9
+const MOVING_CORRECTION := 2.5
 var history: Dictionary = {}
 var corrections := 0
 var error_metres := 0.0
@@ -21,7 +22,7 @@ func record(sequence: int, position: Vector3) -> void:
 		history.erase(_expired_through)
 
 
-func reconcile(body: CharacterBody3D, authority: Vector3, ack: int, predict: bool) -> void:
+func reconcile(body: CharacterBody3D, authority: Vector3, ack: int, predict: bool, moving: bool = false) -> void:
 	if ack < _latest_ack: return
 	if not predict:
 		# A seat, locker, fall or scripted interaction owns the body's exact pose.
@@ -42,7 +43,7 @@ func reconcile(body: CharacterBody3D, authority: Vector3, ack: int, predict: boo
 	if error_metres < TOLERANCE:
 		_remaining = Vector3.ZERO
 		_obstructed_acks = 0
-	elif error_metres >= HARD_CORRECTION or (_obstructed_acks >= 5 and error_metres > .12):
+	elif error_metres >= (MOVING_CORRECTION if moving else HARD_CORRECTION) or (not moving and _obstructed_acks >= 5 and error_metres > .12):
 		_anchor(body, authority, ack)
 	else:
 		_remaining = offset
@@ -58,11 +59,12 @@ func _anchor(body: CharacterBody3D, authority: Vector3, ack: int) -> void:
 	corrections += 1
 
 
-func advance(body: CharacterBody3D, dt: float, travelled: Vector3 = Vector3.ZERO) -> void:
+func advance(body: CharacterBody3D, dt: float, travelled: Vector3 = Vector3.ZERO, intent: Vector3 = Vector3.ZERO) -> void:
 	if _remaining.is_zero_approx(): return
 	var before := body.position
 	var portion := _remaining * (1.0 - exp(-12.0 * dt))
 	if _remaining.length_squared() < 0.000004: portion = _remaining
+	portion = portion.limit_length(3.0 * dt)
 	# A late acknowledgement can shorten a real stride. It must not reverse it.
 	# Use actual post-collision travel, including analog input and rotated regions.
 	var stride := Vector3(travelled.x, 0, travelled.z)
@@ -71,6 +73,12 @@ func advance(body: CharacterBody3D, dt: float, travelled: Vector3 = Vector3.ZERO
 		var along := stride / distance
 		var opposing := -portion.dot(along)
 		if opposing > distance * .8: portion += along * (opposing - distance * .8)
+	elif not intent.is_zero_approx():
+		# With the stick held against a wall there is no stride to measure.
+		# Do not pull away from the wall and immediately walk back into it.
+		var along := intent.normalized()
+		portion += along * maxf(0.0, -portion.dot(along))
+	if portion.is_zero_approx(): return
 	var motion := body.get_parent_node_3d().global_basis * portion
 	var hit := body.move_and_collide(motion)
 	var applied := body.position - before

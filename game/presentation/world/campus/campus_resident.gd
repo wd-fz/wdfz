@@ -86,18 +86,20 @@ func cancel_entry_models() -> void:
 
 func select(id: String, ready_only: bool = false) -> CampusWorld:
 	var previous := regions.get(active) as CampusWorld
+	var world := prepare(id, not ready_only)
 	if previous != null and id != active:
 		_light_time = previous.lighting.time
 		_overcast = previous.lighting.overcast
+		previous.pass_patrol_to(world)
 		previous.deactivate(true)
 		_preview_lights[active] = previous
-	var world := prepare(id, not ready_only)
 	var changed := active != id
 	active = id
 	_preview_lights.erase(id)
 	if not world.geometry_ready:
 		_wanted = PackedStringArray([id])
-	_refresh_visibility()
+	# A buffered crossing seeds the view once the player is in the destination frame.
+	if not ready_only: _refresh_visibility()
 	world.activate()
 	if changed:
 		world.lighting.time = _light_time
@@ -170,9 +172,9 @@ func update_view(at: Vector3) -> void:
 	if not nearby_visuals: return
 	_wanted = PackedStringArray([active])
 	if not _lift_landing.is_empty(): _wanted.append(_lift_landing)
-	_wanted.append_array(_visible_neighbours)
 	var local := space.frame(active).affine_inverse() * at
 	_wanted.append_array(CampusConnections.nearby(active, local))
+	_wanted.append_array(_visible_neighbours)
 
 
 func _threshold_shelter(at: Vector3, thresholds: Array[Dictionary], sides: Dictionary) -> float:
@@ -261,8 +263,8 @@ func _refresh_visibility() -> void:
 		if model == null and detail:
 			world.show_cold_geometry()
 		elif not detail:
-			var cold := world.get_node_or_null("ColdGeometry")
-			if cold != null: cold.free()
+			var cold := world.get_node_or_null("ColdGeometry") as Node3D
+			if cold != null: cold.hide()
 		if outside == null: continue
 		var facade := outside.shells.get(id) as Node3D
 		if facade == null or id.begins_with("stair_"): continue

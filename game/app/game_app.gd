@@ -155,7 +155,7 @@ func _ready() -> void:
 	ui.interact_requested.connect(player.request_interaction)
 	player.focus_changed.connect(func(_text: String) -> void:
 		_hint_cooldown = 0.0
-		_refresh_interaction_prompt())
+		if not player.network_driven: _refresh_interaction_prompt())
 	player.interaction_requested.connect(_interact)
 	player.free_interaction_requested.connect(_campus_interact)
 	ui.choice_selected.connect(_choice_made)
@@ -1282,13 +1282,13 @@ func _campus_step(delta: float) -> void:
 			router.prepare(String(crossing["world"]))
 		else:
 			travel(crossing["world"], crossing["pose"], true)
-	_hint_cooldown -= delta
-	_refresh_interaction_prompt()
+	_refresh_interaction_prompt(delta)
 
 
 ## One owner for the action label: posture wins over nearby desks and physical targets.
 ## These priorities match _campus_interact; expensive tile hints remain throttled.
-func _refresh_interaction_prompt() -> void:
+func _refresh_interaction_prompt(delta: float = 0.0) -> void:
+	_hint_cooldown -= delta
 	if session == null or not player.enabled or _dead():
 		ui.show_prompt("")
 		return
@@ -1299,13 +1299,13 @@ func _refresh_interaction_prompt() -> void:
 	if maze_flow.here():
 		ui.show_prompt(maze_flow.hint())
 		return
-	if patrol() != null and bool(patrol().hide["on"]):
+	if player.hiding:
 		ui.show_prompt("出来")
 		return
 	if anomaly() != null and anomaly().near_roster():
 		ui.show_prompt("那张名单")
 		return
-	if school() != null and school().seated:
+	if player.seated:
 		ui.show_prompt("读桌上的名牌" if school().looking_at_card(player.look_pitch()) else "站起来")
 		return
 	if player.has_focus():
@@ -1375,7 +1375,7 @@ func _lift_crowd_events() -> void:
 
 func _campus_interact() -> void:
 	if is_instance_valid(lan) and lan.playing():
-		if school() != null and school().looking_at_card(player.look_pitch()) and (anomaly() == null or not anomaly().near_roster()): lan.send("seat_card")
+		if player.seated and school().looking_at_card(player.look_pitch()) and (anomaly() == null or not anomaly().near_roster()): lan.send("seat_card")
 		else: lan.send("interact")
 		return
 	var rules := campus()
@@ -1734,7 +1734,12 @@ func _patrol_view() -> Dictionary:
 	var watcher := patrol()
 	if watcher == null or watcher.pat["state"] != "walk" or watcher.pat["transition"] != null:
 		return {}
-	var source := String(watcher.pat["room"])
+	var look := watcher.look_point()
+	return _patrol_view_at(String(watcher.pat["room"]), Vector2(watcher.pat["x"], watcher.pat["y"]),
+		float(watcher.pat["fy"]), Vector2(look["x"], look["y"]), String(watcher.pat["behavior"]))
+
+
+func _patrol_view_at(source: String, point: Vector2, height: float, look: Vector2, behavior: String) -> Dictionary:
 	var viewer := session.world_id
 	var frame := Transform3D.IDENTITY
 	if source != viewer:
@@ -1743,18 +1748,17 @@ func _patrol_view() -> Dictionary:
 		var space: CampusSpace = router.resident.space
 		frame = space.frame(viewer).affine_inverse() * space.frame(source)
 	var room: Variant = campus().room(source)
-	var at := CampusGeometry.to_scene(room, Vector2(float(watcher.pat["x"]), float(watcher.pat["y"])))
-	var look := watcher.look_point()
-	var toward := CampusGeometry.to_scene(room, Vector2(float(look["x"]), float(look["y"])))
-	var height := float(watcher.pat["fy"])
-	return {"position": frame * Vector3(at.x, height, at.y), "look": frame * Vector3(toward.x, height, toward.y)}
+	var at := CampusGeometry.to_scene(room, point)
+	var toward := CampusGeometry.to_scene(room, look)
+	return {"position": frame * Vector3(at.x, height, at.y), "look": frame * Vector3(toward.x, height, toward.y), "behavior": behavior}
 
 
 func _present_patrol(world: CampusWorld, normal_view: Dictionary, delta: float, senses_enabled: bool = true) -> void:
 	var view := normal_view
 	var sensed := false
 	if world != null and senses_enabled and talent() != null and talent().has("ear"):
-		var target := _patrol_view() if view.is_empty() else view
+		var target := view
+		if target.is_empty(): target = lan.patrol_view() if is_instance_valid(lan) and lan.playing() else _patrol_view()
 		if not target.is_empty():
 			var offset: Vector3 = target["position"] - player.position
 			if offset.length_squared() <= TalentModule.PATROL_SENSE_METRES ** 2:
@@ -1769,7 +1773,7 @@ func _present_patrol(world: CampusWorld, normal_view: Dictionary, delta: float, 
 		world.show_patrol(false, Vector2.ZERO, 0.0, Vector3.ZERO)
 	else:
 		var at: Vector3 = view["position"]
-		world.show_patrol(true, Vector2(at.x, at.z), at.y, view["look"], String(patrol().pat["behavior"]), delta, sensed)
+		world.show_patrol(true, Vector2(at.x, at.z), at.y, view["look"], String(view["behavior"]), delta, sensed)
 
 
 ## canStand (world.js): is there room for the body (radius 3 units) at this old world point?

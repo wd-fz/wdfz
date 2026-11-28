@@ -808,7 +808,11 @@ func _install_model(model: Node3D, tier: int) -> void:
 ## The resident collider is already live when a player reaches an unprepared room.
 ## Draw its structural surfaces until the imported model can take over.
 func show_cold_geometry() -> void:
-	if geometry_ready or has_node("ColdGeometry"): return
+	if geometry_ready: return
+	var cached := get_node_or_null("ColdGeometry") as Node3D
+	if cached != null:
+		cached.show()
+		return
 	var shapes: Array[CollisionShape3D] = []
 	for collider: CollisionShape3D in get_node("Collision").get_children():
 		if not collider.shape is BoxShape3D: continue
@@ -1048,18 +1052,32 @@ var _patrol_sense_material: ShaderMaterial
 var _patrol_sensed := false
 
 
+func prepare_patrol_figure() -> void:
+	if is_instance_valid(_patrol_figure): return
+	_patrol_figure = OtherworldFigure.make("patroller", _patrol_asset)
+	_patrol_figure.name = "Patroller"
+	_patrol_figure.hide()
+	add_child(_patrol_figure)
+	_patrol_sensed = false
+
+
+func pass_patrol_to(world: CampusWorld) -> void:
+	if not is_instance_valid(_patrol_figure): return
+	_patrol_figure.reparent(world)
+	world._patrol_figure = _patrol_figure
+	world._patrol_sense_material = _patrol_sense_material
+	world._patrol_sensed = _patrol_sensed
+	_patrol_figure = null
+	_patrol_sensed = false
+
+
 func show_patrol(visible_now: bool, scene_pos: Vector2, height: float, toward: Vector3, behavior: String = "patrol", dt: float = 0.0, sensed: bool = false) -> void:
 	if not visible_now:
 		if is_instance_valid(_patrol_figure):
 			_patrol_figure.hide()
 			set_patrol_sensed(false)
 		return
-	if not is_instance_valid(_patrol_figure):
-		_patrol_figure = OtherworldFigure.make("patroller", _patrol_asset)
-		_patrol_figure.name = "Patroller"
-		add_child(_patrol_figure)
-		_patrol_figure.hide()
-		_patrol_sensed = false
+	prepare_patrol_figure()
 	var next := Vector3(scene_pos.x, height, scene_pos.y)
 	var distance := _patrol_figure.position.distance_to(next) if _patrol_figure.visible else 0.0
 	_patrol_figure.position = next

@@ -14,10 +14,13 @@ var scene_version := 1
 var seamless_from := -1
 var frame_yaw := 0.0
 const MAX_INPUT_LEAD := 32
+const INPUT_BUFFER_TICKS := 3
+const MAX_QUEUED_INPUT_TICKS := 12
 var input_sequence := -1
 var processed_sequence := -1
 var _inputs: Array[Dictionary] = []
 var _tick_inputs := false
+var _buffer_wait := 0
 var command_sequence := -1
 var input_age := 0.0
 var input := {"x": 0.0, "y": 0.0, "yaw": 0.0, "pitch": 0.0, "run": false}
@@ -92,6 +95,10 @@ func event(kind: String, data: Dictionary = {}) -> void:
 
 func clear_input() -> void:
 	_inputs.clear()
+	_buffer_wait = 0
+	# Discarded samples cannot be retransmitted: acknowledge the discard so the
+	# client can move past its prediction cap and send fresh input.
+	processed_sequence = input_sequence
 	held_phone = false
 	gesture_until = 0
 	_neutral_input()
@@ -129,16 +136,21 @@ func queue_inputs(frames: Array, phone: bool = false) -> void:
 		held_phone = phone
 		_tick_inputs = true
 		_inputs.append(data)
-	# After a stall the authority has a bounded amount of old intent to process.
-	while _inputs.size() > MAX_INPUT_LEAD: _inputs.pop_front()
+	# A burst after a stall must not play back half a second of stale intent.
+	while _inputs.size() > MAX_QUEUED_INPUT_TICKS: _inputs.pop_front()
 
 
-func consume_input() -> void:
+func consume_input(buffered: bool = false) -> void:
 	if not _tick_inputs:
 		processed_sequence = input_sequence
 	elif _inputs.is_empty():
+		_buffer_wait = 0
+		_neutral_input()
+	elif buffered and _buffer_wait < INPUT_BUFFER_TICKS and _inputs.size() < INPUT_BUFFER_TICKS:
+		_buffer_wait += 1
 		_neutral_input()
 	else:
+		_buffer_wait = INPUT_BUFFER_TICKS
 		var sample: Dictionary = _inputs.pop_front()
 		_apply_input(sample)
 		processed_sequence = int(sample["seq"])

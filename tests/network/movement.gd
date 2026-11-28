@@ -129,6 +129,18 @@ func walk_trace() -> void:
 		backwards = maxf(backwards, before.x-local.position.x)
 		await physics_frame
 	check(backwards<.0001 and local.position.x-delayed_start.x<.60, "a late partial correction converges without a backwards step even while the host is CPU-stalled")
+	var wall_pose := local.position
+	prediction.clear()
+	prediction.record(1, wall_pose)
+	prediction.reconcile(local, wall_pose - Vector3.RIGHT * 1.15, 1, true, true)
+	for i in 10:
+		prediction.advance(local, DT, Vector3.ZERO, Vector3.RIGHT)
+		await physics_frame
+	check(local.position.distance_to(wall_pose) < .002, "a correction behind a held stick never pulls the guest away from a wall")
+	for i in 55:
+		prediction.advance(local, DT)
+		await physics_frame
+	check(local.position.distance_to(wall_pose - Vector3.RIGHT * 1.15) < .012, "letting go lets the pending position error converge smoothly")
 	frame.queue_free()
 	await process_frame
 
@@ -174,9 +186,16 @@ func cast_checks() -> void:
 	a.school().seated = false
 	a.bag().torch_on = true
 	(a.feature(&"body.injury") as BodyModule).treat = {"t":0.0}
+	sim.patrol.main.pat["state"] = "walk"
+	sim.patrol.main.pat["transition"] = null
+	sim.patrol.main._put(PatrolNav.point("out", 916.52, 1723.53))
 	var motion := sim.motion("b")
 	check(motion.players.a.act=="bandage" and int(motion.players.a.gear)==1, "remote animation and hand props follow authoritative state")
-	check(LanProtocol.encode(motion).size()<1200, "four full-size characters and actions still fit a motion datagram")
+	check(motion.get("patrol", []).slice(0, 4) == ["out", 91652, 172353, 0], "a connected region receives the patrol in the fast stream")
+	check(LanProtocol.encode(motion).size()<1200, "four full-size characters, actions and the patrol still fit a motion datagram")
+	sim.patrol.main.pat["transition"] = {}
+	check(not sim.motion("b").has("patrol"), "a hidden patrol transition sends no visible pose")
+	sim.patrol.main.pat["transition"] = null
 	sim.travel(a,"out",sim.spawn("out"))
 	var version := a.scene_version
 	var prior_pose := a.pose.duplicate(true)
@@ -191,6 +210,14 @@ func cast_checks() -> void:
 	sim.input(a.id,{"epoch":room.epoch,"scene":version,"seq":9,"frames":[[1,0,0,0,true,false,{}]]})
 	a.consume_input()
 	check(a.processed_sequence==6 and a.input.x==0 and not a.input.run, "hard travel rejects input from the old scene")
+	a.queue_inputs([{"seq": 11, "scene": a.scene_version, "x": 1., "y": 0., "yaw": 0., "pitch": 0., "run": false}])
+	a.consume_input(true)
+	check(a.processed_sequence == 6 and a.input.x == 0., "a remote queue leaves room for the next packet when recovering from starvation")
+	for i in CooperativeActor.INPUT_BUFFER_TICKS: a.consume_input(true)
+	check(a.processed_sequence == 11 and a.input.x == 1., "a lone sample is consumed after a bounded wait")
+	a.queue_inputs([{"seq": 12, "scene": a.scene_version, "x": 0., "y": 0., "yaw": 0., "pitch": 0., "run": false}])
+	a.clear_input()
+	check(a.processed_sequence == 12 and a.input.x == 0., "clearing stale input acknowledges dropped samples so the client can resume")
 	sim.queue_free()
 	await process_frame
 	var avatar := StudentAvatar.new()
